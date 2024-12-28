@@ -1,7 +1,7 @@
 import { createClient } from '@redis/client'
 import { REDIS_URL, DATA_JID_TTL, DATA_TTL, SESSION_TTL } from '../defaults'
 import logger from './logger'
-import { GroupMetadata } from '@whiskeysockets/baileys'
+import { GroupMetadata } from 'baileys'
 import { Webhook, configs } from './config'
 
 export const BASE_KEY = 'unoapi-'
@@ -135,8 +135,8 @@ const authKey = (phone: string) => {
   return `${BASE_KEY}auth:${phone}`
 }
 
-const sessionStatusKey = (phone: string) => {
-  return `${BASE_KEY}auth:${phone}`
+export const sessionStatusKey = (phone: string) => {
+  return `${BASE_KEY}status:${phone}`
 }
 
 const messageStatusKey = (phone: string, id: string) => {

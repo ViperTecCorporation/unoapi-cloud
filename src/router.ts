@@ -46,6 +46,8 @@ export const router = (
   const blacklistController = new BlacklistController(addToBlacklist)
 
   //Routes
+  router.get('/', indexController.root)
+  router.get('/index.html', indexController.root)
   router.get('/ping', indexController.ping)
   router.get('/:version/debug_token', indexController.debugToken)
   router.get('/sessions', middleware, phoneNumberController.list.bind(phoneNumberController))
@@ -53,6 +55,8 @@ export const router = (
   router.post('/:version/:phone/register', middleware, registrationController.register.bind(registrationController))
   router.post('/:version/:phone/deregister', middleware, registrationController.deregister.bind(registrationController))
   router.get('/:version/:phone', middleware, phoneNumberController.get.bind(phoneNumberController))
+  // https://developers.facebook.com/docs/whatsapp/business-management-api/manage-phone-numbers/
+  router.get('/:version/:phone/phone_numbers', middleware, phoneNumberController.list.bind(phoneNumberController))
   router.get('/:version/:phone/message_templates', middleware, templatesController.index.bind(templatesController))
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
