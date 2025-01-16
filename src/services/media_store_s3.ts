@@ -68,7 +68,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     return true
   }
 
-  mediaStore.getFileUrl = async (fileName: string, expiresIn = DATA_TTL) => {
+  mediaStore.getFileUrl = async (fileName: string, expiresIn: number = DATA_TTL) => {
     const getParams = {
       Bucket: bucket,
       Key: fileName,
