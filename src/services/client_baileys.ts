@@ -19,7 +19,7 @@ import {
   close,
   OnReconnect,
 } from './socket'
-import { Client, getClient, clients } from './client'
+import { Client, getClient, clients, Contact } from './client'
 import { Config, defaultConfig, getConfig } from './config'
 import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber } from './transformer'
 import { v1 as uuid } from 'uuid'
@@ -107,6 +107,7 @@ export class ClientBaileys implements Client {
   private config: Config = defaultConfig
   private close: close = closeDefault
   private sendMessage = sendMessageDefault
+  private event
   private fetchImageUrl = fetchImageUrlDefault
   private exists = existsDefault
   private socketLogout = logoutDefault
@@ -254,6 +255,7 @@ export class ClientBaileys implements Client {
       onDisconnected: async () => this.disconnect(),
       onReconnect: this.onReconnect,
     })
+    this.event = event
     this.sendMessage = send
     this.readMessages = read
     this.rejectCall = rejectCall
@@ -262,32 +264,54 @@ export class ClientBaileys implements Client {
     this.close = close
     this.exists = exists
     this.socketLogout = logout
-    event('messages.upsert', async (payload: { messages: []; type }) => {
+    await this.subscribe()
+    logger.debug('Client Baileys connected for %s', this.phone)
+  }
+
+  async disconnect() {
+    logger.debug('Disconnect client store for %s', this?.phone)
+    this.store = undefined
+
+    await this.close()
+    clients.delete(this?.phone)
+    this.sendMessage = sendMessageDefault
+    this.readMessages = readMessagesDefault
+    this.rejectCall = rejectCallDefault
+    this.fetchImageUrl = fetchImageUrlDefault
+    this.fetchGroupMetadata = fetchGroupMetadataDefault
+    this.exists = existsDefault
+    this.close = closeDefault
+    this.config = defaultConfig
+    this.socketLogout = logoutDefault
+  }
+
+  async subscribe() {
+    this.event('messages.upsert', async (payload: { messages: []; type }) => {
       logger.debug('messages.upsert %s', this.phone, JSON.stringify(payload))
       this.listener.process(this.phone, payload.messages, payload.type)
     })
-    event('messages.update', (messages: object[]) => {
+    this.event('messages.update', (messages: object[]) => {
       logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
       this.listener.process(this.phone, messages, 'update')
     })
-    event('message-receipt.update', (updates: object[]) => {
+    this.event('message-receipt.update', (updates: object[]) => {
       logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(updates))
       this.listener.process(this.phone, updates, 'update')
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    event('messages.delete', (updates: any) => {
+    this.event('messages.delete', (updates: any) => {
       logger.debug('messages.delete %s', this.phone, JSON.stringify(updates))
       this.listener.process(this.phone, updates, 'delete')
     })
     if (!this.config.ignoreHistoryMessages) {
       logger.info('Config import history messages %', this.phone)
-      event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
+      this.event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
         logger.info('Importing history messages, is latest %s %s', isLatest, this.phone)
         this.listener.process(this.phone, messages, 'history')
       })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    event('call', async (events: any[]) => {
+    this.event('call', async (events: any[]) => {
       for (let i = 0; i < events.length; i++) {
         const { from, id, status } = events[i]
         if (status == 'ringing' && !this.calls.has(from)) {
@@ -321,24 +345,6 @@ export class ClientBaileys implements Client {
         }
       }
     })
-    logger.debug('Client Baileys connected for %s', this.phone)
-  }
-
-  async disconnect() {
-    logger.debug('Disconnect client store for %s', this?.phone)
-    this.store = undefined
-
-    await this.close()
-    clients.delete(this?.phone)
-    this.sendMessage = sendMessageDefault
-    this.readMessages = readMessagesDefault
-    this.rejectCall = rejectCallDefault
-    this.fetchImageUrl = fetchImageUrlDefault
-    this.fetchGroupMetadata = fetchGroupMetadataDefault
-    this.exists = existsDefault
-    this.close = closeDefault
-    this.config = defaultConfig
-    this.socketLogout = logoutDefault
   }
 
 
@@ -385,7 +391,7 @@ export class ClientBaileys implements Client {
           throw new Error(`Unknow message status ${status}`)
         }
       } else if (type) {
-        if (['text', 'image', 'audio', 'document', 'video', 'template', 'interactive'].includes(type)) {
+        if (['text', 'image', 'audio', 'document', 'video', 'template', 'interactive', 'contacts'].includes(type)) {
           let content
           if ('template' === type) {
             const template = new Template(this.getConfig)
@@ -583,9 +589,11 @@ export class ClientBaileys implements Client {
       try {
         const profilePictureGroup = await this.fetchImageUrl(key.remoteJid)
         if (profilePictureGroup) {
+          logger.debug(`Retrieved group picture! ${profilePictureGroup}`)
           groupMetadata['profilePicture'] = profilePictureGroup
         }
       } catch (error) {
+        logger.warn(error)
         logger.warn(error, 'Ignore error on retrieve group profile picture')
       }
     } else {
@@ -595,16 +603,35 @@ export class ClientBaileys implements Client {
       const jid = await this.exists(remoteJid)
       if (jid) {
         try {
+          logger.debug(`Retrieving user picture for %s...`, jid)
           const profilePicture = await this.fetchImageUrl(jid)
-          logger.debug(`Retrieving user picture...`)
           if (profilePicture) {
+            logger.debug('Retrieved user picture %s for %s!', profilePicture, jid)
             message['profilePicture'] = profilePicture
+          } else {
+            logger.debug(`Not found user picture for %s!`, jid)
           }
         } catch (error) {
+          logger.warn(error)
           logger.warn(error, 'Ignore error on retrieve user profile picture')
         }
       }
     }
     return message
+  }
+
+  public async contacts(numbers: string[]) {
+    const contacts: Contact[] = []
+    for (let index = 0; index < numbers.length; index++) {
+      const number = numbers[index]
+      const testJid = phoneNumberToJid(number)
+      const realJid = await this.exists(testJid)
+      contacts.push({
+        wa_id: realJid,
+        input: number,
+        status: realJid ? 'valid' : 'invalid'
+      })
+    }
+    return contacts
   }
 }

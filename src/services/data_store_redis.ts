@@ -1,5 +1,5 @@
 import { proto, WAMessage, WAMessageKey, isJidGroup, GroupMetadata } from 'baileys'
-import { DataStore } from './data_store'
+import { DataStore, MessageStatus } from './data_store'
 import { jidToPhoneNumber, phoneNumberToJid } from './transformer'
 import { getDataStore, dataStores } from './data_store'
 import { ONLY_HELLO_TEMPLATE } from '../defaults'
@@ -52,10 +52,19 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     await setKey(phone, id, key)
   }
   store.getImageUrl = async (jid: string) => {
-    return getProfilePicture(phone, jid)
-  }
-  store.setImageUrl = async (jid: string, url: string) => {
-    await setProfilePicture(phone, jid, url)
+    const phoneNumber = jidToPhoneNumber(jid)
+    const url = await getProfilePicture(phone, phoneNumber)
+    if (url) {
+      url
+    } else {
+      const { mediaStore } = await config.getStore(phone, config)
+      const { getProfilePictureUrl } = mediaStore
+      const profileUrl = await getProfilePictureUrl('', jid)
+      if (profileUrl) {
+        await setProfilePicture(phone, phoneNumber, profileUrl)
+        return profileUrl
+      }
+    }
   }
   store.getGroupMetada = async (jid: string) => {
     return getGroup(phone, jid)
@@ -89,10 +98,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     }
     await delAuth(phone)
   }
-  store.setStatus = async (
-    id: string,
-    status: 'scheduled' | 'pending' | 'error' | 'failed' | 'sent' | 'delivered' | 'read' | 'played' | 'accepted' | 'deleted',
-  ) => {
+  store.setStatus = async (id: string, status: MessageStatus) => {
     return setMessageStatus(phone, id, status)
   }
   store.loadStatus = async (id: string) => {

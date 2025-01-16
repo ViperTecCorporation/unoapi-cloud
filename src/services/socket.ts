@@ -13,7 +13,6 @@ import makeWASocket, {
   Browsers,
   ConnectionState,
 } from 'baileys'
-import { release } from 'os'
 import MAIN_LOGGER from 'baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'
@@ -24,7 +23,7 @@ import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { useVoiceCallsBaileys } from 'voice-calls-baileys/lib/services/transport.model'
-import { CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME, WHATSAPP_VERSION, LOG_LEVEL, CONNECTING_TIMEOUT_MS } from '../defaults'
+import { DEFAULT_BROWSER, WHATSAPP_VERSION, LOG_LEVEL, CONNECTING_TIMEOUT_MS } from '../defaults'
 
 const EVENTS = [
   'connection.update',
@@ -297,7 +296,6 @@ export const connect = async ({
   }
 
   const close = async () => {
-    await sessionStore.setStatus(phone, 'offline')
     logger.info(`${phone} close`)
     EVENTS.forEach((e: any) => {
       try {
@@ -306,17 +304,27 @@ export const connect = async ({
         logger.error(`Error on removeAllListeners from ${e}`, error)
       }
     })
-    try {
-      await sock?.end(undefined)
-    } catch (e) {
-      logger.error(`Error sock end`, e)
-    }
-    try {
-      await sock?.ws?.close()
-    } catch (e) {
-      logger.error(`Error on sock ws close`, e)
+    const webSocket = sock?.ws['socket'] || {}
+    // WebSocket.CONNECTING (0)
+    // WebSocket.OPEN (1)
+    // WebSocket.CLOSING (2)
+    // WebSocket.CLOSED (3)
+    if (`${webSocket['readyState']}` == '1'){
+      if (await sessionStore.isStatusConnecting(phone) || await sessionStore.isStatusOnline(phone)) {
+        try {
+          await sock?.end(undefined)
+        } catch (e) {
+          logger.error(`Error sock end`, e)
+        }
+        try {
+          await sock?.ws?.close()
+        } catch (e) {
+          logger.error(`Error on sock ws close`, e)
+        }
+      }
     }
     sock = undefined
+    await sessionStore.setStatus(phone, 'offline')
   }
 
   const logout = async () => {
@@ -327,16 +335,24 @@ export const connect = async ({
     logger.info(`${phone} disconnected`)
     await sessionStore.setStatus(phone, 'disconnected')
     try {
-      return sock && (await sock.logout())
+      return sock && await sock.logout()
     } catch (_error) {
       // ignore de unique error if already diconected session
     }
   }
 
-  const exists: exists = async (phone: string) => {
-    await validateStatus()
+  const exists: exists = async (localPhone: string) => {
+    try {
+      await validateStatus()
+    } catch (error) {
+      if (localPhone == phone) {
+        logger.info(`${localPhone} is the phone connection ${phone}`)
+      } else {
+        throw error
+      }
+    }
 
-    return dataStore.loadJid(phone, sock!)
+    return dataStore.loadJid(localPhone, sock!)
   }
 
   const validateStatus = async () => {
@@ -405,12 +421,10 @@ export const connect = async ({
   }
 
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return dataStore.loadImageUrl(jid, sock!)
   }
 
   const fetchGroupMetadata: fetchGroupMetadata = async (jid: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return dataStore.loadGroupMetada(jid, sock!)
   }
 
@@ -425,12 +439,10 @@ export const connect = async ({
     }
     logger.debug('Connecting %s', phone)
 
-    const browser: WABrowserDescription = config.ignoreHistoryMessages
-      ? [CONFIG_SESSION_PHONE_CLIENT || 'Unoapi', CONFIG_SESSION_PHONE_NAME || 'Chrome', release()]
-      : Browsers.windows('Desktop')
+    const browser: WABrowserDescription = config.ignoreHistoryMessages ? DEFAULT_BROWSER as WABrowserDescription : Browsers.windows('Desktop')
 
     const loggerBaileys = MAIN_LOGGER.child({})
-    // logger.level = config.logLevel as Level
+    logger.level = config.logLevel as Level
     loggerBaileys.level = (LOG_LEVEL) as Level
 
     let agent

@@ -53,6 +53,33 @@ http://localhost:9876/v15.0/5549988290955/messages \
 }'
 ```
 
+To send a contact
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549999621461",
+  "type": "contacts",
+  "contacts": [
+    {
+      "name": {
+        "formatted_name": "Clairton - Faça um pix nessa chave e contribua com a unoapi"
+      },
+      "phones": [
+        {
+          "wa_id": "554988290955",
+          "phone": "+5549988290955"
+        }
+      ]
+    }
+  ]
+}'
+```
+
 To send a message to group
 
 ```sh
@@ -176,6 +203,38 @@ with:
 * 11 - Http Head test link not return success
 * 12 - offline number, connecting....
 
+
+## Verify contacts has whatsapp account
+Based on `https://developers.facebook.com/docs/whatsapp/on-premises/reference/contacts`, it works only with standalone mode in `yarn standalone`, for development in `yarn standalone-dev`
+
+```sh
+curl -i -X POST \
+http://localhost:9876/5549988290955/contacts \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "blocking": "no_wait",
+  "contacts": [
+  	"16315551000"
+  ],
+  "force_check": true
+}'
+```
+
+this return
+
+```json
+{
+  "contacts": [ 
+    {
+      "wa_id": "16315551000",
+      "input": "16315551000",
+      "status": "valid"
+    }
+  ]
+}
+```
+
 ## Up for development
 
 Copy .env.example to .env an set your config
@@ -219,6 +278,11 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 `yarn cloud` up a single server and save message in redis and message broker rabbitmq
 
 `yarn web` e `yarn worker` up a web and worker with redis and rabbitmq
+
+`yarn standalone` 
+  - choose redis when set REDI_URL, if not use file system do save data
+  - choose rabbitmq when set AMQP_URL
+  - choose s3 when set STORAGE_ envs, if not use file system
 
 
 ## Config Options

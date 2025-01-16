@@ -1,4 +1,4 @@
-import { AnyMessageContent, WAMessage, isJidUser, normalizeMessageContent, proto } from 'baileys'
+import { AnyMessageContent, WAMessage, isJidGroup, isJidUser, normalizeMessageContent, proto } from 'baileys'
 import mime from 'mime-types'
 import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
@@ -259,6 +259,25 @@ export const toBaileysMessageContent = (payload: any): AnyMessageContent => {
         break
       }
 
+    case 'contacts':
+      const contact = payload[type][0]
+      const contacName = contact['name']['formatted_name']
+      const contacts: any[] = []
+      for (let index = 0; index < contact['phones'].length; index++) {
+        const phone = contact['phones'][index]
+        const waid = phone['wa_id']
+        const number = phone['phone']
+        const vcard = 'BEGIN:VCARD\n'
+              + 'VERSION:3.0\n'
+              + `N:${contacName}\n`
+              + `TEL;type=CELL;type=VOICE;waid=${waid}:${number}\n`
+              + 'END:VCARD'
+        contacts.push({ vcard })
+      }
+      const displayName = contact['phones'].length > 1 ? `${contact['phones'].length} contacts` : contacName
+      response[type] = { displayName, contacts }
+      break
+
     case 'template':
       throw new BindTemplateError()
 
@@ -383,6 +402,10 @@ export const jidToPhoneNumber = (value: any, plus = '+', retry = true): string =
     }
   }
   return `${plus}${number.replace('+', '')}`
+}
+
+export const jidToPhoneNumberIfUser = (value: any): string => {
+  return isJidUser(value) ? jidToPhoneNumber(value, '') : value 
 }
 
 /*
@@ -556,6 +579,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const editedMessagePayload = {
           ...payload,
           message: editedMessage,
+        }
+        const editedMessageType = getMessageType(editedMessagePayload)
+        const editedBinMessage = getBinMessage(editedMessagePayload)
+        if (editedMessageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(editedMessageType) && !editedBinMessage?.message?.url && editedBinMessage?.message?.caption) {
+          editedMessagePayload.message = {
+            conversation: editedBinMessage?.message?.caption
+          }
         }
         return fromBaileysMessageContent(phone, editedMessagePayload)
 
@@ -798,4 +828,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     logger.error(e, 'Error on convert baileys to cloud-api')
     throw e
   }
+}
+
+export const toBuffer = (arrayBuffer) => {
+  const buffer = Buffer.alloc(arrayBuffer.byteLength);
+  const view = new Uint8Array(arrayBuffer);
+  for (let i = 0; i < buffer.length; ++i) {
+    buffer[i] = view[i];
+  }
+  return buffer;
 }
