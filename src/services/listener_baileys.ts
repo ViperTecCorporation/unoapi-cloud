@@ -1,4 +1,4 @@
-import { Listener } from './listener'
+import { eventType, Listener } from './listener'
 import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
@@ -7,6 +7,7 @@ import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMed
 import { WAMessage, delay } from 'baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS } from '../defaults'
+import { v1 as uuid } from 'uuid'
 
 const  delays: Map<String, number> = new Map()
 
@@ -38,7 +39,7 @@ export class ListenerBaileys implements Listener {
     this.broadcast = broadcast
   }
 
-  async process(phone: string, messages: object[], type: 'qrcode' | 'status' | 'history' | 'append' | 'notify' | 'message' | 'update' | 'delete') {
+  async process(phone: string, messages: object[], type: eventType) {
     logger.debug('Received %s(s) %s', type, messages.length, phone)
     if (type == 'delete' && messages.keys) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,13 +56,17 @@ export class ListenerBaileys implements Listener {
         logger.debug('ignore messages.upsert type append with status pending')
         return
       }
-    }
-    if (type == 'qrcode') {
+    } else if (type == 'qrcode') {
       await this.broadcast.send(
         phone,
         type,
         messages[0]['message']['imageMessage']['url']
       )
+      // await this.broadcast.send(
+      //   phone,
+      //   'status',
+      //   messages[0]['message']['imageMessage']['caption']
+      // )
     } else if(type === 'status') {
       await this.broadcast.send(
         phone,
@@ -81,7 +86,7 @@ export class ListenerBaileys implements Listener {
   }
 
   public async sendOne(phone: string, message: object) {
-    logger.debug(`Receive message %s`, JSON.stringify(message))
+    logger.debug(`Listener receive message %s`, JSON.stringify(message))
     let i: WAMessage = message as WAMessage
     const messageType = getMessageType(message)
     logger.debug(`messageType %s...`, messageType)
@@ -89,22 +94,25 @@ export class ListenerBaileys implements Listener {
     const store = await config.getStore(phone, config)
     if (messageType && !['update', 'receipt'].includes(messageType)) {
       i = await config.getMessageMetadata(i)
-      if (i.key && i.key.id) {
-        await store?.dataStore.setKey(i.key.id, i.key)
-        if (i.key.remoteJid) {
-          await store.dataStore.setMessage(i.key.remoteJid, i)
+      if (i.key && i.key) {
+        const idUno = uuid()
+        const idBaileys = i.key.id!
+        await store?.dataStore.setUnoId(idBaileys, idUno)
+        await store?.dataStore.setKey(idUno, i.key)
+        await store?.dataStore.setKey(idBaileys, i.key)
+        await store.dataStore.setMessage(i.key.remoteJid!, i)
+        i.key.id = idUno
+        if (isSaveMedia(i)) {
+          logger.debug(`Saving media...`)
+          i = await store?.mediaStore.saveMedia(i)
+          logger.debug(`Saved media!`)
         }
       }
     }
-    if (isSaveMedia(i)) {
-      logger.debug(`Saving media...`)
-      i = await store?.mediaStore.saveMedia(i)
-      logger.debug(`Saved media!`)
-    }
 
     const key = i.key
-    // possible update message
-    if (key?.fromMe && key?.id) {
+    // possible update message or delete message
+    if (key?.id && (key?.fromMe || (!key?.fromMe && ((message as any)?.update?.messageStubType == 1)))) {
       const idUno = await store.dataStore.loadUnoId(key.id)
       logger.debug('Unoapi id %s to Baileys id %s', idUno, key.id)
       if (idUno) {
@@ -139,7 +147,12 @@ export class ListenerBaileys implements Listener {
 
     let data
     try {
-      data = fromBaileysMessageContent(phone, i, config)
+      const resp = fromBaileysMessageContent(phone, i, config)
+      data = resp[0]
+      const senderPhone = resp[1]
+      const senderId = resp[2]
+      const { dataStore } = await config.getStore(phone, config)
+      await dataStore.setJid(senderPhone, senderId)
     } catch (error) {
       if (error instanceof BindTemplateError) {
         const template = new Template(this.getConfig)

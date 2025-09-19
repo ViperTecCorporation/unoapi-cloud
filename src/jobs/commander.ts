@@ -1,12 +1,12 @@
-import { UNOAPI_JOB_BULK_PARSER, UNOAPI_JOB_RELOAD } from '../defaults'
-import { amqpEnqueue } from '../amqp'
+import { UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BULK_PARSER, UNOAPI_QUEUE_RELOAD } from '../defaults'
+import { amqpPublish } from '../amqp'
 import { v1 as uuid } from 'uuid'
 import { Outgoing } from '../services/outgoing'
 import { Template } from '../services/template'
 import { getConfig } from '../services/config'
 import { parseDocument, YAMLError } from 'yaml'
 import { setConfig } from '../services/redis'
-import { UNOAPI_JOB_BULK_REPORT } from '../defaults'
+import { UNOAPI_QUEUE_BULK_REPORT } from '../defaults'
 import logger from '../services/logger'
 
 export class YamlParseError extends Error {
@@ -20,14 +20,10 @@ export class YamlParseError extends Error {
 export class CommanderJob {
   private outgoing: Outgoing
   private getConfig: getConfig
-  private queueBulkParser: string
-  private queueReload: string
 
-  constructor(outgoing: Outgoing, getConfig: getConfig, queueBulkParser: string = UNOAPI_JOB_BULK_PARSER, queueReload: string = UNOAPI_JOB_RELOAD) {
+  constructor(outgoing: Outgoing, getConfig: getConfig) {
     this.outgoing = outgoing
     this.getConfig = getConfig
-    this.queueBulkParser = queueBulkParser
-    this.queueReload = queueReload
   }
 
   async consume(phone: string, data: object) {
@@ -38,17 +34,22 @@ export class CommanderJob {
     )
 
     try {
+      const currentConfig = await this.getConfig(phone)
       if (payload.type === 'document' && payload?.document?.caption?.toLowerCase() == 'campanha') {
         logger.debug(`Commander processing`)
         const id = uuid()
-        await amqpEnqueue(this.queueBulkParser, phone, {
-          phone,
-          payload: {
-            id,
-            template: 'sisodonto',
-            url: payload?.document?.link,
-          },
-        })
+        await amqpPublish(
+          UNOAPI_EXCHANGE_BROKER_NAME, 
+          UNOAPI_QUEUE_BULK_PARSER, 
+          phone, {
+            phone,
+            payload: {
+              id,
+              template: 'sisodonto',
+              url: payload?.document?.link,
+            },
+          }, { type: 'topic' }
+        )
         const message = {
           type: 'text',
           from: phone,
@@ -72,7 +73,7 @@ export class CommanderJob {
         const config = { webhooks }
         logger.debug('Template webhooks %s', phone, JSON.stringify(webhooks))
         await setConfig(phone, config)
-        await amqpEnqueue(this.queueReload, '', { phone })
+        await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, `${UNOAPI_QUEUE_RELOAD}.${currentConfig.server!}`, phone , { phone }, { type: 'topic' })
       } else if (payload?.to && phone === payload?.to && payload?.template && payload?.template.name == 'unoapi-bulk-report') {
         logger.debug('Parsing bulk report template... %s', phone)
         const service = new Template(this.getConfig)
@@ -84,7 +85,7 @@ export class CommanderJob {
           throw new YamlParseError(doc.errors)
         }
         const { bulk } = doc.toJS()
-        await amqpEnqueue(UNOAPI_JOB_BULK_REPORT, phone, { payload: { phone, id: bulk, unverified: true } })
+        await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BULK_REPORT, phone, { payload: { phone, id: bulk, unverified: true } }, { type: 'topic' })
       } else if (payload?.to && phone === payload?.to && payload?.template && payload?.template.name == 'unoapi-config') {
         logger.debug('Parsing config template... %s', phone)
         const service = new Template(this.getConfig)
@@ -104,7 +105,7 @@ export class CommanderJob {
         }, {})
         logger.debug('Config template to update %s', phone, JSON.stringify(configToUpdate))
         await setConfig(phone, configToUpdate)
-        await amqpEnqueue(this.queueReload, '', { phone })
+        await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, `${UNOAPI_QUEUE_RELOAD}.${currentConfig.server!}`, phone, { phone })
       } else {
         logger.debug(`Commander ignore`)
       }

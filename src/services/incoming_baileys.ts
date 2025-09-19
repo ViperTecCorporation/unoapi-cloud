@@ -21,12 +21,11 @@ export class IncomingBaileys implements Incoming {
   public async send(phone: string, payload: object, options: object) {
     const client: Client = await this.getClient({
       phone,
-      incoming: this,
       listener: this.service,
       getConfig: this.getConfig,
       onNewLogin: this.onNewLogin,
     })
-    logger.debug('Retrieved client baileys %s', phone)
+    logger.debug('Retrieved client for %s', phone)
     return client.send(payload, options)
   }
 }

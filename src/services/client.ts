@@ -1,21 +1,26 @@
 import { Response } from './response'
-import { Incoming } from './incoming'
 import { OnNewLogin } from './socket'
 import { getConfig } from './config'
 import { Listener } from './listener'
 
 export const clients: Map<string, Client> = new Map()
 
+export type ContactStatus = 'valid' | 'processing' | 'invalid'| 'failed'
+
+export interface Contact {
+  wa_id: String | undefined
+  input: String
+  status: ContactStatus
+}
+
 export interface getClient {
   ({
     phone,
-    incoming,
     listener,
     getConfig,
     onNewLogin,
   }: {
     phone: string
-    incoming: Incoming
     listener: Listener
     getConfig: getConfig
     onNewLogin: OnNewLogin
@@ -39,4 +44,6 @@ export interface Client {
   send(payload: any, options: any): Promise<Response>
 
   getMessageMetadata<T>(message: T): Promise<T>
+
+  contacts(numbers: string[]): Promise<Contact[]>
 }

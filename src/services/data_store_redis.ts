@@ -1,6 +1,6 @@
-import { proto, WAMessage, WAMessageKey, isJidGroup, GroupMetadata } from 'baileys'
-import { DataStore } from './data_store'
-import { jidToPhoneNumber, phoneNumberToJid } from './transformer'
+import { proto, WAMessage, WAMessageKey, GroupMetadata } from 'baileys'
+import { DataStore, MessageStatus } from './data_store'
+import { jidToPhoneNumber, phoneNumberToJid, isIndividualJid } from './transformer'
 import { getDataStore, dataStores } from './data_store'
 import { ONLY_HELLO_TEMPLATE } from '../defaults'
 import {
@@ -22,6 +22,8 @@ import {
   getGroup,
   delConfig,
   setTemplates,
+  setMedia,
+  getMedia,
 } from './redis'
 import { Config } from './config'
 import logger from './logger'
@@ -43,6 +45,7 @@ export const getDataStoreRedis: getDataStore = async (phone: string, config: Con
 const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const store: DataStore = await getDataStoreFile(phone, config)
+  store.type = 'redis'
   store.loadKey = async (id: string) => {
     const key = await getKey(phone, id)
     const mkey: WAMessageKey = key as WAMessageKey
@@ -52,10 +55,19 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     await setKey(phone, id, key)
   }
   store.getImageUrl = async (jid: string) => {
-    return getProfilePicture(phone, jid)
-  }
-  store.setImageUrl = async (jid: string, url: string) => {
-    await setProfilePicture(phone, jid, url)
+    const phoneNumber = jidToPhoneNumber(jid)
+    const url = await getProfilePicture(phone, phoneNumber)
+    if (url) {
+      url
+    } else {
+      const { mediaStore } = await config.getStore(phone, config)
+      const { getProfilePictureUrl } = mediaStore
+      const profileUrl = await getProfilePictureUrl('', jid)
+      if (profileUrl) {
+        await setProfilePicture(phone, phoneNumber, profileUrl)
+        return profileUrl
+      }
+    }
   }
   store.getGroupMetada = async (jid: string) => {
     return getGroup(phone, jid)
@@ -65,6 +77,8 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   }
   store.loadUnoId = async (id: string) => await getUnoId(phone, id)
   store.setUnoId = async (id: string, unoId: string) => setUnoId(phone, id, unoId)
+  store.loadMediaPayload = async (id: string) => getMedia(phone, id)
+  store.setMediaPayload = async (id: string, payload: string) => setMedia(phone, id, payload)
 
   store.getJid = async (phoneOrJid: string) => {
     return getJid(phone, phoneOrJid)
@@ -73,26 +87,23 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     await setJid(phone, phoneOrJid, jid)
   }
   store.loadMessage = async (remoteJid: string, id: string) => {
-    const newJid = isJidGroup(remoteJid) ? remoteJid : phoneNumberToJid(jidToPhoneNumber(remoteJid))
+    const newJid = isIndividualJid(remoteJid) ? phoneNumberToJid(jidToPhoneNumber(remoteJid)) : remoteJid
     const m = await getMessage(phone, newJid, id)
     const wm = m as proto.IWebMessageInfo
     return wm
   }
   store.setMessage = async (remoteJid: string, message: WAMessage) => {
-    const newJid = isJidGroup(remoteJid) ? remoteJid : phoneNumberToJid(jidToPhoneNumber(remoteJid))
+    const newJid = isIndividualJid(remoteJid) ? phoneNumberToJid(jidToPhoneNumber(remoteJid)) : remoteJid
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return setMessage(phone, newJid, message.key.id!, message)
   }
-  store.cleanSession = async () => {
-    if (CLEAN_CONFIG_ON_DISCONNECT) {
+  store.cleanSession = async (removeConfig = CLEAN_CONFIG_ON_DISCONNECT) => {
+    if (removeConfig) {
       await delConfig(phone)
     }
     await delAuth(phone)
   }
-  store.setStatus = async (
-    id: string,
-    status: 'scheduled' | 'pending' | 'error' | 'failed' | 'sent' | 'delivered' | 'read' | 'played' | 'accepted' | 'deleted',
-  ) => {
+  store.setStatus = async (id: string, status: MessageStatus) => {
     return setMessageStatus(phone, id, status)
   }
   store.loadStatus = async (id: string) => {

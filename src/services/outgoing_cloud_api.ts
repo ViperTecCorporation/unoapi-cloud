@@ -2,9 +2,9 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, isIncomingMessage } from './transformer'
 import { isInBlacklist } from './blacklist'
-import { EnqueueOption } from '../amqp'
+import { PublishOption } from '../amqp'
 
 export class OutgoingCloudApi implements Outgoing {
   private getConfig: getConfig
@@ -26,7 +26,7 @@ export class OutgoingCloudApi implements Outgoing {
     await Promise.all(promises)
   }
 
-  public async sendHttp(phone: string, webhook: Webhook, message: object, _options: Partial<EnqueueOption> = {}) {
+  public async sendHttp(phone: string, webhook: Webhook, message: object, _options: Partial<PublishOption> = {}) {
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)
@@ -36,14 +36,28 @@ export class OutgoingCloudApi implements Outgoing {
       logger.info(`Session phone %s webhook %s configured to not send group message for this webhook`, phone, webhook.id)
       return
     }
+    if (!webhook.sendNewsletterMessages && isNewsletterMessage(message)) {
+      logger.info(`Session phone %s webhook %s configured to not send newsletter message for this webhook`, phone, webhook.id)
+      return
+    }
     if (!webhook.sendOutgoingMessages && isOutgoingMessage(message)) {
       logger.info(`Session phone %s webhook %s configured to not send outgoing message for this webhook`, phone, webhook.id)
       return
     }
+    if (!webhook.sendUpdateMessages && isUpdateMessage(message)) {
+      logger.info(`Session phone %s webhook %s configured to not send update message for this webhook`, phone, webhook.id)
+      return
+    }
+    if (!webhook.sendIncomingMessages && isIncomingMessage(message)) {
+      logger.info(`Session phone %s webhook %s configured to not send incoming message for this webhook`, phone, webhook.id)
+      return
+    }
     const body = JSON.stringify(message)
     const headers = {
-      'Content-Type': 'application/json; charset=utf-8',
-      [webhook.header]: webhook.token,
+      'Content-Type': 'application/json; charset=utf-8'
+    }
+    if (webhook.header && webhook.token) {
+      headers[webhook.header] = webhook.token
     }
     const url = webhook.urlAbsolute || `${webhook.url}/${phone}`
     logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
@@ -55,7 +69,8 @@ export class OutgoingCloudApi implements Outgoing {
       }
       response = await fetch(url, options)
     } catch (error) {
-      logger.error(error, `Error on send to url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
+      logger.error('Error on send to url %s with headers %s and body %s', url, JSON.stringify(headers), body)
+      logger.error(error)
       throw error
     }
     logger.debug('Response: %s', response?.status)

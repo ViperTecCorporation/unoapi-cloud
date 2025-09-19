@@ -79,7 +79,7 @@ const qrcode = async (phone: string, getConfig: getConfig, onNewLogin: OnNewLogi
   })
 
   return `<!DOCTYPE html>
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="/socket.io.min.js"></script>
     <script>
       var socket = io();
       socket.on('onNewLogin', function(msg){
@@ -118,7 +118,7 @@ export class SessionController {
     const store = await config.getStore(phone, config)
     const { sessionStore } = store
 
-    const generateQrcode = (await sessionStore.isStatusIsDisconnect(phone)) || (await sessionStore.isStatusOffline(phone))
+    const generateQrcode = (await sessionStore.isStatusDisconnect(phone)) || (await sessionStore.isStatusOffline(phone))
     const html = generateQrcode ? await qrcode(phone, this.getConfig, this.onNewLogin, this.socket) : await configuration(phone, this.getConfig)
     return res.send(html)
   }

@@ -12,7 +12,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
     <!-- Socket IO-->
-    <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
+    <script src="/socket.io.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -135,17 +135,21 @@
             font-weight: bold;
         }
 
-        input {
+        .edit-form-row {
             margin-bottom: 15px;
         }
 
         :root {
-            --bs-breakpoint-xs: 0;        /* Não configurável diretamente */
-            --bs-breakpoint-sm: 480px;    /* Ajuste para o ponto de início do "sm" */
-            --bs-breakpoint-md: 768px;    /* Ajuste para o ponto de início do "md" */
-            --bs-breakpoint-lg: 1024px;   /* Ajuste para o ponto de início do "lg" */
-            --bs-breakpoint-xl: 1300px;   /* Ajuste para o ponto de início do "xl" */
-            --bs-breakpoint-xxl: 1560px;  /* Ajuste para o ponto de início do "xxl" */
+            --bs-breakpoint-xs: 0;        
+            --bs-breakpoint-sm: 480px;    
+            --bs-breakpoint-md: 768px;    
+            --bs-breakpoint-lg: 1024px;  
+            --bs-breakpoint-xl: 1300px;
+            --bs-breakpoint-xxl: 1560px;
+        }
+        .form-label {
+            margin-top: 10px;
+            margin-bottom: -10px;
         }
 
     </style>
@@ -155,15 +159,15 @@
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" width="150" height="80" class="d-inline-block align-text-top">
+                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" width="250" height="80" class="d-inline-block align-text-top">
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
+            <div class="collapse navbar-collapse d-none" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <!-- Configurations Dropdown -->
-                    <li class="nav-item dropdown">
+                    <li class="nav-item dropdown d-none" id="navbarDropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="configDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-cog"></i>
                         </a>
@@ -185,9 +189,9 @@
     <div id="login">
         <div id="tokenForm" class="mb-4">
             <label for="tokenInput" class="form-label">Token configurado:</label>
-            <div class="input-group">
-                <input type="text" id="tokenInput" class="form-control" placeholder="Insira o token aqui">
-                <button id="connectButton" class="btn btn-dark"><i class="fas fa-sign-in"></i> Conectar</button>
+            <div class="input-group mb-3">
+                <input type="text" id="tokenInput" class="form-control" placeholder="Insira o token aqui" aria-describedby="connectButton">
+                <button class="btn btn-dark" type="button" id="connectButton"><i class="fas fa-sign-in"></i> Conectar</button>
             </div>
         </div>
         <p id="errorMessage" class="text-danger d-none">Erro: Token inválido ou conexão falhou.</p>
@@ -196,6 +200,7 @@
         <table id="sessionsTable" class="table table-striped table-bordered d-none" style="width: 100%;">
             <thead>
                 <tr>
+                    <th>Identificação</th>
                     <th>Número</th>
                     <th>Status</th>
                     <th>Server</th>
@@ -239,7 +244,11 @@
                 </div>
                 <div class="modal-body">
                     <form id="editForm">
-                        <div class="row">
+                        <div class="row edit-form-row">
+                          <div class="col-12 col-md-12 col-lg-6">
+                              <label for="label" class="form-label">Identificação</label>
+                              <input type="text" class="form-control" id="label" name="lavel" placeholder="Identificação">
+                          </div>
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="authToken" class="form-label">Auth Token</label>
                                 <input type="text" class="form-control" id="authToken" name="authToken" placeholder="Auth Token">
@@ -253,11 +262,27 @@
                                 <input type="text" class="form-control" id="rejectCallsWebhook" name="rejectCallsWebhook" placeholder="Estava te ligando...">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                                <label for="rejectCalls" class="form-label">Mensagem ao Rejeitar Chamadas</label>
-                                <input type="text" class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Deixe em Branco para não Rejeitar ligações automaticamente">
+                              <label for="connectionType" class="form-label">Tipo de Conexão</label>
+                              <select id="connectionType" name="connectionType" class="form-control">
+                                <option value="qrcode" selected>QrCode</option>
+                                <option value="pairing_code">PairingCode</option>
+                                <option value="forward">Forward</option>
+                              </select>
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="proxyUrl" class="form-label">Proxy Url (Precisa Reiniciar a Unoapi ao Alterar)</label>
+                                <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@ip/domain:port">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                              <label for="rejectCalls" class="form-label">Mensagem ao Rejeitar Chamadas</label>
+                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Deixe em Branco para não Rejeitar ligações automaticamente" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="server" class="form-label">Server</label>
+                                <input type="text" class="form-control" id="server" name="server" placeholder="Ex: default is server_1">
                             </div>
                         </div>
-                        <div class="row">
+                        <div class="row edit-form-row">
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreGroupMessages" name="ignoreGroupMessages" checked>
@@ -267,10 +292,24 @@
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
+                                    <input type="checkbox" id="ignoreNewsletterMessages" name="ignoreNewsletterMessages" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="ignoreNewsletterMessages" class="form-label">Ignorar Mensagens de Newsletter</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label class="switch">
                                     <input type="checkbox" id="ignoreHistoryMessages" name="ignoreHistoryMessages" checked>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for="ignoreHistoryMessages" class="form-label">Ignorar Histórico de Mensagens</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label class="switch">
+                                    <input type="checkbox" id="readOnReceipt" name="readOnReceipt" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="readOnReceipt" class="form-label">Ler a mensagem ao receber</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
@@ -346,8 +385,10 @@
                         <div id="webhooksContainer">
                             <h6>Webhooks</h6>
                             <div class="webhook mb-3">
-                                <label for="webhookUrl" class="form-label">URL</label>
-                                <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook URL">
+                                <label for="webhookId" class="form-label">ID</label>
+                                <input type="text" class="form-control mb-2 webhook-id" placeholder="Webhook ID">
+                                <label for="webhookUrl" class="form-label">URL Absoluta</label>
+                                <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook URL Absoluta">
                                 <label for="webhookToken" class="form-label">Token</label>
                                 <input type="text" class="form-control mb-2 webhook-token" placeholder="Webhook Token">
                                 <label for="webhookHeader" class="form-label">Header</label>
@@ -355,6 +396,36 @@
                                 <label for="sendNewMessages" class="form-label">Enviar Novas Mensagens</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendGroupMessages" class="form-label">Enviar Mensagens de Grupos</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendGroupMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendNewsletterMessages" class="form-label">Enviar Mensagens de Newsletter</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendNewsletterMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendOutgoingMessages" class="form-label">Enviar Mensagens de Saída</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendOutgoingMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendIncomingMessages" class="form-label">Enviar Mensagens de Entrada</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendIncomingMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendUpdateMessages" class="form-label">Enviar Atualização de Mensagens</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendUpdateMessages">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendTranscribeAudio" class="form-label">Enviar Transcrição de Áudio</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendTranscribeAudio">
                                     <span class="slider round"></span>
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
@@ -379,11 +450,38 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center">
-                    <p id="qrCodeMessage">Aguarde o evento de QrCode</p>
-                    <div id="qrCodeContainer">QR Code será exibido aqui</div>
+                    <p id="qrCodeMessage">Aguarde o evento com o QrCode/PairingCode</p>
+                    <div id="qrCodeContainer">QrCode/PairingCode será exibido aqui</div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Modal Mensagem -->
+    <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+          <div class="modal-content">
+              <div class="modal-header">
+                  <h5 class="modal-title" id="messageModalLabel">Testar Sessão</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                  <form id="messageModalForm">
+                    <div class="mb-3">
+                        <label for="messageModalNumber" class="form-label">Whatsapp Destinatário</label>
+                        <input type="number" class="form-control" id="messageModalNumber" placeholder="Número no formato 55 DDD NUMERO" required>
+                    </div>
+                      <div class="mb-3">
+                          <label for="messageModalText" class="form-label">Mensagem em texto</label>
+                          <input type="text" class="form-control" id="messageModalText" placeholder="" required>
+                      </div>
+                  </form>
+              </div>
+              <div class="modal-footer">
+                  <button type="button" class="btn btn-primary" onclick="submitMessage()">Enviar</button>
+              </div>
+          </div>
+      </div>
     </div>
 
     <!-- jQuery -->
@@ -396,10 +494,68 @@
         const apiUrl = `${window.location.origin}`;
         const tokenKey = "whatsappApiToken";
 
+        const qrcodes = {};
+        let currentPhoneNumber = ''
+        let currentQrTimeOut = ''
+        let lastTimeout = undefined
+        
+        const onBroadcast = function(data) {
+          if (data.phone == currentPhoneNumber) {
+            const qrcodeDiv = document.getElementById('qrCodeContainer');
+            const statusDiv = document.getElementById('qrCodeMessage');
+            if (data.type === 'qrcode' && data.content) {
+                // Exibe o QR Code
+                qrcodeDiv.innerHTML = `<img src="${data.content}" alt="QR Code">`;
+                statusDiv.textContent = `Leia o QR Code Abaixo`;
+                const timeoutMs =  currentQrTimeOut - (currentQrTimeOut / 5)
+                if (lastTimeout) {
+                  clearTimeout(lastTimeout);
+                }
+                lastTimeout = setTimeout(function() {
+                  qrcodeDiv.innerHTML = 'Esperando um novo QrCode/PairingCode';
+                  qrcodeDiv.textContent = '';
+                }, timeoutMs);
+            } else if (data.type === 'status' && data.content) {
+                if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
+                    qrcodeDiv.innerHTML = '';
+                    statusDiv.textContent = `Conectado!`;
+                } else if (data.content.toLowerCase().indexOf('generate qrcode is exceded')  !== -1) {
+                    console.log("QRCODE EXCEDIDO")
+                    qrcodeDiv.innerHTML = '';
+                    statusDiv.textContent = 'Gerando novo QrCode/PairingCode...';
+                    attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
+                } else {
+                    qrcodeDiv.innerHTML = ''
+                    statusDiv.textContent = `Status: ${data.content}`;
+                }
+            }
+          }
+        }
+
+        // init websocket 
+        function initWebSocket() {
+            if (window.socket && window.socket.connected) {
+                console.log("WebSocket já está conectado.");
+                return;
+            }
+            const socket = io(apiUrl, { path: '/ws' });
+            window.socket = socket;
+            var lastTimeout = undefined;
+
+            socket.on('broadcast', function(data) {
+              if (data.type === 'qrcode' && data.content && data.phone) {
+                qrcodes[data.phone] = data.content;
+              }
+              onBroadcast(data);
+            });
+        }
+        initWebSocket();
+
         //Logout
         function logout() {
             localStorage.removeItem(tokenKey);
             $('.container').addClass('d-none');
+            $('#navbarDropdown').addClass('d-none');
             window.location.reload(); 
         }
 
@@ -423,8 +579,10 @@
             $('#addWebhookButton').on('click', function () {
                 const webhookTemplate = `
                     <div class="webhook mb-3">
-                        <label for="webhookUrl" class="form-label">URL</label>
-                        <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook URL">
+                        <label for="webhookId" class="form-label">ID</label>
+                        <input type="text" class="form-control mb-2 webhook-id" placeholder="Webhook ID">
+                        <label for="webhookUrl" class="form-label">URL Absoluta</label>
+                        <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook URL Absoluta">
                         <label for="webhookToken" class="form-label">Token</label>
                         <input type="text" class="form-control mb-2 webhook-token" placeholder="Webhook Token">
                         <label for="webhookHeader" class="form-label">Header</label>
@@ -432,6 +590,36 @@
                         <label for="sendNewMessages" class="form-label">Enviar Novas Mensagens</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendNewMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendGroupMessages" class="form-label">Enviar Mensagens de Grupos</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendGroupMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendNewsletterMessages" class="form-label">Enviar Mensagens de Newsletter</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendNewsletterMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendOutgoingMessages" class="form-label">Enviar Mensagens de Saída</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendOutgoingMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendIncomingMessages" class="form-label">Enviar Mensagens de Entrada</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendIncomingMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendUpdateMessages" class="form-label">Enviar Atualização de Mensagens</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendUpdateMessages">
+                            <span class="slider round"></span>
+                        </label>
+                        <label for="sendTranscribeAudio" class="form-label">Enviar Transcrição de Áudio</label>
+                        <label class="switch">
+                            <input type="checkbox" class="webhook-sendTranscribeAudio">
                             <span class="slider round"></span>
                         </label>
                         <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
@@ -473,20 +661,25 @@
                         }
                     });
                 }
+                getSessionAndpopulateTable(token, hideForm)
+            }
 
+            // Populate Datatable with session numbers
+            function getSessionAndpopulateTable(token, hideForm) {
                 const headers = { Authorization: `Bearer ${token}` };
 
                 fetch(apiUrl + '/sessions', { headers })
                     .then(response => {
                         if (!response.ok) throw new Error("Token inválido ou falha na conexão.");
+                        localStorage.setItem(tokenKey, token);
                         return response.json();
                     })
-                    .then(data => {
-                        localStorage.setItem(tokenKey, token);
+                    .then(resp => {
                         if (hideForm) {
+                            $('#navbarDropdown').removeClass('d-none');
                             $('#login').addClass('d-none');
                         }
-                        populateTable(data); // Popula a tabela com os dados
+                        populateTable(resp.data); // Popula a tabela com os dados
                     })
                     .catch(() => {
                         $('#errorMessage').removeClass('d-none');
@@ -504,6 +697,7 @@
 
                 sessions.forEach(session => {
                     table.row.add([
+                        session.label,
                         session.display_phone_number,
                         session.status,
                         session.server,
@@ -516,6 +710,9 @@
                         </button>
                         <button class="btn btn-sm btn-danger delete-btn" data-number="${session.display_phone_number}">
                             <i class="fas fa-trash"></i> Deletar
+                        </button>
+                        <button class="btn btn-sm btn-success message-btn" data-bs-target="#messageModal" data-number="${session.display_phone_number}">
+                            <i class="fas fa-message"></i> Testar
                         </button>`
                     ]).draw(false);
                 });
@@ -523,6 +720,9 @@
 
             //deregister function
             $('#sessionsTable tbody').on('click', '.delete-btn', function() {
+                if (!confirm('Tem certeza que deseja deletar essa sessão?')) {
+                    return
+                }
                 const number = $(this).data('number');
                 const token = localStorage.getItem(tokenKey);
                 if (token) {
@@ -535,10 +735,9 @@
                     })
                     .then(response => {
                         if (!response.ok) throw new Error("Erro no request.");
-                        return response.json();
                     })
-                    .then(data => {
-                        alert("A sessão foi removida!");
+                    .then(_ => {
+                        alert("A sessão foi removida, recarrega a pagina para atualizar a lista!");
                     })
                     .catch(error => alert(error.message));
                 }
@@ -569,14 +768,24 @@
                 }
             });
 
+            //Message button
+            $('#sessionsTable tbody').on('click', '.message-btn', function () {
+                const number = $(this).data('number');
+                $('#messageModal').data('number', number); 
+                $('#messageModal').modal('show');
+            });
+
             //Edit form for session number
             function populateEditForm(session) {
+                $('#label').val(session.label);
                 $('#authToken').val(session.authToken);
                 $('#wavoipToken').val(session.wavoipToken);
                 $('#rejectCallsWebhook').val(session.rejectCallsWebhook);
                 $('#rejectCalls').val(session.rejectCalls);
                 $('#ignoreGroupMessages').prop('checked', session.ignoreGroupMessages);
+                $('#ignoreNewsletterMessages').prop('checked', session.ignoreNewsletterMessages);
                 $('#ignoreHistoryMessages').prop('checked', session.ignoreHistoryMessages);
+                $('#readOnReceipt').prop('checked', session.readOnReceipt);
                 $('#sendProfilePicture').prop('checked', session.sendProfilePicture);
                 $('#ignoreOwnMessages').prop('checked', session.ignoreOwnMessages);
                 $('#ignoreYourselfMessages').prop('checked', session.ignoreYourselfMessages);
@@ -587,6 +796,9 @@
                 $('#sendReactionAsReply').prop('checked', session.sendReactionAsReply);
                 $('#autoConnect').prop('checked', session.autoConnect);
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
+                $('#connectionType').val(session.connectionType);
+                $('#proxyUrl').val(session.proxyUrl);
+                $('#server').val(session.server);
 
                 // Limpar webhooks existentes no formulário de edição
                 $('#webhooksContainer .webhook').remove();
@@ -595,8 +807,10 @@
                     session.webhooks.forEach(webhook => {
                         const webhookTemplate = `
                             <div class="webhook mb-3">
-                                <label for="webhookUrl" class="form-label">URL</label>
-                                <input type="text" class="form-control mb-2 webhook-url" value="${webhook.urlAbsolute}" placeholder="Webhook URL">
+                                <label for="webhookId" class="form-label">ID</label>
+                                <input type="text" class="form-control mb-2 webhook-id" value="${webhook.id}" placeholder="Webhook ID">
+                                <label for="webhookUrl" class="form-label">URL Absoluta</label>
+                                <input type="text" class="form-control mb-2 webhook-url" value="${webhook.urlAbsolute}" placeholder="Webhook URL Absoluta">
                                 <label for="webhookToken" class="form-label">Token</label>
                                 <input type="text" class="form-control mb-2 webhook-token" value="${webhook.token}" placeholder="Webhook Token">
                                 <label for="webhookHeader" class="form-label">Header</label>
@@ -604,6 +818,36 @@
                                 <label for="sendNewMessages" class="form-label">Enviar Novas Mensagens</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendGroupMessages" class="form-label">Enviar Mensagens de Grupos</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendNewsletterMessages" class="form-label">Enviar Mensagens de Newsletter</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendOutgoingMessages" class="form-label">Enviar Mensagens de Saída</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendIncomingMessages" class="form-label">Enviar Mensagens de Entrada</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendUpdateMessages" class="form-label">Enviar Atualização de Mensagens</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="sendTranscribeAudio" class="form-label">Enviar Transcrição de Áudio</label>
+                                <label class="switch">
+                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
@@ -620,12 +864,15 @@
 
                 if (token && number) {
                     const sessionData = {
+                        label: $('#label').val(),
                         authToken: $('#authToken').val(),
                         wavoipToken: $('#wavoipToken').val(),
                         rejectCalls: $('#rejectCalls').val(),
                         rejectCallsWebhook: $('#rejectCallsWebhook').val(),
                         ignoreGroupMessages: $('#ignoreGroupMessages').is(':checked'),
+                        ignoreNewsletterMessages: $('#ignoreNewsletterMessages').is(':checked'),
                         ignoreHistoryMessages: $('#ignoreHistoryMessages').is(':checked'),
+                        readOnReceipt: $('#readOnReceipt').is(':checked'),
                         sendProfilePicture: $('#sendProfilePicture').is(':checked'),
                         ignoreOwnMessages: $('#ignoreOwnMessages').is(':checked'),
                         ignoreYourselfMessages: $('#ignoreYourselfMessages').is(':checked'),
@@ -636,19 +883,29 @@
                         sendReactionAsReply: $('#sendReactionAsReply').is(':checked'),
                         autoConnect: $('#autoConnect').is(':checked'),
                         ignoreBroadcastMessages: $('#ignoreBroadcastMessages').is(':checked'),
+                        connectionType: $('#connectionType').val(),
+                        proxyUrl: $('#proxyUrl').val(),
+                        server: $('#server').val(),
                         webhooks: []
                     };
 
                     $('#webhooksContainer .webhook').each(function () {
                         const webhook = {
+                            id: $(this).find('.webhook-id').val(),
                             urlAbsolute: $(this).find('.webhook-url').val(),
                             token: $(this).find('.webhook-token').val(),
                             header: $(this).find('.webhook-header').val(),
-                            sendNewMessages: $(this).find('.webhook-sendNewMessages').is(':checked')
+                            sendNewMessages: $(this).find('.webhook-sendNewMessages').is(':checked'),
+                            sendGroupMessages: $(this).find('.webhook-sendGroupMessages').is(':checked'),
+                            sendNewsletterMessages: $(this).find('.webhook-sendNewsletterMessages').is(':checked'),
+                            sendOutgoingMessages: $(this).find('.webhook-sendOutgoingMessages').is(':checked'),
+                            sendIncomingMessages: $(this).find('.webhook-sendIncomingMessages').is(':checked'),
+                            sendUpdateMessages: $(this).find('.webhook-sendUpdateMessages').is(':checked'),
+                            sendTranscribeAudio: $(this).find('.webhook-sendTranscribeAudio').is(':checked'),
                         };
                         sessionData.webhooks.push(webhook);
                     });
-
+                    sessionData.overrideWebhooks = true
                     fetch(`${apiUrl}/v15.0/${number}/register`, {
                         method: 'POST',
                         headers: {
@@ -690,7 +947,7 @@
                         if (data.status === 'offline' || data.status === 'disconnected') {
                             attemptRegister(number, token);
                         } else if (data.status === 'connecting') {
-                            connectToWebSocket(number);
+                            connectToWebSocket(number, data.qrTimeoutMs);
                         } else if (data.status === 'online') {
                             document.getElementById('qrCodeContainer').innerHTML = '';
                             document.getElementById('qrCodeMessage').textContent = 'Sessão já está Conectada';
@@ -719,8 +976,8 @@
                     if (!response.ok) throw new Error("Erro.");
                     return response.json();
                 })
-                .then(() => {
-                    checkStatusAndRetry(number, token);
+                .then((data) => {
+                    checkStatusAndRetry(number, token, data.qrTimeoutMs);
                 })
                 .catch(error => {
                     alert(error.message);
@@ -728,10 +985,10 @@
             }
 
             // check connecting status
-            function checkStatusAndRetry(number, token) {
+            function checkStatusAndRetry(number, token, qrTimeoutMs) {
                 let attempts = 0;
-                const maxAttempts = 3; 
-                connectToWebSocket(number);
+                const maxAttempts = 3;
+                connectToWebSocket(number, qrTimeoutMs);
 
                 const intervalId = setInterval(() => {
                     fetch(`${apiUrl}/v15.0/${number}`, {
@@ -771,77 +1028,71 @@
             }
 
             // conect to websocket 
-            function connectToWebSocket(phoneNumber) {
-                if (window.socket && window.socket.connected) {
-                    console.log("WebSocket já está conectado.");
-                    return;
-                }
-                const socket = io(apiUrl, { path: '/ws' });
-                window.socket = socket;
-
+            function connectToWebSocket(phoneNumber, qrTimeoutMs) {
+              currentPhoneNumber = phoneNumber
+              currentQrTimeOut = qrTimeoutMs
+              if (qrcodes[phoneNumber]) {
                 const qrcodeDiv = document.getElementById('qrCodeContainer');
-                const statusDiv = document.getElementById('qrCodeMessage');
-
-                socket.on('broadcast', (data) => {
-                    if (phoneNumber && data.phone == phoneNumber) {
-                        if (data.type === 'qrcode' && data.content) {
-                            // Exibe o QR Code
-                            qrcodeDiv.innerHTML = `<img src="${data.content}" alt="QR Code">`;
-                            statusDiv.textContent = `Leia o QR Code Abaixo`;
-                        } else if (data.type === 'status' && data.content) {
-                            if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
-                                qrcodeDiv.innerHTML = '';
-                                statusDiv.textContent = `Conectado!`;
-                            } else if (data.content.toLowerCase().indexOf('generate qrcode is exceded')  !== -1) {
-                                console.log("QRCODE EXCEDIDO")
-                                qrcodeDiv.innerHTML = '';
-                                statusDiv.textContent = 'Gerando novo QR Code...';
-                                attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
-                            } else {
-                                statusDiv.textContent = `Status: ${data.content}`;
-                            }
-                        }
-                    }
-                });
+                qrcodeDiv.innerHTML = `<img src="${qrcodes[phoneNumber]}" alt="QR Code">`;
+              }
             }
 
             // disconnect websocket on modal close
             $('#connectModal').on('hidden.bs.modal', function () {
-                //clear modal status
-                document.getElementById('qrCodeContainer').innerHTML = '';
-                document.getElementById('qrCodeMessage').textContent = 'Aguarde o QrCode';
-
-                //disconnect websocket
-                if (window.socket && window.socket.connected) {
-                    window.socket.disconnect();
-                    window.socket = null;
-                }
+              currentPhoneNumber = ''
+              currentQrTimeOut = ''
+              document.getElementById('qrCodeContainer').innerHTML = '';
+              document.getElementById('qrCodeMessage').textContent = 'Aguarde o QrCode/PairingCode';
             });            
         });
         
 
         // show number add modal
         function addInstance() {
-                const addInstanceModal = new bootstrap.Modal(document.getElementById('addInstanceModal'));
-                addInstanceModal.show();
+            const addInstanceModal = new bootstrap.Modal(document.getElementById('addInstanceModal'));
+            addInstanceModal.show();
+        }
+
+        function submitInstanceNumber() {
+            const numberInput = document.getElementById('instanceNumber').value;
+
+            if (numberInput) {
+                const editModal = $('#editModal'); 
+                editModal.data('number', numberInput); 
+
+                bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
+
+                const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
+                editInstanceModal.show();
+
+            } else {
+                alert('Por favor, insira um número válido.');
             }
+        }
 
-            function submitInstanceNumber() {
-                const numberInput = document.getElementById('instanceNumber').value;
-
-                if (numberInput) {
-                    const editModal = $('#editModal'); 
-                    editModal.data('number', numberInput); 
-
-                    bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
-
-                    const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
-                    editInstanceModal.show();
-
-                } else {
-                    alert('Por favor, insira um número válido.');
-                }
+        function submitMessage() {
+            const numberInput = document.getElementById('messageModalNumber').value;
+            const messageInput = document.getElementById('messageModalText').value;
+            const token = localStorage.getItem(tokenKey);
+            if (numberInput && messageInput) {
+                const headers = { 
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                };
+                const number = $('#messageModal').data('number');
+                const body = JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: numberInput,
+                  type: 'text',
+                  text: {
+                    body: messageInput
+                  } 
+                })
+                fetch(apiUrl + '/v15.0/' + number + '/messages', { method: 'POST', headers, body })
+            } else {
+                alert('Por favor, insira um número válido e a mensagem para enviar.');
             }
+        }
     </script>
 </body>
 </html>

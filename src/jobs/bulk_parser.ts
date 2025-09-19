@@ -1,8 +1,8 @@
 import { detect } from 'jschardet'
-import { amqpEnqueue } from '../amqp'
+import { amqpPublish } from '../amqp'
 import axios from 'axios'
 import { v1 as uuid } from 'uuid'
-import { UNOAPI_JOB_BULK_SENDER } from '../defaults'
+import { DATA_URL_TTL, UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BULK_SENDER } from '../defaults'
 import { Outgoing } from '../services/outgoing'
 import { jidToPhoneNumber } from '../services/transformer'
 import textToSpeech, { protos } from '@google-cloud/text-to-speech'
@@ -40,10 +40,10 @@ const synthesize = async (phone: string, getConfig: getConfig, text: string) => 
   if (!response.audioContent) {
     throw 'speech is null'
   }
-  const buffer: Buffer = Buffer.from(response.audioContent)
+  const buffer: Buffer = Buffer.from(response.audioContent as any)
   const fileName = `${phone}/${uuid()}.mp3`
   await mediaStore.saveMediaBuffer(fileName, buffer)
-  const link = await mediaStore.getFileUrl(fileName)
+  const link = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
   return link
 }
 
@@ -167,7 +167,7 @@ export class BulkParserJob {
   private queueBulkSender: string
   private getConfig: getConfig
 
-  constructor(outgoing: Outgoing, getConfig: getConfig, queueBulkSender: string = UNOAPI_JOB_BULK_SENDER) {
+  constructor(outgoing: Outgoing, getConfig: getConfig, queueBulkSender: string = UNOAPI_QUEUE_BULK_SENDER) {
     this.outgoing = outgoing
     this.getConfig = getConfig
     this.queueBulkSender = queueBulkSender
@@ -235,9 +235,9 @@ export class BulkParserJob {
         },
       }
       this.outgoing.formatAndSend(phone, phone, message)
-      await amqpEnqueue(this.queueBulkSender, phone, {
+      await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, this.queueBulkSender, phone, {
         payload: { messages, id, length: messages.length },
-      })
+      }, { type: 'topic' })
     } catch (error) {
       logger.error(error, 'Error on parse bulk')
       const message = {

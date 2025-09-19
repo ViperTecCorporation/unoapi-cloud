@@ -1,11 +1,11 @@
 {
   "exclude": ["./coverage", "./dist", "__tests__", "jest.config.js"],
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "target": "esnext",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
     "experimentalDecorators": true,
-    "allowJs": false,
+    "allowJs": true,
     "checkJs": false,
     "outDir": "dist",
     "strict": false,
@@ -15,12 +15,13 @@
     "esModuleInterop": true,
     "declaration": true,
     "resolveJsonModule": true,
-    "lib": ["es2020", "esnext.array", "DOM", "ES2021.String"]
+    "lib": ["es2020", "esnext.array", "DOM", "ES2021.String"],
+    "isolatedModules": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.json"],
   "ts-node": {
     "compilerOptions": {
-      "esModuleInterop": true,
+      "esModuleInterop": true
     }
   }
 }

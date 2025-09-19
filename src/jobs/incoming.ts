@@ -1,22 +1,13 @@
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
-import { UNOAPI_JOB_COMMANDER, UNOAPI_JOB_BULK_STATUS, FETCH_TIMEOUT_MS } from '../defaults'
-import { EnqueueOption, amqpEnqueue } from '../amqp'
+import { UNOAPI_QUEUE_COMMANDER, UNOAPI_QUEUE_BULK_STATUS, FETCH_TIMEOUT_MS, UNOAPI_SERVER_NAME, UNOAPI_EXCHANGE_BROKER_NAME } from '../defaults'
+import { PublishOption, amqpPublish } from '../amqp'
 import { getConfig } from '../services/config'
-import { jidToPhoneNumber, getMimetype } from '../services/transformer'
+import { jidToPhoneNumber, getMimetype, toBuffer, TYPE_MESSAGES_MEDIA } from '../services/transformer'
 import logger from '../services/logger'
 import fetch, { Response } from 'node-fetch'
 import mime from 'mime-types'
-
-
-const toBuffer = (arrayBuffer) => {
-  const buffer = Buffer.alloc(arrayBuffer.byteLength);
-  const view = new Uint8Array(arrayBuffer);
-  for (let i = 0; i < buffer.length; ++i) {
-    buffer[i] = view[i];
-  }
-  return buffer;
-}
+import { v1 as uuid } from 'uuid'
 
 export class IncomingJob {
   private incoming: Incoming
@@ -24,7 +15,7 @@ export class IncomingJob {
   private getConfig: getConfig
   private queueCommander: string
 
-  constructor(incoming: Incoming, outgoing: Outgoing, getConfig: getConfig, queueCommander = UNOAPI_JOB_COMMANDER) {
+  constructor(incoming: Incoming, outgoing: Outgoing, getConfig: getConfig, queueCommander = UNOAPI_QUEUE_COMMANDER) {
     this.incoming = incoming
     this.outgoing = outgoing
     this.getConfig = getConfig
@@ -32,38 +23,41 @@ export class IncomingJob {
   }
 
   async consume(phone: string, data: object) {
+    const config = await this.getConfig(phone)
+    if (config.server !== UNOAPI_SERVER_NAME) {
+      logger.info(`Ignore incoming with ${phone} server ${config.server} is not server current server ${UNOAPI_SERVER_NAME}...`)
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = data as any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = a.payload
     const options: object = a.options
-    const idUno: string = a.id
+    const idUno: string = a.id || uuid()
     const waId = jidToPhoneNumber(payload.to, '')
     const timestamp = Math.floor(new Date().getTime() / 1000).toString()
     // const retries: number = a.retries ? a.retries + 1 : 1
     const response = await this.incoming.send(phone, payload, options)
-    logger.debug('Baileys response %s -> %s', phone, JSON.stringify(response))
+    logger.debug('%s response %s -> %s', config.provider, phone, JSON.stringify(response))
     const channelNumber = phone.replace('+', '')
     logger.debug('Compare to enqueue to commander %s == %s', channelNumber, payload?.to)
     if (channelNumber == payload?.to) {
       logger.debug(`Enqueue in commmander...`)
-      await amqpEnqueue(this.queueCommander, phone, { payload })
+      await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, this.queueCommander, phone, { payload }, { type: 'topic' })
     }
     const { ok, error } = response
-    const optionsOutgoing: Partial<EnqueueOption>  = {}
-    const config = await this.getConfig(phone)
+    const optionsOutgoing: Partial<PublishOption>  = {}
     if (ok && ok.messages && ok.messages[0] && ok.messages[0].id) {
-      const idBaileys: string = ok.messages[0].id
-      logger.debug('Baileys id %s to Unoapi id %s', idBaileys, idUno)
+      const idProvider: string = ok.messages[0].id
+      logger.debug('%s id %s to Unoapi id %s', config.provider, idProvider, idUno)
       const { dataStore } = await config.getStore(phone, config)
-      await dataStore.setUnoId(idBaileys, idUno)
-      const key = await dataStore.loadKey(idBaileys)
+      await dataStore.setUnoId(idProvider, idUno)
+      const key = await dataStore.loadKey(idProvider)
       if (key) {
-        dataStore.setKey(idBaileys, key)
         dataStore.setKey(idUno, key)
       }
       let messagePayload = payload[payload.type]
-      if (['image', 'audio', 'document', 'video'].includes(payload.type)) {
+      if (TYPE_MESSAGES_MEDIA.includes(payload.type)) {
         const { mediaStore } = await config.getStore(phone, config)
         const mediaKey = `${phone}/${idUno}`
         const link = payload[payload.type].link
@@ -80,6 +74,7 @@ export class IncomingJob {
           mime_type: mimetype,
         }
         delete messagePayload['link']
+        await dataStore.setMediaPayload(idUno, messagePayload)
       }
       const webhookMessage = {
         object: 'whatsapp_business_account',
@@ -140,7 +135,7 @@ export class IncomingJob {
       // const code = status?.errors[0]?.code
       // retry when error: 5 - Wait a moment, connecting process
       // if (retries < UNOAPI_MESSAGE_RETRY_LIMIT && ['5', 5].includes(code)) {
-      //   await amqpEnqueue(UNOAPI_JOB_INCOMING, phone, { ...data, retries }, options)
+      //   await amqpPublish(UNOAPI_QUEUE_INCOMING, phone, { ...data, retries }, options)
       // }
     } else {
       outgingPayload = {
@@ -181,7 +176,13 @@ export class IncomingJob {
         ],
       }
     }
-    await amqpEnqueue(UNOAPI_JOB_BULK_STATUS, phone, { payload: outgingPayload, type: 'whatsapp' })
+    await amqpPublish(
+      UNOAPI_EXCHANGE_BROKER_NAME,
+      UNOAPI_QUEUE_BULK_STATUS,
+      phone,
+      { payload: outgingPayload, type: 'whatsapp' },
+      { type: 'topic' }
+    )
     await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, outgingPayload, optionsOutgoing)))
     return response
   }

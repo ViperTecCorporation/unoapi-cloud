@@ -1,5 +1,5 @@
 import { createClient } from '@redis/client'
-import { REDIS_URL, DATA_JID_TTL, DATA_TTL, SESSION_TTL } from '../defaults'
+import { REDIS_URL, DATA_JID_TTL, DATA_TTL, SESSION_TTL, DATA_URL_TTL } from '../defaults'
 import logger from './logger'
 import { GroupMetadata } from 'baileys'
 import { Webhook, configs } from './config'
@@ -131,8 +131,16 @@ const redisSetAndExpire = async function (key: string, value: any, ttl: number) 
   }
 }
 
-const authKey = (phone: string) => {
+export const authKey = (phone: string) => {
   return `${BASE_KEY}auth:${phone}`
+}
+
+const connectCountKey = (phone: string, ordinal: number | string) => {
+  return `${BASE_KEY}connect-count:${phone}:${ordinal}`
+}
+
+export const lastTimerKey = (from: string, to: string) => {
+  return `${BASE_KEY}timer:${from}:${to}`
 }
 
 export const sessionStatusKey = (phone: string) => {
@@ -141,6 +149,10 @@ export const sessionStatusKey = (phone: string) => {
 
 const messageStatusKey = (phone: string, id: string) => {
   return `${BASE_KEY}message-status:${phone}:${id}`
+}
+
+const mediaKey = (phone: string, id: string) => {
+  return `${BASE_KEY}media:${phone}:${id}`
 }
 
 const bulkMessageKeyBase = (phone: string, bulkId: string) => {
@@ -194,7 +206,7 @@ export const getJid = async (phone: string, jid: any) => {
 
 export const setJid = async (phone: string, jid: string, validJid: string) => {
   const key = jidKey(phone, jid)
-  await client.set(key, validJid, { EX: DATA_JID_TTL })
+  await client.set(key, validJid)
 }
 
 export const setBlacklist = async (from: string, webhookId: string, to: string, ttl: number) => {
@@ -281,10 +293,12 @@ export const setConfig = async (phone: string, value: any) => {
   const currentConfig = await getConfig(phone)
   const key = configKey(phone)
   const currentWebhooks: Webhook[] = currentConfig && currentConfig.webhooks || []
-  const newWebhooks: Webhook[] = value && value.webhooks || currentWebhooks
+  const newWebhooks: Webhook[] = value && value.webhooks || []
   const updatedWebooks: Webhook[] = []
-  newWebhooks.forEach(n => {
-    const c = currentWebhooks.find((c) => c.id === n.id)
+  const baseWebhook = value.overrideWebhooks || currentWebhooks.length == 0 ? newWebhooks : currentWebhooks
+  const searchWebhooks = value.overrideWebhooks ? currentWebhooks : newWebhooks
+  baseWebhook.forEach(n => {
+    const c = searchWebhooks.find((c) => c.id === n.id)
     if (c) {
       updatedWebooks.push({ ...c, ...n })
     } else {
@@ -293,6 +307,7 @@ export const setConfig = async (phone: string, value: any) => {
   })
   value.webhooks = updatedWebooks
   const config = { ...currentConfig, ...value }
+  delete config.overrideWebhooks
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
   configs.delete(phone)
   return config
@@ -383,6 +398,26 @@ export const getMessage = async <T>(phone: string, jid: string, id: string): Pro
   }
 }
 
+export const getConnectCount = async(phone: string) => {
+  const keyPattern = connectCountKey(phone, '*')
+  const keys = await redisKeys(keyPattern)
+  return keys.length || 0
+}
+
+export const clearConnectCount = async(phone: string) => {
+  const keyPattern = connectCountKey(phone, '*')
+  const keys = await redisKeys(keyPattern)
+  for (let index = 0; index < keys.length.length; index++) {
+    const key = keys[index];
+    await redisDel(key)
+  }
+}
+
+export const setConnectCount = async (phone: string, count: number, ttl: number) => {
+  const key = connectCountKey(phone, count)
+  await redisSetAndExpire(key, 1, ttl)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setMessage = async (phone: string, jid: string, id: string, value: any) => {
   const key = messageKey(phone, jid, id)
@@ -397,7 +432,7 @@ export const getProfilePicture = async (phone: string, jid: string) => {
 
 export const setProfilePicture = async (phone: string, jid: string, url: string) => {
   const key = profilePictureKey(phone, jid)
-  return redisSetAndExpire(key, url, DATA_TTL)
+  return redisSetAndExpire(key, url, DATA_URL_TTL)
 }
 
 export const getGroup = async (phone: string, jid: string) => {
@@ -411,6 +446,37 @@ export const getGroup = async (phone: string, jid: string) => {
 export const setGroup = async (phone: string, jid: string, data: GroupMetadata) => {
   const key = groupKey(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(data), DATA_TTL)
+}
+
+export const setLastTimer = async (phone: string, to: string, current: Date) => {
+  const key = lastTimerKey(phone, to)
+  logger.debug('setLastTimer with key %s', key)
+  return redisSet(key, current.toISOString())
+}
+
+export const getLastTimer = async (phone: string, to: string) => {
+  const key = lastTimerKey(phone, to)
+  logger.debug('getLastTimer with key %s', key)
+  return redisGet(key)
+}
+
+export const delLastTimer = async (phone: string, to: string) => {
+  const key = lastTimerKey(phone, to)
+  logger.debug('delLastTimer with key %s', key)
+  return redisDel(key)
+}
+
+export const setMedia = async (phone: string, id: string, payload: any) => {
+  const key = mediaKey(phone, id)
+  logger.debug('setMedia with key %s', key)
+  return redisSetAndExpire(key, JSON.stringify(payload), DATA_TTL)
+}
+
+export const getMedia = async (phone: string, id: string) => {
+  const key = mediaKey(phone, id)
+  logger.debug('getMedia with key %s', key)
+  const payload = await redisGet(key)
+  return payload ? JSON.parse(payload) : undefined
 }
 
 export const getUnoId = async (phone: string, idBaileys: string) => {

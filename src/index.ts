@@ -24,6 +24,14 @@ import { BASE_URL, PORT } from './defaults'
 import { ReloadBaileys } from './services/reload_baileys'
 import { LogoutBaileys } from './services/logout_baileys'
 
+import * as Sentry from '@sentry/node'
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    sendDefaultPii: true,
+  })
+}
+
 const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigByEnv, isInBlacklistInMemory)
 
 const broadcast: Broadcast = new Broadcast()
@@ -32,22 +40,32 @@ const onNewLoginn = onNewLoginAlert(listenerBaileys)
 const incomingBaileys: Incoming = new IncomingBaileys(listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
 const sessionStore: SessionStore = new SessionStoreFile()
 
-const reload = new ReloadBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, incomingBaileys, onNewLoginn)
-const logout = new LogoutBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, incomingBaileys, onNewLoginn)
+const reload = new ReloadBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, onNewLoginn)
+const logout = new LogoutBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, onNewLoginn)
 
 const app: App = new App(incomingBaileys, outgoingCloudApi, BASE_URL, getConfigByEnv, sessionStore, onNewLoginn, addToBlacklistInMemory, reload, logout)
 broadcast.setSever(app.socket)
 
 app.server.listen(PORT, '0.0.0.0', async () => {
   logger.info('Unoapi Cloud version: %s, listening on port: %s', version, PORT)
-  autoConnect(sessionStore, incomingBaileys, listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
+  autoConnect(sessionStore, listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
 })
 
 export default app
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+process.on('uncaughtException', (reason: any) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason)
+  }
+  logger.error('uncaughtException index: %s %s', reason, reason.stack)
+  process.exit(1)
+})
+
 process.on('unhandledRejection', (reason: any, promise) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason)
+  }
   logger.error('unhandledRejection: %s', reason.stack)
   logger.error('promise: %s', promise)
-  throw reason
+  process.exit(1)
 })

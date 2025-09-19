@@ -40,7 +40,7 @@ To send a message
 
 ```sh
 curl -i -X POST \
-http://localhost:9876/v15.0/5549988290955/messages \
+http://localhost:9876/v15.0/554931978550/messages \
 -H 'Content-Type: application/json' \
 -H 'Authorization: 1' \
 -d '{
@@ -50,6 +50,33 @@ http://localhost:9876/v15.0/5549988290955/messages \
   "text": {
     "body": "hello"
   } 
+}'
+```
+
+To send a contact
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549999621461",
+  "type": "contacts",
+  "contacts": [
+    {
+      "name": {
+        "formatted_name": "Clairton - Faça um pix nessa chave e contribua com a unoapi"
+      },
+      "phones": [
+        {
+          "wa_id": "554988290955",
+          "phone": "+5549988290955"
+        }
+      ]
+    }
+  ]
 }'
 ```
 
@@ -66,6 +93,37 @@ http://localhost:9876/v15.0/5549988290955/messages \
   "text": {
     "body": "hello"
   }
+}'
+```
+
+To send a message to lid
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "206652636680324@lid",
+  "type": "text",
+  "text": {
+    "body": "hello"
+  }
+}'
+```
+
+To mark message as read
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "status": "read",
+  "message_id": "MESSAGE_ID"
 }'
 ```
 
@@ -174,7 +232,42 @@ with:
 * 9 - connection lost
 * 10 - Invalid token value
 * 11 - Http Head test link not return success
-* 12 - offline number, connecting....
+* 12 - offline session, connecting....
+* 14 - standby session, waiting for time configured
+* 15 - realoaded session, send message do connect again
+
+
+
+## Verify contacts has whatsapp account
+Based on `https://developers.facebook.com/docs/whatsapp/on-premises/reference/contacts`, it works only with standalone mode in `yarn standalone`, for development in `yarn standalone-dev`
+
+```sh
+curl -i -X POST \
+http://localhost:9876/5549988290955/contacts \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "blocking": "no_wait",
+  "contacts": [
+  	"16315551000"
+  ],
+  "force_check": true
+}'
+```
+
+this return
+
+```json
+{
+  "contacts": [ 
+    {
+      "wa_id": "16315551000",
+      "input": "16315551000",
+      "status": "valid"
+    }
+  ]
+}
+```
 
 ## Up for development
 
@@ -220,58 +313,47 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 
 `yarn web` e `yarn worker` up a web and worker with redis and rabbitmq
 
+`yarn standalone` 
+  - choose redis when set REDI_URL, if not use file system do save data
+  - choose rabbitmq when set AMQP_URL
+  - choose s3 when set STORAGE_ envs, if not use file system
+
+`yarn waker` 
+  - move all messages in dead queues(listener, incoming, outgoing), to process retry
+
 
 ## Config Options
 ### Config with Environment Variables
 
 Create a `.env`file and put configuration if you need change default value:
 
+This a general env:
+
 ```env
-WEBHOOK_URL_ABSOLUTE=the webhook absolute url, not use this if already use WEBHOOK_URL
-WEBHOOK_URL=the webhook url, this config attribute put phone number on the end, no use if use WEBHOOK_URL_ABSOLUTE
-WEBHOOK_TOKEN=the webhook header token
-WEBHOOK_HEADER=the webhook header name
+CONSUMER_TIMEOUT_MS=miliseconds in timeout for consume job, default is 30000
+AVAILABLE_LOCALES=default is `["en", "pt_BR", "pt"]`
+DEFAULT_LOCALE=locale for notifications status, now possibile is en, pt_BR and pt, default is en, to add new, use docker volume for exempla `/app/dist/src/locales/custom.json` and add `custom` in `AVAILABLE_LOCALES`
+ONLY_HELLO_TEMPLATE=true sets hello template as the only default template, default false.
+MAX_CONNECT_RETRY=3 max call connect with error in MAX_CONNECT_TIME
+MAX_CONNECT_TIME=3000 interval of max connect, 5 minutes
+CONNECTION_TYPE=connection type use qrcode or pairing_code, default is qrcode
+QR_TIMEOUT_MS=60000 timeout for read qrcode, default is 60000
 WEBHOOK_SESSION=webhook to send events of type OnStatus and OnQrCode
-WEBHOOK_TIMEOUT_MS=webhook request timeout, default 5000 ms
-WEBHOOK_SEND_NEW_MESSAGES=true, send new messages to webhook, caution with this, messages will be duplicated, default is false
-WEBHOOK_SEND_GROUP_MESSAGES=true, send group messages to webhook, default is true
-WEBHOOK_SEND_OUTGOING_MESSAGES=true, send outgoing messages to webhook, default is true
 BASE_URL=current base url to download medias
 PORT=the http port
-IGNORE_GROUP_MESSAGES=false to send group messages received in socket to webhook, default true
-IGNORE_BROADCAST_STATUSES=false to send stories in socket to webhook, default true
-IGNORE_STATUS_MESSAGE=false to send stories in socket to webhook, default true
-IGNORE_BROADCAST_MESSAGES=false to send broadcast messages in socket to webhook, default false
-IGNORE_HISTORY_MESSAGES=false to import messages when connect, default is true
-IGNORE_OWN_MESSAGES=false to send own messages in socket to webhook, default true
-IGNORE_YOURSELF_MESSAGES=true to ignore messages for yourself, default is true, possible loop if was false
-COMPOSING_MESSAGE=true enable composing before send message as text length, default false
-REJECT_CALLS=message to send when receive a call, default is empty and not reject
-REJECT_CALLS_WEBHOOK=message to send webook when receive a call, default is empty and not send, is deprecated, use MESSAGE_CALLS_WEBHOOK
-MESSAGE_CALLS_WEBHOOK=message to send webook when receive a call, default is empty and not send
-SEND_CONNECTION_STATUS=true to send all connection status to webhook, false to send only important messages, default is true
 BASE_STORE=dir where save sessions, medias and stores. Defaul is ./data
-IGNORE_DATA_STORE=ignore save/retrieve data(message, contacts, groups...)
-AUTO_CONNECT=true, auto connect on start service
-AUTO_RESTART_MS=miliseconds to restart connection, default is 0 and not auto restart
-THROW_WEBHOOK_ERROR=false send webhook error do self whatsapp, default is false, if true throw exception
-NOTIFY_FAILED_MESSAGES=true send message to your self in whatsapp when message failed and enqueued in dead queue
 LOG_LEVEL=log level, default warn
 UNO_LOG_LEVEL=uno log level. default LOG_LEVEL
-SEND_REACTION_AS_REPLY=true to send reactions as replay, default false
-SEND_PROFILE_PICTURE=true to send profile picture users and groups, default is true
 UNOAPI_RETRY_REQUEST_DELAY_MS=retry delay in miliseconds when decrypt failed, default is 1_000(a second)
 UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS=to service had time do create contact and conversation before send next messages, default 0
 UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS=to service had time do create contact and conversation in first message after unoapi up, before send next messages, default 0
 UNOAPI_DELAY_BETWEEN_MESSAGES_MS=to not duplicate timestamp message. default 0
-PROXY_URL=the socks proxy url, default not use
 CLEAN_CONFIG_ON_DISCONNECT=true to clean all saved redis configurations on disconnect number, default is false
 CONFIG_SESSION_PHONE_CLIENT=Unoapi Name that will be displayed on smartphone connection
 CONFIG_SESSION_PHONE_NAME=Chrome Browser Name = Chrome | Firefox | Edge | Opera | Safari
-WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version.
-CONSUMER_TIMEOUT_MS=miliseconds in timeout for consume job, default is 30000
-MESSAGE_CHECK_WAAPP=message to send webwook when uno fails on reading content. default '🕒 Não foi possível ler a mensagem. Peça para enviar novamente ou abra o Whatsapp no celular.'
-ONLY_HELLO_TEMPLATE=true sets hello template as the only default template, default false.
+WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version. Format is `[2, 3000, 1019810866]`
+VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, default true
+OPENAI_API_KEY=openai api key to transcribe audio
 ```
 
 Bucket env to config assets media compatible with S3, this config can't save in redis:
@@ -293,9 +375,53 @@ AMQP_URL
 REDIS_URL
 ```
 
-### Config with redis
+This env would be set by session:
 
-The `.env` can be save one configm, but on redis use different webhook by session number, to do this, save the config json with key format `unoapi-config:XXX`, where XXX is your whatsapp number.
+```env
+WEBHOOK_URL_ABSOLUTE=the webhook absolute url, not use this if already use WEBHOOK_URL
+WEBHOOK_URL=the webhook url, this config attribute put phone number on the end, no use if use WEBHOOK_URL_ABSOLUTE
+WEBHOOK_TOKEN=the webhook header token
+WEBHOOK_HEADER=the webhook header name
+WEBHOOK_TIMEOUT_MS=webhook request timeout, default 5000 ms
+WEBHOOK_SEND_NEW_MESSAGES=true, send new messages to webhook, caution with this, messages will be duplicated, default is false
+WEBHOOK_SEND_GROUP_MESSAGES=true, send group messages to webhook, default is true
+WEBHOOK_SEND_OUTGOING_MESSAGES=true, send outgoing messages to webhook, default is true
+WEBHOOK_SEND_INCOMING_MESSAGES=true, send incoming messages to webhook, default is true
+WEBHOOK_SEND_TRANSCRIBE_AUDIO=false, send trancription audio messages to webhook, needs OPENAI_API_KEY, default is false
+WEBHOOK_SEND_UPDATE_MESSAGES=true, send update messages sent, delivered, read
+IGNORE_GROUP_MESSAGES=false to send group messages received in socket to webhook, default true
+IGNORE_BROADCAST_STATUSES=false to send stories in socket to webhook, default true
+IGNORE_NEWSLETTER_MESSAGES=false to ignore newsletter
+IGNORE_STATUS_MESSAGE=false to send stories in socket to webhook, default true
+READ_ON_RECEIPT=false mark message as read on receipt
+IGNORE_BROADCAST_MESSAGES=false to send broadcast messages in socket to webhook, default false
+IGNORE_HISTORY_MESSAGES=false to import messages when connect, default is true
+IGNORE_OWN_MESSAGES=false to send own messages in socket to webhook, default true
+IGNORE_YOURSELF_MESSAGES=true to ignore messages for yourself, default is true, possible loop if was false
+COMPOSING_MESSAGE=true enable composing before send message as text length, default false
+REJECT_CALLS=message to send when receive a call, default is empty and not reject
+REJECT_CALLS_WEBHOOK=message to send webook when receive a call, default is empty and not send, is deprecated, use MESSAGE_CALLS_WEBHOOK
+MESSAGE_CALLS_WEBHOOK=message to send webook when receive a call, default is empty and not send
+SEND_CONNECTION_STATUS=true to send all connection status to webhook, false to send only important messages, default is true
+IGNORE_DATA_STORE=ignore save/retrieve data(message, contacts, groups...)
+AUTO_CONNECT=true, auto connect on start service
+AUTO_RESTART_MS=miliseconds to restart connection, default is 0 and not auto restart
+THROW_WEBHOOK_ERROR=false send webhook error do self whatsapp, default is false, if true throw exception
+NOTIFY_FAILED_MESSAGES=true send message to your self in whatsapp when message failed and enqueued in dead queue
+SEND_REACTION_AS_REPLY=true to send reactions as replay, default false
+SEND_PROFILE_PICTURE=true to send profile picture users and groups, default is true
+PROXY_URL=the socks proxy url, default not use
+WEBHOOK_FORWARD_PHONE_NUMBER_ID=the phone number id of whatsapp cloud api, default is empty
+WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID=the business account id of whatsapp cloud api, default is empty
+WEBHOOK_FORWARD_TOKEN=the token of whatsapp cloud api, default is empty
+WEBHOOK_FORWARD_VERSION=the version of whatsapp cloud api, default is v17.0
+WEBHOOK_FORWARD_URL=the url of whatsapp cloud api, default is https://graph.facebook.com
+WEBHOOK_FORWARD_TIMEOUT_MS=the timeout for request to whatsapp cloud api, default is 360000
+```
+
+### Config session with redis
+
+The `.env` can be save one config, but on redis use different webhook by session number, to do this, save the config json with key format `unoapi-config:XXX`, where XXX is your whatsapp number.
 
 ```json
 {
@@ -557,30 +683,26 @@ https://chat.whatsapp.com/FZd0JyPVMLq94FHf59I8HU
 
 ## Need More
 
-Mail to comercial@unoapi.cloud
+Mail to sales@unoapi.cloud
 
 ## Donate to the project.
 
+#### Become a sponsor: https://github.com/sponsors/clairton
+
 #### Pix: 0e42d192-f4d6-4672-810b-41d69eba336e
 
-</br>
+## Roadmap
+- Gif message as video: https://github.com/WhiskeySockets/Baileys#gif-message
+- Convert audio message: https://github.com/WhiskeySockets/Baileys#audio-message
+- Disappearing messages: https://github.com/WhiskeySockets/Baileys#disappearing-messages
+- Send Stories: https://github.com/WhiskeySockets/Baileys#broadcast-lists--stories
+- Filter by specific date on sync history: https://github.com/WhiskeySockets/Baileys?tab=readme-ov-file#receive-full-history
+- Add /health endpoint with test connection with redis, s3 and rabbitmq
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/smb_message_echoes?locale=pt_BR format message sending by app\
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/history?locale=pt_BR format for sync history 
 
-#### PicPay
-
-<div align="center">
-  <a href="https://app.picpay.com/user/clairton.rodrigo" target="_blank" rel="noopener noreferrer">
-    <img src="./picpay.png" style="width: 50% !important;">
-  </a>
-</div>
-
-</br>
-
-### Buy Me A Coffee
-
-<div align="center">
-  <a href="https://www.buymeacoffee.com/clairton" target="_blank" rel="noopener noreferrer">
-    <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" style="width: 50% !important;">
-  </a>
-</div>
-
-</br>
+## Ready
+- Connect with pairing code: https://github.com/WhiskeySockets/Baileys#starting-socket-with-pairing-code
+- Counting connection retry attempts even when restarting to prevent looping messages
+- Message delete endpoint
+- Send reply message with please to send again, when any error and message enqueue in .dead

@@ -8,7 +8,6 @@ import { Store } from '../../src/services/store'
 import {
   connect,
   Status,
-  SendError,
   sendMessage,
   readMessages,
   rejectCall,
@@ -24,6 +23,8 @@ import { DataStore } from '../../src/services/data_store'
 import { Incoming } from '../../src/services/incoming'
 import { dataStores } from '../../src/services/data_store'
 import logger from '../../src/services/logger'
+import { SessionStore } from '../../src/services/session_store'
+import { SendError } from '../../src/services/send_error'
 
 const mockConnect = connect as jest.MockedFunction<typeof connect>
 
@@ -43,6 +44,7 @@ describe('service client baileys', () => {
   let incoming: Incoming
   let store: Store
   let dataStore: DataStore
+  let sessionStore: SessionStore
   let send
   let read
   let logout
@@ -61,9 +63,11 @@ describe('service client baileys', () => {
     listener = mock<Listener>()
     incoming = mock<Incoming>()
     dataStore = mock<DataStore>()
+    sessionStore = mock<SessionStore>()
     close = mock<close>()
     store = mock<Store>()
     store.dataStore = dataStore
+    store.sessionStore = sessionStore
     config = defaultConfig
     config.ignoreGroupMessages = true
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -74,7 +78,7 @@ describe('service client baileys', () => {
       }
       return config
     }
-    client = new ClientBaileys(phone, incoming, listener, getConfig, onNewLogin)
+    client = new ClientBaileys(phone, listener, getConfig, onNewLogin)
     send = mockFn<sendMessage>()
     read = mockFn<readMessages>().mockResolvedValue(true)
     exists = mockFn<exists>()

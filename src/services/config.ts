@@ -1,10 +1,11 @@
-import { UNOAPI_SERVER_NAME } from '../defaults'
 import { getStore } from './store'
 import { getStoreFile } from './store_file'
-import { WAMessageKey } from 'baileys'
+import { WAMessageKey, WAVersion } from 'baileys'
 import { Level } from 'pino'
 
 export const configs: Map<string, Config> = new Map()
+
+export type connectionType = 'qrcode' | 'pairing_code' | 'forward'
 
 export interface GetMessageMetadata {
   <T>(message: T): Promise<T>
@@ -20,14 +21,29 @@ export type Webhook = {
   header: string
   timeoutMs: number
   sendNewMessages: boolean
+  sendUpdateMessages: boolean
   sendGroupMessages: boolean
   sendOutgoingMessages: boolean
+  sendNewsletterMessages: boolean
+  sendIncomingMessages: boolean
+  sendTranscribeAudio: boolean
+}
+
+export type WebhookForward = {
+  url: string
+  phoneNumberId: string
+  businessAccountId: string
+  token: string
+  version: string
+  timeoutMs: number
 }
 
 export type Config = {
   ignoreGroupMessages: boolean
+  ignoreNewsletterMessages: boolean
   ignoreBroadcastMessages: boolean
   ignoreBroadcastStatuses: boolean
+  readOnReceipt: boolean
   ignoreHistoryMessages: boolean
   ignoreYourselfMessages: boolean
   ignoreOwnMessages: boolean
@@ -48,22 +64,34 @@ export type Config = {
   getStore: getStore
   baseStore: string
   webhooks: Webhook[]
+  webhookForward: WebhookForward | Partial<WebhookForward>
   logLevel: Level
   getMessageMetadata: GetMessageMetadata
   ignoreDataStore: boolean
   sendReactionAsReply: boolean
   sendProfilePicture: boolean
   authToken: string | undefined
-  authHeader: string | undefined,
-  provider: 'baileys',
-  server:  string | undefined,
-  wavoipToken:  string | undefined,
+  authHeader: string | undefined
+  provider: 'baileys' | 'forwarder' | undefined
+  server:  string | undefined
+  connectionType: connectionType
+  wavoipToken:  string | undefined
+  useRedis: boolean
+  useS3: boolean
+  qrTimeoutMs: number
+  label: string
+  overrideWebhooks: boolean
+  customMessageCharacters: string[]
+  customMessageCharactersFunction: (message: string) => string,
+  whatsappVersion: WAVersion | undefined,
 }
 
 export const defaultConfig: Config = {
   ignoreGroupMessages: true,
+  ignoreNewsletterMessages: true,
   ignoreBroadcastStatuses: true,
   ignoreBroadcastMessages: false,
+  readOnReceipt: false,
   ignoreHistoryMessages: true,
   ignoreOwnMessages: true,
   ignoreYourselfMessages: true,
@@ -94,10 +122,15 @@ export const defaultConfig: Config = {
       header: '',
       timeoutMs: 5_000,
       sendNewMessages: false,
+      sendNewsletterMessages: false,
       sendGroupMessages: true,
       sendOutgoingMessages: true,
+      sendUpdateMessages: true,
+      sendIncomingMessages: true,
+      sendTranscribeAudio: false,
     },
   ],
+  webhookForward: {},
   getMessageMetadata: getMessageMetadataDefault,
   ignoreDataStore: false,
   sendReactionAsReply: false,
@@ -105,9 +138,18 @@ export const defaultConfig: Config = {
   proxyUrl: undefined,
   authToken: undefined,
   authHeader: undefined,
-  provider: 'baileys',
-  server: UNOAPI_SERVER_NAME,
+  provider: undefined,
+  server: undefined,
+  connectionType: 'qrcode',
   wavoipToken: '',
+  useRedis: false,
+  useS3: false,
+  qrTimeoutMs: 60000,
+  label: '',
+  overrideWebhooks: false,
+  customMessageCharacters: [],
+  customMessageCharactersFunction: (message: string) => message,
+  whatsappVersion: undefined
 }
 
 export interface getConfig {

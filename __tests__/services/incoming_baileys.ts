@@ -1,7 +1,7 @@
 import { IncomingBaileys } from '../../src/services/incoming_baileys'
 import { Incoming } from '../../src/services/incoming'
 import { Listener } from '../../src/services/listener'
-import { getClient, Client } from '../../src/services/client'
+import { getClient, Client, Contact } from '../../src/services/client'
 import { Config, defaultConfig, getConfig, getConfigDefault } from '../../src/services/config'
 import { mock } from 'jest-mock-extended'
 import logger from '../../src/services/logger'
@@ -28,6 +28,11 @@ class DummyClient implements Client {
   async getMessageMetadata<T>(data: T) {
     return data
   }
+
+  public async contacts(_numbers: string[]) {
+    const contacts: Contact[] = []
+    return contacts
+  }
 }
 
 const dummyClient = new DummyClient()
@@ -37,14 +42,11 @@ const getClientDummy: getClient = async ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   phone,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  incoming,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   listener,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getConfig,
 }: {
   phone: string
-  incoming: Incoming
   listener: Listener
   getConfig: getConfig
 }): Promise<Client> => {

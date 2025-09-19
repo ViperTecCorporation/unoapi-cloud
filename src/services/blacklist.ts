@@ -1,7 +1,7 @@
 import NodeCache from 'node-cache'
-import { amqpEnqueue } from '../amqp'
-import { UNOAPI_JOB_BLACKLIST_ADD } from '../defaults'
-import { blacklist, redisTtl, redisKeys } from './redis'
+import { amqpPublish } from '../amqp'
+import { UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BLACKLIST_ADD } from '../defaults'
+import { blacklist, redisTtl, redisKeys, setBlacklist } from './redis'
 import logger from './logger'
 import { extractDestinyPhone } from './transformer'
 
@@ -62,7 +62,13 @@ export const isInBlacklistInRedis: isInBlacklist = async (from: string, webhookI
   return isInBlacklistInMemory(from, webhookId, payload)
 }
 
+export const addToBlacklistRedis: addToBlacklist = async (from: string, webhookId: string, to: string, ttl: number) => {
+  await setBlacklist(from, webhookId, to, ttl)
+  await addToBlacklistInMemory(from, webhookId, to, ttl)
+  return true
+}
+
 export const addToBlacklistJob: addToBlacklist = async (from: string, webhookId: string, to: string, ttl: number) => {
-  await amqpEnqueue(UNOAPI_JOB_BLACKLIST_ADD, from, { from, webhookId, to, ttl })
+  await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BLACKLIST_ADD, from, { from, webhookId, to, ttl }, { type: 'topic' })
   return true
 }
