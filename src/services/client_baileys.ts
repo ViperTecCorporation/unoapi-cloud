@@ -484,6 +484,9 @@ export class ClientBaileys implements Client {
                   c.audio = buffer
                   c.ptt = true
                   c.mimetype = outType
+                  logger.debug('Audio converted to OGG/Opus PTT for %s (mimetype: %s)', url, outType)
+                } else {
+                  logger.debug('Skip audio conversion (PTT disabled or not mp3). url: %s mimetype: %s', url, mt)
                 }
               } catch (err) {
                 logger.warn(err, 'Ignore error converting audio to ogg; sending original')
