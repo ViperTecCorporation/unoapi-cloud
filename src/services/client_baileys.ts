@@ -477,7 +477,9 @@ export class ClientBaileys implements Client {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const c: any = content
                 const url: string | undefined = c?.audio?.url
-                if (url) {
+                const mt: string = (c?.mimetype || '').toString()
+                const isMp3 = /audio\/mpeg/i.test(mt) || (typeof url === 'string' && /\.mp3(\?|#|$)/i.test(url))
+                if (url && isMp3) {
                   const { buffer, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
                   c.audio = buffer
                   c.ptt = true
