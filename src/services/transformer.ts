@@ -731,6 +731,22 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
         return fromBaileysMessageContent(phone, changedPayload, config)
 
+      case 'messageStubType': {
+        const isDecryptStub =
+          (payload as any)?.messageStubType === 2 &&
+          (payload as any)?.messageStubParameters &&
+          (payload as any)?.messageStubParameters[0] &&
+          MESSAGE_STUB_TYPE_ERRORS.includes(
+            String((payload as any).messageStubParameters[0]).toLowerCase(),
+          )
+        // only treat as decrypt failure for incoming messages
+        if (isDecryptStub && !(payload as any)?.key?.fromMe) {
+          throw new DecryptError(data)
+        } else {
+          return [null, senderPhone, senderId]
+        }
+      }
+
       case 'conversation':
       case 'extendedTextMessage':
         message.text = {
