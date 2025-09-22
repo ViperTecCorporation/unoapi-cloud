@@ -2,6 +2,14 @@ jest.mock('../../src/utils/audio_convert', () => ({
   __esModule: true,
   convertToOggPtt: jest.fn(async () => ({ buffer: Buffer.from('OGG'), mimetype: 'audio/ogg; codecs=opus' }))
 }))
+jest.mock('../../src/defaults', () => {
+  const actual = jest.requireActual('../../src/defaults')
+  return {
+    __esModule: true,
+    ...actual,
+    SEND_AUDIO_MESSAGE_AS_PTT: true,
+  }
+})
 jest.mock('../../src/services/socket')
 import { ClientBaileys } from '../../src/services/client_baileys'
 import { Client } from '../../src/services/client'

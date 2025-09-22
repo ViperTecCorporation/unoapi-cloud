@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -471,19 +471,21 @@ export class ClientBaileys implements Client {
               }
             }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
-            // Convert audio link to OGG/Opus PTT buffer to match WhatsApp standard
-            try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const c: any = content
-              const url: string | undefined = c?.audio?.url
-              if (url) {
-                const { buffer, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
-                c.audio = buffer
-                c.ptt = true
-                c.mimetype = outType
+            // Convert audio to PTT only when explicitly enabled via env
+            if (SEND_AUDIO_MESSAGE_AS_PTT) {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const c: any = content
+                const url: string | undefined = c?.audio?.url
+                if (url) {
+                  const { buffer, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
+                  c.audio = buffer
+                  c.ptt = true
+                  c.mimetype = outType
+                }
+              } catch (err) {
+                logger.warn(err, 'Ignore error converting audio to ogg; sending original')
               }
-            } catch (err) {
-              logger.warn(err, 'Ignore error converting audio to ogg; sending original')
             }
           }
           let quoted: WAMessage | undefined = undefined
