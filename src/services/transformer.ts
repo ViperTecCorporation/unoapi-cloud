@@ -741,6 +741,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           )
         // only treat as decrypt failure for incoming messages
         if (isDecryptStub && !(payload as any)?.key?.fromMe) {
+          // include a user-friendly message in the error payload for later delivery
+          message.text = {
+            body: MESSAGE_CHECK_WAAPP || t('failed_decrypt'),
+          }
+          message.type = 'text'
+          change.value.messages.push(message)
           throw new DecryptError(data)
         } else {
           return [null, senderPhone, senderId]
