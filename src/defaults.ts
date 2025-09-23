@@ -20,6 +20,10 @@ export const VALIDATE_MEDIA_LINK_BEFORE_SEND =
   process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == _undefined ? false : process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == 'true'
 export const SEND_AUDIO_MESSAGE_AS_PTT = 
   process.env.SEND_AUDIO_MESSAGE_AS_PTT == _undefined ? false : process.env.SEND_AUDIO_MESSAGE_AS_PTT == 'true'
+// Whether to actually convert audio media to OGG/Opus when sending as PTT.
+// Defaults to the same value as SEND_AUDIO_MESSAGE_AS_PTT for backward compatibility.
+export const CONVERT_AUDIO_TO_PTT =
+  process.env.CONVERT_AUDIO_TO_PTT == _undefined ? SEND_AUDIO_MESSAGE_AS_PTT : process.env.CONVERT_AUDIO_TO_PTT == 'true'
 
 export const WEBHOOK_FORWARD_PHONE_NUMBER_ID = process.env.WEBHOOK_FORWARD_PHONE_NUMBER_ID || ''
 export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID || ''

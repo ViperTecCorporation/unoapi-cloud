@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION, SEND_AUDIO_MESSAGE_AS_PTT, CONVERT_AUDIO_TO_PTT } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -471,8 +471,8 @@ export class ClientBaileys implements Client {
               }
             }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
-            // Convert audio to PTT only when explicitly enabled via env
-            if (SEND_AUDIO_MESSAGE_AS_PTT) {
+            // Convert audio to PTT only when explicitly enabled and when message type is audio
+            if (CONVERT_AUDIO_TO_PTT && type === 'audio') {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const c: any = content
@@ -486,7 +486,7 @@ export class ClientBaileys implements Client {
                   c.mimetype = outType
                   logger.debug('Audio converted to OGG/Opus PTT for %s (mimetype: %s)', url, outType)
                 } else {
-                  logger.debug('Skip audio conversion (PTT disabled or not mp3). url: %s mimetype: %s', url, mt)
+                  logger.debug('Skip audio conversion (not mp3 or missing url). url: %s mimetype: %s', url, mt)
                 }
               } catch (err) {
                 logger.warn(err, 'Ignore error converting audio to ogg; sending original')
