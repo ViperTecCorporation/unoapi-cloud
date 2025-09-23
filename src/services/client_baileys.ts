@@ -471,8 +471,11 @@ export class ClientBaileys implements Client {
               }
             }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
-            // Convert audio to PTT only when explicitly enabled and when message type is audio
-            if (CONVERT_AUDIO_TO_PTT && type === 'audio') {
+            // Convert audio to PTT when enabled (respect explicit CONVERT_AUDIO_TO_PTT=false)
+            const SHOULD_CONVERT = (process.env.CONVERT_AUDIO_TO_PTT === undefined)
+              ? SEND_AUDIO_MESSAGE_AS_PTT
+              : CONVERT_AUDIO_TO_PTT
+            if (SHOULD_CONVERT && type === 'audio') {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const c: any = content
