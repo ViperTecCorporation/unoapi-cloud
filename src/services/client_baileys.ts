@@ -476,12 +476,12 @@ export class ClientBaileys implements Client {
               ? SEND_AUDIO_MESSAGE_AS_PTT
               : CONVERT_AUDIO_TO_PTT
             if (SHOULD_CONVERT && type === 'audio') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const c: any = content
+              const url: string | undefined = c?.audio?.url
+              const mt: string = (c?.mimetype || '').toString()
+              const isMp3 = /audio\/mpeg/i.test(mt) || (typeof url === 'string' && /\.mp3(\?|#|$)/i.test(url))
               try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const c: any = content
-                const url: string | undefined = c?.audio?.url
-                const mt: string = (c?.mimetype || '').toString()
-                const isMp3 = /audio\/mpeg/i.test(mt) || (typeof url === 'string' && /\.mp3(\?|#|$)/i.test(url))
                 if (url && isMp3) {
                   const { buffer, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
                   c.audio = buffer
@@ -492,6 +492,10 @@ export class ClientBaileys implements Client {
                   logger.debug('Skip audio conversion (not mp3 or missing url). url: %s mimetype: %s', url, mt)
                 }
               } catch (err) {
+                // Avoid sending mp3 flagged as PTT if conversion failed
+                if (c?.ptt && isMp3) {
+                  c.ptt = false
+                }
                 logger.warn(err, 'Ignore error converting audio to ogg; sending original')
               }
             }
