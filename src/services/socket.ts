@@ -13,6 +13,8 @@ import makeWASocket, {
   ConnectionState,
   UserFacingSocketConfig,
   fetchLatestWaWebVersion,
+  jidNormalizedUser,
+  isLidUser,
 } from '@whiskeysockets/baileys'
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
@@ -448,7 +450,9 @@ export const connect = async ({
     options: any = { composing: false },
   ) => {
     await validateStatus()
-    const id =  isIndividualJid(to) ? await exists(to) : to
+    // If recipient is a LID JID, normalize to PN to improve deliverability
+    const toNormalized = isLidUser(to) ? jidNormalizedUser(to) : to
+    const id =  isIndividualJid(toNormalized) ? await exists(toNormalized) : toNormalized
     if (id) {
       const { composing, ...restOptions } = options || {}
       if (composing) {

@@ -700,6 +700,22 @@ export class ClientBaileys implements Client {
     } else {
       remoteJid = key.remoteJid
     }
+    // Normalize LID senders to PN where possible to improve downstream delivery/webhook payloads
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const k: any = key
+      if (k?.remoteJid && isLidUser(k.remoteJid)) {
+        // Preserve original LID and expose a PN-normalized variant
+        k.senderLid = k.remoteJid
+        k.senderPn = jidNormalizedUser(k.remoteJid)
+      }
+      if (k?.participant && isLidUser(k.participant)) {
+        k.participantLid = k.participant
+        k.participantPn = jidNormalizedUser(k.participant)
+      }
+    } catch (e) {
+      logger.warn(e, 'Ignore LID normalization error')
+    }
     if (remoteJid) {
       const jid = await this.exists(remoteJid)
       if (jid) {
