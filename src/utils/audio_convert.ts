@@ -61,7 +61,15 @@ async function convertWithCli(inputUrl: string, timeoutMs: number): Promise<{ bu
   if (!res.ok || !res.body) throw new Error(`download failed: ${res.status}`)
   return await new Promise<{ buffer: Buffer; mimetype: string }>((resolve, reject) => {
     const args = ['-y', '-i', 'pipe:0', '-ac', '1', '-vn', '-c:a', 'libopus', '-b:a', '32k', '-f', 'ogg', 'pipe:1']
-    const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    let bin = 'ffmpeg'
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ffstatic = require('ffmpeg-static') as string | undefined
+      if (ffstatic) bin = ffstatic
+    } catch (_) {
+      // ignore; fallback to system ffmpeg in PATH
+    }
+    const proc = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] })
     const chunks: Buffer[] = []
     const onError = (err: unknown) => { try { proc.kill('SIGKILL') } catch {} ; reject(err instanceof Error ? err : new Error(String(err))) }
     proc.on('error', onError)

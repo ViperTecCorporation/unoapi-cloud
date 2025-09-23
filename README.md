@@ -492,7 +492,8 @@ WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version. Format i
 VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, default true
 OPENAI_API_KEY=openai api key to transcribe audio
 SEND_AUDIO_MESSAGE_AS_PTT=false flag outgoing audio messages as PTT (voice note) without forced conversion
-CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus when sending as PTT. Uses native bindings (@mmomtchev/ffmpeg) when available; falls back to system ffmpeg binary otherwise. Defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset.
+CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus when sending as PTT.
+# Backends: tries native bindings (@mmomtchev/ffmpeg) when available; then tries ffmpeg-static; finally system ffmpeg in PATH. Defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset.
 ```
 
 Bucket env to config assets media compatible with S3, this config can't save in redis:

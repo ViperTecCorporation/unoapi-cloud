@@ -110,7 +110,8 @@
     "voice-calls-baileys": "file:vendor/voice-calls-baileys"
   },
   "optionalDependencies": {
-    "@mmomtchev/ffmpeg": "^2.0.1"
+    "@mmomtchev/ffmpeg": "^2.0.1",
+    "ffmpeg-static": "^5.2.0"
   },
   "engines": {
     "node": ">= 24.x"
