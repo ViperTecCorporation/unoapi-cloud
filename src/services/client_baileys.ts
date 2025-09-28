@@ -26,7 +26,7 @@ import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
 import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG } from '../defaults'
-import audioConverter from '../utils/audio_converter'
+import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { SendError } from './send_error'
@@ -475,10 +475,10 @@ export class ClientBaileys implements Client {
               try {
                 const url = content.audio?.url
                 if (url) {
-                  const { buffer, waveform } = await audioConverter(url)
+                  const { buffer, waveform, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
                   content.audio = buffer
                   content.waveform = waveform
-                  content.mimetype = 'audio/ogg; codecs=opus'
+                  content.mimetype = outType || 'audio/ogg; codecs=opus'
                   content.ptt = true
                   logger.debug('Audio converted to OGG/Opus PTT for %s', url)
                 } else {
