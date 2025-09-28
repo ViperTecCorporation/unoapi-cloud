@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -355,8 +355,15 @@ export class ClientBaileys implements Client {
     if (!this.config.ignoreHistoryMessages) {
       logger.info('Config import history messages %', this.phone)
       this.event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
-        logger.info('Importing history messages, is latest %s %s', isLatest, this.phone)
-        this.listener.process(this.phone, messages, 'history')
+        const cutoffSec = Math.floor((Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) / 1000)
+        const filtered = (messages || []).filter((m) => {
+          const ts = Number(m?.messageTimestamp || 0)
+          return Number.isFinite(ts) && ts >= cutoffSec
+        })
+        logger.info('Importing history messages (<= %sd): %d -> %d, isLatest %s %s', HISTORY_MAX_AGE_DAYS, messages?.length || 0, filtered.length, isLatest, this.phone)
+        if (filtered.length) {
+          this.listener.process(this.phone, filtered, 'history')
+        }
       })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

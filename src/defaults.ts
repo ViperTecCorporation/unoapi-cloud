@@ -179,6 +179,10 @@ export const STATUS_ALLOW_LID: boolean = process.env.STATUS_ALLOW_LID === _undef
 export const VALIDATE_SESSION_NUMBER: boolean =
   process.env.VALIDATE_SESSION_NUMBER === _undefined ? false : process.env.VALIDATE_SESSION_NUMBER == 'true'
 
+// Limit for history sync (in days). When history import is enabled, only messages
+// newer than this window are forwarded to processing/webhooks. Default 30 days.
+export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }

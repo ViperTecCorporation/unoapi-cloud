@@ -875,3 +875,19 @@ Notes:
 - When `SEND_AUDIO_MESSAGE_AS_PTT` is true, outgoing audio is flagged as PTT by the transformer.
 - When `CONVERT_AUDIO_MESSAGE_TO_OGG` is true and the message is PTT, the client converts to `audio/ogg; codecs=opus` using the `CONVERT_AUDIO_FFMPEG_PARAMS`.
 - If `SEND_AUDIO_WAVEFORM` is true, a `waveform` array with `AUDIO_WAVEFORM_SAMPLES` points (default 85) is generated and added to the outgoing message content.
+
+### History Sync Window
+
+When history import is enabled, you can limit which historical messages are processed by age (in days). Messages older than the window are ignored, keeping timestamps intact for the ones that pass the filter.
+
+```env
+# enable history import in your runtime config (example)
+IGNORE_HISTORY_MESSAGES=false
+
+# only import messages newer than the last N days (default 30)
+HISTORY_MAX_AGE_DAYS=30
+```
+
+Notes:
+- The filter compares Baileys `messageTimestamp` (seconds) against the cutoff.
+- Messages lacking a valid timestamp are skipped by the filter.
