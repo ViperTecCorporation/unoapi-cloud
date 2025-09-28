@@ -25,8 +25,8 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION, SEND_AUDIO_MESSAGE_AS_PTT, CONVERT_AUDIO_TO_PTT } from '../defaults'
-import { convertToOggPtt } from '../utils/audio_convert'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG } from '../defaults'
+import audioConverter from '../utils/audio_converter'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { SendError } from './send_error'
@@ -471,28 +471,21 @@ export class ClientBaileys implements Client {
               }
             }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
-            // Convert audio to PTT when enabled (respect explicit CONVERT_AUDIO_TO_PTT=false)
-            const SHOULD_CONVERT = (process.env.CONVERT_AUDIO_TO_PTT === undefined)
-              ? SEND_AUDIO_MESSAGE_AS_PTT
-              : CONVERT_AUDIO_TO_PTT
-            if (SHOULD_CONVERT && type === 'audio') {
+            if (CONVERT_AUDIO_MESSAGE_TO_OGG && content.audio && content.ptt) {
               try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const c: any = content
-                const url: string | undefined = c?.audio?.url
-                const mt: string = (c?.mimetype || '').toString()
-                const isMp3 = /audio\/mpeg/i.test(mt) || (typeof url === 'string' && /\.mp3(\?|#|$)/i.test(url))
-                if (url && isMp3) {
-                  const { buffer, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
-                  c.audio = buffer
-                  c.ptt = true
-                  c.mimetype = outType
-                  logger.debug('Audio converted to OGG/Opus PTT for %s (mimetype: %s)', url, outType)
+                const url = content.audio?.url
+                if (url) {
+                  const { buffer, waveform } = await audioConverter(url)
+                  content.audio = buffer
+                  content.waveform = waveform
+                  content.mimetype = 'audio/ogg; codecs=opus'
+                  content.ptt = true
+                  logger.debug('Audio converted to OGG/Opus PTT for %s', url)
                 } else {
-                  logger.debug('Skip audio conversion (not mp3 or missing url). url: %s mimetype: %s', url, mt)
+                  logger.debug('Skip audio conversion (not mp3 or missing url). url: %s', url)
                 }
               } catch (err) {
-                logger.warn(err, 'Ignore error converting audio to ogg; sending original')
+                logger.warn(err, 'Ignore error converting audio to ogg sending original')
               }
             }
           }

@@ -844,3 +844,34 @@ Mail to sales@unoapi.cloud
 - Counting connection retry attempts even when restarting to prevent looping messages
 - Message delete endpoint
 - Send reply message with please to send again, when any error and message enqueue in .dead
+
+### Audio PTT Conversion & Waveform
+
+The audio conversion to OGG/Opus for PTT and waveform generation can be configured via envs. Defaults are tuned for WhatsApp voice messages.
+
+Required to enable conversion:
+
+```env
+SEND_AUDIO_MESSAGE_AS_PTT=true
+CONVERT_AUDIO_MESSAGE_TO_OGG=true
+```
+
+Optional parameters:
+
+```env
+# ffmpeg parameters used for conversion (JSON array)
+CONVERT_AUDIO_FFMPEG_PARAMS=["-vn","-ar","48000","-ac","1","-c:a","libopus","-b:a","64k","-application","voip","-avoid_negative_ts","make_zero","-map_metadata","-1","-f","ogg"]
+
+# enable waveform generation and choose sample resolution (number of bars)
+SEND_AUDIO_WAVEFORM=true
+AUDIO_WAVEFORM_SAMPLES=85
+
+# timeouts (ms)
+WEBHOOK_TIMEOUT_MS=360000
+FETCH_TIMEOUT_MS=360000
+```
+
+Notes:
+- When `SEND_AUDIO_MESSAGE_AS_PTT` is true, outgoing audio is flagged as PTT by the transformer.
+- When `CONVERT_AUDIO_MESSAGE_TO_OGG` is true and the message is PTT, the client converts to `audio/ogg; codecs=opus` using the `CONVERT_AUDIO_FFMPEG_PARAMS`.
+- If `SEND_AUDIO_WAVEFORM` is true, a `waveform` array with `AUDIO_WAVEFORM_SAMPLES` points (default 85) is generated and added to the outgoing message content.
