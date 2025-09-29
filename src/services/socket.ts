@@ -506,13 +506,31 @@ export const connect = async ({
     try {
       if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
         const gm = await dataStore.loadGroupMetada(id, sock!)
-        const participants: string[] = (gm?.participants || [])
+        const raw: string[] = (gm?.participants || [])
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((p: any) => (p?.id || p?.jid || '').toString())
           .filter((v) => !!v)
-        if (participants.length) {
-          await (sock as any).assertSessions(participants, true)
-          logger.debug('Preasserted %s group sessions for %s', participants.length, id)
+        const set = new Set<string>()
+        for (const j of raw) {
+          set.add(j)
+          try {
+            if (isLidUser(j)) {
+              set.add(jidNormalizedUser(j))
+            }
+          } catch {}
+        }
+        // include self identities as well
+        try {
+          const self = state?.creds?.me?.id
+          if (self) {
+            set.add(self)
+            try { set.add(jidNormalizedUser(self)) } catch {}
+          }
+        } catch {}
+        const targets = Array.from(set)
+        if (targets.length) {
+          await (sock as any).assertSessions(targets, true)
+          logger.debug('Preasserted %s sessions for group %s', targets.length, id)
         }
       }
     } catch (e) {
