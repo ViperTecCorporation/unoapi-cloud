@@ -15,6 +15,7 @@ import makeWASocket, {
   fetchLatestWaWebVersion,
   jidNormalizedUser,
   isLidUser,
+  WAMessageAddressingMode,
 } from '@whiskeysockets/baileys'
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
@@ -149,6 +150,8 @@ export const connect = async ({
   const whatsappVersion = config.whatsappVersion
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
+  // Track recent group sends to enable a single fallback retry on ack 421
+  const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
       const phoneCreds = jidToPhoneNumber(state?.creds?.me?.id, '')
@@ -345,7 +348,54 @@ export const connect = async ({
 
   const event = <T extends keyof BaileysEventMap>(event: T, callback: (arg: BaileysEventMap[T]) => void) => {
     logger.info('Subscribe %s event: %s', phone, event)
-    eventsMap.set(event, callback)
+    if (event === 'messages.update') {
+      // Wrap to detect ack 421 and perform a single fallback retry toggling addressingMode
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (updates: any[]) => {
+        try {
+          if (Array.isArray(updates)) {
+            for (const u of updates) {
+              const params = u?.update?.messageStubParameters
+              const key = u?.key
+              if (
+                Array.isArray(params) &&
+                params.includes('421') &&
+                key?.fromMe &&
+                typeof key?.remoteJid === 'string' &&
+                key.remoteJid.endsWith('@g.us')
+              ) {
+                const pending = pendingGroupSends.get(key.id)
+                if (pending && pending.retries < 1) {
+                  let next: 'pn' | 'lid' = pending.attempted.has('lid') ? 'pn' : 'lid'
+                  const opts = { ...(pending.options || {}) }
+                  opts.addressingMode = next === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+                  logger.warn('Retrying group %s message %s with addressingMode %s', pending.to, key.id, next)
+                  try {
+                    const resp = await sock?.sendMessage(pending.to, pending.message, opts)
+                    pendingGroupSends.delete(key.id)
+                    if (resp?.key?.id) {
+                      pending.retries = 1
+                      pending.attempted.add(next)
+                      pending.options = opts
+                      pendingGroupSends.set(resp.key.id, pending)
+                    }
+                  } catch (e) {
+                    logger.warn(e as any, 'Fallback resend failed')
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on messages.update fallback wrapper')
+        }
+        return (callback as any)(updates)
+      }
+      // @ts-expect-error type widen for wrapper
+      eventsMap.set(event, wrapped)
+    } else {
+      eventsMap.set(event, callback)
+    }
   }
 
   const reconnect = async () => {
@@ -453,6 +503,23 @@ export const connect = async ({
     // If recipient is a LID JID, normalize to PN to improve deliverability
     const toNormalized = isLidUser(to) ? jidNormalizedUser(to) : to
     const id =  isIndividualJid(toNormalized) ? await exists(toNormalized) : toNormalized
+    // For group sends, proactively assert sessions for all participants to reduce ack 421
+    try {
+      if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
+        const gm = await dataStore.loadGroupMetada(id, sock!)
+        const participants: string[] = (gm?.participants || [])
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((p: any) => (p?.id || p?.jid || '').toString())
+          .filter((v) => !!v)
+        if (participants.length) {
+          // @ts-expect-error assertSessions is internal but present on WASocket
+          await (sock as any).assertSessions(participants, true)
+          logger.debug('Preasserted %s group sessions for %s', participants.length, id)
+        }
+      }
+    } catch (e) {
+      logger.warn(e, 'Ignore error on preassert group sessions')
+    }
     if (id) {
       const { composing, ...restOptions } = options || {}
       if (composing) {
@@ -517,7 +584,21 @@ export const connect = async ({
         const size = Array.isArray((opts as any).statusJidList) ? (opts as any).statusJidList.length : 'none'
         logger.debug('Status@broadcast without statusJidList (size: %s); skipping relayMessage', size)
       }
-      return sock?.sendMessage(id, message, opts)
+      // general path: send, then track for possible fallback on ack 421
+      const full = await sock?.sendMessage(id, message, opts)
+      try {
+        if (full?.key?.id && typeof id === 'string' && id.endsWith('@g.us')) {
+          let mode: 'pn' | 'lid' | '' = ''
+          try {
+            const m = (opts as any).addressingMode
+            mode = m === WAMessageAddressingMode.LID ? 'lid' : m === WAMessageAddressingMode.PN ? 'pn' : ''
+          } catch {}
+          pendingGroupSends.set(full.key.id, { to: id, message, options: { ...opts }, attempted: new Set([mode]), retries: 0 })
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error tracking pending group send')
+      }
+      return full
     }
     if (!isValidPhoneNumber(to)) {
       throw new SendError(7, t('invalid_phone_number', to))

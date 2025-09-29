@@ -190,6 +190,13 @@ export const GROUP_SEND_MEMBERSHIP_CHECK =
 // Optional: prefer addressing mode when sending to groups. Allowed values: 'pn' | 'lid'.
 // Leave unset to let Baileys decide.
 export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || '').toLowerCase() as 'pn' | 'lid' | ''
+// Pre-assert sessions for all group participants before sending to reduce ack 421
+export const GROUP_SEND_PREASSERT_SESSIONS =
+  process.env.GROUP_SEND_PREASSERT_SESSIONS == _undefined ? true : process.env.GROUP_SEND_PREASSERT_SESSIONS == 'true'
+// Auto-retry once on 421 toggling addressing mode order (comma-separated: e.g., "pn,lid")
+export const GROUP_SEND_RETRY_ON_421 =
+  process.env.GROUP_SEND_RETRY_ON_421 == _undefined ? true : process.env.GROUP_SEND_RETRY_ON_421 == 'true'
+export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER || 'pn,lid')
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
