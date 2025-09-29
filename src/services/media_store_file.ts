@@ -110,17 +110,25 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
           binMessage = persistedBin
         } else {
           // merge missing fields from persisted
-          binMessage.message.mediaKey = binMessage.message.mediaKey || persistedBin?.message?.mediaKey
-          binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin?.message?.fileEncSha256
-          binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin?.message?.fileSha256
-          binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin?.message?.mediaKeyTimestamp
-          binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin?.message?.streamingSidecar
+          if (binMessage?.message && persistedBin?.message) {
+            binMessage.message.mediaKey = binMessage.message.mediaKey || persistedBin.message.mediaKey
+            binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin.message.fileEncSha256
+            binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin.message.fileSha256
+            binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin.message.mediaKeyTimestamp
+            binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin.message.streamingSidecar
+          }
         }
       }
     } catch {}
 
-    if (url.indexOf('base64') >= 0) {
-      const parts = url.split(',')
+    // Ensure we now have a valid message payload to decrypt
+    const mediaUrl = binMessage?.message?.url || url
+    if (!binMessage || !binMessage.message || !mediaUrl) {
+      throw new Error('Missing media context to download media')
+    }
+
+    if (mediaUrl.indexOf('base64') >= 0) {
+      const parts = mediaUrl.split(',')
       const base64 = parts[1]
       buffer = Buffer.from(base64, 'base64')
     } else {
