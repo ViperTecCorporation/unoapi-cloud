@@ -1,4 +1,4 @@
-import { AnyMessageContent, WAMessageContent, WAMessage, isJidNewsletter, isPnUser, isLidUser, proto } from '@whiskeysockets/baileys'
+import { AnyMessageContent, WAMessageContent, WAMessage, isJidNewsletter, isPnUser, isLidUser, proto, jidNormalizedUser } from '@whiskeysockets/baileys'
 import mime from 'mime-types'
 import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
@@ -384,7 +384,7 @@ export const isValidPhoneNumber = (value: string, nine = false): boolean => {
 
 export const extractDestinyPhone = (payload: object, throwError = true) => {
   const data = payload as any
-  const number = data?.to || (
+  let number = data?.to || (
     (
       data?.entry
       && data.entry[0]
@@ -403,6 +403,14 @@ export const extractDestinyPhone = (payload: object, throwError = true) => {
       )
     )
   )
+  // Normalize JIDs (LID/PN) to plain phone when possible
+  try {
+    if (typeof number === 'string' && number.includes('@')) {
+      // Prefer a normalized PN JID, then extract phone if it's an individual user
+      const normalizedJid = jidNormalizedUser(number)
+      number = jidToPhoneNumberIfUser(normalizedJid).replace('+', '')
+    }
+  } catch {}
   if (!number && throwError) {
     throw Error(`error on get phone number from ${JSON.stringify(payload)}`)
   }
