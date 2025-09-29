@@ -83,9 +83,18 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     const binMessage = getBinMessage(waMessage)
     const url = binMessage?.message?.url
 
-    if (typeof binMessage?.message?.mediaKey === 'object') {
-      binMessage.message.mediaKey = Uint8Array.from(Object.values(binMessage?.message?.mediaKey))
-    }
+    // Normalize mediaKey representation to Uint8Array
+    try {
+      const mk = (binMessage as any)?.message?.mediaKey
+      if (mk && !(mk instanceof Uint8Array)) {
+        if (typeof mk === 'string') {
+          (binMessage as any).message.mediaKey = Uint8Array.from(Buffer.from(mk, 'base64'))
+        } else if (typeof mk === 'object') {
+          // handles {0:..,1:..} and other array-like shapes
+          ;(binMessage as any).message.mediaKey = Uint8Array.from(Object.values(mk as any) as number[])
+        }
+      }
+    } catch {}
     
     if (url.indexOf('base64') >= 0) {
       const parts = url.split(',')
@@ -100,12 +109,18 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         await new Promise((resolve) => setTimeout(resolve, 5000))
         if (!binMessage?.messageType) throw new Error('Could not determine messageType for fallback')
         try {
+          const content: any = {
+            mediaKey: binMessage?.message?.mediaKey,
+            directPath: binMessage?.message?.directPath,
+            url: `https://mmg.whatsapp.net${binMessage?.message?.directPath}`,
+            fileEncSha256: binMessage?.message?.fileEncSha256,
+            fileSha256: binMessage?.message?.fileSha256,
+            mediaKeyTimestamp: binMessage?.message?.mediaKeyTimestamp,
+            mimetype: binMessage?.message?.mimetype,
+            streamingSidecar: binMessage?.message?.streamingSidecar,
+          }
           const media = await downloadContentFromMessage(
-            {
-              mediaKey: binMessage?.message?.mediaKey,
-              directPath: binMessage?.message?.directPath,
-              url: `https://mmg.whatsapp.net${binMessage?.message?.directPath}`,
-            },
+            content,
             mapMediaType[binMessage?.messageType],
             {},
           )
