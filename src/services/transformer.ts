@@ -526,7 +526,8 @@ export const jidToPhoneNumber = (value: any, plus = '+', retry = true): string =
     const isValid = isValidPhoneNumber(`+${number}`, true)
     if (!isValid && number.length < 13 && retry) {
       const prefix = number.substring(2, 4)
-      const digits = number.match('.{8}$')[0]
+      const m = number.match(/(\d{8})$/)
+      const digits = m ? m[1] : number.slice(-8)
       const digit = '9'
       const out = `${plus}${country}${prefix}${digit}${digits}`.replace('+', '')
       return jidToPhoneNumber(`${plus}${out}`, plus, false)
