@@ -549,20 +549,17 @@ export class ClientBaileys implements Client {
           } catch (e) {
             logger.warn(e, 'Ignore error applying group addressingMode')
           }
-          // Validate membership before sending to groups (avoid server 421 when not participant)
+          // Soft membership check: warn when not found, but do not block send
           if (to && to.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
             try {
               const gm = await this.fetchGroupMetadata(to)
               const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
-              const isParticipant = !!gm?.participants?.find?.((p: any) => jidNormalizedUser(p?.id || p?.jid) === myId)
+              const participants = gm?.participants || []
+              const isParticipant = participants.length > 0 && !!participants.find?.((p: any) => jidNormalizedUser(p?.id || p?.jid) === myId)
               if (!isParticipant) {
-                logger.warn('Abort send: not a participant of group %s (self: %s)', to, myId)
-                throw new SendError(8, `Not a participant of group ${to}`)
+                logger.warn('Membership not verified for group %s (self: %s) — proceeding to send', to, myId)
               }
             } catch (err) {
-              if (err instanceof SendError) {
-                throw err
-              }
               logger.warn(err, 'Ignore error on group membership check; proceeding to send')
             }
           }
