@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -340,6 +340,15 @@ export class ClientBaileys implements Client {
       }
     })
     this.event('messages.update', async (messages: object[]) => {
+      try {
+        // Detect server ack errors (e.g., 421) for group sends and log context
+        const first = Array.isArray(messages) ? (messages[0] as any) : undefined
+        const stubParams = first?.update?.messageStubParameters
+        const key = first?.key
+        if (stubParams && Array.isArray(stubParams) && stubParams.includes('421') && key?.remoteJid?.endsWith?.('@g.us')) {
+          logger.warn('Server ack 421 for group %s message %s (fromMe: %s)', key?.remoteJid, key?.id, key?.fromMe)
+        }
+      } catch {}
       logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
       return this.listener.process(this.phone, messages, 'update')
     })
@@ -529,6 +538,33 @@ export class ClientBaileys implements Client {
             quoted,
             disappearingMessagesInChat,
             ...options,
+          }
+          // Apply optional addressing mode preference when sending to groups
+          try {
+            if (to && to.endsWith('@g.us') && GROUP_SEND_ADDRESSING_MODE) {
+              const mode = GROUP_SEND_ADDRESSING_MODE === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+              messageOptions.addressingMode = mode
+              logger.debug('Applied group addressingMode %s for %s', GROUP_SEND_ADDRESSING_MODE, to)
+            }
+          } catch (e) {
+            logger.warn(e, 'Ignore error applying group addressingMode')
+          }
+          // Validate membership before sending to groups (avoid server 421 when not participant)
+          if (to && to.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
+            try {
+              const gm = await this.fetchGroupMetadata(to)
+              const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
+              const isParticipant = !!gm?.participants?.find?.((p: any) => jidNormalizedUser(p?.id || p?.jid) === myId)
+              if (!isParticipant) {
+                logger.warn('Abort send: not a participant of group %s (self: %s)', to, myId)
+                throw new SendError(8, `Not a participant of group ${to}`)
+              }
+            } catch (err) {
+              if (err instanceof SendError) {
+                throw err
+              }
+              logger.warn(err, 'Ignore error on group membership check; proceeding to send')
+            }
           }
           if (to === 'status@broadcast') {
             if (typeof messageOptions.broadcast === 'undefined') messageOptions.broadcast = true

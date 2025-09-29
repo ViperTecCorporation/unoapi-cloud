@@ -183,6 +183,14 @@ export const VALIDATE_SESSION_NUMBER: boolean =
 // newer than this window are forwarded to processing/webhooks. Default 30 days.
 export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
 
+// Group sending safeguards
+// Validate membership before sending to a group (recommended)
+export const GROUP_SEND_MEMBERSHIP_CHECK =
+  process.env.GROUP_SEND_MEMBERSHIP_CHECK == _undefined ? true : process.env.GROUP_SEND_MEMBERSHIP_CHECK == 'true'
+// Optional: prefer addressing mode when sending to groups. Allowed values: 'pn' | 'lid'.
+// Leave unset to let Baileys decide.
+export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || '').toLowerCase() as 'pn' | 'lid' | ''
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }
