@@ -891,3 +891,25 @@ HISTORY_MAX_AGE_DAYS=30
 Notes:
 - The filter compares Baileys `messageTimestamp` (seconds) against the cutoff.
 - Messages lacking a valid timestamp are skipped by the filter.
+
+### Group Sending
+
+Improve deliverability and reduce 421 acks when sending to WhatsApp groups.
+
+```env
+# Warn (soft check) when membership cannot be verified; sending still proceeds
+GROUP_SEND_MEMBERSHIP_CHECK=true
+
+# Prefer addressing mode when sending to groups (optional): 'pn' or 'lid'
+# Leave empty to let Baileys decide automatically
+GROUP_SEND_ADDRESSING_MODE=
+
+# Proactively assert E2E sessions for all group participants before sending
+GROUP_SEND_PREASSERT_SESSIONS=true
+```
+
+Notes:
+- Membership check is non-blocking: it only logs a warning if your session is not found in participants.
+- Addressing mode preference is optional; try `lid` or `pn` if you see delivery issues in specific environments.
+- Preasserting sessions helps rotate/fetch keys and reduces server ack 421.
+- Automatic fallback: on a 421 ack for group sends, the system re-sends once toggling addressing mode (no env required).
