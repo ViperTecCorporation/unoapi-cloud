@@ -392,6 +392,41 @@ export const connect = async ({
         return (callback as any)(updates)
       }
       eventsMap.set(event as any, wrapped as any)
+    } else if (event === 'message-receipt.update') {
+      // Proactively assert sessions when we receive retry receipts to reduce Bad MAC during decrypt
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (updates: any[]) => {
+        try {
+          const targets = new Set<string>()
+          if (Array.isArray(updates)) {
+            for (const u of updates) {
+              const type = u?.receipt?.type || u?.type || u?.update?.type
+              const remoteJid: string | undefined = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
+              const participant: string | undefined = u?.key?.participant || u?.participant || u?.attrs?.participant
+              if (type === 'retry') {
+                if (remoteJid && remoteJid.endsWith('@g.us') && participant) {
+                  targets.add(participant)
+                } else if (remoteJid) {
+                  targets.add(remoteJid)
+                }
+              }
+            }
+          }
+          if (targets.size) {
+            try {
+              await (sock as any).assertSessions(Array.from(targets), true)
+              logger.debug('Asserted %s sessions on retry receipt', targets.size)
+            } catch (e) {
+              logger.warn(e as any, 'Ignore error asserting sessions on retry receipt')
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on message-receipt.update wrapper')
+        }
+        return (callback as any)(updates)
+      }
+      // @ts-ignore
+      eventsMap.set(event, wrapped)
     } else {
       eventsMap.set(event, callback)
     }
