@@ -35,7 +35,7 @@ import {
   CLEAN_CONFIG_ON_DISCONNECT,
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
-import { STATUS_ALLOW_LID } from '../defaults'
+import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -391,8 +391,7 @@ export const connect = async ({
         }
         return (callback as any)(updates)
       }
-      // @ts-expect-error type widen for wrapper
-      eventsMap.set(event, wrapped)
+      eventsMap.set(event as any, wrapped as any)
     } else {
       eventsMap.set(event, callback)
     }
@@ -512,7 +511,6 @@ export const connect = async ({
           .map((p: any) => (p?.id || p?.jid || '').toString())
           .filter((v) => !!v)
         if (participants.length) {
-          // @ts-expect-error assertSessions is internal but present on WASocket
           await (sock as any).assertSessions(participants, true)
           logger.debug('Preasserted %s group sessions for %s', participants.length, id)
         }
