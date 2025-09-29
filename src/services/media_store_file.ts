@@ -80,7 +80,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
 
   mediaStore.saveMedia = async (waMessage: WAMessage) => {
     let buffer
-    const binMessage = getBinMessage(waMessage)
+    let binMessage = getBinMessage(waMessage)
     const url = binMessage?.message?.url
 
     // Normalize mediaKey representation to Uint8Array
@@ -96,6 +96,29 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       }
     } catch {}
     
+    // Try to enrich media context from persisted message (may contain full mediaKey/sidecar)
+    try {
+      const ds = await getDataStore(phone, config)
+      const persisted = await ds.loadMessage(waMessage.key.remoteJid!, waMessage.key.id!)
+      if (persisted) {
+        const persistedBin = getBinMessage(persisted)
+        const persistedMk: any = persistedBin?.message?.mediaKey
+        const currentMk: any = binMessage?.message?.mediaKey
+        const persistedLen = persistedMk instanceof Uint8Array ? persistedMk.length : (persistedMk && Object.keys(persistedMk).length) || 0
+        const currentLen = currentMk instanceof Uint8Array ? currentMk.length : (currentMk && Object.keys(currentMk).length) || 0
+        if (persistedLen > currentLen) {
+          binMessage = persistedBin
+        } else {
+          // merge missing fields from persisted
+          binMessage.message.mediaKey = binMessage.message.mediaKey || persistedBin?.message?.mediaKey
+          binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin?.message?.fileEncSha256
+          binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin?.message?.fileSha256
+          binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin?.message?.mediaKeyTimestamp
+          binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin?.message?.streamingSidecar
+        }
+      }
+    } catch {}
+
     if (url.indexOf('base64') >= 0) {
       const parts = url.split(',')
       const base64 = parts[1]
