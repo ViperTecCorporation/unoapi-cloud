@@ -28,6 +28,8 @@ export type Webhook = {
   sendIncomingMessages: boolean
   sendTranscribeAudio: boolean
   addToBlackListOnOutgoingMessageWithTtl: number | undefined
+  // When true, converts inbound interactive (button/list replies) into plain text before delivering to this webhook
+  transformInteractiveToText?: boolean
 }
 
 export type WebhookForward = {
@@ -132,7 +134,8 @@ export const defaultConfig: Config = {
       sendUpdateMessages: true,
       sendIncomingMessages: true,
       sendTranscribeAudio: false,
-      addToBlackListOnOutgoingMessageWithTtl: undefined
+      addToBlackListOnOutgoingMessageWithTtl: undefined,
+      transformInteractiveToText: false
     },
   ],
   webhookForward: {},

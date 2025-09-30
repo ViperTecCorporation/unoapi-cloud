@@ -4,7 +4,7 @@ import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
-import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
+import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT, UNOAPI_INTERACTIVE_BUTTONS_AS_LIST } from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -58,6 +58,7 @@ export const TYPE_MESSAGES_TO_READ = [
   'locationMessage',
   'liveLocationMessage',
   'listResponseMessage',
+  'buttonsResponseMessage',
   'conversation',
   'ptvMessage',
 ]
@@ -213,22 +214,39 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'text':
       response.text = customMessageCharactersFunction(payload.text.body)
       break
-    case 'interactive':
+    case 'interactive': {
+      const i = payload.interactive || {}
+      // Native buttons (Typebot compatible): map to Baileys buttons unless legacy fallback requested
+      if (i.type === 'button' && !UNOAPI_INTERACTIVE_BUTTONS_AS_LIST) {
+        const buttons = (i?.action?.buttons || []).map((button: { reply?: { id?: string; title?: string } }) => {
+          const id = button?.reply?.id || ''
+          const title = customMessageCharactersFunction(button?.reply?.title || '')
+          return { buttonId: id, buttonText: { displayText: title }, type: 1 }
+        })
+        response.text = customMessageCharactersFunction(i?.body?.text || '')
+        if (i?.footer?.text) {
+          response.footer = customMessageCharactersFunction(i.footer.text)
+        }
+        response.buttons = buttons
+        response.headerType = 1
+        break
+      }
+      // Lists: map Cloud API interactive list to Baileys listMessage
       let listMessage = {}
-      if (payload.interactive.header) {
+      if (i.header) {
         listMessage = {
-          title: payload.interactive.header.text,
-          description: payload.interactive.body.text,
-          buttonText: payload.interactive.action.button,
-          footerText: payload.interactive.footer.text,
-          sections: payload.interactive.action.sections.map(
-            (section: { title: string; rows: { title: string; rowId: string; description: string }[] }) => {
+          title: i.header.text,
+          description: customMessageCharactersFunction(i.body?.text || ''),
+          buttonText: i.action?.button || 'Selecione',
+          footerText: i.footer?.text || '',
+          sections: (i.action?.sections || []).map(
+            (section: { title: string; rows: { title: string; rowId?: string; id?: string; description?: string }[] }) => {
               return {
                 title: section.title,
-                rows: section.rows.map((row: { title: string; rowId: string; description: string }) => {
+                rows: (section.rows || []).map((row: { title: string; rowId?: string; id?: string; description?: string }) => {
                   return {
                     title: row.title,
-                    rowId: row.rowId,
+                    rowId: row.rowId || row.id,
                     description: row.description,
                   }
                 }),
@@ -238,19 +256,20 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           listType: 2,
         }
       } else {
+        // Backward‑compat: when interactive without header/buttons is sent, build a single‑section list
         listMessage = {
           title: '',
-          description: payload.interactive.body.text || 'Nenhuma descriçao encontrada',
+          description: customMessageCharactersFunction(i?.body?.text || 'Nenhuma descriçao encontrada'),
           buttonText: 'Selecione',
           footerText: '',
           sections: [
             {
               title: 'Opcões',
-              rows: payload.interactive.action.buttons.map((button: { reply: { title: string; id: string; description: string } }) => {
+              rows: (i?.action?.buttons || []).map((button: { reply: { title: string; id: string; description?: string } }) => {
                 return {
                   title: button.reply.title,
                   rowId: button.reply.id,
-                  description: '',
+                  description: button.reply.description || '',
                 }
               }),
             },
@@ -260,6 +279,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
       response.listMessage = listMessage
       break
+    }
     case 'image':
     case 'audio':
     case 'document':
@@ -891,12 +911,48 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             }
         }
         break
-      case 'listResponseMessage':
-        message.text = {
-          body: payload.message.listResponseMessage.title,
+      case 'listResponseMessage': {
+        // Map Baileys list response to Cloud API interactive.list_reply
+        // Baileys shape generally:
+        // payload.message.listResponseMessage = {
+        //   title: string,
+        //   singleSelectReply: { selectedRowId: string },
+        //   contextInfo: {...}
+        // }
+        const lrm = payload.message.listResponseMessage || {}
+        const selectedId = lrm?.singleSelectReply?.selectedRowId || lrm?.selectedRowId || ''
+        const title = lrm?.title || ''
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'list_reply',
+          list_reply: {
+            id: selectedId,
+            title: title,
+          },
         }
-        message.type = 'text'
         break
+      }
+
+      case 'buttonsResponseMessage': {
+        // Map Baileys button response to Cloud API interactive.button_reply
+        // Baileys shape generally:
+        // payload.message.buttonsResponseMessage = {
+        //   selectedButtonId: string,
+        //   selectedDisplayText: string
+        // }
+        const brm = payload.message.buttonsResponseMessage || {}
+        const selectedId = brm?.selectedButtonId || ''
+        const title = brm?.selectedDisplayText || ''
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button_reply',
+          button_reply: {
+            id: selectedId,
+            title: title,
+          },
+        }
+        break
+      }
 
       case 'statusMentionMessage':
         break

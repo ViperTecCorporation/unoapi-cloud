@@ -61,7 +61,9 @@ export class OutgoingCloudApi implements Outgoing {
       logger.info(`Session phone %s webhook %s configured to not send incoming message for this webhook`, phone, webhook.id)
       return
     }
-    const body = JSON.stringify(message)
+    // Optional per-webhook transform: convert interactive replies into plain text
+    const payload = webhook.transformInteractiveToText ? this.transformInteractiveToText(message) : message
+    const body = JSON.stringify(payload)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
     }
@@ -85,6 +87,37 @@ export class OutgoingCloudApi implements Outgoing {
     logger.debug('Response: %s', response?.status)
     if (!response?.ok) {
       throw await response?.text()
+    }
+  }
+
+  // Convert interactive replies (button/list) to plain text for a specific webhook
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private transformInteractiveToText(message: any) {
+    try {
+      const entry = message?.entry?.[0]
+      const change = entry?.changes?.[0]
+      const value = change?.value
+      const messages = Array.isArray(value?.messages) ? value.messages : []
+      if (!messages.length) return message
+      const newMessages = messages.map((m: any) => {
+        if (m?.type === 'interactive') {
+          const i = m?.interactive || {}
+          if (i?.type === 'button_reply') {
+            const txt = i?.button_reply?.title || ''
+            return { ...m, type: 'text', text: { body: txt } }
+          }
+          if (i?.type === 'list_reply') {
+            const txt = i?.list_reply?.title || ''
+            return { ...m, type: 'text', text: { body: txt } }
+          }
+        }
+        return m
+      })
+      const newMessage = { ...message }
+      newMessage.entry = [{ ...entry, changes: [{ ...change, value: { ...value, messages: newMessages } }] }]
+      return newMessage
+    } catch {
+      return message
     }
   }
 }
