@@ -246,7 +246,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
                 rows: (section.rows || []).map((row: { title: string; rowId?: string; id?: string; description?: string }) => {
                   return {
                     title: row.title,
-                    rowId: row.rowId || row.id,
+                    rowId: row.rowId,
                     description: row.description,
                   }
                 }),
@@ -635,14 +635,15 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         },
         messages,
         contacts: [
-          {
-            profile: {
-              name: profileName,
-              picture: payload.profilePicture,
-            },
-            ...groupMetadata,
-            wa_id: senderPhone.replace('+', '') || senderId,
-          },
+          (() => {
+            const profile: any = { name: profileName }
+            if (payload.profilePicture) profile.picture = payload.profilePicture
+            return {
+              profile,
+              ...groupMetadata,
+              wa_id: senderPhone.replace('+', '') || senderId,
+            }
+          })(),
         ],
         statuses,
         errors,
@@ -912,44 +913,41 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
         break
       case 'listResponseMessage': {
-        // Map Baileys list response to Cloud API interactive.list_reply
-        // Baileys shape generally:
-        // payload.message.listResponseMessage = {
-        //   title: string,
-        //   singleSelectReply: { selectedRowId: string },
-        //   contextInfo: {...}
-        // }
         const lrm = payload.message.listResponseMessage || {}
-        const selectedId = lrm?.singleSelectReply?.selectedRowId || lrm?.selectedRowId || ''
+        const selectedId = lrm?.singleSelectReply?.selectedRowId || ''
         const title = lrm?.title || ''
-        message.type = 'interactive'
-        message.interactive = {
-          type: 'list_reply',
-          list_reply: {
-            id: selectedId,
-            title: title,
-          },
+        if (config?.inboundInteractiveAsInteractive) {
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'list_reply',
+            list_reply: {
+              id: selectedId,
+              title: title,
+            },
+          }
+        } else {
+          message.text = { body: title }
+          message.type = 'text'
         }
         break
       }
 
       case 'buttonsResponseMessage': {
-        // Map Baileys button response to Cloud API interactive.button_reply
-        // Baileys shape generally:
-        // payload.message.buttonsResponseMessage = {
-        //   selectedButtonId: string,
-        //   selectedDisplayText: string
-        // }
         const brm = payload.message.buttonsResponseMessage || {}
         const selectedId = brm?.selectedButtonId || ''
         const title = brm?.selectedDisplayText || ''
-        message.type = 'interactive'
-        message.interactive = {
-          type: 'button_reply',
-          button_reply: {
-            id: selectedId,
-            title: title,
-          },
+        if (config?.inboundInteractiveAsInteractive) {
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'button_reply',
+            button_reply: {
+              id: selectedId,
+              title: title,
+            },
+          }
+        } else {
+          message.text = { body: title }
+          message.type = 'text'
         }
         break
       }

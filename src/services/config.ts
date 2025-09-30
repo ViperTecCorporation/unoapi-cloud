@@ -90,6 +90,9 @@ export type Config = {
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
+  // When true, fromBaileysMessageContent maps interactive replies as Cloud API interactive
+  // When false (default), map to plain text for backward compatibility/tests
+  inboundInteractiveAsInteractive?: boolean
 }
 
 export const defaultConfig: Config = {
@@ -161,6 +164,7 @@ export const defaultConfig: Config = {
   openaiApiKey: undefined,
   openaiApiTranscribeModel: undefined,
   openaiAssistantId: undefined
+  , inboundInteractiveAsInteractive: false
 }
 
 export interface getConfig {
