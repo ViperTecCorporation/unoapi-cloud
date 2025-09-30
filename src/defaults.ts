@@ -34,11 +34,6 @@ export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
 export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '85')
-// Interactive messages behavior
-// When true, outgoing interactive.type=button is sent as a single‑section list (legacy fallback)
-// When false (default), send native quick‑reply buttons
-export const UNOAPI_INTERACTIVE_BUTTONS_AS_LIST: boolean =
-  process.env.UNOAPI_INTERACTIVE_BUTTONS_AS_LIST === _undefined ? false : process.env.UNOAPI_INTERACTIVE_BUTTONS_AS_LIST == 'true'
 
 export const WEBHOOK_FORWARD_PHONE_NUMBER_ID = process.env.WEBHOOK_FORWARD_PHONE_NUMBER_ID || ''
 export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID || ''

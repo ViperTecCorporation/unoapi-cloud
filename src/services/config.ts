@@ -28,8 +28,6 @@ export type Webhook = {
   sendIncomingMessages: boolean
   sendTranscribeAudio: boolean
   addToBlackListOnOutgoingMessageWithTtl: number | undefined
-  // When true, converts inbound interactive (button/list replies) into plain text before delivering to this webhook
-  transformInteractiveToText?: boolean
 }
 
 export type WebhookForward = {
@@ -90,9 +88,6 @@ export type Config = {
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
-  // When true, fromBaileysMessageContent maps interactive replies as Cloud API interactive
-  // When false (default), map to plain text for backward compatibility/tests
-  inboundInteractiveAsInteractive?: boolean
 }
 
 export const defaultConfig: Config = {
@@ -137,8 +132,7 @@ export const defaultConfig: Config = {
       sendUpdateMessages: true,
       sendIncomingMessages: true,
       sendTranscribeAudio: false,
-      addToBlackListOnOutgoingMessageWithTtl: undefined,
-      transformInteractiveToText: false
+      addToBlackListOnOutgoingMessageWithTtl: undefined
     },
   ],
   webhookForward: {},
@@ -164,7 +158,6 @@ export const defaultConfig: Config = {
   openaiApiKey: undefined,
   openaiApiTranscribeModel: undefined,
   openaiAssistantId: undefined
-  , inboundInteractiveAsInteractive: false
 }
 
 export interface getConfig {

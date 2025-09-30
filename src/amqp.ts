@@ -41,7 +41,7 @@ export const queueDelayedName = (queue: string) => `${queue}.delayed`
 
 let amqpChannelModel: ChannelModel | undefined
 let amqpChannel: Channel | undefined
-let amqpConnection: Connection | undefined
+let amqpChannelModel: ChannelModel | undefined
 
 type QueueObject = {
   queueMain: Replies.AssertQueue

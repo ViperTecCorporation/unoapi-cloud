@@ -4,7 +4,7 @@ import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
-import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT, UNOAPI_INTERACTIVE_BUTTONS_AS_LIST } from '../defaults'
+import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -58,7 +58,6 @@ export const TYPE_MESSAGES_TO_READ = [
   'locationMessage',
   'liveLocationMessage',
   'listResponseMessage',
-  'buttonsResponseMessage',
   'conversation',
   'ptvMessage',
 ]
@@ -214,60 +213,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'text':
       response.text = customMessageCharactersFunction(payload.text.body)
       break
-    case 'interactive': {
-      const i = payload.interactive || {}
-      // Native buttons (Typebot compatible): map to Baileys buttons unless legacy fallback requested
-      if (i.type === 'button' && !UNOAPI_INTERACTIVE_BUTTONS_AS_LIST) {
-        const buttons = (i?.action?.buttons || [])
-          .map((button: { id?: string; title?: string; reply?: { id?: string; title?: string } }) => {
-            const id = (button?.reply?.id || button?.id || '').toString()
-            const title = customMessageCharactersFunction((button?.reply?.title || button?.title || '').toString())
-            if (!id || !title) return null
-            return { buttonId: id, buttonText: { displayText: title }, type: 1 }
-          })
-          .filter(Boolean)
-          .slice(0, 3) as any[]
-        response.text = customMessageCharactersFunction(i?.body?.text || '')
-        if (i?.footer?.text) {
-          response.footer = customMessageCharactersFunction(i.footer.text)
-        }
-        if (buttons.length) {
-          response.buttons = buttons
-          response.headerType = 1
-        } else {
-          // fall back to a single-section list if no valid buttons were mapped
-          response.listMessage = {
-            title: '',
-            description: response.text,
-            buttonText: 'Selecione',
-            footerText: response.footer || '',
-            sections: [
-              { title: 'Opções', rows: (i?.action?.buttons || []).map((b: any) => ({
-                title: (b?.reply?.title || b?.title || '').toString(),
-                rowId: (b?.reply?.id || b?.id || '').toString(),
-                description: ''
-              })) } 
-            ],
-            listType: 2
-          }
-          delete (response as any).text
-          delete (response as any).footer
-        }
-        break
-      }
-      // Lists: map Cloud API interactive list to Baileys listMessage
+    case 'interactive':
       let listMessage = {}
-      if (i.header) {
+      if (payload.interactive.header) {
         listMessage = {
-          title: i.header.text,
-          description: customMessageCharactersFunction(i.body?.text || ''),
-          buttonText: i.action?.button || 'Selecione',
-          footerText: i.footer?.text || '',
-          sections: (i.action?.sections || []).map(
-            (section: { title: string; rows: { title: string; rowId?: string; id?: string; description?: string }[] }) => {
+          title: payload.interactive.header.text,
+          description: payload.interactive.body.text,
+          buttonText: payload.interactive.action.button,
+          footerText: payload.interactive.footer.text,
+          sections: payload.interactive.action.sections.map(
+            (section: { title: string; rows: { title: string; rowId: string; description: string }[] }) => {
               return {
                 title: section.title,
-                rows: (section.rows || []).map((row: { title: string; rowId?: string; id?: string; description?: string }) => {
+                rows: section.rows.map((row: { title: string; rowId: string; description: string }) => {
                   return {
                     title: row.title,
                     rowId: row.rowId,
@@ -280,20 +238,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           listType: 2,
         }
       } else {
-        // Backward‑compat: when interactive without header/buttons is sent, build a single‑section list
         listMessage = {
           title: '',
-          description: customMessageCharactersFunction(i?.body?.text || 'Nenhuma descriçao encontrada'),
+          description: payload.interactive.body.text || 'Nenhuma descriçao encontrada',
           buttonText: 'Selecione',
           footerText: '',
           sections: [
             {
               title: 'Opcões',
-              rows: (i?.action?.buttons || []).map((button: { reply: { title: string; id: string; description?: string } }) => {
+              rows: payload.interactive.action.buttons.map((button: { reply: { title: string; id: string; description: string } }) => {
                 return {
                   title: button.reply.title,
                   rowId: button.reply.id,
-                  description: button.reply.description || '',
+                  description: '',
                 }
               }),
             },
@@ -303,7 +260,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
       response.listMessage = listMessage
       break
-    }
     case 'image':
     case 'audio':
     case 'document':
@@ -659,15 +615,14 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         },
         messages,
         contacts: [
-          (() => {
-            const profile: any = { name: profileName }
-            if (payload.profilePicture) profile.picture = payload.profilePicture
-            return {
-              profile,
-              ...groupMetadata,
-              wa_id: senderPhone.replace('+', '') || senderId,
-            }
-          })(),
+          {
+            profile: {
+              name: profileName,
+              picture: payload.profilePicture,
+            },
+            ...groupMetadata,
+            wa_id: senderPhone.replace('+', '') || senderId,
+          },
         ],
         statuses,
         errors,
@@ -936,45 +891,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             }
         }
         break
-      case 'listResponseMessage': {
-        const lrm = payload.message.listResponseMessage || {}
-        const selectedId = lrm?.singleSelectReply?.selectedRowId || ''
-        const title = lrm?.title || ''
-        if (config?.inboundInteractiveAsInteractive) {
-          message.type = 'interactive'
-          message.interactive = {
-            type: 'list_reply',
-            list_reply: {
-              id: selectedId,
-              title: title,
-            },
-          }
-        } else {
-          message.text = { body: title }
-          message.type = 'text'
+      case 'listResponseMessage':
+        message.text = {
+          body: payload.message.listResponseMessage.title,
         }
+        message.type = 'text'
         break
-      }
-
-      case 'buttonsResponseMessage': {
-        const brm = payload.message.buttonsResponseMessage || {}
-        const selectedId = brm?.selectedButtonId || ''
-        const title = brm?.selectedDisplayText || ''
-        if (config?.inboundInteractiveAsInteractive) {
-          message.type = 'interactive'
-          message.interactive = {
-            type: 'button_reply',
-            button_reply: {
-              id: selectedId,
-              title: title,
-            },
-          }
-        } else {
-          message.text = { body: title }
-          message.type = 'text'
-        }
-        break
-      }
 
       case 'statusMentionMessage':
         break

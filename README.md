@@ -52,72 +52,6 @@ http://localhost:9876/v15.0/554931978550/messages \
   } 
 }'
 ```
-
-Interactive buttons (Typebot compatible)
-
-```sh
-curl -i -X POST \
-http://localhost:9876/v15.0/5549988290955/messages \
--H 'Content-Type: application/json' \
--H 'Authorization: 1' \
--d '{
-  "messaging_product": "whatsapp",
-  "to": "5549988290955",
-  "type": "interactive",
-  "interactive": {
-    "type": "button",
-    "body": { "text": "Escolha uma opção:" },
-    "footer": { "text": "Rodapé opcional" },
-    "action": {
-      "buttons": [
-        { "type": "reply", "reply": { "id": "btn_1", "title": "Sim" } },
-        { "type": "reply", "reply": { "id": "btn_2", "title": "Não" } }
-      ]
-    }
-  }
-}'
-```
-
-Interactive list
-
-```sh
-curl -i -X POST \
-http://localhost:9876/v15.0/5549988290955/messages \
--H 'Content-Type: application/json' \
--H 'Authorization: 1' \
--d '{
-  "messaging_product": "whatsapp",
-  "to": "5549988290955",
-  "type": "interactive",
-  "interactive": {
-    "type": "list",
-    "header": { "type": "text", "text": "Escolha" },
-    "body": { "text": "Selecione uma opção" },
-    "footer": { "text": "Rodapé opcional" },
-    "action": {
-      "button": "Ver opções",
-      "sections": [
-        { "title": "Menu", "rows": [
-          { "id": "opt_1", "title": "Opção 1", "description": "Desc 1" },
-          { "id": "opt_2", "title": "Opção 2" }
-        ]}
-      ]
-    }
-  }
-}'
-```
-
-Inbound interactive replies
-- List reply arrives as `messages[0].type = "interactive"` with `interactive.type = "list_reply"` and `list_reply = { id, title }`.
-- Button reply arrives as `messages[0].type = "interactive"` with `interactive.type = "button_reply"` and `button_reply = { id, title }`.
-
-Compatibility flag
-- Set `UNOAPI_INTERACTIVE_BUTTONS_AS_LIST=true` to send interactive buttons as a single-section list (legacy fallback) instead of native quick-reply buttons.
-
-Per‑webhook compatibility (panel setting)
-- Each webhook can optionally convert inbound interactive replies to plain text before delivery.
-- Add/enable the checkbox “Converter mensagens interativas para texto” for the desired webhook.
-- Effect: messages[0].type becomes `text` and `text.body` receives the selected option title. Useful for tools that don’t parse `interactive`.
 To Send a Status
 Requisitos:
 to = 'status@broadcast'
@@ -559,7 +493,6 @@ VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, def
 OPENAI_API_KEY=openai api key to transcribe audio
 SEND_AUDIO_MESSAGE_AS_PTT=false flag outgoing audio messages as PTT (voice note) without forced conversion
 CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus via ffmpeg when sending as PTT; defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset
-UNOAPI_INTERACTIVE_BUTTONS_AS_LIST=false send interactive.type=button as list (legacy fallback)
 ```
 
 Bucket env to config assets media compatible with S3, this config can't save in redis:
