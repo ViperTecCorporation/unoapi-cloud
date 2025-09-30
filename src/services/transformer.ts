@@ -218,17 +218,41 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const i = payload.interactive || {}
       // Native buttons (Typebot compatible): map to Baileys buttons unless legacy fallback requested
       if (i.type === 'button' && !UNOAPI_INTERACTIVE_BUTTONS_AS_LIST) {
-        const buttons = (i?.action?.buttons || []).map((button: { reply?: { id?: string; title?: string } }) => {
-          const id = button?.reply?.id || ''
-          const title = customMessageCharactersFunction(button?.reply?.title || '')
-          return { buttonId: id, buttonText: { displayText: title }, type: 1 }
-        })
+        const buttons = (i?.action?.buttons || [])
+          .map((button: { id?: string; title?: string; reply?: { id?: string; title?: string } }) => {
+            const id = (button?.reply?.id || button?.id || '').toString()
+            const title = customMessageCharactersFunction((button?.reply?.title || button?.title || '').toString())
+            if (!id || !title) return null
+            return { buttonId: id, buttonText: { displayText: title }, type: 1 }
+          })
+          .filter(Boolean)
+          .slice(0, 3) as any[]
         response.text = customMessageCharactersFunction(i?.body?.text || '')
         if (i?.footer?.text) {
           response.footer = customMessageCharactersFunction(i.footer.text)
         }
-        response.buttons = buttons
-        response.headerType = 1
+        if (buttons.length) {
+          response.buttons = buttons
+          response.headerType = 1
+        } else {
+          // fall back to a single-section list if no valid buttons were mapped
+          response.listMessage = {
+            title: '',
+            description: response.text,
+            buttonText: 'Selecione',
+            footerText: response.footer || '',
+            sections: [
+              { title: 'Opções', rows: (i?.action?.buttons || []).map((b: any) => ({
+                title: (b?.reply?.title || b?.title || '').toString(),
+                rowId: (b?.reply?.id || b?.id || '').toString(),
+                description: ''
+              })) } 
+            ],
+            listType: 2
+          }
+          delete (response as any).text
+          delete (response as any).footer
+        }
         break
       }
       // Lists: map Cloud API interactive list to Baileys listMessage
