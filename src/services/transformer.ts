@@ -352,16 +352,31 @@ export const getChatAndNumberAndId = (payload: any): [string, string, string] =>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getNumberAndId = (payload: any): [string, string] => {
   const {
-    key: { remoteJid, senderPn, participantPn, participant, senderLid, participantLid },
+    key: {
+      remoteJid,
+      senderPn,
+      participantPn,
+      participant,
+      senderLid,
+      participantLid,
+      // Baileys >=6.8 alt JIDs
+      remoteJidAlt,
+      participantAlt,
+    } = {},
     participant: participant2,
-    participantPn: participantPn2
-  } = payload
+    participantPn: participantPn2,
+    participantAlt: participantAlt2,
+  } = payload || {}
 
-  const lid = senderLid || participantLid || participant || participant2 || remoteJid
-  const split = lid.split('@')
-  const id = `${split[0].split(':')[0]}@${split[1]}`
-  const pn = participantPn || senderPn || participantPn2 || participant || participant2
-  const phone = pn ? jidToPhoneNumber(pn, '') : id
+  // Normalize base ID (can be PN or LID)
+  const lid = senderLid || participantLid || participant || participant2 || remoteJid || ''
+  const split = `${lid}`.split('@')
+  const id = split.length >= 2 ? `${split[0].split(':')[0]}@${split[1]}` : `${lid}`
+
+  // Prefer a PN JID if any is available (explicit PN fields or alt PN fields)
+  const pnCandidate = participantPn || senderPn || participantPn2 || participant || participant2 || remoteJidAlt || participantAlt || participantAlt2
+  const pnIsValid = pnCandidate && isPnUser(pnCandidate)
+  const phone = pnIsValid ? jidToPhoneNumber(pnCandidate, '') : (participantPn || senderPn ? jidToPhoneNumber(participantPn || senderPn, '') : id)
   return [phone, id]
 }
 
