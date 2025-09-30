@@ -12,8 +12,9 @@ import { autoConnect } from './services/auto_connect'
 import { getConfigByEnv } from './services/config_by_env'
 import { getClientBaileys } from './services/client_baileys'
 import { onNewLoginAlert } from './services/on_new_login_alert'
+import ContactBaileys from './services/contact_baileys'
 import { Broadcast } from './services/broadcast'
-import { isInBlacklistInMemory, addToBlacklistInMemory } from './services/blacklist'
+import { isInBlacklistInMemory, addToBlacklistInMemory, addToBlacklistRedis } from './services/blacklist'
 import { version } from '../package.json'
 
 import logger from './services/logger'
@@ -32,18 +33,19 @@ if (process.env.SENTRY_DSN) {
   })
 }
 
-const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigByEnv, isInBlacklistInMemory)
+const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigByEnv, isInBlacklistInMemory, addToBlacklistRedis)
 
 const broadcast: Broadcast = new Broadcast()
 const listenerBaileys: Listener = new ListenerBaileys(outgoingCloudApi, broadcast, getConfigByEnv)
 const onNewLoginn = onNewLoginAlert(listenerBaileys)
 const incomingBaileys: Incoming = new IncomingBaileys(listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
 const sessionStore: SessionStore = new SessionStoreFile()
+const contact = new ContactBaileys(listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
 
 const reload = new ReloadBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, onNewLoginn)
 const logout = new LogoutBaileys(getClientBaileys, getConfigByEnv, listenerBaileys, onNewLoginn)
 
-const app: App = new App(incomingBaileys, outgoingCloudApi, BASE_URL, getConfigByEnv, sessionStore, onNewLoginn, addToBlacklistInMemory, reload, logout)
+const app: App = new App(incomingBaileys, outgoingCloudApi, BASE_URL, getConfigByEnv, sessionStore, onNewLoginn, addToBlacklistInMemory, reload, logout, undefined, undefined, contact)
 broadcast.setSever(app.socket)
 
 app.server.listen(PORT, '0.0.0.0', async () => {

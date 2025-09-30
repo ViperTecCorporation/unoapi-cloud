@@ -37,6 +37,7 @@ import { Response as ResponseUno } from '../services/response'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
 import logger from '../services/logger'
+import { phoneNumberToJid } from '../services/transformer'
 
 export class MessagesController {
   protected endpoint = 'messages'
@@ -54,9 +55,36 @@ export class MessagesController {
     logger.debug('%s params %s', this.endpoint, JSON.stringify(req.params))
     logger.debug('%s body %s', this.endpoint, JSON.stringify(req.body))
     const { phone } = req.params
-    const payload: object = req.body
+    const payload: any = req.body
     try {
-      const response: ResponseUno = await this.incoming.send(phone, payload, { endpoint: this.endpoint })
+      const options: any = { endpoint: this.endpoint }
+      // Allow passing Baileys options via body (e.g., for Stories/Broadcast)
+      // Accept both top-level and nested under `options`
+      const bodyOptions = (payload && payload.options) || {}
+      const statusJidList = payload.statusJidList || bodyOptions.statusJidList
+      if (Array.isArray(statusJidList)) {
+        // Accept plain numbers or full JIDs; normalize to JIDs
+        options.statusJidList = statusJidList
+          .map((v: unknown) => `${v ?? ''}`.trim())
+          .filter((v: string) => !!v)
+          .map((v: string) => phoneNumberToJid(v))
+      }
+      if (typeof payload.broadcast !== 'undefined') {
+        options.broadcast = payload.broadcast
+      } else if (typeof bodyOptions.broadcast !== 'undefined') {
+        options.broadcast = bodyOptions.broadcast
+      }
+      if (typeof payload.backgroundColor !== 'undefined') {
+        options.backgroundColor = payload.backgroundColor
+      } else if (typeof bodyOptions.backgroundColor !== 'undefined') {
+        options.backgroundColor = bodyOptions.backgroundColor
+      }
+      if (typeof payload.font !== 'undefined') {
+        options.font = payload.font
+      } else if (typeof bodyOptions.font !== 'undefined') {
+        options.font = bodyOptions.font
+      }
+      const response: ResponseUno = await this.incoming.send(phone, payload, options)
       logger.debug('%s response %s', this.endpoint, JSON.stringify(response.ok))
       await res.status(200).json(response.ok)
       if (response.error) {

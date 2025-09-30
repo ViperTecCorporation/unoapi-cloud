@@ -21,7 +21,7 @@ export const blacklistInMemory = (from: string, webhookId: string, to: string) =
 }
 
 export const isInBlacklistInMemory: isInBlacklist = async (from: string, webhookId: string, payload: object) => {
-  const to = extractDestinyPhone(payload)
+  const to = extractDestinyPhone(payload, false)
   const key = blacklistInMemory(from, webhookId, to)
   const cache: string | undefined = DATA.get(key)
   logger.debug('Retrieve destiny phone %s and verify key %s is %s in cache', to, key, cache ? 'present' : 'not present')

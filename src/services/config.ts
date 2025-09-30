@@ -1,6 +1,6 @@
 import { getStore } from './store'
 import { getStoreFile } from './store_file'
-import { WAMessageKey, WAVersion } from 'baileys'
+import { WAMessageKey, WAVersion } from '@whiskeysockets/baileys'
 import { Level } from 'pino'
 
 export const configs: Map<string, Config> = new Map()
@@ -27,6 +27,7 @@ export type Webhook = {
   sendNewsletterMessages: boolean
   sendIncomingMessages: boolean
   sendTranscribeAudio: boolean
+  addToBlackListOnOutgoingMessageWithTtl: number | undefined
 }
 
 export type WebhookForward = {
@@ -84,6 +85,9 @@ export type Config = {
   customMessageCharacters: string[]
   customMessageCharactersFunction: (message: string) => string,
   whatsappVersion: WAVersion | undefined,
+  openaiApiKey: string | undefined
+  openaiApiTranscribeModel: string | undefined
+  openaiAssistantId: string | undefined
 }
 
 export const defaultConfig: Config = {
@@ -128,6 +132,7 @@ export const defaultConfig: Config = {
       sendUpdateMessages: true,
       sendIncomingMessages: true,
       sendTranscribeAudio: false,
+      addToBlackListOnOutgoingMessageWithTtl: undefined
     },
   ],
   webhookForward: {},
@@ -149,7 +154,10 @@ export const defaultConfig: Config = {
   overrideWebhooks: false,
   customMessageCharacters: [],
   customMessageCharactersFunction: (message: string) => message,
-  whatsappVersion: undefined
+  whatsappVersion: undefined,
+  openaiApiKey: undefined,
+  openaiApiTranscribeModel: undefined,
+  openaiAssistantId: undefined
 }
 
 export interface getConfig {

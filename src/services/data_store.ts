@@ -1,4 +1,4 @@
-import { AuthenticationState, GroupMetadata, useMultiFileAuthState, WAMessage, WAMessageKey, WASocket } from 'baileys'
+import { AuthenticationState, GroupMetadata, useMultiFileAuthState, WAMessage, WAMessageKey, WASocket } from '@whiskeysockets/baileys'
 import { Config } from './config'
 
 export const dataStores: Map<string, DataStore> = new Map()
@@ -46,6 +46,7 @@ export type DataStore  = {
   getJid: (phone: string) => Promise<string | undefined>
   loadJid: (phone: string, sock: WASocket) => Promise<string | undefined>
   setJid: (phone: string, jid: string) => Promise<void>
+  setJidIfNotFound: (phone: string, jid: string) => Promise<void>
   setMessage: (jid: string, message: WAMessage) => Promise<void>
   cleanSession: (removeConfig: boolean) => Promise<void>
   loadTemplates(): Promise<object[]>

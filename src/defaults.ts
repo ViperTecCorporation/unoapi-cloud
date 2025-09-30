@@ -1,4 +1,4 @@
-import { fetchLatestWaWebVersion, WAVersion } from 'baileys'
+import { WAVersion } from '@whiskeysockets/baileys'
 import { release } from 'os'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7,6 +7,8 @@ const _undefined: any = undefined
 // security
 export const UNOAPI_AUTH_TOKEN = process.env.UNOAPI_AUTH_TOKEN
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+export const OPENAI_API_ASSISTANT_ID = process.env.OPENAI_API_ASSISTANT_ID
+export const OPENAI_API_TRANSCRIBE_MODEL = process.env.OPENAI_API_TRANSCRIBE_MODEL || 'whisper-1'
 export const UNOAPI_HEADER_NAME = process.env.UNOAPI_HEADER_NAME || 'Authorization'
 
 export const LOG_LEVEL = process.env.LOG_LEVEL || (process.env.NODE_ENV == 'development' ? 'debug' : 'error')
@@ -16,6 +18,22 @@ export const DEFAULT_LOCALE = process.env.DEFAULT_LOCALE || 'en'
 
 export const VALIDATE_MEDIA_LINK_BEFORE_SEND = 
   process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == _undefined ? false : process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == 'true'
+export const SEND_AUDIO_MESSAGE_AS_PTT = 
+  process.env.SEND_AUDIO_MESSAGE_AS_PTT == _undefined ? true : process.env.SEND_AUDIO_MESSAGE_AS_PTT == 'true'
+// Whether to actually convert audio media to OGG/Opus when sending as PTT.
+// Defaults to the same value as SEND_AUDIO_MESSAGE_AS_PTT for backward compatibility.
+export const CONVERT_AUDIO_TO_PTT =
+  process.env.CONVERT_AUDIO_TO_PTT == _undefined ? SEND_AUDIO_MESSAGE_AS_PTT : process.env.CONVERT_AUDIO_TO_PTT == 'true'
+// Align with original behavior: gate conversion explicitly and allow ffmpeg params + waveform
+export const CONVERT_AUDIO_MESSAGE_TO_OGG =
+  process.env.CONVERT_AUDIO_MESSAGE_TO_OGG == _undefined ? true : process.env.CONVERT_AUDIO_MESSAGE_TO_OGG == 'true'
+export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
+  process.env.CONVERT_AUDIO_FFMPEG_PARAMS ||
+    '["-vn","-ar","48000","-ac","1","-c:a","libopus","-b:a","64k","-application","voip","-avoid_negative_ts","make_zero","-map_metadata","-1","-f","ogg"]'
+)
+export const SEND_AUDIO_WAVEFORM =
+  process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
+export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '85')
 
 export const WEBHOOK_FORWARD_PHONE_NUMBER_ID = process.env.WEBHOOK_FORWARD_PHONE_NUMBER_ID || ''
 export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID || ''
@@ -46,6 +64,8 @@ export const WEBHOOK_SEND_UPDATE_MESSAGES =
   process.env.WEBHOOK_SEND_UPDATE_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_UPDATE_MESSAGES == 'true'
 export const WEBHOOK_SEND_NEWSLETTER_MESSAGES =
   process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == 'true'
+export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
+  process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
@@ -60,7 +80,6 @@ export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_R
 // export const MAX_QRCODE_GENERATE = process.env.MAX_QRCODE_GENERATE || 6
 export const DATA_TTL: number = parseInt(process.env.DATA_TTL || `${60 * 60 * 24 * 30}`) // a month
 export const DATA_URL_TTL: number = parseInt(process.env.DATA_URL_TTL || `${60 * 60 * 24 * 3}`) // tree days
-export const DATA_JID_TTL: number = parseInt(process.env.DATA_JID_TTL || `${60 * 60 * 24 * 7}`) // a week
 export const SESSION_TTL: number = parseInt(process.env.SESSION_TTL || '-1')
 export const UNOAPI_X_COUNT_RETRIES: string = process.env.UNOAPI_X_COUNT_RETRIES || 'x-unoapi-count-retries'
 export const UNOAPI_X_MAX_RETRIES: string = process.env.UNOAPI_X_MAX_RETRIES || 'x-unoapi-max-retries'
@@ -154,9 +173,30 @@ export const ONLY_HELLO_TEMPLATE: boolean = process.env.ONLY_HELLO_TEMPLATE === 
 export const DEFAULT_BROWSER = [CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME, release()]
 export const QR_TIMEOUT_MS = parseInt(process.env.QR_TIMEOUT_MS || '60000')
 export const STATUS_FAILED_WEBHOOK_URL = process.env.STATUS_FAILED_WEBHOOK_URL || ''
+// Status broadcast behavior
+export const STATUS_ALLOW_LID: boolean = process.env.STATUS_ALLOW_LID === _undefined ? true : process.env.STATUS_ALLOW_LID == 'true'
 
 export const VALIDATE_SESSION_NUMBER: boolean =
   process.env.VALIDATE_SESSION_NUMBER === _undefined ? false : process.env.VALIDATE_SESSION_NUMBER == 'true'
+
+// Limit for history sync (in days). When history import is enabled, only messages
+// newer than this window are forwarded to processing/webhooks. Default 30 days.
+export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
+
+// Group sending safeguards
+// Validate membership before sending to a group (recommended)
+export const GROUP_SEND_MEMBERSHIP_CHECK =
+  process.env.GROUP_SEND_MEMBERSHIP_CHECK == _undefined ? true : process.env.GROUP_SEND_MEMBERSHIP_CHECK == 'true'
+// Optional: prefer addressing mode when sending to groups. Allowed values: 'pn' | 'lid'.
+// Leave unset to let Baileys decide.
+export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || '').toLowerCase() as 'pn' | 'lid' | ''
+// Pre-assert sessions for all group participants before sending to reduce ack 421
+export const GROUP_SEND_PREASSERT_SESSIONS =
+  process.env.GROUP_SEND_PREASSERT_SESSIONS == _undefined ? true : process.env.GROUP_SEND_PREASSERT_SESSIONS == 'true'
+// Auto-retry once on 421 toggling addressing mode order (comma-separated: e.g., "pn,lid")
+export const GROUP_SEND_RETRY_ON_421 =
+  process.env.GROUP_SEND_RETRY_ON_421 == _undefined ? true : process.env.GROUP_SEND_RETRY_ON_421 == 'true'
+export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER || 'pn,lid')
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {

@@ -52,8 +52,145 @@ http://localhost:9876/v15.0/554931978550/messages \
   } 
 }'
 ```
+To Send a Status
+Requisitos:
+to = 'status@broadcast'
+type is content (ex.: image, video ou text)
+statusJidList = ['5511999999999, ...] with at least 1 JID valid
 
+Image sample
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+--header 'Content-Type: application/json' \
+--header 'Authorization: ••••••' \
+--data-raw '
+{
+"messaging_product": 
+"whatsapp",
+"recipient_type": 
+"individual",
+"to": 
+"status@broadcast",
+"context": 
+{
+"message_id": 
+"8e401d25-89e8-4b9d-aa10-373e2ee1a5555"
+},
+"type": 
+"image",
+"image": 
+{
+"link": 
+"https://r2.vipertec.net/6YLUsdJFWE1SRdTcuGpi.png",
+"caption": 
+"wificam"
+},
+"statusJidList": 
+[
+"5566996269251",
+"5566997195718",
+"5566996222471"
+]
+}
+```
+Video sample
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+--header 'Content-Type: application/json' \
+--header 'Authorization: ••••••' \
+--data-raw '
+{
+"messaging_product": 
+"whatsapp",
+"recipient_type": 
+"individual",
+"to": 
+"status@broadcast",
+"context": 
+{
+"message_id": 
+"8e401d25-89e8-4b9d-aa10-373e2ee1a5555"
+},
+"type": 
+"video",
+"video": 
+{
+"link": 
+"https://r2.vipertec.net/fyHiN0XTnKtnDXbUwX9A.mp4",
+"caption": 
+"AutoMonitoramento"
+},
+"statusJidList": 
+[
+"5566996269251",
+"5566997195718",
+"5566996222471"
+]
+}
+```
+Text sample
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+--header 'Content-Type: application/json' \
+--header 'Authorization: ••••••' \
+--data-raw '
+{
+"messaging_product": 
+"whatsapp",
+"recipient_type": 
+"individual",
+"to": 
+"status@broadcast",
+"context": 
+{
+"message_id": 
+"8e401d25-89e8-4b9d-aa10-373e2ee1a5555"
+},
+"type": "text",
+  "text": {
+    "body": "hello"
+  },
+"statusJidList": 
+[
+"5566996269251",
+"5566997195718",
+"5566996222471"
+],
+"backgroundColor":
+"#000000",
+"font": 
+1
+}
+```
+Note: 
+Your number's WhatsApp status privacy must allow delivery to the provided JIDs.
+If you provide an empty JIDList, the status will not be delivered.
 To send a contact
+![Imagem do WhatsApp de 2025-09-21 à(s) 20 03 33_a199430a](https://github.com/user-attachments/assets/c498de41-b8dc-4368-98b0-737b2fee4735)
+
+New endpoint Preflight  
+
+How to use for diagnostics
+
+Call preflight and check:
+session.online = true (session connected)
+counts.valid == counts.normalized (all counts exist in WhatsApp)
+ready = true (prerequisites met)
+If "ready" is false:
+session.online = false → reconnect the session.
+There are invalid numbers → the number doesn't have WhatsApp (correct or remove from the list).
+Even with ready=true, Status may not appear due to privacy/saved contacts (not something the API can confirm).
+
+```sh
+curl --location 'http://localhost:9876/v15.0/v15.0/5566996222471/preflight/status' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: ••••••' \
+--data '{ "statusJidList": ["5566996269251","5566997195718","5566996222471"] }
+'
+```
 
 ```sh
 curl -i -X POST \
@@ -354,6 +491,8 @@ CONFIG_SESSION_PHONE_NAME=Chrome Browser Name = Chrome | Firefox | Edge | Opera 
 WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version. Format is `[2, 3000, 1019810866]`
 VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, default true
 OPENAI_API_KEY=openai api key to transcribe audio
+SEND_AUDIO_MESSAGE_AS_PTT=false flag outgoing audio messages as PTT (voice note) without forced conversion
+CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus via ffmpeg when sending as PTT; defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset
 ```
 
 Bucket env to config assets media compatible with S3, this config can't save in redis:
@@ -417,6 +556,7 @@ WEBHOOK_FORWARD_TOKEN=the token of whatsapp cloud api, default is empty
 WEBHOOK_FORWARD_VERSION=the version of whatsapp cloud api, default is v17.0
 WEBHOOK_FORWARD_URL=the url of whatsapp cloud api, default is https://graph.facebook.com
 WEBHOOK_FORWARD_TIMEOUT_MS=the timeout for request to whatsapp cloud api, default is 360000
+VALIDATE_MEDIA_LINK_BEFORE_SEND=false validate media link with HEAD before sending media (image, document, video, audio)
 ```
 
 ### Config session with redis
@@ -698,11 +838,78 @@ Mail to sales@unoapi.cloud
 - Send Stories: https://github.com/WhiskeySockets/Baileys#broadcast-lists--stories
 - Filter by specific date on sync history: https://github.com/WhiskeySockets/Baileys?tab=readme-ov-file#receive-full-history
 - Add /health endpoint with test connection with redis, s3 and rabbitmq
-- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/smb_message_echoes?locale=pt_BR format message sending by app\
-- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/history?locale=pt_BR format for sync history 
 
 ## Ready
 - Connect with pairing code: https://github.com/WhiskeySockets/Baileys#starting-socket-with-pairing-code
 - Counting connection retry attempts even when restarting to prevent looping messages
 - Message delete endpoint
 - Send reply message with please to send again, when any error and message enqueue in .dead
+
+### Audio PTT Conversion & Waveform
+
+The audio conversion to OGG/Opus for PTT and waveform generation can be configured via envs. Defaults are tuned for WhatsApp voice messages.
+
+Required to enable conversion:
+
+```env
+SEND_AUDIO_MESSAGE_AS_PTT=true
+CONVERT_AUDIO_MESSAGE_TO_OGG=true
+```
+
+Optional parameters:
+
+```env
+# ffmpeg parameters used for conversion (JSON array)
+CONVERT_AUDIO_FFMPEG_PARAMS=["-vn","-ar","48000","-ac","1","-c:a","libopus","-b:a","64k","-application","voip","-avoid_negative_ts","make_zero","-map_metadata","-1","-f","ogg"]
+
+# enable waveform generation and choose sample resolution (number of bars)
+SEND_AUDIO_WAVEFORM=true
+AUDIO_WAVEFORM_SAMPLES=85
+
+# timeouts (ms)
+WEBHOOK_TIMEOUT_MS=360000
+FETCH_TIMEOUT_MS=360000
+```
+
+Notes:
+- When `SEND_AUDIO_MESSAGE_AS_PTT` is true, outgoing audio is flagged as PTT by the transformer.
+- When `CONVERT_AUDIO_MESSAGE_TO_OGG` is true and the message is PTT, the client converts to `audio/ogg; codecs=opus` using the `CONVERT_AUDIO_FFMPEG_PARAMS`.
+- If `SEND_AUDIO_WAVEFORM` is true, a `waveform` array with `AUDIO_WAVEFORM_SAMPLES` points (default 85) is generated and added to the outgoing message content.
+
+### History Sync Window
+
+When history import is enabled, you can limit which historical messages are processed by age (in days). Messages older than the window are ignored, keeping timestamps intact for the ones that pass the filter.
+
+```env
+# enable history import in your runtime config (example)
+IGNORE_HISTORY_MESSAGES=false
+
+# only import messages newer than the last N days (default 30)
+HISTORY_MAX_AGE_DAYS=30
+```
+
+Notes:
+- The filter compares Baileys `messageTimestamp` (seconds) against the cutoff.
+- Messages lacking a valid timestamp are skipped by the filter.
+
+### Group Sending
+
+Improve deliverability and reduce 421 acks when sending to WhatsApp groups.
+
+```env
+# Warn (soft check) when membership cannot be verified; sending still proceeds
+GROUP_SEND_MEMBERSHIP_CHECK=true
+
+# Prefer addressing mode when sending to groups (optional): 'pn' or 'lid'
+# Leave empty to let Baileys decide automatically
+GROUP_SEND_ADDRESSING_MODE=
+
+# Proactively assert E2E sessions for all group participants before sending
+GROUP_SEND_PREASSERT_SESSIONS=true
+```
+
+Notes:
+- Membership check is non-blocking: it only logs a warning if your session is not found in participants.
+- Addressing mode preference is optional; try `lid` or `pn` if you see delivery issues in specific environments.
+- Preasserting sessions helps rotate/fetch keys and reduces server ack 421.
+- Automatic fallback: on a 421 ack for group sends, the system re-sends once toggling addressing mode (no env required).

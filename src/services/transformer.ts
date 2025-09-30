@@ -1,10 +1,10 @@
-import { AnyMessageContent, WAMessage, isJidNewsletter, isJidUser, isLidUser, normalizeMessageContent, proto } from 'baileys'
+import { AnyMessageContent, WAMessageContent, WAMessage, isJidNewsletter, isPnUser, isLidUser, proto, jidNormalizedUser } from '@whiskeysockets/baileys'
 import mime from 'mime-types'
 import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
-import { MESSAGE_CHECK_WAAPP } from '../defaults'
+import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -133,6 +133,21 @@ export const isSaveMedia = (message: WAMessage) => {
   return messageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(messageType)
 }
 
+export const normalizeMessageContent = (
+  content: WAMessageContent | null | undefined
+): WAMessageContent | undefined => {
+  content =
+    content?.ephemeralMessage?.message?.viewOnceMessage?.message ||
+    content?.ephemeralMessage?.message ||
+    content?.viewOnceMessage?.message ||
+    content?.viewOnceMessageV2Extension?.message ||
+    content?.viewOnceMessageV2?.message ||
+		content?.documentWithCaptionMessage?.message ||
+    content ||
+    undefined;
+  return content;
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getBinMessage = (waMessage: WAMessage): { messageType: string; message: any } | undefined => {
   const message: proto.IMessage | undefined = normalizeMessageContent(waMessage.message)
@@ -148,7 +163,7 @@ export const getNormalizedMessage = (waMessage: WAMessage): WAMessage | undefine
     let { message } = binMessage
     if (message.editedMessage) {
       message = message.protocolMessage?.editedMessage
-    }else if (message.protocolMessage?.editedMessage) {
+    } else if (message.protocolMessage?.editedMessage) {
       message = message.protocolMessage?.editedMessage
     }
     return { key: waMessage.key, message: { [binMessage.messageType]: message } }
@@ -252,7 +267,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const link = payload[type].link
       if (link) {
         let mimetype: string = getMimetype(payload)
-        if (type == 'audio') {
+        if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {
           response.ptt = true
         }
         if (payload[type].filename) {
@@ -308,7 +323,8 @@ export const phoneNumberToJid = (phoneNumber: string) => {
 }
 
 export const isIndividualJid = (jid: string) => {
-  const isIndividual = isJidUser(jid) || jid.indexOf('@') < 0
+  // Treat only PN JIDs (or raw numbers) as individual for phone extraction paths
+  const isIndividual = isPnUser(jid) || jid.indexOf('@') < 0
   logger.debug('jid %s is individual? %s', jid, isIndividual)
   return isIndividual
 }
@@ -324,10 +340,12 @@ export const isIndividualMessage = (payload: any) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getChatAndNumberAndId = (payload: any): [string, string, string] => {
   const { key: { remoteJid } } = payload
+  const split = remoteJid.split('@')
+  const id = `${split[0].split(':')[0]}@${split[1]}`
   if (isIndividualJid(remoteJid)) {
-    return [remoteJid, jidToPhoneNumber(remoteJid), remoteJid]
+    return [id, jidToPhoneNumber(remoteJid, ''), id]
   } else {
-    return [remoteJid, ...getNumberAndId(payload)]
+    return [id, ...getNumberAndId(payload)]
   }
 }
 
@@ -339,10 +357,11 @@ export const getNumberAndId = (payload: any): [string, string] => {
     participantPn: participantPn2
   } = payload
 
-  const value = senderLid || participantLid || participant || participant2 || remoteJid
-  const split = value.split('@')
+  const lid = senderLid || participantLid || participant || participant2 || remoteJid
+  const split = lid.split('@')
   const id = `${split[0].split(':')[0]}@${split[1]}`
-  const phone = jidToPhoneNumber(participantPn || senderPn || participant || participant2 || participantPn2 || remoteJid, '')
+  const pn = participantPn || senderPn || participantPn2 || participant || participant2
+  const phone = pn ? jidToPhoneNumber(pn, '') : id
   return [phone, id]
 }
 
@@ -365,7 +384,7 @@ export const isValidPhoneNumber = (value: string, nine = false): boolean => {
 
 export const extractDestinyPhone = (payload: object, throwError = true) => {
   const data = payload as any
-  const number = data?.to || (
+  let number = data?.to || (
     (
       data?.entry
       && data.entry[0]
@@ -381,13 +400,33 @@ export const extractDestinyPhone = (payload: object, throwError = true) => {
         data.entry[0].changes[0].value.statuses
         && data.entry[0].changes[0].value.statuses[0]
         && data.entry[0].changes[0].value.statuses[0].recipient_id?.replace('+', '')
-      ) || (
-        data.entry[0].changes[0].value.messages
-        && data.entry[0].changes[0].value.messages[0]
-        && data.entry[0].changes[0].value.messages[0].from?.replace('+', '')
       )
     )
   )
+  // Normalize JIDs (LID/PN) to plain phone when possible
+  try {
+    if (typeof number === 'string' && number.includes('@')) {
+      // Prefer a normalized PN JID, then extract phone if it's an individual user
+      const normalizedJid = jidNormalizedUser(number)
+      number = jidToPhoneNumberIfUser(normalizedJid).replace('+', '')
+    }
+  } catch {}
+  if (!number && throwError) {
+    throw Error(`error on get phone number from ${JSON.stringify(payload)}`)
+  }
+  return number
+}
+export const extractFromPhone = (payload: object, throwError = true) => {
+  const data = payload as any
+  const number =
+    data?.entry
+    && data.entry[0]
+    && data.entry[0].changes
+    && data.entry[0].changes[0]
+    && data.entry[0].changes[0].value
+    && data.entry[0].changes[0].value.messages
+    && data.entry[0].changes[0].value.messages[0]
+    && data.entry[0].changes[0].value.messages[0].from?.replace('+', '')
   if (!number && throwError) {
     throw Error(`error on get phone number from ${JSON.stringify(payload)}`)
   }
@@ -422,7 +461,10 @@ export const isNewsletterMessage = (payload: object) => {
 
 export const extractSessionPhone  = (payload: object) => {
   const data = payload as any
-  const session = data.entry[0].changes[0].value.messages
+  const session = data.entry
+                && data.entry[0]
+                && data.entry[0].changes 
+                && data.entry[0].changes[0].value.messages
                 && data.entry[0].changes[0].value.metadata
                 && data.entry[0].changes[0].value.metadata.display_phone_number
 
@@ -430,7 +472,7 @@ export const extractSessionPhone  = (payload: object) => {
 }
 
 export const isOutgoingMessage = (payload: object) => {
-  const from = extractDestinyPhone(payload, false)
+  const from = extractFromPhone(payload, false)
   const session = extractSessionPhone(payload)
   return session && from && session == from
 }
@@ -441,9 +483,7 @@ export const isUpdateMessage = (payload: object) => {
 }
 
 export const isIncomingMessage = (payload: object) => {
-  const from = extractDestinyPhone(payload, false)
-  const session = extractSessionPhone(payload)
-  return session && from && session != from
+  return !isOutgoingMessage(payload)
 }
 
 export const extractTypeMessage = (payload: object) => {
@@ -486,7 +526,8 @@ export const jidToPhoneNumber = (value: any, plus = '+', retry = true): string =
     const isValid = isValidPhoneNumber(`+${number}`, true)
     if (!isValid && number.length < 13 && retry) {
       const prefix = number.substring(2, 4)
-      const digits = number.match('.{8}$')[0]
+      const m = number.match(/(\d{8})$/)
+      const digits = m ? m[1] : number.slice(-8)
       const digit = '9'
       const out = `${plus}${country}${prefix}${digit}${digits}`.replace('+', '')
       return jidToPhoneNumber(`${plus}${out}`, plus, false)
@@ -580,7 +621,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               picture: payload.profilePicture,
             },
             ...groupMetadata,
-            wa_id: jidToPhoneNumber(senderPhone, ''),
+            wa_id: senderPhone.replace('+', '') || senderId,
           },
         ],
         statuses,
@@ -599,7 +640,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const message: any = {
-      from: (fromMe ? phone : senderPhone).replace('+', ''),
+      from: (fromMe ? phone.replace('+', '') : senderPhone.replace('+', '') || senderId),
       id: whatsappMessageId,
     }
     if (payload.messageTimestamp) {
@@ -698,6 +739,28 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           message: binMessage.message,
         }
         return fromBaileysMessageContent(phone, changedPayload, config)
+
+      case 'messageStubType': {
+        const isDecryptStub =
+          (payload as any)?.messageStubType === 2 &&
+          (payload as any)?.messageStubParameters &&
+          (payload as any)?.messageStubParameters[0] &&
+          MESSAGE_STUB_TYPE_ERRORS.includes(
+            String((payload as any).messageStubParameters[0]).toLowerCase(),
+          )
+        // only treat as decrypt failure for incoming messages
+        if (isDecryptStub && !(payload as any)?.key?.fromMe) {
+          // include a user-friendly message in the error payload for later delivery
+          message.text = {
+            body: MESSAGE_CHECK_WAAPP || t('failed_decrypt'),
+          }
+          message.type = 'text'
+          change.value.messages.push(message)
+          throw new DecryptError(data)
+        } else {
+          return [null, senderPhone, senderId]
+        }
+      }
 
       case 'conversation':
       case 'extendedTextMessage':
@@ -864,7 +927,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
-        recipient_id: senderPhone.replace('+', ''),
+        recipient_id: senderPhone.replace('+', '') || senderId,
         status: cloudApiStatus,
       }
       if (payload.messageTimestamp) {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import logger from '../services/logger'
 import path from 'path'
+import { createRequire } from 'module'
 
 class IndexController {
 
@@ -19,8 +20,21 @@ class IndexController {
     logger.debug('socket headers %s', JSON.stringify(req.headers))
     logger.debug('socket params %s', JSON.stringify(req.params))
     logger.debug('socket body %s', JSON.stringify(req.body))
-    res.set('Content-Type', 'text/javascript')
-    return res.sendFile(path.resolve('./node_modules/socket.io-client/dist/socket.io.min.js'))
+    try {
+      // use __filename to support CommonJS output as configured by the build
+      const reqr = createRequire(__filename as unknown as string)
+      const clientPath = reqr.resolve('socket.io-client/dist/socket.io.min.js')
+      res.type('application/javascript')
+      return res.sendFile(clientPath)
+    } catch (e) {
+      logger.error(e, 'Socket.io client not found; redirecting to CDN')
+      return res.redirect(302, 'https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js')
+    }
+  }
+
+  public favicon(_req: Request, res: Response) {
+    // respond with no content to avoid 404 noise if favicon is not present
+    return res.sendStatus(204)
   }
 
   public ping(req: Request, res: Response) {

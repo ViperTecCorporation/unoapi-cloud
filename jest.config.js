@@ -2,11 +2,8 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
-    '^.+\\.(js|jsx)$': 'ts-jest',
+  moduleNameMapper: {
+    '^@whiskeysockets/baileys$': '<rootDir>/test-setup/baileys.mock.ts',
+    '^@whiskeysockets/baileys/lib/Utils/logger$': '<rootDir>/test-setup/baileys-logger.mock.ts',
   },
-  transformIgnorePatterns: [
-    '/node_modules/(?!(baileys|@adiwajshing/keyed-db|pino|pino-pretty)/)',
-  ],
 };

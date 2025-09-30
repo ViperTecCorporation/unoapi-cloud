@@ -1,5 +1,17 @@
-import { ClientBaileys } from '../../src/services/client_baileys'
+jest.mock('../../src/utils/audio_convert', () => ({
+  __esModule: true,
+  convertToOggPtt: jest.fn(async () => ({ buffer: Buffer.from('OGG'), mimetype: 'audio/ogg; codecs=opus' }))
+}))
+jest.mock('../../src/defaults', () => {
+  const actual = jest.requireActual('../../src/defaults')
+  return {
+    __esModule: true,
+    ...actual,
+    SEND_AUDIO_MESSAGE_AS_PTT: true,
+  }
+})
 jest.mock('../../src/services/socket')
+import { ClientBaileys } from '../../src/services/client_baileys'
 import { Client } from '../../src/services/client'
 import { Config, getConfig, defaultConfig } from '../../src/services/config'
 import { Response } from '../../src/services/response'
@@ -18,7 +30,7 @@ import {
   logout,
 } from '../../src/services/socket'
 import { mock, mockFn } from 'jest-mock-extended'
-import { proto } from 'baileys'
+import { proto } from '@whiskeysockets/baileys'
 import { DataStore } from '../../src/services/data_store'
 import { Incoming } from '../../src/services/incoming'
 import { dataStores } from '../../src/services/data_store'
@@ -149,5 +161,23 @@ describe('service client baileys', () => {
   test('call disconnect', async () => {
     await client.disconnect()
     expect(dataStores.size).toBe(0)
+  })
+
+  test('call send with audio mp3 converts to ogg ptt', async () => {
+    const anyMessage: Promise<proto.WebMessageInfo> = mock<Promise<proto.WebMessageInfo>>()
+    const id = `${new Date().getMilliseconds()}`
+    // Intercept send to assert transformed content
+    ;(send as jest.MockedFunction<any>).mockImplementation(async (_to, message, _opts) => {
+      expect(Buffer.isBuffer(message.audio)).toBe(true)
+      expect(message.ptt).toBe(true)
+      expect(message.mimetype).toBe('audio/ogg; codecs=opus')
+      return { key: { id } }
+    })
+    const to = `${new Date().getMilliseconds()}`
+    const payload = { to, type: 'audio', audio: { link: `http://example.com/test.mp3` } }
+    await client.connect(0)
+    const response: Response = await client.send(payload, {})
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(response.ok.messages[0].id).toBe(id)
   })
 })

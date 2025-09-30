@@ -12,7 +12,13 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
     <!-- Socket IO-->
-    <script src="/socket.io.min.js"></script>
+    <script src="/socket.io.min.js" onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js';s.crossOrigin='anonymous';document.head.appendChild(s)})();"></script>
+    <script>
+      // Extra guard in case the browser blocked execution without firing onerror
+      if (typeof window.io === 'undefined') {
+        document.write('<' + 'script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js" crossorigin="anonymous"><' + '/script>')
+      }
+    </script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -254,6 +260,14 @@
                                 <input type="text" class="form-control" id="authToken" name="authToken" placeholder="Auth Token">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
+                                <label for="openaiApiKey" class="form-label">Openai Api Key</label>
+                                <input type="text" class="form-control" id="openaiApiKey" name="openaiApiKey" placeholder="Openai Api Key">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="openaiApiTranscribeModel" class="form-label">Openai Transcribe Model</label>
+                                <input type="text" class="form-control" id="openaiApiTranscribeModel" name="openaiApiTranscribeModel" placeholder="Openai Transcribe Model">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
                                 <label for="wavoipToken" class="form-label">Token Wavoip</label>
                                 <input type="text" class="form-control" id="wavoipToken" name="wavoipToken" placeholder="Token WAVOIP...">
                             </div>
@@ -427,6 +441,10 @@
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendTranscribeAudio">
                                     <span class="slider round"></span>
+                                </label>
+                                <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
+                                <label>
+                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" class="form-control">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
                             </div>
@@ -622,6 +640,10 @@
                             <input type="checkbox" class="webhook-sendTranscribeAudio">
                             <span class="slider round"></span>
                         </label>
+                        <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
+                        <label>
+                            <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" class="form-control">
+                        </label>
                         <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
                     </div>`;
                 $('#webhooksContainer').append(webhookTemplate);
@@ -780,6 +802,8 @@
                 $('#label').val(session.label);
                 $('#authToken').val(session.authToken);
                 $('#wavoipToken').val(session.wavoipToken);
+                $('#openaiApiKey').val(session.openaiApiKey);
+                $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel);
                 $('#rejectCallsWebhook').val(session.rejectCallsWebhook);
                 $('#rejectCalls').val(session.rejectCalls);
                 $('#ignoreGroupMessages').prop('checked', session.ignoreGroupMessages);
@@ -850,6 +874,10 @@
                                     <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
+                                <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
+                                <label>
+                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
+                                </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
                             </div>`;
                         $('#webhooksContainer').append(webhookTemplate);
@@ -867,6 +895,8 @@
                         label: $('#label').val(),
                         authToken: $('#authToken').val(),
                         wavoipToken: $('#wavoipToken').val(),
+                        openaiApiKey: $('#openaiApiKey').val(),
+                        openaiApiTranscribeModel: $('#openaiApiTranscribeModel').val(),
                         rejectCalls: $('#rejectCalls').val(),
                         rejectCallsWebhook: $('#rejectCallsWebhook').val(),
                         ignoreGroupMessages: $('#ignoreGroupMessages').is(':checked'),
@@ -902,6 +932,7 @@
                             sendIncomingMessages: $(this).find('.webhook-sendIncomingMessages').is(':checked'),
                             sendUpdateMessages: $(this).find('.webhook-sendUpdateMessages').is(':checked'),
                             sendTranscribeAudio: $(this).find('.webhook-sendTranscribeAudio').is(':checked'),
+                            addToBlackListOnOutgoingMessageWithTtl: $(this).find('.webhook-addToBlackListOnOutgoingMessageWithTtl').val(),
                         };
                         sessionData.webhooks.push(webhook);
                     });

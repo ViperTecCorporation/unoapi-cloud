@@ -1,4 +1,4 @@
-import { GroupMetadata, WAMessage, proto, delay, isJidGroup, jidNormalizedUser, AnyMessageContent, isLidUser } from 'baileys'
+import { GroupMetadata, WAMessage, proto, delay, isJidGroup, jidNormalizedUser, AnyMessageContent, isLidUser, WAMessageAddressingMode } from '@whiskeysockets/baileys'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import { Listener } from './listener'
 import { Store } from './store'
@@ -25,7 +25,8 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, WHATSAPP_VERSION } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE } from '../defaults'
+import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { SendError } from './send_error'
@@ -339,6 +340,15 @@ export class ClientBaileys implements Client {
       }
     })
     this.event('messages.update', async (messages: object[]) => {
+      try {
+        // Detect server ack errors (e.g., 421) for group sends and log context
+        const first = Array.isArray(messages) ? (messages[0] as any) : undefined
+        const stubParams = first?.update?.messageStubParameters
+        const key = first?.key
+        if (stubParams && Array.isArray(stubParams) && stubParams.includes('421') && key?.remoteJid?.endsWith?.('@g.us')) {
+          logger.warn('Server ack 421 for group %s message %s (fromMe: %s)', key?.remoteJid, key?.id, key?.fromMe)
+        }
+      } catch {}
       logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
       return this.listener.process(this.phone, messages, 'update')
     })
@@ -354,8 +364,15 @@ export class ClientBaileys implements Client {
     if (!this.config.ignoreHistoryMessages) {
       logger.info('Config import history messages %', this.phone)
       this.event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
-        logger.info('Importing history messages, is latest %s %s', isLatest, this.phone)
-        this.listener.process(this.phone, messages, 'history')
+        const cutoffSec = Math.floor((Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) / 1000)
+        const filtered = (messages || []).filter((m) => {
+          const ts = Number(m?.messageTimestamp || 0)
+          return Number.isFinite(ts) && ts >= cutoffSec
+        })
+        logger.info('Importing history messages (<= %sd): %d -> %d, isLatest %s %s', HISTORY_MAX_AGE_DAYS, messages?.length || 0, filtered.length, isLatest, this.phone)
+        if (filtered.length) {
+          this.listener.process(this.phone, filtered, 'history')
+        }
       })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -369,6 +386,7 @@ export class ClientBaileys implements Client {
             await this.sendMessage(from, { text: this.config.rejectCalls }, {});
             logger.info('Rejecting calls %s %s', this.phone, this.config.rejectCalls)
           }
+          
           const messageCallsWebhook = this.config.rejectCallsWebhook || this.config.messageCallsWebhook
           if (messageCallsWebhook) {
             const waMessageKey = {
@@ -469,6 +487,23 @@ export class ClientBaileys implements Client {
               }
             }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+            if (CONVERT_AUDIO_MESSAGE_TO_OGG && content.audio && content.ptt) {
+              try {
+                const url = content.audio?.url
+                if (url) {
+                  const { buffer, waveform, mimetype: outType } = await convertToOggPtt(url, FETCH_TIMEOUT_MS)
+                  content.audio = buffer
+                  content.waveform = waveform
+                  content.mimetype = outType || 'audio/ogg; codecs=opus'
+                  content.ptt = true
+                  logger.debug('Audio converted to OGG/Opus PTT for %s', url)
+                } else {
+                  logger.debug('Skip audio conversion (not mp3 or missing url). url: %s', url)
+                }
+              } catch (err) {
+                logger.warn(err, 'Ignore error converting audio to ogg sending original')
+              }
+            }
           }
           let quoted: WAMessage | undefined = undefined
           let disappearingMessagesInChat: boolean | number = false
@@ -497,6 +532,41 @@ export class ClientBaileys implements Client {
           const toDelay = sockDelays.get(to) || (async (_phone: string, to) => sockDelays.set(to, this.delayBeforeSecondMessage))
           await toDelay(this.phone, to)
           let response
+          // merge base options and ensure status broadcast defaults when applicable
+          const messageOptions: any = {
+            composing: this.config.composingMessage,
+            quoted,
+            disappearingMessagesInChat,
+            ...options,
+          }
+          // Apply optional addressing mode preference when sending to groups
+          try {
+            if (to && to.endsWith('@g.us') && GROUP_SEND_ADDRESSING_MODE) {
+              const mode = GROUP_SEND_ADDRESSING_MODE === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+              messageOptions.addressingMode = mode
+              logger.debug('Applied group addressingMode %s for %s', GROUP_SEND_ADDRESSING_MODE, to)
+            }
+          } catch (e) {
+            logger.warn(e, 'Ignore error applying group addressingMode')
+          }
+          // Soft membership check: warn when not found, but do not block send
+          if (to && to.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
+            try {
+              const gm = await this.fetchGroupMetadata(to)
+              const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
+              const participants = gm?.participants || []
+              const isParticipant = participants.length > 0 && !!participants.find?.((p: any) => jidNormalizedUser(p?.id || p?.jid) === myId)
+              if (!isParticipant) {
+                logger.warn('Membership not verified for group %s (self: %s) — proceeding to send', to, myId)
+              }
+            } catch (err) {
+              logger.warn(err, 'Ignore error on group membership check; proceeding to send')
+            }
+          }
+          if (to === 'status@broadcast') {
+            if (typeof messageOptions.broadcast === 'undefined') messageOptions.broadcast = true
+            if (typeof messageOptions.statusJidList === 'undefined') messageOptions.statusJidList = []
+          }
           if (content?.listMessage) {
             response = await this.sendMessage(
               to,
@@ -511,20 +581,10 @@ export class ClientBaileys implements Client {
                   },
                 },
               },
-              {
-                composing: this.config.composingMessage,
-                quoted,
-                disappearingMessagesInChat,
-                ...options,
-              },
+              messageOptions,
             )
           } else {
-            response = await this.sendMessage(to, content, {
-              composing: this.config.composingMessage,
-              quoted,
-              disappearingMessagesInChat,
-              ...options,
-            })
+            response = await this.sendMessage(to, content, messageOptions)
           }
 
           if (response) {
@@ -649,21 +709,22 @@ export class ClientBaileys implements Client {
         logger.debug(groupMetadata, 'Retrieved group metadata!')
       } else {
         groupMetadata = {
-          owner_country_code: '55',
-          addressingMode: isLidUser(key.remoteJid) ? 'lid' : 'pn',
+          // owner_country_code: '55',
+          addressingMode: isLidUser(key.remoteJid) ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN,
           id: key.remoteJid,
           owner: '',
           subject: key.remoteJid,
           participants: [],
         }
       }
-      message['groupMetadata'] = groupMetadata
+      const gm = groupMetadata!
+      message['groupMetadata'] = gm
       logger.debug(`Retrieving group profile picture...`)
       try {
         const profilePictureGroup = await this.fetchImageUrl(key.remoteJid)
         if (profilePictureGroup) {
           logger.debug(`Retrieved group picture! ${profilePictureGroup}`)
-          groupMetadata['profilePicture'] = profilePictureGroup
+          gm['profilePicture'] = profilePictureGroup
         }
       } catch (error) {
         logger.warn(error)
@@ -671,6 +732,22 @@ export class ClientBaileys implements Client {
       }
     } else {
       remoteJid = key.remoteJid
+    }
+    // Normalize LID senders to PN where possible to improve downstream delivery/webhook payloads
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const k: any = key
+      if (k?.remoteJid && isLidUser(k.remoteJid)) {
+        // Preserve original LID and expose a PN-normalized variant
+        k.senderLid = k.remoteJid
+        k.senderPn = jidNormalizedUser(k.remoteJid)
+      }
+      if (k?.participant && isLidUser(k.participant)) {
+        k.participantLid = k.participant
+        k.participantPn = jidNormalizedUser(k.participant)
+      }
+    } catch (e) {
+      logger.warn(e, 'Ignore LID normalization error')
     }
     if (remoteJid) {
       const jid = await this.exists(remoteJid)
@@ -697,8 +774,8 @@ export class ClientBaileys implements Client {
     const contacts: Contact[] = []
     for (let index = 0; index < numbers.length; index++) {
       const number = numbers[index]
-      const testJid = phoneNumberToJid(number)
-      const realJid = await this.exists(testJid)
+      // Let exists() resolve using the raw number; avoids incorrect digit insertion
+      const realJid = await this.exists(`${number}`.trim())
       contacts.push({
         wa_id: realJid,
         input: number,

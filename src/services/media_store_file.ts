@@ -1,4 +1,4 @@
-import { proto, WAMessage, downloadMediaMessage, Contact } from 'baileys'
+import { proto, WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
 import { getBinMessage, jidToPhoneNumberIfUser, toBuffer } from './transformer'
 import { writeFile } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync, createReadStream } from 'fs'
@@ -40,7 +40,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
 
   mediaStore.saveMediaForwarder = async (message: any) => {
     const filePath = mediaStore.getFilePath(phone, message.id, message[message.type].mime_type)
-    const url = `${config.webhookForward.url}/${config.webhookForward.version}/${ message[message.type].id}`
+    const url = `${config.webhookForward.url}/${config.webhookForward.version}/${message[message.type].id}`
     const { buffer } = await mediaToBuffer(url, config.webhookForward.token!, config.webhookForward?.timeoutMs || 0)
     logger.debug('Saving buffer %s...', filePath)
     await mediaStore.saveMediaBuffer(filePath, buffer)
@@ -69,16 +69,103 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     return `${baseUrl}/v15.0/download/${filePath}`
   }
 
+  const mapMediaType = {
+    imageMessage: 'image',
+    videoMessage: 'video',
+    documentMessage: 'document',
+    stickerMessage: 'sticker',
+    audioMessage: 'audio',
+    ptvMessage: 'video',
+  }
+
   mediaStore.saveMedia = async (waMessage: WAMessage) => {
     let buffer
-    const binMessage = getBinMessage(waMessage)
+    let binMessage = getBinMessage(waMessage)
     const url = binMessage?.message?.url
-    if (url.indexOf('base64') >= 0) {
-      const parts = url.split(',')
+
+    // Normalize mediaKey representation to Uint8Array
+    try {
+      const mk = (binMessage as any)?.message?.mediaKey
+      if (mk && !(mk instanceof Uint8Array)) {
+        if (typeof mk === 'string') {
+          (binMessage as any).message.mediaKey = Uint8Array.from(Buffer.from(mk, 'base64'))
+        } else if (typeof mk === 'object') {
+          // handles {0:..,1:..} and other array-like shapes
+          ;(binMessage as any).message.mediaKey = Uint8Array.from(Object.values(mk as any) as number[])
+        }
+      }
+    } catch {}
+    
+    // Try to enrich media context from persisted message (may contain full mediaKey/sidecar)
+    try {
+      const ds = await getDataStore(phone, config)
+      const persisted = await ds.loadMessage(waMessage.key.remoteJid!, waMessage.key.id!)
+      if (persisted) {
+        const persistedBin = getBinMessage(persisted)
+        const persistedMk: any = persistedBin?.message?.mediaKey
+        const currentMk: any = binMessage?.message?.mediaKey
+        const persistedLen = persistedMk instanceof Uint8Array ? persistedMk.length : (persistedMk && Object.keys(persistedMk).length) || 0
+        const currentLen = currentMk instanceof Uint8Array ? currentMk.length : (currentMk && Object.keys(currentMk).length) || 0
+        if (persistedLen > currentLen) {
+          binMessage = persistedBin
+        } else {
+          // merge missing fields from persisted
+          if (binMessage?.message && persistedBin?.message) {
+            binMessage.message.mediaKey = binMessage.message.mediaKey || persistedBin.message.mediaKey
+            binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin.message.fileEncSha256
+            binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin.message.fileSha256
+            binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin.message.mediaKeyTimestamp
+            binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin.message.streamingSidecar
+          }
+        }
+      }
+    } catch {}
+
+    // Ensure we now have a valid message payload to decrypt
+    const mediaUrl = binMessage?.message?.url || url
+    if (!binMessage || !binMessage.message || !mediaUrl) {
+      throw new Error('Missing media context to download media')
+    }
+
+    if (mediaUrl.indexOf('base64') >= 0) {
+      const parts = mediaUrl.split(',')
       const base64 = parts[1]
       buffer = Buffer.from(base64, 'base64')
     } else {
-      buffer = await downloadMediaMessage(waMessage, 'buffer', {})
+      const toDownloadMessage = { key: waMessage.key, message: { [binMessage?.messageType!]: binMessage?.message }} as WAMessage
+      try {
+        buffer = await downloadMediaMessage(toDownloadMessage, 'buffer', {})
+      } catch (err) {
+        logger.error('Download Media failed, trying to retry in 5 seconds in fallback...')
+        await new Promise((resolve) => setTimeout(resolve, 5000))
+        if (!binMessage?.messageType) throw new Error('Could not determine messageType for fallback')
+        try {
+          const content: any = {
+            mediaKey: binMessage?.message?.mediaKey,
+            directPath: binMessage?.message?.directPath,
+            url: `https://mmg.whatsapp.net${binMessage?.message?.directPath}`,
+            fileEncSha256: binMessage?.message?.fileEncSha256,
+            fileSha256: binMessage?.message?.fileSha256,
+            mediaKeyTimestamp: binMessage?.message?.mediaKeyTimestamp,
+            mimetype: binMessage?.message?.mimetype,
+            streamingSidecar: binMessage?.message?.streamingSidecar,
+          }
+          const media = await downloadContentFromMessage(
+            content,
+            mapMediaType[binMessage?.messageType],
+            {},
+          )
+          const chunks: any[] = []
+          for await (const chunk of media) {
+            chunks.push(chunk)
+          }
+          buffer = Buffer.concat(chunks)
+          logger.info('Download Media fallback with downloadContentFromMessage was successful!')
+        } catch (fallbackErr) {
+          logger.error('Download Media fallback with downloadContentFromMessage also failed!')
+          throw fallbackErr
+        }
+      }
     }
     const filePath = mediaStore.getFilePath(phone, waMessage.key.id!, binMessage?.message?.mimetype)
     logger.debug('Saving buffer %s...', filePath)

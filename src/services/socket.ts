@@ -13,12 +13,14 @@ import makeWASocket, {
   ConnectionState,
   UserFacingSocketConfig,
   fetchLatestWaWebVersion,
-} from 'baileys'
-import MAIN_LOGGER from 'baileys/lib/Utils/logger'
+  jidNormalizedUser,
+  isLidUser,
+  WAMessageAddressingMode,
+} from '@whiskeysockets/baileys'
+import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'
-import NodeCache from 'node-cache'
-import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber } from './transformer'
+import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid } from './transformer'
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -33,6 +35,7 @@ import {
   CLEAN_CONFIG_ON_DISCONNECT,
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
+import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -62,6 +65,7 @@ const EVENTS = [
   'labels.edit',
   'labels.association',
   'offline.preview',
+  'lid-mapping.update',
 ]
 
 export type OnQrCode = (qrCode: string, time: number, limit: number) => Promise<void>
@@ -132,10 +136,22 @@ export const connect = async ({
   config: Partial<Config>
 }) => {
   let sock: WASocket | undefined = undefined
-  const msgRetryCounterCache = new NodeCache()
-  const whatsappVersion = config.whatsappVersion || (await fetchLatestWaWebVersion({})).version
+  const msgRetryCounterCache = (() => {
+    const store = new Map<string, unknown>()
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      get: <T = any>(key: string): T | undefined => store.get(key) as T | undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      set: <T = any>(key: string, value: T) => (store.set(key, value), true as const),
+      del: (key: string) => store.delete(key),
+      flushAll: () => store.clear(),
+    }
+  })()
+  const whatsappVersion = config.whatsappVersion
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
+  // Track recent group sends to enable a single fallback retry on ack 421
+  const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
       const phoneCreds = jidToPhoneNumber(state?.creds?.me?.id, '')
@@ -238,7 +254,7 @@ export const connect = async ({
     await sessionStore.setStatus(phone, 'online')
     logger.info(`${phone} connected`)
     const { version } = await fetchLatestBaileysVersion()
-    const message = t('connected', phone, whatsappVersion.join('.'), version.join('.'), new Date().toUTCString())
+    const message = t('connected', phone, whatsappVersion ? whatsappVersion.join('.') : 'auto', version.join('.'), new Date().toUTCString())
     await onNotification(message, false)
   }
 
@@ -257,7 +273,7 @@ export const connect = async ({
     const { lastDisconnect } = payload
     const statusCode = lastDisconnect?.error?.output?.statusCode
     logger.info(`${phone} disconnected with status: ${statusCode}`)
-    if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(statusCode)) {
+    if ([DisconnectReason.loggedOut, 403].includes(statusCode)) {
       status.attempt = 1
       if (!await sessionStore.isStatusConnecting(phone)) {
         const message = t('removed')
@@ -287,32 +303,133 @@ export const connect = async ({
   }
 
   const getMessage = async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> => {
-    const { remoteJid, id } = key
-    logger.debug('load message for jid %s id %s', remoteJid, id)
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const message = await dataStore.loadMessage(remoteJid!, id!)
+    // Consider new Alt addressing fields introduced with LIDs
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const k: any = key as any
+    let remoteJid = key.remoteJid || k.remoteJidAlt
+    const id = key.id
+    let participant = key.participant || k.participantAlt
+    // handle status@broadcast retries where WA doesn't include remoteJid
+    let jid = remoteJid
+    if (!jid && participant) {
+      logger.debug('Retry without remoteJid; using participant %s for id %s', participant, id)
+      jid = participant
+    }
+    jid = jid || 'status@broadcast'
+    logger.debug('load message for jid %s id %s', jid, id)
+    let message = await dataStore.loadMessage(jid, id!)
+    if (!message && jid !== 'status@broadcast') {
+      logger.debug('Not found under %s; trying status@broadcast for id %s', jid, id)
+      message = await dataStore.loadMessage('status@broadcast', id!)
+      if (message) {
+        logger.debug('Found message id %s under status@broadcast', id)
+      } else {
+        logger.debug('Message id %s not found under %s nor status@broadcast', id, jid)
+      }
+    }
     return message?.message || undefined
   }
 
-  const patchMessageBeforeSending = (msg: proto.IMessage) => {
-    const isProductList = (listMessage: proto.Message.IListMessage | null | undefined) =>
-      listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST
+  // const patchMessageBeforeSending = (msg: proto.IMessage) => {
+  //   const isProductList = (listMessage: proto.Message.IListMessage | null | undefined) =>
+  //     listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST
 
-    if (isProductList(msg.deviceSentMessage?.message?.listMessage) || isProductList(msg.listMessage)) {
-      msg = JSON.parse(JSON.stringify(msg))
-      if (msg.deviceSentMessage?.message?.listMessage) {
-        msg.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT
-      }
-      if (msg.listMessage) {
-        msg.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT
-      }
-    }
-    return msg
-  }
+  //   if (isProductList(msg.deviceSentMessage?.message?.listMessage) || isProductList(msg.listMessage)) {
+  //     msg = JSON.parse(JSON.stringify(msg))
+  //     if (msg.deviceSentMessage?.message?.listMessage) {
+  //       msg.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT
+  //     }
+  //     if (msg.listMessage) {
+  //       msg.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT
+  //     }
+  //   }
+  //   return msg
+  // }
 
   const event = <T extends keyof BaileysEventMap>(event: T, callback: (arg: BaileysEventMap[T]) => void) => {
     logger.info('Subscribe %s event: %s', phone, event)
-    eventsMap.set(event, callback)
+    if (event === 'messages.update') {
+      // Wrap to detect ack 421 and perform a single fallback retry toggling addressingMode
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (updates: any[]) => {
+        try {
+          if (Array.isArray(updates)) {
+            for (const u of updates) {
+              const params = u?.update?.messageStubParameters
+              const key = u?.key
+              if (
+                Array.isArray(params) &&
+                params.includes('421') &&
+                key?.fromMe &&
+                typeof key?.remoteJid === 'string' &&
+                key.remoteJid.endsWith('@g.us')
+              ) {
+                const pending = pendingGroupSends.get(key.id)
+                if (pending && pending.retries < 1) {
+                  let next: 'pn' | 'lid' = pending.attempted.has('lid') ? 'pn' : 'lid'
+                  const opts = { ...(pending.options || {}) }
+                  opts.addressingMode = next === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+                  logger.warn('Retrying group %s message %s with addressingMode %s', pending.to, key.id, next)
+                  try {
+                    const resp = await sock?.sendMessage(pending.to, pending.message, opts)
+                    pendingGroupSends.delete(key.id)
+                    if (resp?.key?.id) {
+                      pending.retries = 1
+                      pending.attempted.add(next)
+                      pending.options = opts
+                      pendingGroupSends.set(resp.key.id, pending)
+                    }
+                  } catch (e) {
+                    logger.warn(e as any, 'Fallback resend failed')
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on messages.update fallback wrapper')
+        }
+        return (callback as any)(updates)
+      }
+      eventsMap.set(event as any, wrapped as any)
+    } else if (event === 'message-receipt.update') {
+      // Proactively assert sessions when we receive retry receipts to reduce Bad MAC during decrypt
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (updates: any[]) => {
+        try {
+          const targets = new Set<string>()
+          if (Array.isArray(updates)) {
+            for (const u of updates) {
+              const type = u?.receipt?.type || u?.type || u?.update?.type
+              const remoteJid: string | undefined = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
+              const participant: string | undefined = u?.key?.participant || u?.participant || u?.attrs?.participant
+              if (type === 'retry') {
+                if (remoteJid && remoteJid.endsWith('@g.us') && participant) {
+                  targets.add(participant)
+                } else if (remoteJid) {
+                  targets.add(remoteJid)
+                }
+              }
+            }
+          }
+          if (targets.size) {
+            try {
+              await (sock as any).assertSessions(Array.from(targets), true)
+              logger.debug('Asserted %s sessions on retry receipt', targets.size)
+            } catch (e) {
+              logger.warn(e as any, 'Ignore error asserting sessions on retry receipt')
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on message-receipt.update wrapper')
+        }
+        return (callback as any)(updates)
+      }
+      // @ts-ignore
+      eventsMap.set(event, wrapped)
+    } else {
+      eventsMap.set(event, callback)
+    }
   }
 
   const reconnect = async () => {
@@ -389,7 +506,6 @@ export const connect = async ({
         throw error
       }
     }
-
     return dataStore.loadJid(localPhone, sock!)
   }
 
@@ -413,12 +529,51 @@ export const connect = async ({
   const send: sendMessage = async (
     to: string,
     message: AnyMessageContent,
-    options: { composing: boolean; quoted: boolean | undefined } = { composing: false, quoted: undefined },
+    // allow passing through any Baileys MiscMessageGenerationOptions plus our custom 'composing'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    options: any = { composing: false },
   ) => {
     await validateStatus()
-    const id =  isIndividualJid(to) ? await exists(to) : to
+    // If recipient is a LID JID, normalize to PN to improve deliverability
+    const toNormalized = isLidUser(to) ? jidNormalizedUser(to) : to
+    const id =  isIndividualJid(toNormalized) ? await exists(toNormalized) : toNormalized
+    // For group sends, proactively assert sessions for all participants to reduce ack 421
+    try {
+      if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
+        const gm = await dataStore.loadGroupMetada(id, sock!)
+        const raw: string[] = (gm?.participants || [])
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((p: any) => (p?.id || p?.jid || '').toString())
+          .filter((v) => !!v)
+        const set = new Set<string>()
+        for (const j of raw) {
+          set.add(j)
+          try {
+            if (isLidUser(j)) {
+              set.add(jidNormalizedUser(j))
+            }
+          } catch {}
+        }
+        // include self identities as well
+        try {
+          const self = state?.creds?.me?.id
+          if (self) {
+            set.add(self)
+            try { set.add(jidNormalizedUser(self)) } catch {}
+          }
+        } catch {}
+        const targets = Array.from(set)
+        if (targets.length) {
+          await (sock as any).assertSessions(targets, true)
+          logger.debug('Preasserted %s sessions for group %s', targets.length, id)
+        }
+      }
+    } catch (e) {
+      logger.warn(e, 'Ignore error on preassert group sessions')
+    }
     if (id) {
-      if (options.composing) {
+      const { composing, ...restOptions } = options || {}
+      if (composing) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const i: any = message
         const time = (i?.text?.length || i?.caption?.length || 1) * Math.floor(Math.random() * 100)
@@ -429,12 +584,72 @@ export const connect = async ({
         await sock?.sendPresenceUpdate('paused', id)
       }
       logger.debug(`${phone} is sending message ==> ${id} ${JSON.stringify(message)}`)
-      const opts = { backgroundColor: '' }
-      if (options.quoted) {
-        opts['quoted'] = options.quoted
-      }
+      const opts = { ...restOptions }
       logger.debug('Send baileys from %s to %s -> %s', phone, id, JSON.stringify(message))
-      return sock?.sendMessage(id, message, opts)
+      // Workaround for Stories/Status: current Baileys sendMessage() does not pass statusJidList to relayMessage
+      if (
+        id === 'status@broadcast' &&
+        Array.isArray((opts as any).statusJidList) &&
+        (opts as any).statusJidList.length > 0
+      ) {
+        // normalize recipients to real JIDs (may convert to LID JIDs)
+        try {
+          const originalList: string[] = (opts as any).statusJidList
+          // Accept plain numbers or full JIDs; resolve via exists on raw input first
+          const normalized = await Promise.all(
+            originalList.map(async (v: string) => (await exists(`${v}`.trim())) || phoneNumberToJid(`${v}`.trim()))
+          )
+          // Optionally keep LID JIDs; otherwise force s.whatsapp.net
+          const finalList = STATUS_ALLOW_LID
+            ? normalized
+            : normalized.map((jid: string) => {
+                if ((jid || '').includes('@lid')) {
+                  const num = jidToPhoneNumber(jid, '')
+                  return phoneNumberToJid(num)
+                }
+                return jid
+              })
+          ;(opts as any).statusJidList = finalList
+          logger.debug('Status@broadcast normalized recipients %s', JSON.stringify(finalList))
+        } catch (e) {
+          logger.warn(e, 'Ignore error normalizing statusJidList')
+        }
+        const full = await sock?.sendMessage(id, message, opts)
+        try {
+          if (full?.message) {
+            const list: string[] = (opts as any).statusJidList || []
+            logger.debug('Relaying status to %s recipients', list.length)
+            await sock?.relayMessage(id, full.message, {
+              messageId: (full.key.id || undefined) as string | undefined,
+              statusJidList: (opts as any).statusJidList,
+            })
+          } else {
+            logger.debug('Status@broadcast send returned no message body to relay (key id: %s)', full?.key?.id)
+          }
+        } catch (error) {
+          logger.warn(error, 'Ignore error on relayMessage for status broadcast')
+        }
+        return full
+      } else if (id === 'status@broadcast') {
+        // No or empty statusJidList provided; relayMessage will be skipped
+        const size = Array.isArray((opts as any).statusJidList) ? (opts as any).statusJidList.length : 'none'
+        logger.debug('Status@broadcast without statusJidList (size: %s); skipping relayMessage', size)
+      }
+      // general path: send, then track for possible fallback on ack 421
+      const full = await sock?.sendMessage(id, message, opts)
+      try {
+        if (full?.key?.id && typeof id === 'string' && id.endsWith('@g.us')) {
+          let mode: 'pn' | 'lid' | '' = ''
+          try {
+            const m = (opts as any).addressingMode
+            mode = m === WAMessageAddressingMode.LID ? 'lid' : m === WAMessageAddressingMode.PN ? 'pn' : ''
+          } catch {}
+          pendingGroupSends.set(full.key.id, { to: id, message, options: { ...opts }, attempted: new Set([mode]), retries: 0 })
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error tracking pending group send')
+      }
+      return full
     }
     if (!isValidPhoneNumber(to)) {
       throw new SendError(7, t('invalid_phone_number', to))
@@ -501,15 +716,17 @@ export const connect = async ({
       auth: state,
       logger: loggerBaileys,
       syncFullHistory: !config.ignoreHistoryMessages,
-      version: whatsappVersion,
       getMessage,
       shouldIgnoreJid: config.shouldIgnoreJid,
       retryRequestDelayMs: config.retryRequestDelayMs,
       msgRetryCounterCache,
-      patchMessageBeforeSending,
+      // patchMessageBeforeSending,
       agent,
       fetchAgent,
       qrTimeout: config.qrTimeoutMs,
+    }
+    if (whatsappVersion) {
+      socketConfig.version = whatsappVersion
     }
     if (config.connectionType == 'pairing_code') {
       socketConfig.printQRInTerminal = false
@@ -568,7 +785,7 @@ export const connect = async ({
       if (config.connectionType == 'pairing_code' && !sock?.authState?.creds?.registered) {
         logger.info(`Requesting pairing code ${phone}`)
         try {
-          await sock.waitForConnectionUpdate(async (update) => !!update.qr)
+          // await sock.waitForConnectionUpdate(async (update) => !!update.qr)
           const onlyNumbers = phone.replace(/[^0-9]/g, '')
           const code = await sock?.requestPairingCode(onlyNumbers)
           const beatyCode = `${code?.match(/.{1,4}/g)?.join('-')}`
@@ -580,7 +797,11 @@ export const connect = async ({
         }
       }
       if (config.wavoipToken) {
-        useVoiceCallsBaileys(config.wavoipToken, sock as any, 'close', true)
+        try {
+          useVoiceCallsBaileys(config.wavoipToken, sock as any, 'close', true)
+        } catch (e) {
+          logger.warn(e, 'Ignore voice-calls-baileys error')
+        }
       }
       return true
     }

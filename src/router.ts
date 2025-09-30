@@ -29,6 +29,7 @@ import { Contact } from './services/contact'
 import { ContactDummy } from './services/contact_dummy'
 import { middlewareNext } from './services/middleware_next'
 import { TimerController } from './controllers/timer_controller'
+import { PreflightController } from './controllers/preflight_controller'
 
 
 export const router = (
@@ -58,6 +59,7 @@ export const router = (
   const webhookController = new WebhookController(outgoing, getConfig)
   const blacklistController = new BlacklistController(addToBlacklist)
   const contactsController = new ContactsController(contact)
+  const preflightController = new PreflightController(getConfig, contact)
   const pairingCodeController = new PairingCodeController(getConfig, incoming)
   const connectController = new ConnectController(reload)
   const timerController = new TimerController()
@@ -75,6 +77,7 @@ export const router = (
   router.get('/', indexController.root)
   router.get('/index.html', indexController.root)
   router.get('/socket.io.min.js', indexController.socket)
+  router.get('/favicon.ico', indexController.favicon)
   router.get('/connect/:phone', connectController.index.bind(connectController))
   router.get('/ping', indexController.ping)
   router.get('/:version/debug_token', indexController.debugToken)
@@ -89,6 +92,7 @@ export const router = (
   router.get('/:version/:phone/message_templates', middleware, templatesController.index.bind(templatesController))
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
+  router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
   router.post('/:version/:phone/marketing_messages', middleware, marketingMessagesController.index.bind(marketingMessagesController))
   router.get('/:version/:phone/:media_id', middleware, mediaController.index.bind(mediaController))
   router.get('/:version/download/:phone/:file', middleware, mediaController.download.bind(mediaController))

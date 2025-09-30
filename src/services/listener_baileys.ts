@@ -3,8 +3,8 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia } from './transformer'
-import { WAMessage, delay } from 'baileys'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber } from './transformer'
+import { WAMessage, delay } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS } from '../defaults'
 import { v1 as uuid } from 'uuid'
@@ -152,7 +152,7 @@ export class ListenerBaileys implements Listener {
       const senderPhone = resp[1]
       const senderId = resp[2]
       const { dataStore } = await config.getStore(phone, config)
-      await dataStore.setJid(senderPhone, senderId)
+      await dataStore.setJidIfNotFound(jidToPhoneNumber(senderPhone, ''), senderId)
     } catch (error) {
       if (error instanceof BindTemplateError) {
         const template = new Template(this.getConfig)
@@ -163,12 +163,31 @@ export class ListenerBaileys implements Listener {
         throw error
       }
     } finally {
-      const state = data?.entry[0]?.changes[0]?.value?.statuses[0] || {}
-      if (state.id) {
-        const status = state.status || 'error'
-        const id = state.id
-        logger.debug(`Set status message %s to %s`, id, status)
-        await store?.dataStore?.setStatus(id, status)
+      const state = data?.entry[0]?.changes[0]?.value?.statuses?.[0] || {}
+      try {
+        if (state?.id && state?.status) {
+          const id = state.id
+          const status = state.status || 'error'
+          // Backfill a missing 'delivered' before 'read' when previous status is not delivered/read
+          if (status === 'read') {
+            const prev = await store?.dataStore?.loadStatus(id)
+            if (prev !== 'delivered' && prev !== 'read') {
+              try {
+                const deliveredPayload = JSON.parse(JSON.stringify(data))
+                deliveredPayload.entry[0].changes[0].value.statuses[0].status = 'delivered'
+                await this.outgoing.send(phone, deliveredPayload)
+                logger.debug('Emitted backfilled delivered before read for %s', id)
+                await store?.dataStore?.setStatus(id, 'delivered')
+              } catch (e) {
+                logger.warn(e as any, 'Ignore error backfilling delivered before read')
+              }
+            }
+          }
+          logger.debug(`Set status message %s to %s`, id, status)
+          await store?.dataStore?.setStatus(id, status)
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error updating status/backfill')
       }
     }
     if (data) {
