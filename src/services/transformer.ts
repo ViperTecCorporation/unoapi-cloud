@@ -763,18 +763,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           MESSAGE_STUB_TYPE_ERRORS.includes(
             String((payload as any).messageStubParameters[0]).toLowerCase(),
           )
-        // only treat as decrypt failure for incoming messages
+        // If decrypt failure for incoming msg: ignore stub and wait for media retry delivery
         if (isDecryptStub && !(payload as any)?.key?.fromMe) {
-          // include a user-friendly message in the error payload for later delivery
-          message.text = {
-            body: MESSAGE_CHECK_WAAPP || t('failed_decrypt'),
-          }
-          message.type = 'text'
-          change.value.messages.push(message)
-          throw new DecryptError(data)
-        } else {
+          logger.debug('Decrypt stub received (will wait for media retry): %s', JSON.stringify(payload?.messageStubParameters))
           return [null, senderPhone, senderId]
         }
+        return [null, senderPhone, senderId]
       }
 
       case 'conversation':
