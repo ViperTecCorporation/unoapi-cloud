@@ -341,6 +341,28 @@ export class ClientBaileys implements Client {
     })
     this.event('messages.update', async (messages: object[]) => {
       try {
+        // Persist partial media updates to the DataStore so decrypt can pick improved keys/paths
+        try {
+          const store = this.store
+          if (store && Array.isArray(messages)) {
+            for (const m of messages as any[]) {
+              const key = m?.key
+              const update = m?.update
+              if (key?.remoteJid && key?.id && update?.message) {
+                try {
+                  const existing = await store.dataStore.loadMessage(key.remoteJid, key.id)
+                  const merged: any = existing ? { ...existing } : { key }
+                  merged.message = { ...(existing?.message || {}), ...(update.message || {}) }
+                  await store.dataStore.setMessage(key.remoteJid, merged)
+                } catch (e) {
+                  logger.warn(e as any, 'Ignore error merging messages.update into store')
+                }
+              }
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error persisting messages.update')
+        }
         // Detect server ack errors (e.g., 421) for group sends and log context
         const first = Array.isArray(messages) ? (messages[0] as any) : undefined
         const stubParams = first?.update?.messageStubParameters
