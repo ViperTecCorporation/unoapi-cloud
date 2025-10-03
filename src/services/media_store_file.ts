@@ -127,27 +127,51 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         const base64 = mediaUrl.split(',')[1]
         return Buffer.from(base64, 'base64')
       }
-      const toDownloadMessage = { key: waMessage.key, message: { [ctx?.messageType!]: ctx?.message }} as WAMessage
-      try {
-        return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
-      } catch (err: any) {
-        await new Promise((resolve) => setTimeout(resolve, 5000))
-        const content: any = {
-          mediaKey: ctx?.message?.mediaKey,
-          directPath: ctx?.message?.directPath,
-          url: `https://mmg.whatsapp.net${ctx?.message?.directPath}`,
-          fileEncSha256: ctx?.message?.fileEncSha256,
-          fileSha256: ctx?.message?.fileSha256,
-          mediaKeyTimestamp: ctx?.message?.mediaKeyTimestamp,
-          mimetype: ctx?.message?.mimetype,
-          streamingSidecar: ctx?.message?.streamingSidecar,
-        }
-        const media = await downloadContentFromMessage(content, mapMediaType[ctx?.messageType], {})
+      const content: any = {
+        mediaKey: ctx?.message?.mediaKey,
+        directPath: ctx?.message?.directPath,
+        url: `https://mmg.whatsapp.net${ctx?.message?.directPath}`,
+        fileEncSha256: ctx?.message?.fileEncSha256,
+        fileSha256: ctx?.message?.fileSha256,
+        mediaKeyTimestamp: ctx?.message?.mediaKeyTimestamp,
+        mimetype: ctx?.message?.mimetype,
+        streamingSidecar: ctx?.message?.streamingSidecar,
+      }
+      // primary: use directPath decrypt stream
+      const downloadViaContent = async (firstBlockIsIV = false) => {
+        const media = await (downloadContentFromMessage as any)(
+          content,
+          mapMediaType[ctx?.messageType],
+          {},
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          firstBlockIsIV
+        )
         const chunks: any[] = []
         for await (const chunk of media) {
           chunks.push(chunk)
         }
         return Buffer.concat(chunks)
+      }
+      try {
+        return await downloadViaContent(false)
+      } catch (err1: any) {
+        const msg1 = `${err1?.message || err1}`.toLowerCase()
+        if (msg1.includes('bad decrypt')) {
+          try {
+            logger.warn('Retry download media toggling firstBlockIsIV = true')
+            return await downloadViaContent(true)
+          } catch (err2: any) {
+            // final fallback: use downloadMediaMessage helper
+            const toDownloadMessage = { key: waMessage.key, message: { [ctx?.messageType!]: ctx?.message }} as WAMessage
+            return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
+          }
+        }
+        // non-decrypt errors: fallback to Baileys helper
+        const toDownloadMessage = { key: waMessage.key, message: { [ctx?.messageType!]: ctx?.message }} as WAMessage
+        return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
       }
     }
     try {
