@@ -89,35 +89,62 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
           if (typeof mk === 'string') {
             ;(m as any).message.mediaKey = Uint8Array.from(Buffer.from(mk, 'base64'))
           } else if (typeof mk === 'object') {
-            ;(m as any).message.mediaKey = Uint8Array.from(Object.values(mk as any) as number[])
+            // handle Node Buffer JSON ({ type: 'Buffer', data: number[] })
+            if ((mk as any)?.type === 'Buffer' && Array.isArray((mk as any)?.data)) {
+              ;(m as any).message.mediaKey = Uint8Array.from(((mk as any).data as number[]))
+            } else {
+              // handles {0:..,1:..} and other array-like shapes
+              const vals = Object.values(mk as any).filter((x) => typeof x === 'number') as number[]
+              if (vals.length) {
+                ;(m as any).message.mediaKey = Uint8Array.from(vals)
+              }
+            }
           }
         }
       } catch {}
     }
     let binMessage = initial
     normalizeMk(binMessage)
-    try {
-      const ds = await getDataStore(phone, config)
-      const persistedM = await ds.loadMessage(waMessage.key.remoteJid!, waMessage.key.id!)
-      if (persistedM) {
-        const persistedBin = getBinMessage(persistedM)
-        normalizeMk(persistedBin)
-        const persistedMk: any = persistedBin?.message?.mediaKey
-        const currentMk: any = binMessage?.message?.mediaKey
-        const len = (v: any) => (v instanceof Uint8Array ? v.length : (v && Object.keys(v).length) || 0)
-        if (len(persistedMk) > len(currentMk)) {
-          binMessage = persistedBin
-        } else if (persistedMk && currentMk && Buffer.compare(Buffer.from(persistedMk), Buffer.from(currentMk)) !== 0) {
-          candidates.push(persistedBin)
+    const ensureBestFromPersisted = async () => {
+      try {
+        const ds = await getDataStore(phone, config)
+        const persistedM = await ds.loadMessage(waMessage.key.remoteJid!, waMessage.key.id!)
+        if (persistedM) {
+          const persistedBin = getBinMessage(persistedM)
+          normalizeMk(persistedBin)
+          const persistedMk: any = persistedBin?.message?.mediaKey
+          const currentMk: any = binMessage?.message?.mediaKey
+          const len = (v: any) => (v instanceof Uint8Array ? v.length : ((v?.type === 'Buffer' && Array.isArray(v?.data)) ? v.data.length : (v && Object.keys(v).length) || 0))
+          if (len(persistedMk) > len(currentMk)) {
+            binMessage = persistedBin
+          } else if (persistedMk && currentMk) {
+            try {
+              const a = persistedMk instanceof Uint8Array ? persistedMk : Uint8Array.from((persistedMk?.data || Object.values(persistedMk || {})) as number[])
+              const b = currentMk instanceof Uint8Array ? currentMk : Uint8Array.from((currentMk?.data || Object.values(currentMk || {})) as number[])
+              if (a && b && Buffer.compare(Buffer.from(a), Buffer.from(b)) !== 0) {
+                candidates.push(persistedBin)
+              }
+            } catch {}
+          }
+          if (binMessage?.message && persistedBin?.message) {
+            binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin.message.fileEncSha256
+            binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin.message.fileSha256
+            binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin.message.mediaKeyTimestamp
+            binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin.message.streamingSidecar
+          }
         }
-        if (binMessage?.message && persistedBin?.message) {
-          binMessage.message.fileEncSha256 = binMessage.message.fileEncSha256 || persistedBin.message.fileEncSha256
-          binMessage.message.fileSha256 = binMessage.message.fileSha256 || persistedBin.message.fileSha256
-          binMessage.message.mediaKeyTimestamp = binMessage.message.mediaKeyTimestamp || persistedBin.message.mediaKeyTimestamp
-          binMessage.message.streamingSidecar = binMessage.message.streamingSidecar || persistedBin.message.streamingSidecar
-        }
-      }
-    } catch {}
+      } catch {}
+    }
+    await ensureBestFromPersisted()
+
+    // If mediaKey is missing/too short, wait briefly for media-retry to update store
+    const keyLen = (mk: any) => (mk instanceof Uint8Array ? mk.length : ((mk?.type === 'Buffer' && Array.isArray(mk?.data)) ? mk.data.length : (mk && Object.keys(mk).length) || 0))
+    let attempts = 0
+    while ((keyLen(binMessage?.message?.mediaKey) < 32) && attempts < 6) {
+      await new Promise((r) => setTimeout(r, 1000))
+      await ensureBestFromPersisted()
+      attempts++
+    }
     const tryDownload = async (ctx: any) => {
       const mediaUrl = ctx?.message?.url || initial?.message?.url
       if (!ctx || !ctx.message || !mediaUrl) {
