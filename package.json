@@ -104,6 +104,7 @@
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5",
     "socks-proxy-agent": "^8.0.3",
+    "undici": "^6.19.8",
     "uuid": "^9.0.1",
     "vcf": "^2.1.2",
     "xlsx": "^0.18.5",

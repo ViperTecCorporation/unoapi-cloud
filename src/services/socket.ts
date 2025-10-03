@@ -24,7 +24,6 @@ import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { HttpsProxyAgent } from 'https-proxy-agent'
 import { useVoiceCallsBaileys } from 'voice-calls-baileys/lib/services/transport.model'
 import { 
   DEFAULT_BROWSER,
@@ -737,8 +736,8 @@ export const connect = async ({
     if (config.proxyUrl) {
       agent = new SocksProxyAgent(config.proxyUrl)
       try {
-        const undici = await import('undici')
-        // @ts-expect-error use undici ProxyAgent as dispatcher for fetch
+        const undici: any = await import('undici')
+        // @ts-ignore - ProxyAgent typing depends on undici version
         fetchAgent = new undici.ProxyAgent(config.proxyUrl)
       } catch (e) {
         logger.warn(e as any, 'Proxy configured but undici ProxyAgent not available; fetch uploads will not use proxy')
