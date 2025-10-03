@@ -9,7 +9,7 @@ WORKDIR /app
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
-RUN corepack enable && yarn install --frozen-lockfile
+RUN corepack enable && yarn install --no-progress
 
 COPY ./src ./src
 COPY ./public ./public

@@ -13,4 +13,4 @@ COPY ./tsconfig.json ./tsconfig.json
 COPY ./nodemon.json ./nodemon.json
 COPY ./yarn.lock ./yarn.lock
 
-RUN corepack enable && yarn install --frozen-lockfile
+RUN corepack enable && yarn install --no-progress
