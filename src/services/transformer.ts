@@ -380,28 +380,32 @@ export const getNumberAndId = (payload: any): [string, string] => {
   if (pnIsValid) {
     phone = jidToPhoneNumber(pnCandidate, '')
   } else {
-    // Try map from group metadata participants (if present): find PN by LID
-    try {
-      const participants: any[] = (payload?.groupMetadata?.participants || []) as any[]
-      if (participants?.length) {
-        const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
-        const found = participants.find((p: any) => (p?.lid || '').toString() === (lidCandidate || '').toString())
-        const pnFromGroup = found?.id || found?.jid
-        if (pnFromGroup && isPnUser(pnFromGroup)) {
-          phone = jidToPhoneNumber(pnFromGroup, '')
-        }
-      }
-    } catch {}
-    // Try derive PN from any LID candidate
-    const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
-    try {
-      if (lidCandidate && isLidUser(lidCandidate)) {
-        phone = jidToPhoneNumber(jidNormalizedUser(lidCandidate), '')
-      }
-    } catch {}
-    // Fallback to explicit PN fields if present
-    if (!phone && (participantPn || senderPn)) {
+    // Prefer explicit PN fields first
+    if (participantPn || senderPn) {
       phone = jidToPhoneNumber(participantPn || senderPn, '')
+    }
+    // Then try map from group metadata participants (if present): find PN by LID
+    if (!phone) {
+      try {
+        const participants: any[] = (payload?.groupMetadata?.participants || []) as any[]
+        if (participants?.length) {
+          const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
+          const found = participants.find((p: any) => (p?.lid || '').toString() === (lidCandidate || '').toString())
+          const pnFromGroup = found?.id || found?.jid
+          if (pnFromGroup && isPnUser(pnFromGroup)) {
+            phone = jidToPhoneNumber(pnFromGroup, '')
+          }
+        }
+      } catch {}
+    }
+    // Then derive PN from any LID candidate
+    if (!phone) {
+      const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
+      try {
+        if (lidCandidate && isLidUser(lidCandidate)) {
+          phone = jidToPhoneNumber(jidNormalizedUser(lidCandidate), '')
+        }
+      } catch {}
     }
     // Last resort: normalize the base id (may be LID) and extract PN
     if (!phone) {
