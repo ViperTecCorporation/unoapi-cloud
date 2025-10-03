@@ -736,7 +736,13 @@ export const connect = async ({
     let fetchAgent
     if (config.proxyUrl) {
       agent = new SocksProxyAgent(config.proxyUrl)
-      fetchAgent = new HttpsProxyAgent(config.proxyUrl)
+      try {
+        const undici = await import('undici')
+        // @ts-expect-error use undici ProxyAgent as dispatcher for fetch
+        fetchAgent = new undici.ProxyAgent(config.proxyUrl)
+      } catch (e) {
+        logger.warn(e as any, 'Proxy configured but undici ProxyAgent not available; fetch uploads will not use proxy')
+      }
     }
     const socketConfig: UserFacingSocketConfig = {
       auth: state,

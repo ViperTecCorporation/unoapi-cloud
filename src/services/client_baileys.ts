@@ -539,12 +539,13 @@ export class ClientBaileys implements Client {
             disappearingMessagesInChat,
             ...options,
           }
-          // Apply optional addressing mode preference when sending to groups
+          // Apply addressing mode for groups (default to PN if not specified)
           try {
-            if (to && to.endsWith('@g.us') && GROUP_SEND_ADDRESSING_MODE) {
-              const mode = GROUP_SEND_ADDRESSING_MODE === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+            if (to && to.endsWith('@g.us')) {
+              const preferred = (GROUP_SEND_ADDRESSING_MODE || 'pn')
+              const mode = preferred === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
               messageOptions.addressingMode = mode
-              logger.debug('Applied group addressingMode %s for %s', GROUP_SEND_ADDRESSING_MODE, to)
+              logger.debug('Applied group addressingMode %s for %s', preferred, to)
             }
           } catch (e) {
             logger.warn(e, 'Ignore error applying group addressingMode')
