@@ -1,22 +1,22 @@
-FROM node:24-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 
 ENV NODE_ENV=development
-
-RUN apk --update --no-cache add git
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-ADD ./package.json ./package.json
-ADD ./yarn.lock ./yarn.lock
-ADD ./vendor ./vendor
-RUN yarn
+COPY ./package.json ./package.json
+COPY ./yarn.lock ./yarn.lock
+COPY ./vendor ./vendor
+RUN corepack enable && yarn install --frozen-lockfile
 
-ADD ./src ./src
-ADD ./public ./public
-ADD ./tsconfig.json ./tsconfig.json
+COPY ./src ./src
+COPY ./public ./public
+COPY ./tsconfig.json ./tsconfig.json
 RUN yarn build
 
-FROM node:24-alpine
+FROM node:24-bookworm-slim
 
 LABEL \
   maintainer="Clairton Rodrigo Heinzen <clairton.rodrigo@gmail.com>" \
@@ -29,7 +29,7 @@ LABEL \
 
 ENV NODE_ENV=production
  
-RUN addgroup -S u && adduser -S u -G u
+RUN groupadd -r u && useradd -r -g u u
 WORKDIR /home/u/app
 
 COPY --from=builder /app/dist ./dist
@@ -37,10 +37,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/yarn.lock ./yarn.lock
 COPY --from=builder /app/vendor ./vendor
+COPY --from=builder /app/node_modules ./node_modules
 
 
-RUN apk --update --no-cache add git ffmpeg
-RUN yarn
-RUN apk del git
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-ENTRYPOINT yarn start
+ENTRYPOINT ["node", "dist/src/index.js"]

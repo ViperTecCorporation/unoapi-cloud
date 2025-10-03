@@ -1,15 +1,16 @@
-FROM node:24-alpine
+FROM node:24-bookworm-slim
 
-RUN apk --update --no-cache add git ffmpeg
-RUN wget -O /bin/wait-for https://raw.githubusercontent.com/eficode/wait-for/v2.2.3/wait-for
-RUN chmod +x /bin/wait-for
+RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && wget -O /usr/local/bin/wait-for https://raw.githubusercontent.com/eficode/wait-for/v2.2.3/wait-for \
+    && chmod +x /usr/local/bin/wait-for
 
 WORKDIR /app
 
-ADD ./src ./src
-ADD ./package.json ./package.json
-ADD ./tsconfig.json ./tsconfig.json
-ADD ./nodemon.json ./nodemon.json
-ADD ./yarn.lock ./yarn.lock
+COPY ./src ./src
+COPY ./package.json ./package.json
+COPY ./tsconfig.json ./tsconfig.json
+COPY ./nodemon.json ./nodemon.json
+COPY ./yarn.lock ./yarn.lock
 
-RUN yarn
+RUN corepack enable && yarn install --frozen-lockfile
