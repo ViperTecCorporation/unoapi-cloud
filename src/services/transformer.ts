@@ -376,8 +376,44 @@ export const getNumberAndId = (payload: any): [string, string] => {
   // Prefer a PN JID if any is available (explicit PN fields or alt PN fields)
   const pnCandidate = participantPn || senderPn || participantPn2 || participant || participant2 || remoteJidAlt || participantAlt || participantAlt2
   const pnIsValid = pnCandidate && isPnUser(pnCandidate)
-  const phone = pnIsValid ? jidToPhoneNumber(pnCandidate, '') : (participantPn || senderPn ? jidToPhoneNumber(participantPn || senderPn, '') : id)
-  return [phone, id]
+  let phone: string | undefined
+  if (pnIsValid) {
+    phone = jidToPhoneNumber(pnCandidate, '')
+  } else {
+    // Try map from group metadata participants (if present): find PN by LID
+    try {
+      const participants: any[] = (payload?.groupMetadata?.participants || []) as any[]
+      if (participants?.length) {
+        const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
+        const found = participants.find((p: any) => (p?.lid || '').toString() === (lidCandidate || '').toString())
+        const pnFromGroup = found?.id || found?.jid
+        if (pnFromGroup && isPnUser(pnFromGroup)) {
+          phone = jidToPhoneNumber(pnFromGroup, '')
+        }
+      }
+    } catch {}
+    // Try derive PN from any LID candidate
+    const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
+    try {
+      if (lidCandidate && isLidUser(lidCandidate)) {
+        phone = jidToPhoneNumber(jidNormalizedUser(lidCandidate), '')
+      }
+    } catch {}
+    // Fallback to explicit PN fields if present
+    if (!phone && (participantPn || senderPn)) {
+      phone = jidToPhoneNumber(participantPn || senderPn, '')
+    }
+    // Last resort: normalize the base id (may be LID) and extract PN
+    if (!phone) {
+      try {
+        const normalized = jidNormalizedUser(id)
+        phone = jidToPhoneNumber(normalized, '')
+      } catch {
+        phone = id
+      }
+    }
+  }
+  return [phone!, id]
 }
 
 export const formatJid = (jid: string) => {
