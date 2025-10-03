@@ -685,6 +685,30 @@ export const connect = async ({
   const read: readMessages = async (keys: WAMessageKey[]) => {
     await validateStatus()
 
+    // Proactively assert sessions for the message recipients to avoid 'No sessions' on receipts/deletes
+    try {
+      const targets = new Set<string>()
+      for (const k of keys || []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ka: any = k as any
+        const remote = k?.remoteJid || ka?.remoteJidAlt
+        const participant = k?.participant || ka?.participantAlt
+        if (remote) {
+          targets.add(remote)
+          try { if (isLidUser(remote)) targets.add(jidNormalizedUser(remote)) } catch {}
+        }
+        if (participant) {
+          targets.add(participant)
+          try { if (isLidUser(participant)) targets.add(jidNormalizedUser(participant)) } catch {}
+        }
+      }
+      if (targets.size) {
+        await (sock as any).assertSessions(Array.from(targets), true)
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error asserting sessions before readMessages')
+    }
+
     await sock?.readMessages(keys)
     return true
   }
