@@ -537,6 +537,32 @@ export const connect = async ({
     // If recipient is a LID JID, normalize to PN to improve deliverability
     const toNormalized = isLidUser(to) ? jidNormalizedUser(to) : to
     const id =  isIndividualJid(toNormalized) ? await exists(toNormalized) : toNormalized
+    // For 1:1 sends, proactively assert sessions to reduce decrypt failures and improve ack reliability
+    try {
+      if (id && isIndividualJid(id)) {
+        const set = new Set<string>()
+        set.add(id)
+        try {
+          if (isLidUser(id)) {
+            set.add(jidNormalizedUser(id))
+          }
+        } catch {}
+        try {
+          const self = state?.creds?.me?.id
+          if (self) {
+            set.add(self)
+            try { set.add(jidNormalizedUser(self)) } catch {}
+          }
+        } catch {}
+        const targets = Array.from(set)
+        if (targets.length) {
+          await (sock as any).assertSessions(targets, true)
+          logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error on preassert 1:1 sessions')
+    }
     // For group sends, proactively assert sessions for all participants to reduce ack 421
     try {
       if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
@@ -727,6 +753,14 @@ export const connect = async ({
     }
     if (whatsappVersion) {
       socketConfig.version = whatsappVersion
+    } else {
+      try {
+        const { version } = await fetchLatestWaWebVersion()
+        socketConfig.version = version
+        logger.debug('Using latest WA Web version %s', JSON.stringify(version))
+      } catch (e) {
+        logger.warn(e as any, 'Failed to fetch WA Web version; using default')
+      }
     }
     if (config.connectionType == 'pairing_code') {
       socketConfig.printQRInTerminal = false
