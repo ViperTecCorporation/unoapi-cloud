@@ -153,7 +153,14 @@ export const connect = async ({
   const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
-      const phoneCreds = jidToPhoneNumber(state?.creds?.me?.id, '')
+      // Normalize possible LID JID to PN JID before extracting phone
+      let meId = state?.creds?.me?.id as string
+      try {
+        if (isLidUser(meId)) {
+          meId = jidNormalizedUser(meId)
+        }
+      } catch {}
+      const phoneCreds = jidToPhoneNumber(meId, '')
       logger.info(`First save creds with number is ${phoneCreds} and configured number ${phone}`)
       if (VALIDATE_SESSION_NUMBER && phoneCreds != phone) {
         await logout()
@@ -177,7 +184,7 @@ export const connect = async ({
 
   const onConnectionUpdate = async (event: Partial<ConnectionState>) => {
     logger.debug('onConnectionUpdate connectionType %s ==> %s %s', config.connectionType, phone, JSON.stringify(event))
-    if (event.qr && config.connectionType == 'qrcode') {
+    if (event.qr && config.connectionType == 'qrcode' && !sock?.authState?.creds?.registered) {
       if (status.attempt > attempts) {
         const message =  t('attempts_exceeded', attempts)
         logger.debug(message)
