@@ -124,7 +124,7 @@ paths:
   /webhooks/fake/{phone}:
     post:
       summary: Fake webhook receiver (testing)
-      description: Accepts any payload and replies { "success": true }.
+      description: 'Accepts any payload and replies { "success": true }.'
       parameters:
         - in: path
           name: phone
