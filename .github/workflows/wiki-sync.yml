@@ -19,7 +19,7 @@ jobs:
       - name: Skip if no WIKI_TOKEN
         if: env.WIKI_TOKEN == ''
         run: |
-          echo "WIKI_TOKEN not set; skipping wiki sync"
+          echo "WIKI_TOKEN not set; skipping wiki sync."
 
       - name: Sync docs to wiki
         if: env.WIKI_TOKEN != ''
