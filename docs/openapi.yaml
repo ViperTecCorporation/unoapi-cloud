@@ -560,8 +560,13 @@ components:
                           items:
                             type: object
                             properties:
-                              id: { type: string }
-                              recipient_id: { type: string }
-                              status: { type: string, example: delivered }
-                              timestamp: { type: integer }
+                              id:
+                                type: string
+                              recipient_id:
+                                type: string
+                              status:
+                                type: string
+                                example: delivered
+                              timestamp:
+                                type: integer
   
