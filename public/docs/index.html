@@ -26,6 +26,17 @@
     .toolbar { display:flex; align-items:center; gap:12px; }
     .btn { appearance:none; border:1px solid var(--border); color:var(--fg); background:var(--card); border-radius:6px; padding:6px 10px; cursor:pointer; }
     .btn:hover { filter: brightness(1.05); }
+
+    /* Mobile responsiveness */
+    @media (max-width: 900px) {
+      header { flex-wrap: wrap; }
+      header h1 { font-size: 18px; }
+      main { flex-direction: column; padding:16px; }
+      nav { position: static; width: 100%; height: auto; display: none; }
+      nav.open { display: block; margin-bottom: 12px; }
+      nav a { margin-bottom: 8px; }
+      .toolbar { width: 100%; justify-content: space-between; }
+    }
   </style>
   <script>
     let currentLang = 'en'
@@ -74,6 +85,14 @@
         const next = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
         setTheme(next)
       })
+      // mobile nav toggle
+      const nav = document.querySelector('main > nav')
+      const btn = document.getElementById('toggle-nav')
+      if (btn && nav) {
+        btn.addEventListener('click', () => {
+          nav.classList.toggle('open')
+        })
+      }
       refresh();
     });
   </script>
@@ -95,6 +114,7 @@
           </select>
         </label>
         <button id="toggle-theme" class="btn" title="Toggle theme">Toggle Theme</button>
+        <button id="toggle-nav" class="btn" title="Menu">Menu</button>
       </div>
     </header>
     <main>

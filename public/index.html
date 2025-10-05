@@ -157,6 +157,16 @@
             margin-top: 10px;
             margin-bottom: -10px;
         }
+        /* Ajustes de responsividade */
+        @media (max-width: 992px) {
+          .navbar .btn { padding: 4px 10px; }
+        }
+        @media (max-width: 768px) {
+          #tokenForm { padding: 0 12px; font-size: 18px; }
+          .editForm { width: 100%; }
+          .webhook { margin: 10px 12px; }
+          .webhook:not(:last-child) { margin: 10px 12px; }
+        }
 
     </style>
 </head>
@@ -165,7 +175,7 @@
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" width="250" height="80" class="d-inline-block align-text-top">
+                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" class="d-inline-block align-text-top img-fluid" style="max-height:48px;width:auto;">
             </a>
             <div class="ms-auto d-flex align-items-center gap-2">
               <a class="btn btn-outline-primary" href="/docs">Documentação</a>
@@ -173,7 +183,7 @@
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <div class="collapse navbar-collapse d-none" id="navbarNav">
+            <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <!-- Configurations Dropdown -->
                     <li class="nav-item dropdown d-none" id="navbarDropdown">
