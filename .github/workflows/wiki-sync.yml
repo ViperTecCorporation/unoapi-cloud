@@ -21,21 +21,34 @@ jobs:
         run: |
           echo "WIKI_TOKEN not set; skipping wiki sync."
 
-      - name: Checkout wiki repo
-        if: env.WIKI_TOKEN != ''
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}.wiki
-          token: ${{ secrets.WIKI_TOKEN }}
-          path: wiki
-
-      - name: Sync docs to wiki
+      - name: Prepare wiki repository (create if missing)
         if: env.WIKI_TOKEN != ''
         run: |
           set -euo pipefail
           git config --global user.email "wiki-bot@users.noreply.github.com"
           git config --global user.name "wiki-bot"
-          mkdir -p wiki
+          rm -rf wiki || true
+          if git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git wiki; then
+            echo "Cloned existing wiki"
+          else
+            echo "Wiki repo not found; attempting to initialize (ensure Wiki is enabled in repo settings)"
+            mkdir -p wiki
+            cd wiki
+            git init
+            git checkout -b master
+            echo "# Unoapi Cloud — Documentação" > Home.md
+            git add Home.md
+            git commit -m "init wiki"
+            git remote add origin https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git
+            git push -u origin master
+            cd ..
+          fi
+
+      - name: Sync docs to wiki
+        if: env.WIKI_TOKEN != ''
+        run: |
+          set -euo pipefail
+          # Clean wiki working tree (keep .git)
           find wiki -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
           # Copy English and pt-BR docs
           cp -r docs/* wiki/ || true
