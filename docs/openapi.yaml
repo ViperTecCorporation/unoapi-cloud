@@ -127,7 +127,7 @@ paths:
   /webhooks/fake/{phone}:
     post:
       summary: Webhook de teste (Fake)
-      description: Recebe qualquer payload e responde `{ "success": true }`. Útil para testar o formato enviado pelo Unoapi.
+      description: 'Recebe qualquer payload e responde { "success": true }. Útil para testar o formato enviado pelo Unoapi.'
       parameters:
         - in: path
           name: phone
