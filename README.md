@@ -418,6 +418,16 @@ docker compose up
 
 Visit `http://localhost:9876/ping` wil be render a "pong!"
 
+## Documentation
+
+- Architecture: see `docs/ARCHITECTURE.md`
+- Development: see `docs/DEVELOPMENT.md`
+- Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
+- In the browser: open `http://localhost:9876/docs/`
+  - OpenAPI viewer: `http://localhost:9876/docs/openapi.html` (serves `docs/openapi.yaml`)
+  - OpenAPI JSON: `http://localhost:9876/docs/swagger.json`
+  - Swagger UI: `http://localhost:9876/docs/swagger.html`
+
 
 ## Up for production
 

@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Unoapi Cloud — OpenAPI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
+      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
+      body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; }
+      .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
+      .btn { appearance:none; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
+  </head>
+  <body>
+    <div class="topbar">
+      <img src="/logos/unoapi_logo.png" alt="Unoapi" width="32" height="32"/>
+      <strong style="flex:1">Unoapi Cloud — OpenAPI</strong>
+      <button id="toggle-theme" class="btn">Toggle Theme</button>
+    </div>
+    <redoc spec-url="/docs/openapi.yaml"></redoc>
+    <script>
+      function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
+      (function(){
+        const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
+        const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        document.getElementById('toggle-theme').addEventListener('click', function(){
+          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
+        })
+      })();
+    </script>
+  </body>
+</html>

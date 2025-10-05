@@ -1,0 +1,49 @@
+name: Sync Docs to Wiki
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+
+jobs:
+  sync:
+    if: ${{ secrets.WIKI_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Sync docs to wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global user.email "wiki-bot@users.noreply.github.com"
+          git config --global user.name "wiki-bot"
+          rm -rf wiki
+          git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git wiki
+          mkdir -p wiki
+          rm -rf wiki/*
+          # Copy English and pt-BR docs
+          cp -r docs/* wiki/ || true
+          # Create Home.md with links
+          cat > wiki/Home.md <<'EOF'
+          # Unoapi Cloud — Documentação
+
+          - [Arquitetura (EN)](ARCHITECTURE.md)
+          - [Desenvolvimento (EN)](DEVELOPMENT.md)
+          - [Status/Broadcast (EN)](STATUS_BROADCAST.md)
+          - [Arquitetura (PT-BR)](pt-BR/ARQUITETURA.md)
+          - [Desenvolvimento (PT-BR)](pt-BR/DESENVOLVIMENTO.md)
+          - [Status/Broadcast (PT-BR)](pt-BR/STATUS_BROADCAST.md)
+          EOF
+          cd wiki
+          git add -A
+          if git commit -m "docs: sync to wiki"; then
+            git push origin HEAD
+          else
+            echo "No changes to commit"
+          fi
+

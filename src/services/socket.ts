@@ -111,6 +111,10 @@ export type Status = {
   attempt: number
 }
 
+/**
+ * Establish and manage a Baileys WASocket connection bound to a phone session.
+ * Exposes a high-level API (send/read/exists/close/logout) used by ClientBaileys.
+ */
 export const connect = async ({
   phone,
   store,
@@ -502,6 +506,10 @@ export const connect = async ({
     await sessionStore.setStatus(phone, 'disconnected')
   }
 
+  /**
+   * Resolve a phone/JID to a concrete JID known by WhatsApp, caching via DataStore.
+   * Accepts raw numbers (string) or JIDs and returns undefined when the number has no WhatsApp.
+   */
   const exists: exists = async (localPhone: string) => {
     try {
       await validateStatus()
@@ -532,6 +540,14 @@ export const connect = async ({
     }
   }
 
+  /**
+   * Send a message to a target JID.
+   * Handles:
+   * - Session validation and presence
+   * - LID⇄PN normalization when needed
+   * - Preassert sessions (1:1 and groups) to reduce decrypt/ack errors
+   * - Status/Broadcast normalization (filters invalid numbers, optional LID→PN, deduplication)
+   */
   const send: sendMessage = async (
     to: string,
     message: AnyMessageContent,

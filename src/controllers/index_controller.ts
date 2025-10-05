@@ -2,6 +2,9 @@ import { Request, Response } from 'express'
 import logger from '../services/logger'
 import path from 'path'
 import { createRequire } from 'module'
+import fs from 'fs'
+import path from 'path'
+import YAML from 'yaml'
 
 class IndexController {
 
@@ -30,6 +33,39 @@ class IndexController {
       logger.error(e, 'Socket.io client not found; redirecting to CDN')
       return res.redirect(302, 'https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js')
     }
+  }
+
+  public docs(req: Request, res: Response) {
+    // Serve docs index at /docs
+    res.type('text/html')
+    return res.sendFile(path.resolve('./public/docs/index.html'))
+  }
+
+  public docsFile(req: Request, res: Response) {
+    // Serve files from /public/docs (e.g., Markdown)
+    const file = (req.params as any)[0] || ''
+    const safe = path.normalize(file).replace(/^\.\.(?:[\/\\]|$)/, '')
+    const target = path.resolve('./docs', safe)
+    return res.sendFile(target)
+  }
+
+  public docsOpenApiJson(_req: Request, res: Response) {
+    try {
+      const p = path.resolve('./docs/openapi.yaml')
+      const raw = fs.readFileSync(p, 'utf-8')
+      const obj = YAML.parse(raw)
+      res.type('application/json')
+      return res.status(200).send(JSON.stringify(obj))
+    } catch (e) {
+      return res.status(404).json({ error: 'openapi.yaml not found or invalid' })
+    }
+  }
+
+  public logos(req: Request, res: Response) {
+    const file = (req.params as any)[0] || ''
+    const safe = path.normalize(file).replace(/^\.\.(?:[\/\\]|$)/, '')
+    const target = path.resolve('./logos', safe)
+    return res.sendFile(target)
   }
 
   public favicon(_req: Request, res: Response) {

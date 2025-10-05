@@ -1,0 +1,619 @@
+openapi: 3.0.3
+info:
+  title: Unoapi Cloud API
+  version: 1.0.0
+  description: REST API compatível com WhatsApp Cloud utilizando Baileys como transporte.
+servers:
+  - url: http://localhost:9876
+paths:
+  /ping:
+    get:
+      summary: Healthcheck
+      responses:
+        '200':
+          description: pong
+          content:
+            text/plain:
+              schema:
+                type: string
+  /session/{phone}:
+    get:
+      summary: UI de sessão (QR/Config)
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: HTML com QR/Config
+          content:
+            text/html:
+              schema:
+                type: string
+  /v15.0/{phone}/messages:
+    post:
+      summary: Enviar mensagem (Cloud API shape)
+      description: |
+        Quando ocorre um erro de envio (SendError), a API ainda responde 200 com o corpo OK, e um payload de falha é enviado ao webhook configurado (vide schema `WebhookStatusFailed`).
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageRequest'
+            examples:
+              text:
+                summary: Texto simples para um número
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: text
+                  text:
+                    body: "Olá do Unoapi Cloud!"
+              statusImage:
+                summary: Status (imagem) para múltiplos destinos
+                value:
+                  messaging_product: whatsapp
+                  to: status@broadcast
+                  type: image
+                  image:
+                    link: https://example.com/image.png
+                    caption: "Promoção"
+                  statusJidList:
+                    - "5511999999999"
+                    - "5511888888888"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                textOk:
+                  summary: Resposta OK (texto)
+                  value:
+                    messaging_product: whatsapp
+                    contacts:
+                      - wa_id: "5511999999999"
+                    messages:
+                      - id: "wamid.HBg..."
+                statusOk:
+                  summary: Resposta OK (Status) com ignorações
+                  value:
+                    messaging_product: whatsapp
+                    contacts:
+                      - wa_id: "status@broadcast"
+                    messages:
+                      - id: "wamid.HBg..."
+                    status_skipped:
+                      - "5511777777777"
+                    status_recipients: 2
+        '400':
+          description: Erro de validação ou requisição inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+              examples:
+                invalid:
+                  summary: Parâmetros inválidos
+                  value:
+                    status: error
+                    message: "invalid_phone_number: 551199..."
+                offline:
+                  summary: Sessão offline
+                  value:
+                    status: error
+                    message: "offline_session"
+        '400':
+          description: Erro de validação
+  /{phone}/contacts:
+    post:
+      summary: Verificar contatos (standalone)
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactsRequest'
+            example:
+              blocking: no_wait
+              contacts:
+                - "16315551000"
+              force_check: true
+      responses:
+        '200':
+          description: Resultado de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactsResponse'
+              example:
+                contacts:
+                  - wa_id: "16315551000"
+                    input: "16315551000"
+                    status: valid
+  /v15.0/{phone}/preflight/status:
+    post:
+      summary: Preflight de Status/Broadcast
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                statusJidList:
+                  type: array
+                  items:
+                    type: string
+            example:
+              statusJidList:
+                - "5511999999999"
+                - "5511888888888"
+      responses:
+        '200':
+          description: OK
+
+  /webhooks/fake/{phone}:
+    post:
+      summary: Webhook de teste (Fake)
+      description: Recebe qualquer payload e responde `{ "success": true }`. Útil para testar o formato enviado pelo Unoapi.
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WebhookStatusFailed'
+                - $ref: '#/components/schemas/WebhookInbound'
+                - $ref: '#/components/schemas/WebhookAck'
+                - type: object
+            examples:
+              failed:
+                summary: Exemplo de payload de falha (SendError)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            metadata:
+                              display_phone_number: "558899998888"
+                              phone_number_id: "558899998888"
+                            statuses:
+                              - id: "wamid.HBg..."
+                                recipient_id: "5511999999999"
+                                status: failed
+                                timestamp: 1700000000
+                                errors:
+                                  - code: 7
+                                    title: invalid_phone_number
+              inboundText:
+                summary: Mensagem recebida (texto)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            metadata:
+                              display_phone_number: "558899998888"
+                              phone_number_id: "558899998888"
+                            contacts:
+                              - wa_id: "5511999999999"
+                                profile:
+                                  name: "Contato"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000000"
+                                type: "text"
+                                text:
+                                  body: "Olá!"
+              inboundImage:
+                summary: Mensagem recebida (imagem)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            contacts:
+                              - wa_id: "5511999999999"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000200"
+                                type: "image"
+                                image:
+                                  mime_type: image/jpeg
+                                  sha256: abcdef...
+                                  id: "MEDIA_ID"
+                                  caption: "Foto"
+              inboundAudio:
+                summary: Mensagem recebida (áudio)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            contacts:
+                              - wa_id: "5511999999999"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000300"
+                                type: "audio"
+                                audio:
+                                  mime_type: audio/ogg; codecs=opus
+                                  id: "MEDIA_ID"
+                                  voice: true
+              inboundDocument:
+                summary: Mensagem recebida (documento)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            contacts:
+                              - wa_id: "5511999999999"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000400"
+                                type: "document"
+                                document:
+                                  filename: contrato.pdf
+                                  mime_type: application/pdf
+                                  id: "MEDIA_ID"
+              inboundVideo:
+                summary: Mensagem recebida (vídeo)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            contacts:
+                              - wa_id: "5511999999999"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000500"
+                                type: "video"
+                                video:
+                                  mime_type: video/mp4
+                                  id: "MEDIA_ID"
+                                  caption: "Vídeo"
+              inboundSticker:
+                summary: Mensagem recebida (sticker)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            contacts:
+                              - wa_id: "5511999999999"
+                            messages:
+                              - from: "5511999999999"
+                                id: "wamid.HBg..."
+                                timestamp: "1700000600"
+                                type: "sticker"
+                                sticker:
+                                  id: "MEDIA_ID"
+                                  mime_type: image/webp
+              ackRead:
+                summary: Atualização de leitura (read)
+                value:
+                  object: whatsapp_business_account
+                  entry:
+                    - id: "558899998888"
+                      changes:
+                        - field: messages
+                          value:
+                            messaging_product: whatsapp
+                            metadata:
+                              display_phone_number: "558899998888"
+                              phone_number_id: "558899998888"
+                            statuses:
+                              - id: "wamid.HBg..."
+                                recipient_id: "5511999999999"
+                                status: read
+                                timestamp: 1700000100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+components:
+  schemas:
+    Error400:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+    MessageRequest:
+      type: object
+      required: [messaging_product, to, type]
+      properties:
+        messaging_product:
+          type: string
+          example: whatsapp
+        to:
+          type: string
+          description: Número destino ou status@broadcast
+        type:
+          type: string
+          description: Tipo de conteúdo (text, image, video, document, ...)
+        text:
+          type: object
+          properties:
+            body:
+              type: string
+        image:
+          type: object
+          properties:
+            link:
+              type: string
+            caption:
+              type: string
+        video:
+          type: object
+          properties:
+            link:
+              type: string
+            caption:
+              type: string
+        options:
+          type: object
+          properties:
+            broadcast:
+              type: boolean
+            statusJidList:
+              type: array
+              items:
+                type: string
+        statusJidList:
+          type: array
+          items:
+            type: string
+          description: Atalho equivalente a options.statusJidList
+    MessageResponse:
+      type: object
+      properties:
+        messaging_product:
+          type: string
+        contacts:
+          type: array
+          items:
+            type: object
+            properties:
+              wa_id:
+                type: string
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+        status_skipped:
+          type: array
+          items:
+            type: string
+          description: (Status) lista de entradas ignoradas por não terem WhatsApp
+        status_recipients:
+          type: integer
+          description: (Status) quantidade de destinatários válidos relayados
+    ContactsRequest:
+      type: object
+      properties:
+        blocking:
+          type: string
+          example: no_wait
+        contacts:
+          type: array
+          items:
+            type: string
+        force_check:
+          type: boolean
+    ContactsResponse:
+      type: object
+      properties:
+        contacts:
+          type: array
+          items:
+            type: object
+            properties:
+              wa_id:
+                type: string
+              input:
+                type: string
+              status:
+                type: string
+    WebhookStatusFailed:
+      description: Payload de falha enviado ao webhook (fora da resposta HTTP)
+      type: object
+      properties:
+        object:
+          type: string
+          example: whatsapp_business_account
+        entry:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      type: string
+                      example: messages
+                    value:
+                      type: object
+                      properties:
+                        messaging_product:
+                          type: string
+                          example: whatsapp
+                        metadata:
+                          type: object
+                          properties:
+                            display_phone_number:
+                              type: string
+                            phone_number_id:
+                              type: string
+                        statuses:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              recipient_id:
+                                type: string
+                              status:
+                                type: string
+                                example: failed
+                              timestamp:
+                                type: integer
+                              errors:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: integer
+                                    title:
+                                      type: string
+    WebhookInbound:
+      description: Mensagens recebidas (compatível com WhatsApp Cloud API)
+      type: object
+      properties:
+        object:
+          type: string
+        entry:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      type: string
+                      example: messages
+                    value:
+                      type: object
+                      properties:
+                        messaging_product:
+                          type: string
+                          example: whatsapp
+                        metadata:
+                          type: object
+                        contacts:
+                          type: array
+                          items:
+                            type: object
+                        messages:
+                          type: array
+                          items:
+                            type: object
+    WebhookAck:
+      description: Acks/Status de mensagens enviadas (delivered/read/deleted)
+      type: object
+      properties:
+        object:
+          type: string
+        entry:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      type: string
+                      example: messages
+                    value:
+                      type: object
+                      properties:
+                        messaging_product:
+                          type: string
+                        statuses:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              recipient_id: { type: string }
+                              status: { type: string, example: delivered }
+                              timestamp: { type: integer }
+  

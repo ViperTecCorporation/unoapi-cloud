@@ -106,6 +106,15 @@ const logoutDefault: logout = async () => {}
 const closeDefault = async () => logger.info(`Close connection`)
 
 export class ClientBaileys implements Client {
+  /**
+   * High-level client that wraps Baileys send/receive operations for a single phone session.
+   *
+   * Responsibilities:
+   * - Connect/disconnect lifecycle
+   * - Map Cloud-API-like payloads to Baileys messages
+   * - Apply sending safeguards (groups, status broadcast, media checks)
+   * - Persist message keys/metadata to the configured Store
+   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   readonly sendMessageDefault: sendMessage = async (_phone: string, _message: AnyMessageContent, _options: unknown) => {
     const sessionStore = this?.phone && await (await this?.config?.getStore(this.phone, this.config)).sessionStore
@@ -441,6 +450,13 @@ export class ClientBaileys implements Client {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async send(payload: any, options: any = {}) {
+    /**
+     * Send a message using the underlying Baileys socket.
+     *
+     * @param payload Cloud API-like payload (type, to, content objects)
+     * @param options Extra Baileys options (e.g., composing, addressingMode, statusJidList)
+     * @returns Response with Cloud API-compatible shape and optional error object
+     */
     const { status, type, to } = payload
     try {
       if (status) {
@@ -724,6 +740,10 @@ export class ClientBaileys implements Client {
   }
 
   async getMessageMetadata<T>(message: T) {
+    /**
+     * Enrich an outbound/inbound message with user/group metadata and pictures when available.
+     * It is safe/no-op if the session is offline.
+     */
     if (!this.store || !await this.store.sessionStore.isStatusOnline(this.phone)) {
       return message
     }
@@ -804,6 +824,10 @@ export class ClientBaileys implements Client {
   }
 
   public async contacts(numbers: string[]) {
+    /**
+     * Validate a list of phone numbers using Baileys onWhatsApp/exists().
+     * Returns the resolved JIDs and validity flags.
+     */
     const contacts: Contact[] = []
     for (let index = 0; index < numbers.length; index++) {
       const number = numbers[index]

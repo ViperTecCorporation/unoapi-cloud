@@ -176,6 +176,11 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     ids.set(`${phone}-${id}`, unoId)
   }
   dataStore.loadJid = async (phoneOrJid: string, sock: Partial<WASocket>) => {
+    /**
+     * Resolve and cache a JID for a given phone number or JID.
+     * - Uses onWhatsApp() when needed and stores the result.
+     * - Handles LID cases and a few fallbacks (self phone, status@broadcast).
+     */
     if (!isIndividualJid(phoneOrJid)) {
       return phoneOrJid
     }
