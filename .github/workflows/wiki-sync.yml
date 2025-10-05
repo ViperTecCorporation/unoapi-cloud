@@ -30,8 +30,8 @@ jobs:
           set -euo pipefail
           echo "Checking if Wiki is enabled for ${REPO}..."
           RESP=$(curl -sSf -H "Authorization: Bearer ${API_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}")
-          # Extract has_wiki without jq
-          HAS_WIKI=$(echo "$RESP" | grep -o '"has_wiki"[[:space:]]*:[[:space:]]*[^,]*' | sed 's/.*://; s/[[:space:]]//g')
+          # Extract has_wiki without jq; strip quotes/whitespace/CR
+          HAS_WIKI=$(printf '%s' "$RESP" | grep -o '"has_wiki"[[:space:]]*:[[:space:]]*[^,]*' | sed 's/.*://; s/[[:space:]]//g' | tr -d '"\r')
           echo "Repository has_wiki=${HAS_WIKI}"
           if [ "${HAS_WIKI}" != "true" ]; then
             echo "Wiki is disabled for ${REPO}. Enable it under Settings → General → Features → Wikis. Skipping sync."
@@ -54,12 +54,12 @@ jobs:
             mkdir -p wiki
             cd wiki
             git init
-            git checkout -b master
+            git checkout -b main
             echo "# Unoapi Cloud — Documentação" > Home.md
             git add Home.md
             git commit -m "init wiki"
             git remote add origin https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git
-            git push -u origin master
+            git push -u origin main
             cd ..
           fi
 
