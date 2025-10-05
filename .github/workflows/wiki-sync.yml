@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Sync docs to wiki
-        if: env.WIKI_TOKEN != '' && env.WIKI_ENABLED == 'true'
+        if: env.WIKI_TOKEN != ''
         run: |
           set -euo pipefail
           # Clean wiki working tree (keep .git)
