@@ -19,7 +19,7 @@
       <strong style="flex:1">Unoapi Cloud — OpenAPI</strong>
       <button id="toggle-theme" class="btn">Toggle Theme</button>
     </div>
-    <redoc spec-url="/docs/openapi.json"></redoc>
+    <div id="redoc-container" style="height: calc(100vh - 54px);"></div>
     <script>
       function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
       (function(){
@@ -29,6 +29,21 @@
         document.getElementById('toggle-theme').addEventListener('click', function(){
           const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
         })
+      })();
+
+      (async function(){
+        const url = '/docs/openapi.json';
+        try {
+          const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
+          const spec = await res.json();
+          Redoc.init(spec, {}, document.getElementById('redoc-container'));
+          console.log('Redoc loaded spec from', url);
+        } catch (e) {
+          const el = document.getElementById('redoc-container');
+          el.innerHTML = '<pre style="padding:12px">Failed to load OpenAPI spec ('+url+'): '+(e && e.message ? e.message : e)+'</pre>';
+          console.error('Redoc load error:', e);
+        }
       })();
     </script>
   </body>
