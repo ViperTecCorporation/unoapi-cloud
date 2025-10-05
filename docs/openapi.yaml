@@ -58,18 +58,6 @@ paths:
                   type: text
                   text:
                     body: "Olá do Unoapi Cloud!"
-              statusImage:
-                summary: Status (imagem) para múltiplos destinos
-                value:
-                  messaging_product: whatsapp
-                  to: status@broadcast
-                  type: image
-                  image:
-                    link: https://example.com/image.png
-                    caption: "Promoção"
-                  statusJidList:
-                    - "5511999999999"
-                    - "5511888888888"
       responses:
         '200':
           description: OK
@@ -86,17 +74,6 @@ paths:
                       - wa_id: "5511999999999"
                     messages:
                       - id: "wamid.HBg..."
-                statusOk:
-                  summary: Resposta OK (Status) com ignorações
-                  value:
-                    messaging_product: whatsapp
-                    contacts:
-                      - wa_id: "status@broadcast"
-                    messages:
-                      - id: "wamid.HBg..."
-                    status_skipped:
-                      - "5511777777777"
-                    status_recipients: 2
         '400':
           description: Erro de validação ou requisição inválida
           content:
@@ -114,8 +91,6 @@ paths:
                   value:
                     status: error
                     message: "offline_session"
-        '400':
-          description: Erro de validação
   /{phone}/contacts:
     post:
       summary: Verificar contatos (standalone)
@@ -148,33 +123,6 @@ paths:
                   - wa_id: "16315551000"
                     input: "16315551000"
                     status: valid
-  /v15.0/{phone}/preflight/status:
-    post:
-      summary: Preflight de Status/Broadcast
-      parameters:
-        - in: path
-          name: phone
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                statusJidList:
-                  type: array
-                  items:
-                    type: string
-            example:
-              statusJidList:
-                - "5511999999999"
-                - "5511888888888"
-      responses:
-        '200':
-          description: OK
 
   /webhooks/fake/{phone}:
     post:
