@@ -36,9 +36,11 @@ jobs:
           if [ "${HAS_WIKI}" != "true" ]; then
             echo "Wiki is disabled for ${REPO}. Enable it under Settings → General → Features → Wikis. Skipping sync."
             echo "WIKI_ENABLED=false" >> $GITHUB_ENV
+            echo "WIKI_ENABLED=false"
             exit 0
           fi
           echo "WIKI_ENABLED=true" >> $GITHUB_ENV
+          echo "WIKI_ENABLED=true"
 
       - name: Prepare wiki repository (create if missing)
         if: env.WIKI_TOKEN != '' && env.WIKI_ENABLED == 'true'
