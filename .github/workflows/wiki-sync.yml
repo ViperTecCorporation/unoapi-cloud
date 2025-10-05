@@ -1,0 +1,102 @@
+name: Sync Docs to Wiki
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Skip if no WIKI_TOKEN
+        if: env.WIKI_TOKEN == ''
+        run: |
+          echo "WIKI_TOKEN not set; skipping wiki sync."
+
+      - name: Test Wiki access with token
+        if: env.WIKI_TOKEN != ''
+        env:
+          REPO: ${{ github.repository }}
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
+          echo "Testing Wiki access..."
+          if git ls-remote "$URL" >/dev/null 2>&1; then
+            echo "Wiki access OK"
+          else
+            echo "Failed to access Wiki repo with provided token."
+            echo "Common causes:"
+            echo "- PAT missing 'repo' scope or not SSO-authorized for the org."
+            echo "- Token user lacks write access (add user as collaborator/team with write)."
+            echo "- Organization enforces SSO; authorize the PAT under Developer settings."
+            exit 1
+          fi
+
+      - name: Prepare wiki repository (create if missing)
+        if: env.WIKI_TOKEN != ''
+        run: |
+          set -euo pipefail
+          git config --global user.email "wiki-bot@users.noreply.github.com"
+          git config --global user.name "wiki-bot"
+          rm -rf wiki || true
+          if git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git wiki; then
+            echo "Cloned existing wiki"
+          else
+            echo "Wiki repo not found; attempting to initialize (ensure Wiki is enabled in repo settings)"
+            mkdir -p wiki
+            cd wiki
+            git init
+            git checkout -b main
+            echo "# Unoapi Cloud — Documentação" > Home.md
+            git add Home.md
+            git commit -m "init wiki"
+            git remote add origin https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git
+            git push -u origin main
+            cd ..
+          fi
+
+      - name: Sync docs to wiki
+        if: env.WIKI_TOKEN != ''
+        run: |
+          set -euo pipefail
+          # Clean wiki working tree (keep .git)
+          find wiki -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+          # Copy English and pt-BR docs
+          cp -r docs/* wiki/ || true
+          # Create Home.md with links
+          cat > wiki/Home.md <<'EOF'
+          # Unoapi Cloud — Documentação
+
+          ## Inglês
+          - [Architecture](ARCHITECTURE.md)
+          - [Development](DEVELOPMENT.md)
+          - [Environment Variables](ENVIRONMENT.md)
+          - [Status/Broadcast](STATUS_BROADCAST.md)
+          - OpenAPI (YAML): [openapi.yaml](openapi.yaml)
+          - Examples: [.env example](examples/.env.example.en)
+
+          ## Português (Brasil)
+          - [Arquitetura](pt-BR/ARQUITETURA.md)
+          - [Desenvolvimento](pt-BR/DESENVOLVIMENTO.md)
+          - [Ambiente (Variáveis)](pt-BR/AMBIENTE.md)
+          - [Status/Broadcast](pt-BR/STATUS_BROADCAST.md)
+          - Exemplos: [.env exemplo](pt-BR/exemplos/.env.exemplo)
+          EOF
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs: sync to wiki"
+            git push origin HEAD
+          fi
+

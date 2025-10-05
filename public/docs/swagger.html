@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unoapi Cloud — Swagger UI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
+      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
+      html, body { margin: 0; padding: 0; height: 100%; }
+      body { background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; }
+      .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
+      #swagger-ui { height: calc(100% - 54px); }
+      .btn { appearance:none; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <img src="/logos/unoapi_logo.png" alt="Unoapi" width="32" height="32"/>
+      <strong style="flex:1">Unoapi Cloud — Swagger UI</strong>
+      <button id="toggle-theme" class="btn">Toggle Theme</button>
+    </div>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        window.ui = SwaggerUIBundle({
+          url: '/docs/swagger.json',
+          dom_id: '#swagger-ui',
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: 'BaseLayout',
+        });
+        function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
+        const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
+        const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        document.getElementById('toggle-theme').addEventListener('click', function(){
+          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
+        })
+      });
+    </script>
+  </body>
+  </html>

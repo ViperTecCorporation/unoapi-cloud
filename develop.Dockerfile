@@ -11,5 +11,7 @@ ADD ./package.json ./package.json
 ADD ./tsconfig.json ./tsconfig.json
 ADD ./nodemon.json ./nodemon.json
 ADD ./yarn.lock ./yarn.lock
+ADD ./public ./public
+ADD ./docs ./docs
 
 RUN yarn
