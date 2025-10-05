@@ -4,7 +4,11 @@ info:
   version: 1.0.0
   description: REST API compatível com WhatsApp Cloud utilizando Baileys como transporte.
 servers:
-  - url: http://localhost:9876
+  # Use relative URL so the UI (browser) uses the current domain/origin
+  - url: /
+security:
+  # Require API token header for all operations by default
+  - ApiToken: []
 paths:
   /ping:
     get:
@@ -327,6 +331,13 @@ paths:
                   success: true
 components:
   schemas:
+    
+  securitySchemes:
+    ApiToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'API token header. Example: 1 or Bearer <token>'
     Error400:
       type: object
       properties:
