@@ -21,29 +21,8 @@ jobs:
         run: |
           echo "WIKI_TOKEN not set; skipping wiki sync."
 
-      - name: Check if Wiki is enabled
-        if: env.WIKI_TOKEN != ''
-        env:
-          API_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          echo "Checking if Wiki is enabled for ${REPO}..."
-          RESP=$(curl -sSf -H "Authorization: Bearer ${API_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}")
-          # Extract has_wiki without jq; strip quotes/whitespace/CR
-          HAS_WIKI=$(printf '%s' "$RESP" | grep -o '"has_wiki"[[:space:]]*:[[:space:]]*[^,]*' | sed 's/.*://; s/[[:space:]]//g' | tr -d '"\r')
-          echo "Repository has_wiki=${HAS_WIKI}"
-          if [ "${HAS_WIKI}" != "true" ]; then
-            echo "Wiki is disabled for ${REPO}. Enable it under Settings → General → Features → Wikis. Skipping sync."
-            echo "WIKI_ENABLED=false" >> $GITHUB_ENV
-            echo "WIKI_ENABLED=false"
-            exit 0
-          fi
-          echo "WIKI_ENABLED=true" >> $GITHUB_ENV
-          echo "WIKI_ENABLED=true"
-
       - name: Prepare wiki repository (create if missing)
-        if: env.WIKI_TOKEN != '' && env.WIKI_ENABLED == 'true'
+        if: env.WIKI_TOKEN != ''
         run: |
           set -euo pipefail
           git config --global user.email "wiki-bot@users.noreply.github.com"
