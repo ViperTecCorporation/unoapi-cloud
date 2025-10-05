@@ -40,6 +40,16 @@ class IndexController {
     return res.sendFile(path.resolve('./public/docs/index.html'))
   }
 
+  public docsOpenapiHtml(_req: Request, res: Response) {
+    res.type('text/html')
+    return res.sendFile(path.resolve('./public/docs/openapi.html'))
+  }
+
+  public docsSwaggerHtml(_req: Request, res: Response) {
+    res.type('text/html')
+    return res.sendFile(path.resolve('./public/docs/swagger.html'))
+  }
+
   public docsFile(req: Request, res: Response) {
     // Serve files from /public/docs (e.g., Markdown)
     const file = (req.params as any)[0] || ''

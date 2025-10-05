@@ -79,6 +79,8 @@ export const router = (
   router.get('/socket.io.min.js', indexController.socket)
   router.get('/favicon.ico', indexController.favicon)
   router.get('/docs', indexController.docs)
+  router.get('/docs/openapi.html', indexController.docsOpenapiHtml)
+  router.get('/docs/swagger.html', indexController.docsSwaggerHtml)
   // Specific JSON endpoints first, then wildcard for markdown/static files
   router.get('/docs/swagger.json', indexController.docsOpenApiJson)
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)

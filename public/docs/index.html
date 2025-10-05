@@ -58,7 +58,15 @@
     }
     window.addEventListener('DOMContentLoaded', () => {
       const sel = document.getElementById('lang');
-      sel.addEventListener('change', () => { currentLang = sel.value; refresh(); })
+      // restore saved language
+      try {
+        const savedLang = localStorage.getItem('unoapi_docs_lang') || ''
+        if (savedLang === 'pt-BR' || savedLang === 'en') {
+          currentLang = savedLang
+          sel.value = savedLang
+        }
+      } catch {}
+      sel.addEventListener('change', () => { currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; refresh(); })
       const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase()
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
       setTheme(saved || (prefersDark ? 'dark' : 'light'))
@@ -73,7 +81,7 @@
   <body>
     <header>
       <div style="display:flex;align-items:center;gap:12px;">
-        <img src="/logos/unoapi_logo.png" alt="Unoapi" width="44" height="44"/>
+        <img src="/logos/unoapi_logo.png" alt="Unoapi" style="height:44px;width:auto;"/>
         <div>
           <h1 style="margin:0;">Unoapi Cloud</h1>
           <p class="muted" style="margin:0;">Architecture, Development and Status/Broadcast docs</p>
@@ -110,6 +118,10 @@
         <article id="environment">
           <h2>Environment Variables</h2>
           <div id="env"></div>
+          <div style="margin-top:8px;">
+            <a class="btn" href="/docs/examples/.env.example.en">Download .env example (EN)</a>
+            <a class="btn" href="/docs/pt-BR/exemplos/.env.exemplo">Download .env exemplo (PT-BR)</a>
+          </div>
         </article>
         <article id="status">
           <h2>Status/Broadcast</h2>
