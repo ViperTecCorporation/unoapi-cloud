@@ -8,16 +8,21 @@ on:
 
 jobs:
   sync:
-    if: ${{ secrets.WIKI_TOKEN != '' }}
     runs-on: ubuntu-latest
+    env:
+      WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+      REPO: ${{ github.repository }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Skip if no WIKI_TOKEN
+        if: env.WIKI_TOKEN == ''
+        run: |
+          echo "WIKI_TOKEN not set; skipping wiki sync"
+
       - name: Sync docs to wiki
-        env:
-          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
-          REPO: ${{ github.repository }}
+        if: env.WIKI_TOKEN != ''
         run: |
           set -euo pipefail
           git config --global user.email "wiki-bot@users.noreply.github.com"
@@ -46,4 +51,3 @@ jobs:
           else
             echo "No changes to commit"
           fi
-
