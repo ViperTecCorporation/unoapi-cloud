@@ -627,22 +627,35 @@ export const connect = async ({
         // normalize recipients to real JIDs (may convert to LID JIDs)
         try {
           const originalList: string[] = (opts as any).statusJidList
-          // Accept plain numbers or full JIDs; resolve via exists on raw input first
-          const normalized = await Promise.all(
-            originalList.map(async (v: string) => (await exists(`${v}`.trim())) || phoneNumberToJid(`${v}`.trim()))
+          // 1) Resolve existence; only keep numbers that actually have WhatsApp
+          const resolved = await Promise.all(
+            originalList.map(async (v: string) => {
+              const raw = `${v}`.trim()
+              const jid = await exists(raw)
+              return { input: raw, jid }
+            })
           )
-          // Optionally keep LID JIDs; otherwise force s.whatsapp.net
+          const valid = resolved.filter((r) => !!r.jid).map((r) => r.jid as string)
+          const skipped = resolved.filter((r) => !r.jid).map((r) => r.input)
+          if (skipped.length) {
+            logger.warn('Status@broadcast will skip %d invalid numbers (no WhatsApp): %s', skipped.length, JSON.stringify(skipped.slice(0, 10)))
+          }
+          // 2) Optionally normalize LIDs to PN and deduplicate
           const finalList = STATUS_ALLOW_LID
-            ? normalized
-            : normalized.map((jid: string) => {
-                if ((jid || '').includes('@lid')) {
-                  const num = jidToPhoneNumber(jid, '')
-                  return phoneNumberToJid(num)
-                }
-                return jid
-              })
+            ? Array.from(new Set(valid))
+            : Array.from(
+                new Set(
+                  valid.map((jid: string) => {
+                    if ((jid || '').includes('@lid')) {
+                      const num = jidToPhoneNumber(jid, '')
+                      return phoneNumberToJid(num)
+                    }
+                    return jid
+                  })
+                )
+              )
           ;(opts as any).statusJidList = finalList
-          logger.debug('Status@broadcast normalized recipients %s', JSON.stringify(finalList))
+          logger.debug('Status@broadcast normalized valid recipients %d', finalList.length)
         } catch (e) {
           logger.warn(e, 'Ignore error normalizing statusJidList')
         }
@@ -650,11 +663,15 @@ export const connect = async ({
         try {
           if (full?.message) {
             const list: string[] = (opts as any).statusJidList || []
-            logger.debug('Relaying status to %s recipients', list.length)
-            await sock?.relayMessage(id, full.message, {
-              messageId: (full.key.id || undefined) as string | undefined,
-              statusJidList: (opts as any).statusJidList,
-            })
+            if (list.length > 0) {
+              logger.debug('Relaying status to %s recipients', list.length)
+              await sock?.relayMessage(id, full.message, {
+                messageId: (full.key.id || undefined) as string | undefined,
+                statusJidList: list,
+              })
+            } else {
+              logger.debug('No valid recipients after normalization; skipping relayMessage')
+            }
           } else {
             logger.debug('Status@broadcast send returned no message body to relay (key id: %s)', full?.key?.id)
           }

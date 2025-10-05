@@ -8,9 +8,13 @@ x-base: &base
   stdin_open: true
   volumes:
     - ./:/app
+    - /app/node_modules
   working_dir: /app
   environment:
     NODE_ENV: development
+    NODE_OPTIONS: --inspect=0.0.0.0:9229
+    CHOKIDAR_USEPOLLING: "1"
+    CHOKIDAR_INTERVAL: "300"
     AMQP_URL: amqp://guest:guest@rabbitmq:5672?frameMax=8192
     BASE_URL: http://web:9876
     REDIS_URL: redis://redis:6379
@@ -20,10 +24,9 @@ x-base: &base
 x-minio: &minio
   image: quay.io/minio/minio:latest
   command: server --console-address ":9001" --address ":9000" /data
-  env_file: .env
   expose:
-    - 9000:9000
-    - 9001:9001
+    - 9002:9000
+    - 9003:9001
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
     interval: 30s
@@ -37,6 +40,7 @@ services:
     entrypoint: sh -c 'wait-for redis:6379 rabbitmq:5672 -- yarn web-dev'
     ports:
       - 9876:9876
+      - 9229:9229
     depends_on:
       - worker
 
@@ -44,6 +48,8 @@ services:
     <<: *base
     restart: on-failure
     entrypoint: sh -c 'wait-for redis:6379 rabbitmq:5672 -- yarn worker-dev'
+    ports:
+      - 9230:9229
     depends_on:
       - redis
       - rabbitmq
@@ -70,8 +76,8 @@ services:
     <<: *minio
     restart: on-failure
     ports:
-      - 9000:9000
-      - 9001:9001
+      - 9002:9000
+      - 9003:9001
     volumes:
       - minio:/data
     entrypoint: |
