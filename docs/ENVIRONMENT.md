@@ -61,20 +61,9 @@ This guide explains key environment variables, when to use them, and why. Copy `
     STORAGE_FORCE_PATH_STYLE=true
     ```
 
-## Status/Broadcast Behavior
+## Status/Broadcast
 
-- `STATUS_ALLOW_LID` — Allow LID JIDs in status recipients. Default `true`.
-  - Set `false` to normalize to PN (`@s.whatsapp.net`) for consistency.
-  - Example: `STATUS_ALLOW_LID=false`
-
-## Group Sending
-
-- `GROUP_SEND_MEMBERSHIP_CHECK` — Warn if not a group member. Default `true`.
-- `GROUP_SEND_PREASSERT_SESSIONS` — Pre-assert sessions for participants. Default `true`.
-- `GROUP_SEND_ADDRESSING_MODE` — Prefer `pn` or `lid`. Default unset (auto).
-- `GROUP_SEND_FALLBACK_ORDER` — Fallback order on ack 421, e.g., `pn,lid`. Default `pn,lid`.
-  - Use to improve reliability in groups under network/device quirks.
-  - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
+- There are no specific environment toggles for Status/Broadcast in this branch.
 
 ## Media & Timeouts
 
@@ -82,12 +71,12 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Increase when sending large media from slow servers.
   - Example: `FETCH_TIMEOUT_MS=15000`
 - `SEND_AUDIO_MESSAGE_AS_PTT` — Mark outgoing audio as PTT (voice note). Default `false`.
-- `CONVERT_AUDIO_TO_PTT` — Force conversion to OGG/Opus for PTT. Default `false`.
+- `CONVERT_AUDIO_MESSAGE_TO_OGG` — Convert audio to OGG/Opus when sending PTT. Default `false`.
   - Use when clients expect voice notes with waveform.
   - Example:
     ```env
     SEND_AUDIO_MESSAGE_AS_PTT=true
-    CONVERT_AUDIO_TO_PTT=true
+    CONVERT_AUDIO_MESSAGE_TO_OGG=true
     ```
 
 ## Proxy

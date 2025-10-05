@@ -63,9 +63,7 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
 
 ## Status/Broadcast
 
-- `STATUS_ALLOW_LID` — Permite JIDs LID na lista de status. Padrão `true`.
-  - Coloque `false` para normalizar para PN (`@s.whatsapp.net`).
-  - Exemplo: `STATUS_ALLOW_LID=false`
+- Não há variáveis específicas para Status/Broadcast neste branch.
 
 ## Envio em Grupos
 
@@ -82,12 +80,12 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
   - Aumente ao enviar mídias grandes hospedadas em servidores lentos.
   - Exemplo: `FETCH_TIMEOUT_MS=15000`
 - `SEND_AUDIO_MESSAGE_AS_PTT` — Marca áudio como PTT (voice note). Padrão `false`.
-- `CONVERT_AUDIO_TO_PTT` — Converte forçadamente para OGG/Opus. Padrão `false`.
+- `CONVERT_AUDIO_MESSAGE_TO_OGG` — Converte áudio para OGG/Opus ao enviar PTT. Padrão `false`.
   - Use quando os clientes esperam voice notes com waveform.
   - Exemplo:
     ```env
     SEND_AUDIO_MESSAGE_AS_PTT=true
-    CONVERT_AUDIO_TO_PTT=true
+    CONVERT_AUDIO_MESSAGE_TO_OGG=true
     ```
 
 ## Proxy

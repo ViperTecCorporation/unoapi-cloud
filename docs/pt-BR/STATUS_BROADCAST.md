@@ -1,6 +1,6 @@
 # Status/Broadcast — Comportamento e Salvaguardas
 
-Detalha como o Unoapi lida com Stories (Status) via Baileys e as proteções para evitar queda do socket quando a lista de destinatários contém números inválidos.
+Descreve como enviar Stories (Status) via Baileys usando o Unoapi de forma geral.
 
 ## Entradas
 
@@ -8,28 +8,16 @@ Detalha como o Unoapi lida com Stories (Status) via Baileys e as proteções par
 - `type` é um tipo de conteúdo suportado (text, image, video, ...)
 - `options.statusJidList = [números | JIDs]` — lista de destinatários para relay após o envio inicial
 
-## Validação e Normalização
+## Observações
 
-Implementado em `src/services/socket.ts` no caminho `send()` para `status@broadcast`:
+- Os destinatários devem ser usuários válidos do WhatsApp.
+- Este branch não realiza filtragem/normalização automática da lista de destinatários; garanta entradas válidas de antemão.
 
-- Para cada entrada em `statusJidList`, chama‑se `exists(raw)` que retorna um JID válido se o número tem WhatsApp, ou `undefined` caso contrário.
-- Remove todos os `undefined` (números inválidos) e loga um aviso com amostra dos ignorados.
-- Opcionalmente normaliza LID→PN baseado em `STATUS_ALLOW_LID` em `defaults.ts`.
-- Remove duplicados na lista final.
+## Resposta
 
-Se após normalização não houver destinatários válidos, o passo `relayMessage` é ignorado.
-
-## Resposta com Informações Extras
-
-Para facilitar monitoramento/UX, a resposta HTTP inclui dois campos extras para envios de Status:
-
-- `status_skipped`: entradas removidas por não terem WhatsApp.
-- `status_recipients`: quantidade de destinatários válidos relayados.
-
-Os campos são adicionados sem quebrar a estrutura Cloud API (`messages/contacts`).
+- Segue a estrutura Cloud API (`contacts`, `messages`). Não há campos adicionais específicos de Status neste branch.
 
 ## Racional
 
 - Listas grandes podem conter números sem WhatsApp, que antes causavam erros no Baileys e derrubavam o socket.
 - Filtrando e normalizando antes, o Unoapi envia apenas para válidos e mantém estabilidade.
-

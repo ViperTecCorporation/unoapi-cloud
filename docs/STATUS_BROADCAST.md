@@ -1,6 +1,6 @@
 # Status/Broadcast — Behavior & Safeguards
 
-This document details how Unoapi handles Stories (Status) via Baileys and the protections added to avoid socket disconnects when large recipient lists include invalid numbers.
+This document describes how to send Stories (Status) via Baileys using Unoapi in general terms.
 
 ## Inputs
 
@@ -8,28 +8,16 @@ This document details how Unoapi handles Stories (Status) via Baileys and the pr
 - `type` is a content type supported by Baileys (text, image, video, etc.)
 - `options.statusJidList = [numbers | JIDs]` — the recipient list to relay after initial send
 
-## Validation & Normalization
+## Notes
 
-Implemented in `src/services/socket.ts` inside the `send()` path for `status@broadcast`:
+- Recipients must be valid WhatsApp users.
+- The application does not perform automatic filtering/normalization of recipient lists in this branch; ensure your inputs já são válidos.
 
-- For each entry in `statusJidList`, call `exists(raw)` which resolves to a valid JID if the number has WhatsApp, or `undefined` otherwise.
-- Filter out all `undefined` (invalid numbers), log a warning with a small preview of skipped entries.
-- Optionally normalize LID JIDs to PN based on `STATUS_ALLOW_LID` in `defaults.ts`.
-- Deduplicate the final list.
+## Response
 
-If, after normalization, there are no valid recipients, the `relayMessage` step is skipped.
-
-## Response Augmentation
-
-To assist monitoring and client UX, the HTTP response includes two extra fields for Status sends:
-
-- `status_skipped`: raw inputs that were removed for having no WhatsApp account.
-- `status_recipients`: count of valid recipients relayed.
-
-These fields are added without breaking the Cloud API response structure (`messages/contacts`).
+- Follows the Cloud API structure (`contacts`, `messages`). No fields adicionais específicos de Status são adicionados neste branch.
 
 ## Rationale
 
 - Large lists may contain numbers without WhatsApp, which previously caused Baileys errors and could drop the socket.
 - By filtering and normalizing upfront, Unoapi sends only to valid recipients and keeps the socket stable.
-
