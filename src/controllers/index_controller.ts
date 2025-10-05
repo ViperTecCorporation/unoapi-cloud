@@ -1,6 +1,5 @@
 import { Request, Response } from 'express'
 import logger from '../services/logger'
-import path from 'path'
 import { createRequire } from 'module'
 import fs from 'fs'
 import path from 'path'
