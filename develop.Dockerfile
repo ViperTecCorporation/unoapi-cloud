@@ -13,6 +13,7 @@ ADD ./nodemon.json ./nodemon.json
 ADD ./yarn.lock ./yarn.lock
 ADD ./public ./public
 ADD ./docs ./docs
+ADD ./scripts ./scripts
 
 RUN yarn
 RUN yarn build:docs

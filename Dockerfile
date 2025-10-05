@@ -13,6 +13,7 @@ RUN yarn
 ADD ./src ./src
 ADD ./public ./public
 ADD ./docs ./docs
+ADD ./scripts ./scripts
 ADD ./tsconfig.json ./tsconfig.json
 RUN yarn build
 RUN yarn build:docs
