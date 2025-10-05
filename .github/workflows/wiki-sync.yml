@@ -21,16 +21,22 @@ jobs:
         run: |
           echo "WIKI_TOKEN not set; skipping wiki sync."
 
+      - name: Checkout wiki repo
+        if: env.WIKI_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          token: ${{ secrets.WIKI_TOKEN }}
+          path: wiki
+
       - name: Sync docs to wiki
         if: env.WIKI_TOKEN != ''
         run: |
           set -euo pipefail
           git config --global user.email "wiki-bot@users.noreply.github.com"
           git config --global user.name "wiki-bot"
-          rm -rf wiki
-          git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git wiki
           mkdir -p wiki
-          rm -rf wiki/*
+          find wiki -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
           # Copy English and pt-BR docs
           cp -r docs/* wiki/ || true
           # Create Home.md with links
@@ -46,8 +52,9 @@ jobs:
           EOF
           cd wiki
           git add -A
-          if git commit -m "docs: sync to wiki"; then
-            git push origin HEAD
-          else
+          if git diff --cached --quiet; then
             echo "No changes to commit"
+          else
+            git commit -m "docs: sync to wiki"
+            git push origin HEAD
           fi
