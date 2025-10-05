@@ -15,6 +15,9 @@ COPY ./tsconfig.json ./tsconfig.json
 COPY ./nodemon.json ./nodemon.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
+COPY ./public ./public
+COPY ./docs ./docs
+COPY ./logos ./logos
 COPY ./src ./src
 
 RUN corepack enable && yarn install --no-progress

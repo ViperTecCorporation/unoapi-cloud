@@ -13,6 +13,8 @@ RUN corepack enable && yarn install --no-progress
 
 COPY ./src ./src
 COPY ./public ./public
+COPY ./docs ./docs
+COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
 RUN yarn build
 
@@ -34,6 +36,8 @@ WORKDIR /home/u/app
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/docs ./docs
+COPY --from=builder /app/logos ./logos
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/yarn.lock ./yarn.lock
 COPY --from=builder /app/vendor ./vendor
