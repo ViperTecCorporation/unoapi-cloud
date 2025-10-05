@@ -76,6 +76,8 @@ export const router = (
   router.get('/index.html', indexController.root)
   router.get('/socket.io.min.js', indexController.socket)
   router.get('/docs', indexController.docs)
+  router.get('/docs/openapi.html', indexController.docsOpenapiHtml)
+  router.get('/docs/swagger.html', indexController.docsSwaggerHtml)
   router.get('/docs/swagger.json', indexController.docsOpenApiJson)
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)
   router.get('/docs/*', indexController.docsFile)
