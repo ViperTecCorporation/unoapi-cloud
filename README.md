@@ -429,6 +429,10 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
   - OpenAPI JSON: `http://localhost:9876/docs/swagger.json`
   - Swagger UI: `http://localhost:9876/docs/swagger.html`
 
+## Wiki
+
+- GitHub Wiki (auto-synced from `docs/`): navigate to this repository’s Wiki tab or open `../../wiki` when viewing on GitHub.
+
 
 ## Up for production
 
