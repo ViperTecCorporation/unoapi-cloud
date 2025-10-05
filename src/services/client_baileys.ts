@@ -628,6 +628,16 @@ export class ClientBaileys implements Client {
                 },
               ],
             }
+            try {
+              if (to === 'status@broadcast') {
+                const skipped = (response as any).__statusSkipped || []
+                // expose auxiliary info without breaking Cloud API shape
+                ;(ok as any).status_skipped = skipped
+                ;(ok as any).status_recipients = Array.isArray((messageOptions as any).statusJidList)
+                  ? (messageOptions as any).statusJidList.length
+                  : 0
+              }
+            } catch {}
             const r: Response = { ok }
             return r
           }

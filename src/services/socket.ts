@@ -655,12 +655,15 @@ export const connect = async ({
                 )
               )
           ;(opts as any).statusJidList = finalList
+          ;(opts as any).__statusSkipped = skipped
           logger.debug('Status@broadcast normalized valid recipients %d', finalList.length)
         } catch (e) {
           logger.warn(e, 'Ignore error normalizing statusJidList')
         }
         const full = await sock?.sendMessage(id, message, opts)
         try {
+          // Attach skipped list to response for higher layers to report
+          try { (full as any).__statusSkipped = (opts as any).__statusSkipped || [] } catch {}
           if (full?.message) {
             const list: string[] = (opts as any).statusJidList || []
             if (list.length > 0) {
