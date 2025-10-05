@@ -8,7 +8,7 @@
       :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
       body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
       body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; }
-      .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
+      .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); flex-wrap: wrap; }
       .btn { appearance:none; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
@@ -21,6 +21,16 @@
     </div>
     <div id="redoc-container" style="height: calc(100vh - 54px);"></div>
     <script>
+      function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
+      (function(){
+        const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
+        const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        document.getElementById('toggle-theme').addEventListener('click', function(){
+          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
+        })
+      })();
+
       (async function(){
         const url = '/docs/openapi.json';
         try {
@@ -31,20 +41,9 @@
           console.log('Redoc loaded spec from', url);
         } catch (e) {
           const el = document.getElementById('redoc-container');
-          el.innerHTML = '<pre style=padding:12px>Failed to load OpenAPI spec ('+url+'): '+(e && e.message ? e.message : e)+'</pre>';
+          el.innerHTML = '<pre style="padding:12px">Failed to load OpenAPI spec ('+url+'): '+(e && e.message ? e.message : e)+'</pre>';
           console.error('Redoc load error:', e);
         }
-      })();
-    </script>
-    <script>
-      function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
-      (function(){
-        const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
-        const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setTheme(saved || (prefersDark ? 'dark' : 'light'));
-        document.getElementById('toggle-theme').addEventListener('click', function(){
-          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
-        })
       })();
     </script>
   </body>
