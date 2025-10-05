@@ -42,7 +42,8 @@
     "broker-ts": "node --experimental-strip-types --experimental-transform-types src/broker.ts",
     "bridge": "node dist/src/bridge.js",
     "bridge-ts": "node --experimental-strip-types --experimental-transform-types src/bridge.ts",
-    "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json"
+    "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json",
+    "build:docs": "node ./scripts/openapi-to-json.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.1.1",

@@ -20,4 +20,4 @@ COPY ./docs ./docs
 COPY ./logos ./logos
 COPY ./src ./src
 
-RUN corepack enable && yarn install --no-progress
+RUN corepack enable && yarn install --no-progress && yarn build:docs

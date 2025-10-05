@@ -17,6 +17,7 @@ COPY ./docs ./docs
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
 RUN yarn build
+RUN yarn build:docs
 
 FROM node:24-bookworm-slim
 
