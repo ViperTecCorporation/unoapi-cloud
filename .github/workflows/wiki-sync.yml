@@ -21,6 +21,26 @@ jobs:
         run: |
           echo "WIKI_TOKEN not set; skipping wiki sync."
 
+      - name: Test Wiki access with token
+        if: env.WIKI_TOKEN != ''
+        env:
+          REPO: ${{ github.repository }}
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
+          echo "Testing Wiki access..."
+          if git ls-remote "$URL" >/dev/null 2>&1; then
+            echo "Wiki access OK"
+          else
+            echo "Failed to access Wiki repo with provided token."
+            echo "Common causes:"
+            echo "- PAT missing 'repo' scope or not SSO-authorized for the org."
+            echo "- Token user lacks write access (add user as collaborator/team with write)."
+            echo "- Organization enforces SSO; authorize the PAT under Developer settings."
+            exit 1
+          fi
+
       - name: Prepare wiki repository (create if missing)
         if: env.WIKI_TOKEN != ''
         run: |
