@@ -20,12 +20,25 @@
     nav a { display:block; padding:8px 10px; margin-bottom:6px; border-radius:6px; color:var(--link); text-decoration:none; background:var(--card); border:1px solid var(--border) }
     section { flex:1; }
     article { background:var(--card); border:1px solid var(--border); padding:16px; border-radius:8px; margin-bottom:18px; }
-    pre { overflow:auto; background:var(--bg); padding:12px; border-radius:6px; border:1px solid var(--border) }
-    code { color:var(--fg) }
+    /* Typography for rendered Markdown */
+    .doc-content h1 { font-size: 28px; margin: 0 0 12px; }
+    .doc-content h2 { font-size: 22px; margin: 18px 0 8px; }
+    .doc-content h3 { font-size: 18px; margin: 16px 0 6px; }
+    .doc-content p { margin: 10px 0; }
+    .doc-content ul, .doc-content ol { padding-left: 20px; margin: 8px 0; }
+    .doc-content pre { overflow:auto; background:var(--bg); padding:12px; border-radius:6px; border:1px solid var(--border) }
+    .doc-content code { color:var(--fg) }
     .muted { color: var(--muted); }
     .toolbar { display:flex; align-items:center; gap:12px; }
-    .btn { appearance:none; border:1px solid var(--border); color:var(--fg); background:var(--card); border-radius:6px; padding:6px 10px; cursor:pointer; }
+    .btn { appearance:none; border:1px solid var(--border); color:var(--fg); background:var(--card); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; line-height:1.2; text-decoration:none; }
+    select.btn { appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; background:var(--card); color:var(--fg); border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:14px; line-height:1.2; }
     .btn:hover { filter: brightness(1.05); }
+    a { color: var(--link); }
+    a:hover { filter: brightness(1.1); }
+    .btn-primary { background: var(--link); border-color: var(--link); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-outline-primary { background: transparent; color: var(--link); border-color: var(--link); }
+    .btn-outline-primary:hover { background: var(--link); color: #fff; }
 
     /* Mobile responsiveness */
     @media (max-width: 900px) {
@@ -38,11 +51,53 @@
       .toolbar { width: 100%; justify-content: space-between; }
     }
   </style>
+  <!-- Markdown renderers -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
   <script>
     let currentLang = 'en'
     function setTheme(theme) {
       document.body.setAttribute('data-theme', theme)
       try { localStorage.setItem('unoapi_docs_theme', theme) } catch {}
+    }
+    // i18n for static labels (nav + headings)
+    const I18N = {
+      'en': {
+        langLabel: 'Language:',
+        tagline: 'Architecture, Development and Status/Broadcast docs',
+        navArchitecture: 'Architecture Overview',
+        navDevelopment: 'Development Guide',
+        navStatus: 'Status/Broadcast',
+        navInstall: 'Installation Guide',
+        navOpenapiRedoc: 'OpenAPI (Redoc)',
+        navOpenapiSwagger: 'OpenAPI (Swagger UI)',
+        navEnvironment: 'Environment',
+        h2Architecture: 'Architecture Overview',
+        h2Development: 'Development Guide',
+        h2Environment: 'Environment Variables',
+        h2Install: 'Installation Guide',
+        h2Status: 'Status/Broadcast',
+      },
+      'pt-BR': {
+        langLabel: 'Idioma:',
+        tagline: 'Documentação de Arquitetura, Desenvolvimento e Status/Transmissão',
+        navArchitecture: 'Visão de Arquitetura',
+        navDevelopment: 'Guia de Desenvolvimento',
+        navStatus: 'Status/Transmissão',
+        navInstall: 'Guia de Instalação',
+        navOpenapiRedoc: 'OpenAPI (Redoc)',
+        navOpenapiSwagger: 'OpenAPI (Swagger UI)',
+        navEnvironment: 'Ambiente',
+        h2Architecture: 'Visão de Arquitetura',
+        h2Development: 'Guia de Desenvolvimento',
+        h2Environment: 'Variáveis de Ambiente',
+        h2Install: 'Guia de Instalação',
+        h2Status: 'Status/Transmissão',
+      }
+    }
+    function t(key){ const d = I18N[currentLang] || I18N['en']; return d[key] || key }
+    function applyStaticI18n(){
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')) })
     }
     async function load(target, path) {
       const el = document.getElementById(target);
@@ -50,24 +105,30 @@
       const res = await fetch(path);
       const txt = await res.text();
       el.textContent = '';
-      const pre = document.createElement('pre');
-      pre.textContent = txt;
-      el.appendChild(pre);
+      const html = (window.marked ? window.marked.parse(txt) : txt);
+      const safe = (window.DOMPurify ? window.DOMPurify.sanitize(html) : html);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'doc-content';
+      wrapper.innerHTML = safe;
+      el.appendChild(wrapper);
     }
     function refresh() {
       if (currentLang === 'pt-BR') {
         load('arch', '/docs/pt-BR/ARQUITETURA.md');
         load('dev', '/docs/pt-BR/DESENVOLVIMENTO.md');
         load('env', '/docs/pt-BR/AMBIENTE.md');
-        load('status', '/docs/pt-BR/STATUS_BROADCAST.md');
+        load('status-content', '/docs/pt-BR/STATUS_BROADCAST.md');
+        load('install-content', '/docs/pt-BR/INSTALACAO.md');
       } else {
         load('arch', '/docs/ARCHITECTURE.md');
         load('dev', '/docs/DEVELOPMENT.md');
         load('env', '/docs/ENVIRONMENT.md');
-        load('status', '/docs/STATUS_BROADCAST.md');
+        load('status-content', '/docs/STATUS_BROADCAST.md');
+        load('install-content', '/docs/INSTALLATION.md');
       }
+      applyStaticI18n()
     }
-    window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', () => {
       const sel = document.getElementById('lang');
       // restore saved language
       try {
@@ -93,6 +154,7 @@
           nav.classList.toggle('open')
         })
       }
+      applyStaticI18n();
       refresh();
     });
   </script>
@@ -103,11 +165,11 @@
         <img src="/logos/unoapi_logo.png" alt="Unoapi" style="height:44px;width:auto;"/>
         <div>
           <h1 style="margin:0;">Unoapi Cloud</h1>
-          <p class="muted" style="margin:0;">Architecture, Development and Status/Broadcast docs</p>
+          <p class="muted" style="margin:0;" data-i18n="tagline">Architecture, Development and Status/Broadcast docs</p>
         </div>
       </div>
       <div class="toolbar">
-        <label class="muted">Language:
+        <label class="muted"><span data-i18n="langLabel">Language:</span>
           <select id="lang" class="btn">
             <option value="en">English</option>
             <option value="pt-BR">Português (Brasil)</option>
@@ -119,33 +181,38 @@
     </header>
     <main>
       <nav>
-        <a href="#architecture">Architecture Overview</a>
-        <a href="#development">Development Guide</a>
-        <a href="#status">Status/Broadcast</a>
-        <a href="/docs/openapi.html">OpenAPI (Redoc)</a>
-        <a href="/docs/swagger.html">OpenAPI (Swagger UI)</a>
-        <a href="#environment">Environment</a>
+        <a href="#architecture" data-i18n="navArchitecture">Architecture Overview</a>
+        <a href="#development" data-i18n="navDevelopment">Development Guide</a>
+        <a href="#status" data-i18n="navStatus">Status/Broadcast</a>
+        <a href="#install" data-i18n="navInstall">Installation Guide</a>
+        <a href="/docs/openapi.html" data-i18n="navOpenapiRedoc">OpenAPI (Redoc)</a>
+        <a href="/docs/swagger.html" data-i18n="navOpenapiSwagger">OpenAPI (Swagger UI)</a>
+        <a href="#environment" data-i18n="navEnvironment">Environment</a>
       </nav>
       <section>
         <article id="architecture">
-          <h2>Architecture Overview</h2>
+          <h2 data-i18n="h2Architecture">Architecture Overview</h2>
           <div id="arch"></div>
         </article>
         <article id="development">
-          <h2>Development Guide</h2>
+          <h2 data-i18n="h2Development">Development Guide</h2>
           <div id="dev"></div>
         </article>
         <article id="environment">
-          <h2>Environment Variables</h2>
+          <h2 data-i18n="h2Environment">Environment Variables</h2>
           <div id="env"></div>
           <div style="margin-top:8px;">
-            <a class="btn" href="/docs/examples/.env.example.en">Download .env example (EN)</a>
-            <a class="btn" href="/docs/pt-BR/exemplos/.env.exemplo">Download .env exemplo (PT-BR)</a>
+            <a class="btn btn-primary" href="/docs/examples/.env.example.en" download="unoapi.env.example.en">Download .env example (EN)</a>
+            <a class="btn btn-primary" href="/docs/pt-BR/exemplos/.env.exemplo" download="unoapi.env.exemplo">Download .env exemplo (PT-BR)</a>
           </div>
         </article>
+        <article id="install">
+          <h2 data-i18n="h2Install">Installation Guide</h2>
+          <div id="install-content"></div>
+        </article>
         <article id="status">
-          <h2>Status/Broadcast</h2>
-          <div id="status"></div>
+          <h2 data-i18n="h2Status">Status/Broadcast</h2>
+          <div id="status-content"></div>
         </article>
       </section>
     </main>

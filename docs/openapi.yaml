@@ -1,14 +1,16 @@
 openapi: 3.0.3
 info:
   title: Unoapi Cloud API
-  version: 1.0.0
-  description: REST API compatível com WhatsApp Cloud utilizando Baileys como transporte.
+  version: 1.1.0
+  description: |
+    API compatível com WhatsApp Cloud (formato de payload), utilizando Baileys como transporte.
+    - Endpoints espelham em grande parte a estrutura do Cloud API (ex.: `v15.0/{phone}/messages`).
+    - Suporta envios de texto, mídia (imagem/áudio/documento/vídeo), contatos e mensagens interativas (botões/listas).
 servers:
-  # Use relative URL so the UI (browser) uses the current domain/origin
   - url: /
 security:
-  # Require API token header for all operations by default
   - ApiToken: []
+
 paths:
   /ping:
     get:
@@ -20,33 +22,102 @@ paths:
             text/plain:
               schema:
                 type: string
-  /session/{phone}:
+
+  /sessions:
+    get:
+      summary: Listar sessões/configurações visíveis
+      responses:
+        '200':
+          description: Lista de conexões/sessões
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsList'
+
+  /sessions/{phone}:
     get:
       summary: UI de sessão (QR/Config)
       parameters:
-        - in: path
-          name: phone
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/PhonePath'
       responses:
         '200':
-          description: HTML com QR/Config
+          description: HTML com QR/Config da sessão
           content:
             text/html:
               schema:
                 type: string
+
+  /v15.0/{phone}:
+    get:
+      summary: Status e configuração da sessão
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Informações da sessão e templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneInfo'
+
+  /v15.0/{phone}/phone_numbers:
+    get:
+      summary: Listar conexões/telefones gerenciados
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Lista de configurações
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsList'
+
+  /v15.0/{phone}/message_templates:
+    get:
+      summary: Listar templates
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Templates disponíveis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+  /v15.0/{phone}/templates:
+    post:
+      summary: (Compat) Listar templates
+      description: Compatível com o Cloud API; neste projeto retorna a lista local/forward.
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Templates disponíveis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+
   /v15.0/{phone}/messages:
     post:
-      summary: Enviar mensagem (Cloud API shape)
+      summary: Enviar mensagem (WhatsApp Cloud shape)
       description: |
-        Quando ocorre um erro de envio (SendError), a API ainda responde 200 com o corpo OK, e um payload de falha é enviado ao webhook configurado (vide schema `WebhookStatusFailed`).
+        - Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.
+        - Suporta opções de broadcast/status: `options.statusJidList` ou `statusJidList` (atalho).
       parameters:
-        - in: path
-          name: phone
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/PhonePath'
       requestBody:
         required: true
         content:
@@ -55,13 +126,98 @@ paths:
               $ref: '#/components/schemas/MessageRequest'
             examples:
               text:
-                summary: Texto simples para um número
+                summary: Texto
                 value:
                   messaging_product: whatsapp
                   to: "5511999999999"
                   type: text
                   text:
                     body: "Olá do Unoapi Cloud!"
+              image:
+                summary: Imagem por link
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: image
+                  image:
+                    link: "https://exemplo.com/imagem.jpg"
+                    caption: "Legenda opcional"
+              document:
+                summary: Documento
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: document
+                  document:
+                    link: "https://exemplo.com/arquivo.pdf"
+                    filename: "contrato.pdf"
+              audio:
+                summary: Áudio/voice
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: audio
+                  audio:
+                    link: "https://exemplo.com/audio.ogg"
+              video:
+                summary: Vídeo
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: video
+                  video:
+                    link: "https://exemplo.com/video.mp4"
+                    caption: "Vídeo curto"
+              contacts:
+                summary: Contatos (vCard simplificado)
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: contacts
+                  contacts:
+                    - name:
+                        formatted_name: "Fulano"
+                      phones:
+                        - wa_id: "5511988887777"
+                          phone: "+55 11 98888-7777"
+              interactiveButtons:
+                summary: Interativo - Botões
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: interactive
+                  interactive:
+                    type: button
+                    body:
+                      text: "Escolha uma opção"
+                    action:
+                      buttons:
+                        - type: reply
+                          reply:
+                            id: "btn_1"
+                            title: "Opção 1"
+                        - type: reply
+                          reply:
+                            id: "btn_2"
+                            title: "Opção 2"
+              interactiveList:
+                summary: Interativo - Lista
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: interactive
+                  interactive:
+                    type: list
+                    body:
+                      text: "Selecione"
+                    action:
+                      sections:
+                        - title: "Grupo"
+                          rows:
+                            - id: "r1"
+                              title: "Item 1"
+                            - id: "r2"
+                              title: "Item 2"
       responses:
         '200':
           description: OK
@@ -69,41 +225,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
-              examples:
-                textOk:
-                  summary: Resposta OK (texto)
-                  value:
-                    messaging_product: whatsapp
-                    contacts:
-                      - wa_id: "5511999999999"
-                    messages:
-                      - id: "wamid.HBg..."
         '400':
-          description: Erro de validação ou requisição inválida
+          description: Erro de validação
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error400'
-              examples:
-                invalid:
-                  summary: Parâmetros inválidos
-                  value:
-                    status: error
-                    message: "invalid_phone_number: 551199..."
-                offline:
-                  summary: Sessão offline
-                  value:
-                    status: error
-                    message: "offline_session"
-  /{phone}/contacts:
+
+  /v15.0/{phone}/marketing_messages:
     post:
-      summary: Verificar contatos (standalone)
+      summary: Enviar Marketing Messages (compatível)
       parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /v15.0/{phone}/preflight/status:
+    post:
+      summary: Checagem pré-envio (Status/Broadcast)
+      description: Verifica sessão online e se destinatários existem no WhatsApp.
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreflightStatusRequest'
+            example:
+              statusJidList: ["5511999999999", "5511988887777"]
+      responses:
+        '200':
+          description: Resultado da verificação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreflightStatusResponse'
+        '400':
+          description: Erro na verificação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+
+  /v15.0/{phone}/{media_id}:
+    get:
+      summary: Obter metadados e URL temporária de mídia
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
         - in: path
-          name: phone
+          name: media_id
           required: true
           schema:
             type: string
+      responses:
+        '200':
+          description: Dados da mídia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaResponse'
+        '404':
+          description: Não encontrado
+
+  /v15.0/download/{phone}/{file}:
+    get:
+      summary: Download do arquivo de mídia
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+        - in: path
+          name: file
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Arquivo binário
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Não encontrado
+
+  /{phone}/contacts:
+    post:
+      summary: Verificar contatos
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
       requestBody:
         required: true
         content:
@@ -112,9 +333,8 @@ paths:
               $ref: '#/components/schemas/ContactsRequest'
             example:
               blocking: no_wait
-              contacts:
-                - "16315551000"
               force_check: true
+              contacts: ["5511999999999"]
       responses:
         '200':
           description: Resultado de validação
@@ -122,19 +342,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContactsResponse'
-              example:
-                contacts:
-                  - wa_id: "16315551000"
-                    input: "16315551000"
-                    status: valid
 
-  /webhooks/fake/{phone}:
+  /{phone}/blacklist/{webhook_id}:
     post:
-      summary: Webhook de teste (Fake)
-      description: 'Recebe qualquer payload e responde { "success": true }. Útil para testar o formato enviado pelo Unoapi.'
+      summary: Adicionar número ao blacklist de um webhook
       parameters:
+        - $ref: '#/components/parameters/PhonePath'
         - in: path
-          name: phone
+          name: webhook_id
           required: true
           schema:
             type: string
@@ -143,180 +358,16 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/WebhookStatusFailed'
-                - $ref: '#/components/schemas/WebhookInbound'
-                - $ref: '#/components/schemas/WebhookAck'
-                - type: object
-            examples:
-              failed:
-                summary: Exemplo de payload de falha (SendError)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            metadata:
-                              display_phone_number: "558899998888"
-                              phone_number_id: "558899998888"
-                            statuses:
-                              - id: "wamid.HBg..."
-                                recipient_id: "5511999999999"
-                                status: failed
-                                timestamp: 1700000000
-                                errors:
-                                  - code: 7
-                                    title: invalid_phone_number
-              inboundText:
-                summary: Mensagem recebida (texto)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            metadata:
-                              display_phone_number: "558899998888"
-                              phone_number_id: "558899998888"
-                            contacts:
-                              - wa_id: "5511999999999"
-                                profile:
-                                  name: "Contato"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000000"
-                                type: "text"
-                                text:
-                                  body: "Olá!"
-              inboundImage:
-                summary: Mensagem recebida (imagem)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            contacts:
-                              - wa_id: "5511999999999"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000200"
-                                type: "image"
-                                image:
-                                  mime_type: image/jpeg
-                                  sha256: abcdef...
-                                  id: "MEDIA_ID"
-                                  caption: "Foto"
-              inboundAudio:
-                summary: Mensagem recebida (áudio)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            contacts:
-                              - wa_id: "5511999999999"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000300"
-                                type: "audio"
-                                audio:
-                                  mime_type: audio/ogg; codecs=opus
-                                  id: "MEDIA_ID"
-                                  voice: true
-              inboundDocument:
-                summary: Mensagem recebida (documento)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            contacts:
-                              - wa_id: "5511999999999"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000400"
-                                type: "document"
-                                document:
-                                  filename: contrato.pdf
-                                  mime_type: application/pdf
-                                  id: "MEDIA_ID"
-              inboundVideo:
-                summary: Mensagem recebida (vídeo)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            contacts:
-                              - wa_id: "5511999999999"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000500"
-                                type: "video"
-                                video:
-                                  mime_type: video/mp4
-                                  id: "MEDIA_ID"
-                                  caption: "Vídeo"
-              inboundSticker:
-                summary: Mensagem recebida (sticker)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            contacts:
-                              - wa_id: "5511999999999"
-                            messages:
-                              - from: "5511999999999"
-                                id: "wamid.HBg..."
-                                timestamp: "1700000600"
-                                type: "sticker"
-                                sticker:
-                                  id: "MEDIA_ID"
-                                  mime_type: image/webp
-              ackRead:
-                summary: Atualização de leitura (read)
-                value:
-                  object: whatsapp_business_account
-                  entry:
-                    - id: "558899998888"
-                      changes:
-                        - field: messages
-                          value:
-                            messaging_product: whatsapp
-                            metadata:
-                              display_phone_number: "558899998888"
-                              phone_number_id: "558899998888"
-                            statuses:
-                              - id: "wamid.HBg..."
-                                recipient_id: "5511999999999"
-                                status: read
-                                timestamp: 1700000100
+              type: object
+              properties:
+                to:
+                  type: string
+                ttl:
+                  type: integer
+                  description: Tempo de bloqueio em milissegundos
+            example:
+              to: "5511999999999"
+              ttl: 86400000
       responses:
         '200':
           description: OK
@@ -329,15 +380,190 @@ paths:
                     type: boolean
                 example:
                   success: true
+        '400':
+          description: Parâmetros inválidos
+
+  /{phone}/request_code:
+    post:
+      summary: Solicitar Pairing Code (envia mensagem de texto ao próprio número)
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+
+  /timer/{phone}/{to}:
+    post:
+      summary: Iniciar timer de mensagem automática
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+        - in: path
+          name: to
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, timeout]
+              properties:
+                message:
+                  type: string
+                timeout:
+                  type: integer
+                  description: Tempo de espera em ms
+            example:
+              message: "Ainda precisamos da sua resposta"
+              timeout: 300000
+      responses:
+        '200': { description: OK }
+        '400': { description: Parâmetros ausentes }
+    delete:
+      summary: Cancelar timer ativo
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+        - in: path
+          name: to
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: OK }
+
+  /v15.0/{phone}/register:
+    post:
+      summary: Registrar/atualizar configuração da sessão
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterConfig'
+      responses:
+        '200':
+          description: Configuração aplicada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterConfig'
+        '400':
+          description: Erro ao aplicar configuração
+
+  /v15.0/{phone}/deregister:
+    post:
+      summary: Encerrar sessão (logout) e remover registro
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '204': { description: Sem conteúdo }
+
+  /webhooks/whatsapp/{phone}:
+    get:
+      summary: Verificação do Webhook (Facebook/Meta)
+      security: []  # não requer token local
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+        - in: query
+          name: hub.mode
+          schema: { type: string }
+        - in: query
+          name: hub.verify_token
+          schema: { type: string }
+        - in: query
+          name: hub.challenge
+          schema: { type: string }
+      responses:
+        '200':
+          description: Retorna o challenge
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403': { description: Token inválido }
+    post:
+      summary: Receber eventos do WhatsApp (Forward mode)
+      security: []  # opcionalmente aberto, depende do deploy
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WebhookInbound'
+                - $ref: '#/components/schemas/WebhookAck'
+                - $ref: '#/components/schemas/WebhookStatusFailed'
+                - type: object
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                example: { success: true }
+
+  /webhooks/fake/{phone}:
+    post:
+      summary: Webhook de teste (Fake)
+      description: Recebe qualquer payload e responde `{ "success": true }`.
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WebhookStatusFailed'
+                - $ref: '#/components/schemas/WebhookInbound'
+                - $ref: '#/components/schemas/WebhookAck'
+                - type: object
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                example: { success: true }
+
 components:
-  schemas:
-    
   securitySchemes:
     ApiToken:
       type: apiKey
       in: header
       name: Authorization
-      description: 'API token header. Example: 1 or Bearer <token>'
+      description: 'API token. Ex.: 1 ou Bearer <token>'
+  parameters:
+    PhonePath:
+      name: phone
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Número (ID) da sessão, ex.: 5511999999999
+
+  schemas:
     Error400:
       type: object
       properties:
@@ -346,7 +572,44 @@ components:
           example: error
         message:
           type: string
-    MessageRequest:
+
+    RegisterConfig:
+      description: Configuração da sessão. Campos variam por provedor.
+      type: object
+      additionalProperties: true
+      properties:
+        authToken:
+          type: string
+        provider:
+          type: string
+        connectionType:
+          type: string
+
+    SessionsList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              display_phone_number: { type: string }
+              status: { type: string }
+
+    PhoneInfo:
+      type: object
+      properties:
+        display_phone_number: { type: string }
+        status: { type: string }
+        message_templates:
+          type: object
+          properties:
+            data:
+              type: array
+              items: { type: object }
+
+    # Requests de mensagens por tipo
+    MessageCommon:
       type: object
       required: [messaging_product, to, type]
       properties:
@@ -355,70 +618,197 @@ components:
           example: whatsapp
         to:
           type: string
-          description: Número destino ou status@broadcast
+          description: Número destino (ou status@broadcast)
         type:
           type: string
-          description: Tipo de conteúdo (text, image, video, document, ...)
-        text:
-          type: object
-          properties:
-            body:
-              type: string
-        image:
-          type: object
-          properties:
-            link:
-              type: string
-            caption:
-              type: string
-        video:
-          type: object
-          properties:
-            link:
-              type: string
-            caption:
-              type: string
         options:
           type: object
           properties:
-            broadcast:
-              type: boolean
+            broadcast: { type: boolean }
             statusJidList:
               type: array
-              items:
-                type: string
+              items: { type: string }
         statusJidList:
           type: array
-          items:
-            type: string
+          items: { type: string }
           description: Atalho equivalente a options.statusJidList
+
+    MessageText:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: text }
+            text:
+              type: object
+              properties:
+                body: { type: string }
+
+    MessageImage:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: image }
+            image:
+              type: object
+              properties:
+                link: { type: string }
+                caption: { type: string }
+                filename: { type: string }
+
+    MessageVideo:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: video }
+            video:
+              type: object
+              properties:
+                link: { type: string }
+                caption: { type: string }
+
+    MessageAudio:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: audio }
+            audio:
+              type: object
+              properties:
+                link: { type: string }
+
+    MessageDocument:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: document }
+            document:
+              type: object
+              properties:
+                link: { type: string }
+                filename: { type: string }
+
+    MessageContacts:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: contacts }
+            contacts:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: object
+                    properties:
+                      formatted_name: { type: string }
+                  phones:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        wa_id: { type: string }
+                        phone: { type: string }
+
+    MessageInteractiveButtons:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: interactive }
+            interactive:
+              type: object
+              properties:
+                type: { const: button }
+                body:
+                  type: object
+                  properties:
+                    text: { type: string }
+                action:
+                  type: object
+                  properties:
+                    buttons:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          type: { const: reply }
+                          reply:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              title: { type: string }
+
+    MessageInteractiveList:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: interactive }
+            interactive:
+              type: object
+              properties:
+                type: { const: list }
+                body:
+                  type: object
+                  properties:
+                    text: { type: string }
+                action:
+                  type: object
+                  properties:
+                    sections:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          title: { type: string }
+                          rows:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id: { type: string }
+                                title: { type: string }
+                                description: { type: string }
+
+    MessageRequest:
+      oneOf:
+        - $ref: '#/components/schemas/MessageText'
+        - $ref: '#/components/schemas/MessageImage'
+        - $ref: '#/components/schemas/MessageVideo'
+        - $ref: '#/components/schemas/MessageAudio'
+        - $ref: '#/components/schemas/MessageDocument'
+        - $ref: '#/components/schemas/MessageContacts'
+        - $ref: '#/components/schemas/MessageInteractiveButtons'
+        - $ref: '#/components/schemas/MessageInteractiveList'
+
     MessageResponse:
       type: object
       properties:
-        messaging_product:
-          type: string
+        messaging_product: { type: string }
         contacts:
           type: array
           items:
             type: object
             properties:
-              wa_id:
-                type: string
+              wa_id: { type: string }
         messages:
           type: array
           items:
             type: object
             properties:
-              id:
-                type: string
+              id: { type: string }
         status_skipped:
           type: array
-          items:
-            type: string
-          description: (Status) lista de entradas ignoradas por não terem WhatsApp
+          items: { type: string }
         status_recipients:
           type: integer
-          description: (Status) quantidade de destinatários válidos relayados
+
     ContactsRequest:
       type: object
       properties:
@@ -427,10 +817,10 @@ components:
           example: no_wait
         contacts:
           type: array
-          items:
-            type: string
+          items: { type: string }
         force_check:
           type: boolean
+
     ContactsResponse:
       type: object
       properties:
@@ -439,145 +829,152 @@ components:
           items:
             type: object
             properties:
-              wa_id:
-                type: string
-              input:
-                type: string
-              status:
-                type: string
+              wa_id: { type: string }
+              input: { type: string }
+              status: { type: string }
+
+    MediaResponse:
+      type: object
+      properties:
+        messaging_product: { type: string, example: whatsapp }
+        mime_type: { type: string }
+        sha256: { type: string }
+        file_size: { type: integer }
+        id: { type: string }
+        filename: { type: string }
+        url: { type: string }
+
+    PreflightStatusRequest:
+      type: object
+      properties:
+        statusJidList:
+          type: array
+          items: { type: string }
+
+    PreflightStatusResponse:
+      type: object
+      properties:
+        phone: { type: string }
+        session:
+          type: object
+          properties:
+            status: { type: string }
+            online: { type: boolean }
+        counts:
+          type: object
+          properties:
+            requested: { type: integer }
+            normalized: { type: integer }
+            valid: { type: integer }
+        recipients:
+          type: array
+          items:
+            type: object
+            properties:
+              input: { type: string }
+              normalized: { type: string }
+              valid: { type: boolean }
+              wa_id: { type: string }
+        ready: { type: boolean }
+        notes:
+          type: array
+          items: { type: string }
+
     WebhookStatusFailed:
       description: Payload de falha enviado ao webhook (fora da resposta HTTP)
       type: object
       properties:
-        object:
-          type: string
-          example: whatsapp_business_account
+        object: { type: string, example: whatsapp_business_account }
         entry:
           type: array
           items:
             type: object
             properties:
-              id:
-                type: string
+              id: { type: string }
               changes:
                 type: array
                 items:
                   type: object
                   properties:
-                    field:
-                      type: string
-                      example: messages
+                    field: { type: string, example: messages }
                     value:
                       type: object
                       properties:
-                        messaging_product:
-                          type: string
-                          example: whatsapp
-                        metadata:
-                          type: object
-                          properties:
-                            display_phone_number:
-                              type: string
-                            phone_number_id:
-                              type: string
+                        messaging_product: { type: string, example: whatsapp }
+                        metadata: { type: object }
                         statuses:
                           type: array
                           items:
                             type: object
                             properties:
-                              id:
-                                type: string
-                              recipient_id:
-                                type: string
-                              status:
-                                type: string
-                                example: failed
-                              timestamp:
-                                type: integer
+                              id: { type: string }
+                              recipient_id: { type: string }
+                              status: { type: string, example: failed }
+                              timestamp: { type: integer }
                               errors:
                                 type: array
                                 items:
                                   type: object
                                   properties:
-                                    code:
-                                      type: integer
-                                    title:
-                                      type: string
+                                    code: { type: integer }
+                                    title: { type: string }
+
     WebhookInbound:
       description: Mensagens recebidas (compatível com WhatsApp Cloud API)
       type: object
       properties:
-        object:
-          type: string
+        object: { type: string }
         entry:
           type: array
           items:
             type: object
             properties:
-              id:
-                type: string
+              id: { type: string }
               changes:
                 type: array
                 items:
                   type: object
                   properties:
-                    field:
-                      type: string
-                      example: messages
+                    field: { type: string, example: messages }
                     value:
                       type: object
                       properties:
-                        messaging_product:
-                          type: string
-                          example: whatsapp
-                        metadata:
-                          type: object
+                        messaging_product: { type: string, example: whatsapp }
+                        metadata: { type: object }
                         contacts:
                           type: array
-                          items:
-                            type: object
+                          items: { type: object }
                         messages:
                           type: array
-                          items:
-                            type: object
+                          items: { type: object }
+
     WebhookAck:
       description: Acks/Status de mensagens enviadas (delivered/read/deleted)
       type: object
       properties:
-        object:
-          type: string
+        object: { type: string }
         entry:
           type: array
           items:
             type: object
             properties:
-              id:
-                type: string
+              id: { type: string }
               changes:
                 type: array
                 items:
                   type: object
                   properties:
-                    field:
-                      type: string
-                      example: messages
+                    field: { type: string, example: messages }
                     value:
                       type: object
                       properties:
-                        messaging_product:
-                          type: string
+                        messaging_product: { type: string }
                         statuses:
                           type: array
                           items:
                             type: object
                             properties:
-                              id:
-                                type: string
-                              recipient_id:
-                                type: string
-                              status:
-                                type: string
-                                example: delivered
-                              timestamp:
-                                type: integer
-  
+                              id: { type: string }
+                              recipient_id: { type: string }
+                              status: { type: string, example: delivered }
+                              timestamp: { type: integer }

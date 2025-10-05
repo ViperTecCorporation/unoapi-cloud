@@ -7,9 +7,14 @@
     <style>
       :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
       body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
-      body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; }
+      body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
       .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); flex-wrap: wrap; }
-      .btn { appearance:none; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; }
+      .btn { appearance:none; border:1px solid var(--border); background:var(--card); color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; line-height:1.2; }
+      .btn:hover { filter: brightness(1.05); }
+      .btn-primary { background: var(--link); border-color: var(--link); color: #fff; }
+      .btn-primary:hover { filter: brightness(1.08); }
+      .btn-outline-primary { background: transparent; color: var(--link); border-color: var(--link); }
+      .btn-outline-primary:hover { background: var(--link); color: #fff; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
   </head>

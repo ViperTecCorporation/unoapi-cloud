@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-Br">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unoapi - Manager</title>
+    <title>Unoapi Cloud — Manager</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- DataTables CSS -->
@@ -20,13 +20,29 @@
       }
     </script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
+        :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; }
+        body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; }
 
-        .navbar {
-            margin-bottom: 20px;
+        body { margin:0; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; min-height:100vh; display:flex; flex-direction:column; }
+
+        .navbar { margin-bottom: 20px; background: var(--card) !important; border-bottom: 1px solid var(--border); }
+        .navbar .navbar-brand, .navbar .nav-link { color: var(--fg) !important; }
+        .navbar .btn { border:1px solid var(--border); background: var(--card); color: var(--fg); }
+        .navbar-toggler { border-color: var(--border); }
+        body:not([data-theme="light"]) .navbar-light .navbar-toggler-icon { filter: invert(1); }
+
+        /* Header style (same as docs pages) */
+        header { padding: 16px 24px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:16px; }
+        .toolbar { display:flex; align-items:center; gap:12px; }
+        .muted { color: var(--muted); }
+        /* Language select styled like other buttons */
+        select.btn { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding-right: 28px; background: var(--card); color: var(--fg); border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:14px; line-height:1.2; }
+        header h1 { margin: 0 0 6px 0; font-size: 22px; }
+        select.btn:focus { outline: 2px solid transparent; box-shadow: 0 0 0 2px rgba(100, 149, 237, .25); }
+        @media (max-width: 900px) {
+          header { flex-wrap: wrap; }
+          header h1 { font-size: 18px; }
+          .toolbar { width: 100%; justify-content: space-between; }
         }
 
         .edit-modal {
@@ -106,7 +122,7 @@
         }
 
         .webhook:not(:last-child) {
-            border-bottom: 1px solid #e1e1e1d6;
+            border-bottom: 1px solid var(--border);
             padding-bottom: 10px;
             margin: 10px 50px;
         }
@@ -119,12 +135,36 @@
             align-items: center;
         }
 
-        body {
-            min-height: 100vh;
-            display: flex;
-            margin: 0 auto;
-            flex-direction: column;
-        }
+        a { color: var(--link); }
+        a:hover { filter: brightness(1.1); }
+        /* Base button style to match docs */
+        .btn { appearance:none; border:1px solid var(--border); background: var(--card); color: var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; text-decoration:none; }
+        .btn:hover { filter: brightness(1.05); }
+        .modal-content { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+        .modal-header, .modal-footer { border-color: var(--border); }
+        .form-control, .form-select { background: var(--bg); color: var(--fg); border:1px solid var(--border); }
+        .form-control::placeholder { color: var(--muted); }
+        .table { color: var(--fg); border-color: var(--border) !important; background: var(--card); }
+        .table thead th { border-bottom-color: var(--border) !important; }
+        .table-striped > tbody > tr:nth-of-type(odd) { --bs-table-accent-bg: var(--rowAlt); color: var(--fg); }
+        .dropdown-menu { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+        .dropdown-item { color: var(--fg); }
+        .dropdown-item:hover { background: var(--rowAlt); }
+
+        /* Buttons palette harmonized with theme */
+        .btn-primary { background: var(--link) !important; border-color: var(--link) !important; color: #fff !important; }
+        .btn-primary:hover { filter: brightness(1.08); }
+        .btn-secondary { background: var(--rowAlt) !important; border-color: var(--border) !important; color: var(--fg) !important; }
+        .btn-secondary:hover { filter: brightness(1.05); }
+        .btn-dark { background: var(--border) !important; border-color: var(--border) !important; color: var(--fg) !important; }
+        .btn-dark:hover { filter: brightness(1.1); }
+        .btn-outline-primary { background: transparent !important; color: var(--link) !important; border-color: var(--link) !important; }
+        .btn-outline-primary:hover { background: var(--link) !important; color: #fff !important; }
+
+        /* Pagination (DataTables/Bootstrap) */
+        .page-link { background: var(--card); color: var(--fg); border-color: var(--border); }
+        .page-link:hover { background: var(--rowAlt); color: var(--fg); }
+        .page-item.active .page-link { background: var(--link); border-color: var(--link); color: #fff; }
 
         .container {
             display: flex;
@@ -171,59 +211,159 @@
     </style>
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">
-                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" class="d-inline-block align-text-top img-fluid" style="max-height:48px;width:auto;">
-            </a>
-            <div class="ms-auto d-flex align-items-center gap-2">
-              <a class="btn btn-outline-primary" href="/docs">Documentação</a>
-            </div>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <!-- Configurations Dropdown -->
-                    <li class="nav-item dropdown d-none" id="navbarDropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="configDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-cog"></i>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="configDropdown">
-                            <li>
-                                <button class="dropdown-item" onclick="addInstance()"><i class="fas fa-plus"></i> Adicionar Instância</button>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <button class="dropdown-item text-danger" onclick="logout()"><i class="fas fa-sign-out"></i> SAIR</button>
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+    <script>
+      function setTheme(theme) {
+        document.body.setAttribute('data-theme', theme);
+        try { localStorage.setItem('unoapi_docs_theme', theme) } catch {}
+      }
+      // i18n
+      var currentLang = 'en';
+      var I18N = {
+        'en': {
+          langLabel: 'Language:',
+          headerTitle: 'Unoapi Cloud — Manager',
+          headerSub: 'Manage sessions and quick tests',
+          docsLink: 'Docs',
+          themeButton: 'Toggle Theme',
+          configuredToken: 'Configured token:',
+          tokenPlaceholder: 'Enter your token',
+          connect: 'Connect',
+          errorInvalid: 'Error: Invalid token or connection failed.',
+          thLabel: 'Label', thNumber: 'Number', thStatus: 'Status', thServer: 'Server', thActions: 'Actions',
+          addSessionTitle: 'Add Session', connectionNumber: 'Connection Number', connectionNumberPh: 'Number format: 55 DDD NUMBER', configure: 'Configure',
+          editAddTitle: 'Edit/Add Session',
+          connectSession: 'Connect Session', qrWait: 'Wait for the QRCode/PairingCode event', qrWillAppear: 'QRCode/PairingCode will appear here',
+          testSession: 'Test Session', recipient: 'Recipient WhatsApp', recipientPh: 'Number format: 55 DDD NUMBER', textMessage: 'Text message', send: 'Send',
+          qrScanBelow: 'Scan the QR Code below', qrWaitingNew: 'Waiting for a new QRCode/PairingCode', connected: 'Connected!',
+          fldLabel: 'Label', fldLabelPh: 'Label',
+          rejectCallsWebhookLabel: 'Incoming/Rejected Call Message', rejectCallsWebhookPh: 'I was calling you...',
+          connectionType: 'Connection Type', proxyUrlLabel: 'Proxy URL (Restart Unoapi after change)', proxyUrlPh: 'Ex: socks5://user:pass@host:port',
+          rejectCallsLabel: 'Message when rejecting calls', rejectCallsPh: 'Leave blank to not auto-reject calls', serverLabel: 'Server',
+          ignoreGroupMessages: 'Ignore Group Messages', ignoreNewsletterMessages: 'Ignore Newsletter Messages', ignoreHistoryMessages: 'Ignore Message History',
+          readOnReceipt: 'Mark as read on receive', sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
+          notifyFailures: 'Notify Failures', sendTyping: 'Send "Typing"', sendReactionAsReply: 'Send Reaction As Reply', ignoreOwnMessages: 'Ignore Own Messages', ignoreYourselfMessages: 'Ignore Yourself Messages', autoConnect: 'Auto Connect', ignoreBroadcastMessages: 'Ignore Broadcast Lists',
+          whId: 'ID', whIdPh: 'Webhook ID', whUrlAbs: 'Absolute URL', whUrlAbsPh: 'Webhook Absolute URL', whToken: 'Token', whTokenPh: 'Webhook Token', whHeader: 'Header', whHeaderPh: 'Webhook Header',
+          whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', remove: 'Remove',
+          btnEdit: 'Edit', btnConnect: 'Connect', btnDelete: 'Delete', btnTest: 'Test',
+          confirmDelete: 'Are you sure you want to delete this session?',
+          apiNoQr: 'API did not generate the QR Code.', tokenNotFound: 'Token not found.'
+        },
+        'pt-BR': {
+          langLabel: 'Idioma:',
+          headerTitle: 'Unoapi Cloud — Manager',
+          headerSub: 'Gerencie sessões e testes rápidos',
+          docsLink: 'Documentação',
+          themeButton: 'Alternar tema',
+          configuredToken: 'Token configurado:',
+          tokenPlaceholder: 'Insira o token aqui',
+          connect: 'Conectar',
+          errorInvalid: 'Erro: Token inválido ou conexão falhou.',
+          thLabel: 'Identificação', thNumber: 'Número', thStatus: 'Status', thServer: 'Server', thActions: 'Ações',
+          addSessionTitle: 'Adicionar Sessão', connectionNumber: 'Número da Conexão', connectionNumberPh: 'Número no formato 55 DDD NÚMERO', configure: 'Configurar',
+          editAddTitle: 'Editar/Adicionar Sessão',
+          connectSession: 'Conectar Sessão', qrWait: 'Aguarde o evento com o QrCode/PairingCode', qrWillAppear: 'QrCode/PairingCode será exibido aqui',
+          testSession: 'Testar Sessão', recipient: 'Whatsapp Destinatário', recipientPh: 'Número no formato 55 DDD NÚMERO', textMessage: 'Mensagem em texto', send: 'Enviar',
+          qrScanBelow: 'Leia o QR Code Abaixo', qrWaitingNew: 'Esperando um novo QrCode/PairingCode', connected: 'Conectado!',
+          fldLabel: 'Identificação', fldLabelPh: 'Identificação',
+          rejectCallsWebhookLabel: 'Mensagem de Ligação Recebida e/ou Rejeitada', rejectCallsWebhookPh: 'Estava te ligando...',
+          connectionType: 'Tipo de Conexão', proxyUrlLabel: 'Proxy Url (Precisa Reiniciar a Unoapi ao Alterar)', proxyUrlPh: 'Ex: socks5://user:pass@ip/domain:port',
+          rejectCallsLabel: 'Mensagem ao Rejeitar Chamadas', rejectCallsPh: 'Deixe em Branco para não Rejeitar ligações automaticamente', serverLabel: 'Server',
+          ignoreGroupMessages: 'Ignorar Mensagens de Grupo', ignoreNewsletterMessages: 'Ignorar Mensagens de Newsletter', ignoreHistoryMessages: 'Ignorar Histórico de Mensagens',
+          readOnReceipt: 'Ler a mensagem ao receber', sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
+          notifyFailures: 'Notificar Falhas', sendTyping: 'Enviar "Digitando"', sendReactionAsReply: 'Enviar Reação Como Resposta', ignoreOwnMessages: 'Ignorar Mensagens Próprias', ignoreYourselfMessages: 'Ignorar Suas Mensagens', autoConnect: 'Conexão Automática', ignoreBroadcastMessages: 'Ignorar Listas de Transmissão',
+          whId: 'ID', whIdPh: 'ID do Webhook', whUrlAbs: 'URL Absoluta', whUrlAbsPh: 'URL Absoluta do Webhook', whToken: 'Token', whTokenPh: 'Token do Webhook', whHeader: 'Header', whHeaderPh: 'Header do Webhook',
+          whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', remove: 'Remover',
+          btnEdit: 'Editar', btnConnect: 'Conectar', btnDelete: 'Deletar', btnTest: 'Testar',
+          confirmDelete: 'Tem certeza que deseja deletar essa sessão?',
+          apiNoQr: 'API não gerou o QRCODE.', tokenNotFound: 'Token não encontrado.'
+        }
+      };
+      function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
+      function applyI18n(){
+        document.querySelectorAll('[data-i18n]').forEach(function(el){ el.textContent = t(el.getAttribute('data-i18n')) })
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){ el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))) })
+        document.querySelectorAll('[data-i18n-title]').forEach(function(el){ el.setAttribute('title', t(el.getAttribute('data-i18n-title'))) })
+      }
+      (function() {
+        const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase();
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        window.addEventListener('DOMContentLoaded', function() {
+          // language setup
+          try {
+            const savedLang = localStorage.getItem('unoapi_docs_lang') || ''
+            if (savedLang === 'pt-BR' || savedLang === 'en') { currentLang = savedLang }
+          } catch {}
+          var sel = document.getElementById('lang'); if (sel) { sel.value = currentLang; sel.addEventListener('change', function(){ currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; applyI18n() }) }
+          applyI18n()
+          var btn = document.getElementById('toggle-theme');
+          if (btn) {
+            btn.addEventListener('click', function() {
+              const next = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+              setTheme(next);
+            });
+          }
+          // Re-init datatable on language change if needed
+          if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
+            try { table.destroy(); } catch {}
+            $('#sessionsTable').empty().append(`
+              <thead>
+                <tr>
+                  <th data-i18n="thLabel">${t('thLabel')}</th>
+                  <th data-i18n="thNumber">${t('thNumber')}</th>
+                  <th data-i18n="thStatus">${t('thStatus')}</th>
+                  <th data-i18n="thServer">${t('thServer')}</th>
+                  <th data-i18n="thActions">${t('thActions')}</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            `);
+            const token = localStorage.getItem(tokenKey);
+            if (token) { fetchSessions(token, false); }
+          }
+        });
+      })();
+    </script>
+    <!-- Header (unified with docs) -->
+    <header>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="/logos/unoapi_logo.png" alt="Unoapi" style="height:44px;width:auto;"/>
+        <div>
+          <h1 style="margin:0;font-size:20px;" data-i18n="headerTitle">Unoapi Cloud — Manager</h1>
+          <p class="muted" style="margin:0;" data-i18n="headerSub">Manage sessions and quick tests</p>
         </div>
-    </nav>
+      </div>
+      <div class="toolbar">
+        <label class="muted"><span data-i18n="langLabel">Language:</span>
+          <select id="lang" class="btn">
+            <option value="en">English</option>
+            <option value="pt-BR">Português (Brasil)</option>
+          </select>
+        </label>
+        <a id="docs-link" class="btn" href="/docs" data-i18n="docsLink">Docs</a>
+        <button id="toggle-theme" class="btn" data-i18n="themeButton" title="Toggle theme">Toggle Theme</button>
+      </div>
+    </header>
 
     <div id="login">
         <div id="tokenForm" class="mb-4">
-            <label for="tokenInput" class="form-label">Token configurado:</label>
+            <label for="tokenInput" class="form-label mb-2" data-i18n="configuredToken">Configured token:</label>
             <div class="input-group mb-3">
-                <input type="text" id="tokenInput" class="form-control" placeholder="Insira o token aqui" aria-describedby="connectButton">
-                <button class="btn btn-dark" type="button" id="connectButton"><i class="fas fa-sign-in"></i> Conectar</button>
+                <input type="text" id="tokenInput" class="form-control" placeholder="Enter your token" data-i18n-placeholder="tokenPlaceholder" aria-describedby="connectButton">
+                <button class="btn btn-dark" type="button" id="connectButton" data-i18n="connect"><i class="fas fa-sign-in"></i> Connect</button>
             </div>
         </div>
-        <p id="errorMessage" class="text-danger d-none">Erro: Token inválido ou conexão falhou.</p>
+        <p id="errorMessage" class="text-danger d-none" data-i18n="errorInvalid">Error: Invalid token or connection failed.</p>
     </div>
     <div class="container mt-4">
         <table id="sessionsTable" class="table table-striped table-bordered d-none" style="width: 100%;">
             <thead>
                 <tr>
-                    <th>Identificação</th>
-                    <th>Número</th>
-                    <th>Status</th>
-                    <th>Server</th>
-                    <th>Ações</th>
+                    <th data-i18n="thLabel">Label</th>
+                    <th data-i18n="thNumber">Number</th>
+                    <th data-i18n="thStatus">Status</th>
+                    <th data-i18n="thServer">Server</th>
+                    <th data-i18n="thActions">Actions</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -235,19 +375,19 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addInstanceModalLabel">Adicionar Sessão</h5>
+                    <h5 class="modal-title" id="addInstanceModalLabel" data-i18n="addSessionTitle">Add Session</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="addInstanceForm">
                         <div class="mb-3">
-                            <label for="instanceNumber" class="form-label">Número da Conexão</label>
-                            <input type="number" class="form-control" id="instanceNumber" placeholder="Número no formato 55 DDD NUMERO" required>
+                            <label for="instanceNumber" class="form-label" data-i18n="connectionNumber">Connection Number</label>
+                            <input type="number" class="form-control" id="instanceNumber" placeholder="Number format: 55 DDD NUMBER" data-i18n-placeholder="connectionNumberPh" required>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" onclick="submitInstanceNumber()">Configurar</button>
+                    <button type="button" class="btn btn-primary" onclick="submitInstanceNumber()" data-i18n="configure">Configure</button>
                 </div>
             </div>
         </div>
@@ -258,15 +398,15 @@
         <div class="modal-dialog edit-modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editModalLabel">Editar/Adicionar Sessão</h5>
+                    <h5 class="modal-title" id="editModalLabel" data-i18n="editAddTitle">Edit/Add Session</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="editForm">
                         <div class="row edit-form-row">
                           <div class="col-12 col-md-12 col-lg-6">
-                              <label for="label" class="form-label">Identificação</label>
-                              <input type="text" class="form-control" id="label" name="lavel" placeholder="Identificação">
+                              <label for="label" class="form-label" data-i18n="fldLabel">Label</label>
+                              <input type="text" class="form-control" id="label" name="lavel" placeholder="Label" data-i18n-placeholder="fldLabelPh">
                           </div>
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="authToken" class="form-label">Auth Token</label>
@@ -281,15 +421,15 @@
                                 <input type="text" class="form-control" id="openaiApiTranscribeModel" name="openaiApiTranscribeModel" placeholder="Openai Transcribe Model">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                                <label for="wavoipToken" class="form-label">Token Wavoip</label>
-                                <input type="text" class="form-control" id="wavoipToken" name="wavoipToken" placeholder="Token WAVOIP...">
+                                <label for="wavoipToken" class="form-label">Wavoip Token</label>
+                                <input type="text" class="form-control" id="wavoipToken" name="wavoipToken" placeholder="WAVOIP token">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                                <label for="rejectCallsWebhook" class="form-label">Mensagem de Ligação Recebida e/ou Rejeitada</label>
-                                <input type="text" class="form-control" id="rejectCallsWebhook" name="rejectCallsWebhook" placeholder="Estava te ligando...">
+                                <label for="rejectCallsWebhook" class="form-label" data-i18n="rejectCallsWebhookLabel">Incoming/Rejected Call Message</label>
+                                <input type="text" class="form-control" id="rejectCallsWebhook" name="rejectCallsWebhook" placeholder="I was calling you..." data-i18n-placeholder="rejectCallsWebhookPh">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                              <label for="connectionType" class="form-label">Tipo de Conexão</label>
+                              <label for="connectionType" class="form-label" data-i18n="connectionType">Connection Type</label>
                               <select id="connectionType" name="connectionType" class="form-control">
                                 <option value="qrcode" selected>QrCode</option>
                                 <option value="pairing_code">PairingCode</option>
@@ -297,15 +437,15 @@
                               </select>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                                <label for="proxyUrl" class="form-label">Proxy Url (Precisa Reiniciar a Unoapi ao Alterar)</label>
-                                <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@ip/domain:port">
+                                <label for="proxyUrl" class="form-label" data-i18n="proxyUrlLabel">Proxy URL (Restart Unoapi after change)</label>
+                                <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@host:port" data-i18n-placeholder="proxyUrlPh">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                              <label for="rejectCalls" class="form-label">Mensagem ao Rejeitar Chamadas</label>
-                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Deixe em Branco para não Rejeitar ligações automaticamente" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+                              <label for="rejectCalls" class="form-label" data-i18n="rejectCallsLabel">Message when rejecting calls</label>
+                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
-                                <label for="server" class="form-label">Server</label>
+                              <label for="server" class="form-label" data-i18n="serverLabel">Server</label>
                                 <input type="text" class="form-control" id="server" name="server" placeholder="Ex: default is server_1">
                             </div>
                         </div>
@@ -315,98 +455,98 @@
                                     <input type="checkbox" id="ignoreGroupMessages" name="ignoreGroupMessages" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreGroupMessages" class="form-label">Ignorar Mensagens de Grupo</label>
+                                <label for="ignoreGroupMessages" class="form-label" data-i18n="ignoreGroupMessages">Ignore Group Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreNewsletterMessages" name="ignoreNewsletterMessages" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreNewsletterMessages" class="form-label">Ignorar Mensagens de Newsletter</label>
+                                <label for="ignoreNewsletterMessages" class="form-label" data-i18n="ignoreNewsletterMessages">Ignore Newsletter Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreHistoryMessages" name="ignoreHistoryMessages" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreHistoryMessages" class="form-label">Ignorar Histórico de Mensagens</label>
+                                <label for="ignoreHistoryMessages" class="form-label" data-i18n="ignoreHistoryMessages">Ignore Message History</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="readOnReceipt" name="readOnReceipt" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="readOnReceipt" class="form-label">Ler a mensagem ao receber</label>
+                                <label for="readOnReceipt" class="form-label" data-i18n="readOnReceipt">Mark as read on receive</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="sendProfilePicture" name="sendProfilePicture">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendProfilePicture" class="form-label">Enviar Foto de Perfil</label>
+                                <label for="sendProfilePicture" class="form-label" data-i18n="sendProfilePicture">Send Profile Picture</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreBroadcastStatuses" name="ignoreBroadcastStatuses" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreBroadcastStatuses" class="form-label">Ignorar Status</label>
+                                <label for="ignoreBroadcastStatuses" class="form-label" data-i18n="ignoreStatuses">Ignore Status</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="sendConnectionStatus" name="sendConnectionStatus">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendConnectionStatus" class="form-label">Enviar Status da Conexão</label>
+                                <label for="sendConnectionStatus" class="form-label" data-i18n="sendConnStatus">Send Connection Status</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="notifyFailedMessages" name="notifyFailedMessages">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="notifyFailedMessages" class="form-label">Notificar Falhas</label>
+                                <label for="notifyFailedMessages" class="form-label" data-i18n="notifyFailures">Notify Failures</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="composingMessage" name="composingMessage">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="composingMessage" class="form-label">Enviar "Digitando"</label>
+                                <label for="composingMessage" class="form-label" data-i18n="sendTyping">Send "Typing"</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="sendReactionAsReply" name="sendReactionAsReply">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendReactionAsReply" class="form-label">Enviar Reação Como Resposta</label>
+                                <label for="sendReactionAsReply" class="form-label" data-i18n="sendReactionAsReply">Send Reaction As Reply</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreOwnMessages" name="ignoreOwnMessages">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreOwnMessages" class="form-label">Ignorar Mensagens Próprias</label>
+                                <label for="ignoreOwnMessages" class="form-label" data-i18n="ignoreOwnMessages">Ignore Own Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreYourselfMessages" name="ignoreYourselfMessages">
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreYourselfMessages" class="form-label">Ignorar Suas Mensagens</label>
+                                <label for="ignoreYourselfMessages" class="form-label" data-i18n="ignoreYourselfMessages">Ignore Yourself Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="autoConnect" name="autoConnect" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="autoConnect" class="form-label">Conexão Automática"</label>
+                                <label for="autoConnect" class="form-label" data-i18n="autoConnect">Auto Connect</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
                                     <input type="checkbox" id="ignoreBroadcastMessages" name="ignoreBroadcastMessages" checked>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="ignoreBroadcastMessages" class="form-label">Ignorar Listas de Transmissão</label>
+                                <label for="ignoreBroadcastMessages" class="form-label" data-i18n="ignoreBroadcastMessages">Ignore Broadcast Lists</label>
                             </div>
                         </div>
                         <div id="webhooksContainer">
@@ -477,12 +617,12 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="connectModalLabel">Conectar Sessão</h5>
+                    <h5 class="modal-title" id="connectModalLabel" data-i18n="connectSession">Connect Session</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center">
-                    <p id="qrCodeMessage">Aguarde o evento com o QrCode/PairingCode</p>
-                    <div id="qrCodeContainer">QrCode/PairingCode será exibido aqui</div>
+                    <p id="qrCodeMessage" data-i18n="qrWait">Wait for the QRCode/PairingCode event</p>
+                    <div id="qrCodeContainer" data-i18n="qrWillAppear">QRCode/PairingCode will appear here</div>
                 </div>
             </div>
         </div>
@@ -493,23 +633,23 @@
       <div class="modal-dialog">
           <div class="modal-content">
               <div class="modal-header">
-                  <h5 class="modal-title" id="messageModalLabel">Testar Sessão</h5>
+                  <h5 class="modal-title" id="messageModalLabel" data-i18n="testSession">Test Session</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
                   <form id="messageModalForm">
                     <div class="mb-3">
-                        <label for="messageModalNumber" class="form-label">Whatsapp Destinatário</label>
-                        <input type="number" class="form-control" id="messageModalNumber" placeholder="Número no formato 55 DDD NUMERO" required>
+                        <label for="messageModalNumber" class="form-label" data-i18n="recipient">Recipient WhatsApp</label>
+                        <input type="number" class="form-control" id="messageModalNumber" placeholder="Number format: 55 DDD NUMBER" data-i18n-placeholder="recipientPh" required>
                     </div>
                       <div class="mb-3">
-                          <label for="messageModalText" class="form-label">Mensagem em texto</label>
+                          <label for="messageModalText" class="form-label" data-i18n="textMessage">Text message</label>
                           <input type="text" class="form-control" id="messageModalText" placeholder="" required>
                       </div>
                   </form>
               </div>
               <div class="modal-footer">
-                  <button type="button" class="btn btn-primary" onclick="submitMessage()">Enviar</button>
+                  <button type="button" class="btn btn-primary" onclick="submitMessage()" data-i18n="send">Send</button>
               </div>
           </div>
       </div>
@@ -537,23 +677,23 @@
             if (data.type === 'qrcode' && data.content) {
                 // Exibe o QR Code
                 qrcodeDiv.innerHTML = `<img src="${data.content}" alt="QR Code">`;
-                statusDiv.textContent = `Leia o QR Code Abaixo`;
+                statusDiv.textContent = t('qrScanBelow');
                 const timeoutMs =  currentQrTimeOut - (currentQrTimeOut / 5)
                 if (lastTimeout) {
                   clearTimeout(lastTimeout);
                 }
                 lastTimeout = setTimeout(function() {
-                  qrcodeDiv.innerHTML = 'Esperando um novo QrCode/PairingCode';
+                  qrcodeDiv.innerHTML = t('qrWaitingNew');
                   qrcodeDiv.textContent = '';
                 }, timeoutMs);
             } else if (data.type === 'status' && data.content) {
                 if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
                     qrcodeDiv.innerHTML = '';
-                    statusDiv.textContent = `Conectado!`;
+                    statusDiv.textContent = t('connected');
                 } else if (data.content.toLowerCase().indexOf('generate qrcode is exceded')  !== -1) {
-                    console.log("QRCODE EXCEDIDO")
+                    console.log("QRCODE EXCEEDED")
                     qrcodeDiv.innerHTML = '';
-                    statusDiv.textContent = 'Gerando novo QrCode/PairingCode...';
+                    statusDiv.textContent = 'Generating new QRCode/PairingCode...';
                     attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
                 } else {
                     qrcodeDiv.innerHTML = ''
@@ -566,7 +706,7 @@
         // init websocket 
         function initWebSocket() {
             if (window.socket && window.socket.connected) {
-                console.log("WebSocket já está conectado.");
+                console.log("WebSocket is already connected.");
                 return;
             }
             const socket = io(apiUrl, { path: '/ws' });
@@ -610,56 +750,57 @@
             $('#addWebhookButton').on('click', function () {
                 const webhookTemplate = `
                     <div class="webhook mb-3">
-                        <label for="webhookId" class="form-label">ID</label>
-                        <input type="text" class="form-control mb-2 webhook-id" placeholder="Webhook ID">
-                        <label for="webhookUrl" class="form-label">URL Absoluta</label>
-                        <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook URL Absoluta">
-                        <label for="webhookToken" class="form-label">Token</label>
-                        <input type="text" class="form-control mb-2 webhook-token" placeholder="Webhook Token">
-                        <label for="webhookHeader" class="form-label">Header</label>
-                        <input type="text" class="form-control mb-2 webhook-header" placeholder="Webhook Header">
-                        <label for="sendNewMessages" class="form-label">Enviar Novas Mensagens</label>
+                        <label for="webhookId" class="form-label" data-i18n="whId">ID</label>
+                        <input type="text" class="form-control mb-2 webhook-id" placeholder="Webhook ID" data-i18n-placeholder="whIdPh">
+                        <label for="webhookUrl" class="form-label" data-i18n="whUrlAbs">Absolute URL</label>
+                        <input type="text" class="form-control mb-2 webhook-url" placeholder="Webhook Absolute URL" data-i18n-placeholder="whUrlAbsPh">
+                        <label for="webhookToken" class="form-label" data-i18n="whToken">Token</label>
+                        <input type="text" class="form-control mb-2 webhook-token" placeholder="Webhook Token" data-i18n-placeholder="whTokenPh">
+                        <label for="webhookHeader" class="form-label" data-i18n="whHeader">Header</label>
+                        <input type="text" class="form-control mb-2 webhook-header" placeholder="Webhook Header" data-i18n-placeholder="whHeaderPh">
+                        <label for="sendNewMessages" class="form-label" data-i18n="whSendNew">Send New Messages</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendNewMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendGroupMessages" class="form-label">Enviar Mensagens de Grupos</label>
+                        <label for="sendGroupMessages" class="form-label" data-i18n="whSendGroup">Send Group Messages</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendGroupMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendNewsletterMessages" class="form-label">Enviar Mensagens de Newsletter</label>
+                        <label for="sendNewsletterMessages" class="form-label" data-i18n="whSendNewsletter">Send Newsletter Messages</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendNewsletterMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendOutgoingMessages" class="form-label">Enviar Mensagens de Saída</label>
+                        <label for="sendOutgoingMessages" class="form-label" data-i18n="whSendOutgoing">Send Outgoing Messages</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendOutgoingMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendIncomingMessages" class="form-label">Enviar Mensagens de Entrada</label>
+                        <label for="sendIncomingMessages" class="form-label" data-i18n="whSendIncoming">Send Incoming Messages</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendIncomingMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendUpdateMessages" class="form-label">Enviar Atualização de Mensagens</label>
+                        <label for="sendUpdateMessages" class="form-label" data-i18n="whSendUpdate">Send Message Updates</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendUpdateMessages">
                             <span class="slider round"></span>
                         </label>
-                        <label for="sendTranscribeAudio" class="form-label">Enviar Transcrição de Áudio</label>
+                        <label for="sendTranscribeAudio" class="form-label" data-i18n="whSendTranscribe">Send Audio Transcription</label>
                         <label class="switch">
                             <input type="checkbox" class="webhook-sendTranscribeAudio">
                             <span class="slider round"></span>
                         </label>
-                        <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
+                        <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label" data-i18n="whAddBlacklist">Add to blacklist when there is an outgoing message for X seconds</label>
                         <label>
                             <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" class="form-control">
                         </label>
-                        <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
+                        <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n="remove">Remove</button>
                     </div>`;
                 $('#webhooksContainer').append(webhookTemplate);
+                try { applyI18n() } catch {}
             });
 
             $('#webhooksContainer').on('click', '.remove-webhook', function () {
@@ -669,32 +810,54 @@
             //Create DataTable And Fetch Conected Sessions
             function fetchSessions(token, hideForm = true) {
                 if (!$.fn.dataTable.isDataTable('#sessionsTable')) {
-                    table = $('#sessionsTable').DataTable({
-                        language: {
-                            "decimal": "",
-                            "emptyTable": "Nenhuma sessão nesta instalação",
-                            "info": "Exibindo _START_ até _END_ de _TOTAL_ sessões",
-                            "infoEmpty": "Nenhum Registro",
-                            "infoFiltered": "(filtrado de _MAX_ registros no total)",
-                            "infoPostFix": "",
-                            "thousands": ".",
-                            "lengthMenu": "Exibir _MENU_ Sessões",
-                            "loadingRecords": "Carregando...",
-                            "processing": "Processando...",
-                            "search": "Pesquisar:",
-                            "zeroRecords": "Nenhuma sessão configurada",
-                            "paginate": {
-                                "first": "Primeiro",
-                                "last": "Último",
-                                "next": "Próximo",
-                                "previous": "Anterior"
-                            },
-                            "aria": {
-                                "sortAscending": ": ativar para ordenar a coluna de forma ascendente",
-                                "sortDescending": ": ativar para ordenar a coluna de forma descendente"
-                            }
+                    const dtLang = (currentLang === 'pt-BR') ? {
+                        decimal: "",
+                        emptyTable: "Nenhuma sessão nesta instalação",
+                        info: "Exibindo _START_ até _END_ de _TOTAL_ sessões",
+                        infoEmpty: "Nenhum Registro",
+                        infoFiltered: "(filtrado de _MAX_ registros no total)",
+                        infoPostFix: "",
+                        thousands: ".",
+                        lengthMenu: "Exibir _MENU_ Sessões",
+                        loadingRecords: "Carregando...",
+                        processing: "Processando...",
+                        search: "Pesquisar:",
+                        zeroRecords: "Nenhuma sessão configurada",
+                        paginate: {
+                            first: "Primeiro",
+                            last: "Último",
+                            next: "Próximo",
+                            previous: "Anterior"
+                        },
+                        aria: {
+                            sortAscending: ": ativar para ordenar a coluna de forma ascendente",
+                            sortDescending: ": ativar para ordenar a coluna de forma descendente"
                         }
-                    });
+                    } : {
+                        decimal: "",
+                        emptyTable: "No sessions on this installation",
+                        info: "Showing _START_ to _END_ of _TOTAL_ sessions",
+                        infoEmpty: "No records",
+                        infoFiltered: "(filtered from _MAX_ total records)",
+                        infoPostFix: "",
+                        thousands: ",",
+                        lengthMenu: "Show _MENU_ sessions",
+                        loadingRecords: "Loading...",
+                        processing: "Processing...",
+                        search: "Search:",
+                        zeroRecords: "No sessions configured",
+                        paginate: {
+                            first: "First",
+                            last: "Last",
+                            next: "Next",
+                            previous: "Previous"
+                        },
+                        aria: {
+                            sortAscending: ": activate to sort column ascending",
+                            sortDescending: ": activate to sort column descending"
+                        }
+                    };
+                    table = $('#sessionsTable').DataTable({ language: dtLang });
                 }
                 getSessionAndpopulateTable(token, hideForm)
             }
@@ -705,7 +868,7 @@
 
                 fetch(apiUrl + '/sessions', { headers })
                     .then(response => {
-                        if (!response.ok) throw new Error("Token inválido ou falha na conexão.");
+                        if (!response.ok) throw new Error(t('errorInvalid'));
                         localStorage.setItem(tokenKey, token);
                         return response.json();
                     })
@@ -737,25 +900,14 @@
                         session.status,
                         session.server,
                         `
-                        <button class="btn btn-sm btn-warning edit-btn" data-bs-toggle="modal" data-bs-target="#editModal" data-number="${session.display_phone_number}">
-                            <i class="fas fa-edit"></i> Editar
-                        </button>
-                        <button class="btn btn-sm btn-success connect-btn" data-bs-toggle="modal" data-bs-target="#connectModal" data-number="${session.display_phone_number}">
-                            <i class="fas fa-link"></i> Conectar
-                        </button>
-                        <button class="btn btn-sm btn-danger delete-btn" data-number="${session.display_phone_number}">
-                            <i class="fas fa-trash"></i> Deletar
-                        </button>
-                        <button class="btn btn-sm btn-success message-btn" data-bs-target="#messageModal" data-number="${session.display_phone_number}">
-                            <i class="fas fa-message"></i> Testar
-                        </button>`
+                        <button class=\"btn btn-sm btn-warning edit-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#editModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
                     ]).draw(false);
                 });
             }
 
             //deregister function
             $('#sessionsTable tbody').on('click', '.delete-btn', function() {
-                if (!confirm('Tem certeza que deseja deletar essa sessão?')) {
+                if (!confirm(t('confirmDelete'))) {
                     return
                 }
                 const number = $(this).data('number');
@@ -843,57 +995,58 @@
                 if (session.webhooks && Array.isArray(session.webhooks)) {
                     session.webhooks.forEach(webhook => {
                         const webhookTemplate = `
-                            <div class="webhook mb-3">
-                                <label for="webhookId" class="form-label">ID</label>
-                                <input type="text" class="form-control mb-2 webhook-id" value="${webhook.id}" placeholder="Webhook ID">
-                                <label for="webhookUrl" class="form-label">URL Absoluta</label>
-                                <input type="text" class="form-control mb-2 webhook-url" value="${webhook.urlAbsolute}" placeholder="Webhook URL Absoluta">
-                                <label for="webhookToken" class="form-label">Token</label>
-                                <input type="text" class="form-control mb-2 webhook-token" value="${webhook.token}" placeholder="Webhook Token">
-                                <label for="webhookHeader" class="form-label">Header</label>
-                                <input type="text" class="form-control mb-2 webhook-header" value="${webhook.header}" placeholder="Webhook Header">
-                                <label for="sendNewMessages" class="form-label">Enviar Novas Mensagens</label>
+                            <div class=\"webhook mb-3\">
+                                <label for=\"webhookId\" class=\"form-label\" data-i18n=\"whId\">ID</label>
+                                <input type=\"text\" class=\"form-control mb-2 webhook-id\" value=\"${webhook.id}\" placeholder=\"Webhook ID\" data-i18n-placeholder=\"whIdPh\">
+                                <label for=\"webhookUrl\" class=\"form-label\" data-i18n=\"whUrlAbs\">Absolute URL</label>
+                                <input type=\"text\" class=\"form-control mb-2 webhook-url\" value=\"${webhook.urlAbsolute}\" placeholder=\"Webhook Absolute URL\" data-i18n-placeholder=\"whUrlAbsPh\">
+                                <label for=\"webhookToken\" class=\"form-label\" data-i18n=\"whToken\">Token</label>
+                                <input type=\"text\" class=\"form-control mb-2 webhook-token\" value=\"${webhook.token}\" placeholder=\"Webhook Token\" data-i18n-placeholder=\"whTokenPh\">
+                                <label for=\"webhookHeader\" class=\"form-label\" data-i18n=\"whHeader\">Header</label>
+                                <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${webhook.header}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
+                                <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendGroupMessages" class="form-label">Enviar Mensagens de Grupos</label>
+                                <label for=\"sendGroupMessages\" class=\"form-label\" data-i18n=\"whSendGroup\">Send Group Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendNewsletterMessages" class="form-label">Enviar Mensagens de Newsletter</label>
+                                <label for=\"sendNewsletterMessages\" class=\"form-label\" data-i18n=\"whSendNewsletter\">Send Newsletter Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendOutgoingMessages" class="form-label">Enviar Mensagens de Saída</label>
+                                <label for=\"sendOutgoingMessages\" class=\"form-label\" data-i18n=\"whSendOutgoing\">Send Outgoing Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendIncomingMessages" class="form-label">Enviar Mensagens de Entrada</label>
+                                <label for=\"sendIncomingMessages\" class=\"form-label\" data-i18n=\"whSendIncoming\">Send Incoming Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendUpdateMessages" class="form-label">Enviar Atualização de Mensagens</label>
+                                <label for=\"sendUpdateMessages\" class=\"form-label\" data-i18n=\"whSendUpdate\">Send Message Updates</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="sendTranscribeAudio" class="form-label">Enviar Transcrição de Áudio</label>
+                                <label for=\"sendTranscribeAudio\" class=\"form-label\" data-i18n=\"whSendTranscribe\">Send Audio Transcription</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
-                                <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
+                                <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
                                     <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
                                 </label>
-                                <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook">Remover</button>
+                                <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
                         $('#webhooksContainer').append(webhookTemplate);
+                        try { applyI18n() } catch {}
                     });
                 }
             }
@@ -959,7 +1112,7 @@
                         body: JSON.stringify(sessionData)
                     })
                     .then(response => {
-                        if (!response.ok) throw new Error("Erro ao salvar dados da sessão.");
+                        if (!response.ok) throw new Error(t('errorInvalid'));
                         return response.json();
                     })
                     .then(() => {
@@ -984,7 +1137,7 @@
                         }
                     })
                     .then(response => {
-                        if (!response.ok) throw new Error("Erro ao buscar status da sessão.");
+                        if (!response.ok) throw new Error(t('errorInvalid'));
                         return response.json();
                     })
                     .then(data => {
@@ -994,16 +1147,16 @@
                             connectToWebSocket(number, data.qrTimeoutMs);
                         } else if (data.status === 'online') {
                             document.getElementById('qrCodeContainer').innerHTML = '';
-                            document.getElementById('qrCodeMessage').textContent = 'Sessão já está Conectada';
+                            document.getElementById('qrCodeMessage').textContent = t('connected');
                         } else {
-                            console.log("Status não está offline nem connecting.");
+                            console.log("Status not offline nor connecting.");
                         }
                     })
                     .catch(error => {
                         console.error("Erro ao verificar status:", error);
                     });
                 } else {
-                    alert("Token não encontrado.");
+                    alert(t('tokenNotFound'));
                 }
             });
 
@@ -1017,7 +1170,7 @@
                     }
                 })
                 .then(response => {
-                    if (!response.ok) throw new Error("Erro.");
+                    if (!response.ok) throw new Error('Error');
                     return response.json();
                 })
                 .then((data) => {
@@ -1062,7 +1215,7 @@
                             });
                         } else {
                             clearInterval(intervalId);
-                            console.log("Api não gerou o QRCODE.");
+                            console.log(t('apiNoQr'));
                         }
                     })
                     .catch(error => {
@@ -1086,7 +1239,7 @@
               currentPhoneNumber = ''
               currentQrTimeOut = ''
               document.getElementById('qrCodeContainer').innerHTML = '';
-              document.getElementById('qrCodeMessage').textContent = 'Aguarde o QrCode/PairingCode';
+                    document.getElementById('qrCodeMessage').textContent = t('qrWait');
             });            
         });
         
@@ -1110,7 +1263,7 @@
                 editInstanceModal.show();
 
             } else {
-                alert('Por favor, insira um número válido.');
+                alert(currentLang==='pt-BR' ? 'Por favor, insira um número válido.' : 'Please enter a valid number.');
             }
         }
 
@@ -1134,7 +1287,7 @@
                 })
                 fetch(apiUrl + '/v15.0/' + number + '/messages', { method: 'POST', headers, body })
             } else {
-                alert('Por favor, insira um número válido e a mensagem para enviar.');
+                alert(currentLang==='pt-BR' ? 'Por favor, insira um número válido e a mensagem para enviar.' : 'Please enter a valid number and the message to send.');
             }
         }
     </script>
