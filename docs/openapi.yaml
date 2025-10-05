@@ -155,6 +155,12 @@ paths:
                   success: true
 
 components:
+  securitySchemes:
+    ApiToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'API token header. Example: 1 or Bearer <token>'
   schemas:
     Error400:
       type: object
