@@ -24,29 +24,9 @@
 - Send Message: `POST /v15.0/{phone}/messages` (Cloud API shape).
 - Contacts validation (standalone): `POST /{phone}/contacts`.
 
-## Status/Broadcast Testing
+## Notes
 
-Example (image Story):
-
-```
-POST /v15.0/{phone}/messages
-{
-  "to": "status@broadcast",
-  "type": "image",
-  "image": { "link": "https://.../image.png", "caption": "Hello" },
-  "statusJidList": ["5511999999999", "5511888888888"]
-}
-```
-
-Response augments Cloud API with:
-
-```
-{
-  ...,
-  "status_skipped": ["5511..."],
-  "status_recipients": 123
-}
-```
+- This branch does not include Status/Broadcast‑specific endpoints or response fields.
 
 ## Troubleshooting
 

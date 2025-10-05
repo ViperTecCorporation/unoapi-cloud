@@ -349,7 +349,7 @@ components:
           example: whatsapp
         to:
           type: string
-          description: Número destino ou status@broadcast
+          description: Destination phone number or group JID
         type:
           type: string
           description: Tipo de conteúdo (text, image, video, document, ...)
@@ -377,15 +377,6 @@ components:
           properties:
             broadcast:
               type: boolean
-            statusJidList:
-              type: array
-              items:
-                type: string
-        statusJidList:
-          type: array
-          items:
-            type: string
-          description: Atalho equivalente a options.statusJidList
     MessageResponse:
       type: object
       properties:

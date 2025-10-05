@@ -1,6 +1,6 @@
 # Unoapi Cloud — Architecture Overview
 
-This document explains how Unoapi integrates with Baileys to expose a WhatsApp-like Cloud API, the main modules/classes, and the end‑to‑end message flow (including Status/Broadcast).
+This document explains how Unoapi integrates with Baileys to expose a WhatsApp-like Cloud API, the main modules/classes, and the end‑to‑end message flow.
 
 ## High‑Level Components
 
@@ -20,29 +20,18 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 ## Request Flow (Send Message)
 
 1) Client calls `POST /vXX.Y/{phone}/messages` with a payload like the WhatsApp Cloud API.
-2) `MessagesController.index` normalizes body/options (e.g., `statusJidList`, `broadcast`, visual options) and delegates to `Incoming.send`.
+2) `MessagesController.index` normalizes body/options (e.g., visual options) and delegates to `Incoming.send`.
 3) `IncomingBaileys.send` gets/creates a `Client` for `{phone}` via `getClientBaileys` and calls `client.send(payload, options)`.
 4) `ClientBaileys.send`:
    - Builds Baileys message content (templates, media checks, optional audio conversion).
-   - Applies group addressing policies and soft membership checks.
-   - For Status (Stories), ensures `broadcast` and prepares `statusJidList`.
    - Calls the `sendMessage` function provided by `socket.ts`.
 5) `socket.ts` maintains a connected `WASocket` and exposes `send`/`exists`/`read`/etc.
-   - Validates session status, maps LID⇄PN when needed, pre‑asserts sessions to reduce decrypt/ack errors.
-   - For `status@broadcast`, resolves each entry in `statusJidList` using `exists()` and filters out numbers without WhatsApp. Only valid recipients are relayed.
+   - Validates session status and performs low‑level send/read operations.
 6) Baileys sends the message and returns WAMessage; Unoapi persists keys/message in the DataStore and returns a Cloud‑API‑like response.
 
-## Status/Broadcast Flow
+## Notes on Broadcasts
 
-- Input: `to = "status@broadcast"`, `type = text|image|video|...`, and `options.statusJidList = [numbers | JIDs]`.
-- `socket.ts` resolves each entry with `exists(raw)`:
-  - Keeps only those that actually have WhatsApp (filters invalids).
-  - Optional LID→PN normalization based on `STATUS_ALLOW_LID`.
-  - Deduplicates recipients.
-- Sends once, then calls `relayMessage` with the filtered list.
-- Response adds:
-  - `status_skipped`: the raw inputs ignored for having no WhatsApp.
-  - `status_recipients`: how many valid recipients were relayed.
+- This branch does not introduce Status/Broadcast‑specific flows or response fields.
 
 ## Incoming Events Flow
 
@@ -58,10 +47,7 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 
 ## Error Handling & Resilience
 
-- Defensive checks before send:
-  - Validate session state (connecting/offline/disconnected/standby) → mapped to SendError codes.
-  - For groups, optional membership check; pre‑assert sessions for participants.
-  - Auto‑retry once on server ack 421 by toggling addressing mode (PN⇄LID).
+- Defensive checks before send: validate session state (connecting/offline/disconnected/standby) → mapped to SendError codes.
 - Disconnection handling:
   - Detects loggedOut/connectionReplaced/restartRequired, notifies, and reconnects when configured.
 
@@ -69,8 +55,7 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 
 - Session/Connection: `CONNECTION_TYPE`, `QR_TIMEOUT_MS`, `VALIDATE_SESSION_NUMBER`, `CLEAN_CONFIG_ON_DISCONNECT`.
 - Logs: `LOG_LEVEL`, `UNO_LOG_LEVEL`.
-- Status behavior: `STATUS_ALLOW_LID` (keep LID JIDs or normalize to PN).
-- Group send: `GROUP_SEND_MEMBERSHIP_CHECK`, `GROUP_SEND_PREASSERT_SESSIONS`, `GROUP_SEND_ADDRESSING_MODE`.
+- (No Status/Broadcast‑specific toggles in this branch.)
 - Media: S3/MinIO `STORAGE_*`, `FETCH_TIMEOUT_MS`, optional audio conversion to PTT.
 
 ## Key Files & Responsibilities
@@ -94,7 +79,6 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 ## Message Lifecycles (Quick Maps)
 
 - Send → Controller → Incoming → Client → Socket.send → Baileys → DataStore.persist → Response
-- Status → Normalize `statusJidList` (exists filter) → sendMessage → relayMessage(validRecipients)
 - Receive → Socket events → Listener → Webhooks/Broadcast
 
 ## Extensibility Notes
@@ -102,4 +86,3 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 - To add a new outbound type: extend transformer to build Baileys content; map it in `ClientBaileys.send`.
 - To add a new store: implement DataStore/SessionStore interfaces and wire via config.
 - To tweak broadcast behavior: adjust `STATUS_*` flags in `defaults.ts`.
-

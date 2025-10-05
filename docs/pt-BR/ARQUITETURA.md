@@ -32,17 +32,9 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
    - Para `status@broadcast`, resolve cada entrada de `statusJidList` via `exists()` e remove números sem WhatsApp. Só destinatários válidos são relayados.
 6) O Baileys envia a mensagem, o Unoapi persiste chaves/mensagem no DataStore e retorna resposta no formato Cloud API.
 
-## Fluxo de Status/Broadcast
+## Observações sobre Broadcasts
 
-- Entrada: `to = "status@broadcast"`, `type = text|image|video|...`, `options.statusJidList = [números | JIDs]`.
-- `socket.ts` resolve cada entrada com `exists(raw)`:
-  - Mantém apenas quem tem WhatsApp (filtra inválidos).
-  - Normaliza LID→PN conforme `STATUS_ALLOW_LID`.
-  - Remove duplicados.
-- Envia uma vez e usa `relayMessage` com a lista filtrada.
-- Resposta adiciona:
-  - `status_skipped`: entradas ignoradas por não terem WhatsApp.
-  - `status_recipients`: quantidade de destinatários válidos.
+- Este branch não adiciona fluxos específicos de Status/Broadcast.
 
 ## Fluxo de Entrada (Incoming)
 
@@ -60,8 +52,7 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 
 - Checagens antes de enviar:
   - Valida estado da sessão (connecting/offline/disconnected/standby) → mapeado em códigos `SendError`.
-  - Para grupos, checagem branda de participação; pré‑assert de sessões dos participantes.
-  - Auto‑retry em ack 421 alternando modo de endereçamento (PN⇄LID).
+ 
 - Desconexões:
   - Detecta `loggedOut/connectionReplaced/restartRequired`, notifica e reconecta conforme configuração.
 
@@ -69,8 +60,6 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 
 - Sessão/Conexão: `CONNECTION_TYPE`, `QR_TIMEOUT_MS`, `VALIDATE_SESSION_NUMBER`, `CLEAN_CONFIG_ON_DISCONNECT`.
 - Logs: `LOG_LEVEL`, `UNO_LOG_LEVEL`.
-- Status: `STATUS_ALLOW_LID` (manter LID ou normalizar para PN).
-- Grupos: `GROUP_SEND_MEMBERSHIP_CHECK`, `GROUP_SEND_PREASSERT_SESSIONS`, `GROUP_SEND_ADDRESSING_MODE`.
 - Mídia: S3/MinIO `STORAGE_*`, `FETCH_TIMEOUT_MS`, conversão opcional de áudio para PTT.
 
 ## Arquivos Principais
@@ -102,4 +91,3 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 - Novo tipo de envio: estender transformer e mapear em `ClientBaileys.send`.
 - Novo store: implementar DataStore/SessionStore e ligar via config.
 - Comportamento de broadcast: ajustar `STATUS_*` em `defaults.ts`.
-
