@@ -80,7 +80,6 @@ jobs:
           - [Architecture](ARCHITECTURE.md)
           - [Development](DEVELOPMENT.md)
           - [Environment Variables](ENVIRONMENT.md)
-          - [Status/Broadcast](STATUS_BROADCAST.md)
           - OpenAPI (YAML): [openapi.yaml](openapi.yaml)
           - Examples: [.env example](examples/.env.example.en)
 
@@ -88,7 +87,6 @@ jobs:
           - [Arquitetura](pt-BR/ARQUITETURA.md)
           - [Desenvolvimento](pt-BR/DESENVOLVIMENTO.md)
           - [Ambiente (Variáveis)](pt-BR/AMBIENTE.md)
-          - [Status/Broadcast](pt-BR/STATUS_BROADCAST.md)
           - Exemplos: [.env exemplo](pt-BR/exemplos/.env.exemplo)
           EOF
           cd wiki
@@ -99,4 +97,3 @@ jobs:
             git commit -m "docs: sync to wiki"
             git push origin HEAD
           fi
-

@@ -224,7 +224,6 @@ Custom errors sound append this codes
 - Architecture: see `docs/ARCHITECTURE.md`
 - Development: see `docs/DEVELOPMENT.md`
 - Environment variables: see `docs/ENVIRONMENT.md` (PT-BR: `docs/pt-BR/AMBIENTE.md`)
-- Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
 - In the browser: open `http://localhost:9876/docs/`
   - OpenAPI viewer: `http://localhost:9876/docs/openapi.html` (serves `docs/openapi.yaml`)
   - OpenAPI JSON: `http://localhost:9876/docs/swagger.json`
