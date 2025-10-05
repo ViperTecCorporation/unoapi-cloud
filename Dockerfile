@@ -14,6 +14,7 @@ RUN corepack enable && yarn install --no-progress
 COPY ./src ./src
 COPY ./public ./public
 COPY ./docs ./docs
+COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
 RUN yarn build

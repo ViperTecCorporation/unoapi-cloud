@@ -17,6 +17,7 @@ COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
 COPY ./public ./public
 COPY ./docs ./docs
+COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./src ./src
 
