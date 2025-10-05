@@ -15,6 +15,7 @@ ADD ./public ./public
 ADD ./docs ./docs
 ADD ./tsconfig.json ./tsconfig.json
 RUN yarn build
+RUN yarn build:docs
 
 FROM node:24-alpine
 

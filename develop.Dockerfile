@@ -15,3 +15,4 @@ ADD ./public ./public
 ADD ./docs ./docs
 
 RUN yarn
+RUN yarn build:docs
