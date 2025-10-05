@@ -28,7 +28,7 @@ jobs:
           git config --global user.email "wiki-bot@users.noreply.github.com"
           git config --global user.name "wiki-bot"
           rm -rf wiki || true
-          if git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git wiki; then
+          if git clone https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.git wiki; then
             echo "Cloned existing wiki"
           else
             echo "Wiki repo not found; attempting to initialize (ensure Wiki is enabled in repo settings)"
@@ -39,7 +39,7 @@ jobs:
             echo "# Unoapi Cloud — Documentação" > Home.md
             git add Home.md
             git commit -m "init wiki"
-            git remote add origin https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git
+            git remote add origin https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.git
             git push -u origin master
             cd ..
           fi
