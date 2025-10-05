@@ -1,6 +1,6 @@
 # Development Guide
 
-## Local Dev with Docker.
+## Local Dev with Docker
 
 - Build and run dev services:
   - `docker compose up -d --build web worker redis rabbitmq minio`
