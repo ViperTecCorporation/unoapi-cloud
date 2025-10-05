@@ -133,3 +133,7 @@ This guide explains key environment variables, when to use them, and why. Copy `
   VALIDATE_SESSION_NUMBER=true
   ```
 
+## Ready-to-use examples
+
+- English: /docs/examples/.env.example.en
+- Português (Brasil): /docs/pt-BR/exemplos/.env.exemplo

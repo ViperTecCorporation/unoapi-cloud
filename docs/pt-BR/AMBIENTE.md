@@ -133,3 +133,7 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
   VALIDATE_SESSION_NUMBER=true
   ```
 
+## Exemplos prontos
+
+- Inglês: /docs/examples/.env.example.en
+- Português (Brasil): /docs/pt-BR/exemplos/.env.exemplo
