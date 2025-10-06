@@ -345,7 +345,7 @@ paths:
 
   /{phone}/blacklist/{webhook_id}:
     post:
-      summary: Adicionar número ao blacklist de um webhook
+      summary: 'Adicionar número ao blacklist de um webhook'
       parameters:
         - $ref: '#/components/parameters/PhonePath'
         - in: path
@@ -385,7 +385,7 @@ paths:
 
   /{phone}/request_code:
     post:
-      summary: Solicitar Pairing Code (envia mensagem de texto ao próprio número)
+      summary: 'Solicitar Pairing Code (envia mensagem de texto ao próprio número)'
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       responses:
@@ -495,7 +495,7 @@ paths:
                 type: string
         '403': { description: Token inválido }
     post:
-      summary: Receber eventos do WhatsApp (Forward mode)
+      summary: 'Receber eventos do WhatsApp (Forward mode)'
       security: []  # opcionalmente aberto, depende do deploy
       parameters:
         - $ref: '#/components/parameters/PhonePath'
@@ -563,7 +563,7 @@ components:
       required: true
       schema:
         type: string
-      description: Número (ID) da sessão, ex.: 5511999999999
+      description: 'Número (ID) da sessão, ex.: 5511999999999'
 
   schemas:
     Error400:
@@ -576,7 +576,7 @@ components:
           type: string
 
     RegisterConfig:
-      description: Configuração da sessão. Campos variam por provedor.
+      description: 'Configuração da sessão. Campos variam por provedor.'
       type: object
       additionalProperties: true
       properties:
@@ -620,7 +620,7 @@ components:
           example: whatsapp
         to:
           type: string
-          description: Número destino (ou status@broadcast)
+          description: 'Número destino (ou status@broadcast)'
         type:
           type: string
         options:
@@ -633,7 +633,7 @@ components:
         statusJidList:
           type: array
           items: { type: string }
-          description: Atalho equivalente a options.statusJidList
+          description: 'Atalho equivalente a options.statusJidList'
 
     MessageText:
       allOf:
