@@ -51,11 +51,23 @@ class IndexController {
   }
 
   public docsFile(req: Request, res: Response) {
-    // Serve files from /public/docs (e.g., Markdown)
+    // Serve files from /docs, allowing dotfiles (e.g., .env.example)
     const file = (req.params as any)[0] || ''
     const safe = path.normalize(file).replace(/^\.\.(?:[\/\\]|$)/, '')
     const target = path.resolve('./docs', safe)
-    return res.sendFile(target)
+    return res.sendFile(target, { dotfiles: 'allow' }, (err) => {
+      if (err) {
+        // Fallback: explicitly set plain text for unknown extensions
+        try {
+          if (!fs.existsSync(target)) return res.status(404).send('Not found')
+          const data = fs.readFileSync(target)
+          res.set('Content-Type', 'text/plain')
+          return res.status(200).send(data)
+        } catch {
+          return res.status(404).send('Not found')
+        }
+      }
+    })
   }
 
   public docsOpenApiJson(_req: Request, res: Response) {

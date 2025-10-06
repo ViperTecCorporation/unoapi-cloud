@@ -61,6 +61,21 @@
   </style>
   <!-- Markdown renderers -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.1/github-markdown.min.css" />
+  <!-- Override GitHub CSS with our theme variables (must come AFTER github-markdown-css) -->
+  <style>
+    .markdown-body { color: var(--fg) !important; background: transparent !important; }
+    .markdown-body a { color: var(--link) !important; }
+    .markdown-body hr { border-color: var(--border) !important; }
+    .markdown-body pre,
+    .markdown-body code,
+    .markdown-body pre code { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 { color: var(--fg) !important; }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
   <script>

@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- DataTables CSS -->
     <link href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
@@ -33,7 +34,11 @@
 
         /* Header style (same as docs pages) */
         header { padding: 16px 24px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:16px; }
-        .toolbar { display:flex; align-items:center; gap:12px; }
+        .toolbar { display:flex; align-items:center; gap:12px; flex-wrap: nowrap; }
+        .toolbar > * { flex: 0 0 auto; }
+        .toolbar .btn, .toolbar select.btn { white-space: nowrap; }
+        label.muted { display:flex; align-items:center; gap:6px; margin:0; }
+        label.muted span { white-space: nowrap; }
         .muted { color: var(--muted); }
         /* Language select styled like other buttons */
         select.btn { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding-right: 28px; background: var(--card); color: var(--fg); border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:14px; line-height:1.2; }
@@ -42,7 +47,7 @@
         @media (max-width: 900px) {
           header { flex-wrap: wrap; }
           header h1 { font-size: 18px; }
-          .toolbar { width: 100%; justify-content: space-between; }
+          .toolbar { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap:8px; }
         }
 
         .edit-modal {
@@ -139,7 +144,10 @@
         a:hover { filter: brightness(1.1); }
         /* Base button style to match docs */
         .btn { appearance:none; border:1px solid var(--border); background: var(--card); color: var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; text-decoration:none; }
-        .btn:hover { filter: brightness(1.05); }
+        .btn:hover { filter: brightness(1.08); }
+        .btn:focus { outline: 2px solid transparent; box-shadow: 0 0 0 2px rgba(100,149,237,.25); }
+        .btn:active { transform: translateY(1px); transition: transform .05s ease; }
+        .btn[disabled], .btn.disabled { opacity: .6; cursor: not-allowed; }
         .btn svg { width:16px; height:16px; fill: currentColor; vertical-align: middle; }
         .modal-content { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
         .modal-header, .modal-footer { border-color: var(--border); }
@@ -209,6 +217,75 @@
           .webhook:not(:last-child) { margin: 10px 12px; }
         }
 
+        /* Markdown theme overrides (match Docs) */
+        .markdown-body { color: var(--fg) !important; background: transparent !important; }
+        .markdown-body pre,
+        .markdown-body code { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+        .markdown-body hr { border-color: var(--border) !important; }
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3,
+        .markdown-body h4,
+        .markdown-body h5,
+        .markdown-body h6 { color: var(--fg) !important; }
+        .markdown-body a { color: var(--link) !important; }
+
+        /* DataTables theme overrides */
+        .dataTables_wrapper { color: var(--fg); }
+        .dataTables_wrapper .dataTables_length label,
+        .dataTables_wrapper .dataTables_filter label { color: var(--fg); }
+        .dataTables_wrapper .dataTables_length select,
+        .dataTables_wrapper .dataTables_filter input { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: 6px; }
+        .dataTables_wrapper .dataTables_filter input::placeholder { color: var(--muted); }
+        .dataTables_wrapper .dataTables_info { color: var(--muted); }
+        .dataTables_wrapper .dataTables_paginate .paginate_button { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: 6px; padding: 4px 8px; margin: 0 2px; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover { background: var(--rowAlt) !important; color: var(--fg) !important; border-color: var(--border) !important; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: var(--link) !important; border-color: var(--link) !important; color: #fff !important; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button.disabled { opacity: .6; background: var(--card) !important; color: var(--muted) !important; }
+        .dataTables_wrapper .dataTables_processing { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+
+        table.dataTable thead th, table.dataTable thead td { color: var(--fg) !important; background: var(--card) !important; border-bottom: 1px solid var(--border) !important; }
+        table.dataTable tbody tr { background: var(--card) !important; }
+        table.dataTable.stripe tbody tr.odd,
+        table.dataTable.display tbody tr.odd { background-color: var(--rowAlt) !important; }
+        table.dataTable.hover tbody tr:hover,
+        table.dataTable.display tbody tr:hover { background-color: var(--rowAlt) !important; }
+        table.dataTable.no-footer { border-bottom: 1px solid var(--border) !important; }
+
+        /* Responsive extension: control icon + child row */
+        table.dataTable.dtr-inline.collapsed>tbody>tr>td:first-child:before,
+        table.dataTable.dtr-inline.collapsed>tbody>tr>th:first-child:before {
+          background-color: var(--link) !important; color: #fff !important; border: 1px solid var(--border) !important;
+          box-shadow: none !important;
+        }
+        table.dataTable>tbody>tr.child { background: var(--card) !important; }
+        table.dataTable>tbody>tr.child:hover { background: var(--rowAlt) !important; }
+        table.dataTable>tbody>tr.child .dtr-details { color: var(--fg); }
+        table.dataTable>tbody>tr.child .dtr-details>li { border-bottom: 1px solid var(--border); }
+        table.dataTable>tbody>tr.child .dtr-title { color: var(--muted); }
+
+        /* Mobile tweaks for actions column */
+        @media (max-width: 768px) {
+          #sessionsTable td:last-child { white-space: normal; }
+          #sessionsTable .btn { margin-bottom: 6px; }
+        }
+
+        /* Status badge */
+        .status { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+        .status .dot { width:10px; height:10px; border-radius:50%; display:inline-block; box-shadow: 0 0 0 1px rgba(0,0,0,.15) inset; }
+        .status-online { color: #22c55e; }
+        .status-online .dot { background:#22c55e; }
+        .status-offline { color: #ef4444; }
+        .status-offline .dot { background:#ef4444; }
+        .status-connecting { color: #f59e0b; }
+        .status-connecting .dot { background:#f59e0b; }
+        .status-standby { color: #a855f7; }
+        .status-standby .dot { background:#a855f7; }
+        .status-disconnected { color: #9ca3af; }
+        .status-disconnected .dot { background:#9ca3af; }
+        .status-restart_required { color: #f43f5e; }
+        .status-restart_required .dot { background:#f43f5e; }
+
     </style>
 </head>
 <body>
@@ -226,6 +303,8 @@
           headerSub: 'Manage sessions and quick tests',
           docsLink: 'Docs',
           themeButton: 'Toggle Theme',
+          menuAddInstance: 'Add Instance',
+          menuLogout: 'Logout',
           configuredToken: 'Configured token:',
           tokenPlaceholder: 'Enter your token',
           connect: 'Connect',
@@ -255,6 +334,8 @@
           headerSub: 'Gerencie sessões e testes rápidos',
           docsLink: 'Documentação',
           themeButton: 'Alternar tema',
+          menuAddInstance: 'Adicionar Instância',
+          menuLogout: 'Sair',
           configuredToken: 'Token configurado:',
           tokenPlaceholder: 'Insira o token aqui',
           connect: 'Conectar',
@@ -290,12 +371,31 @@
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
         window.addEventListener('DOMContentLoaded', function() {
+          function reinitDataTableLang() {
+            if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
+              try { $('#sessionsTable').DataTable().destroy(); } catch {}
+              $('#sessionsTable').empty().append(`
+                <thead>
+                  <tr>
+                    <th data-i18n="thLabel">${t('thLabel')}</th>
+                    <th data-i18n="thNumber">${t('thNumber')}</th>
+                    <th data-i18n="thStatus">${t('thStatus')}</th>
+                    <th data-i18n="thServer">${t('thServer')}</th>
+                    <th data-i18n="thActions">${t('thActions')}</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              `);
+              const token = localStorage.getItem(tokenKey);
+              if (token && typeof fetchSessions === 'function') { fetchSessions(token, false); }
+            }
+          }
           // language setup
           try {
             const savedLang = localStorage.getItem('unoapi_docs_lang') || ''
             if (savedLang === 'pt-BR' || savedLang === 'en') { currentLang = savedLang }
           } catch {}
-          var sel = document.getElementById('lang'); if (sel) { sel.value = currentLang; sel.addEventListener('change', function(){ currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; applyI18n() }) }
+          var sel = document.getElementById('lang'); if (sel) { sel.value = currentLang; sel.addEventListener('change', function(){ currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; applyI18n(); reinitDataTableLang(); }) }
           applyI18n()
           var btn = document.getElementById('toggle-theme');
           if (btn) {
@@ -305,23 +405,8 @@
             });
           }
           // Re-init datatable on language change if needed
-          if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
-            try { table.destroy(); } catch {}
-            $('#sessionsTable').empty().append(`
-              <thead>
-                <tr>
-                  <th data-i18n="thLabel">${t('thLabel')}</th>
-                  <th data-i18n="thNumber">${t('thNumber')}</th>
-                  <th data-i18n="thStatus">${t('thStatus')}</th>
-                  <th data-i18n="thServer">${t('thServer')}</th>
-                  <th data-i18n="thActions">${t('thActions')}</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            `);
-            const token = localStorage.getItem(tokenKey);
-            if (token) { fetchSessions(token, false); }
-          }
+          // If table already existed (page restored), ensure it matches current language
+          reinitDataTableLang();
         });
       })();
     </script>
@@ -343,6 +428,21 @@
         </label>
         <a id="docs-link" class="btn" href="/docs" data-i18n="docsLink">Docs</a>
         <button id="toggle-theme" class="btn" data-i18n="themeButton" title="Toggle theme">Toggle Theme</button>
+        <!-- Settings dropdown (restored) -->
+        <div class="dropdown d-none" id="navbarDropdown">
+          <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Settings">
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#addInstanceModal" data-i18n="menuAddInstance">Add Instance</a>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <a class="dropdown-item" href="#" onclick="logout();" data-i18n="menuLogout">Logout</a>
+            </li>
+          </ul>
+        </div>
         <a class="btn" href="https://github.com/clairton/unoapi-cloud" target="_blank" rel="noopener" title="GitHub">
           <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
         </a>
@@ -665,6 +765,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
     <script>
         const apiUrl = `${window.location.origin}`;
         const tokenKey = "whatsappApiToken";
@@ -861,9 +962,43 @@
                             sortDescending: ": activate to sort column descending"
                         }
                     };
-                    table = $('#sessionsTable').DataTable({ language: dtLang });
+                    table = $('#sessionsTable').DataTable({
+                      language: dtLang,
+                      responsive: true,
+                      autoWidth: false,
+                      columnDefs: [
+                        { className: 'dtr-control', orderable: false, targets: 0 },
+                        { responsivePriority: 1, targets: 0 }, // Label
+                        { responsivePriority: 2, targets: 2 }, // Status
+                        { responsivePriority: 3, targets: 1 }, // Number
+                        { responsivePriority: 4, targets: 3 }, // Server
+                        { responsivePriority: 5, targets: 4 }  // Actions
+                      ]
+                    });
                 }
                 getSessionAndpopulateTable(token, hideForm)
+            }
+
+            // Render status with icon
+            function renderStatus(status) {
+                var raw = (status || '').toString();
+                var s = raw.toLowerCase();
+                if (s === 'online') {
+                    return `<span class="status status-online" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                }
+                if (s === 'offline' || s === 'disconnected') {
+                    return `<span class="status status-offline" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                }
+                if (s === 'connecting') {
+                    return `<span class="status status-connecting" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                }
+                if (s === 'standby') {
+                    return `<span class="status status-standby" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                }
+                if (s === 'restart_required') {
+                    return `<span class="status status-restart_required" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                }
+                return `<span class="status" title="${raw}"><span class="dot" style="background: var(--muted)"></span><span>${raw}</span></span>`;
             }
 
             // Populate Datatable with session numbers
@@ -901,7 +1036,7 @@
                     table.row.add([
                         session.label,
                         session.display_phone_number,
-                        session.status,
+                        renderStatus(session.status),
                         session.server,
                         `
                         <button class=\"btn btn-sm btn-warning edit-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#editModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`

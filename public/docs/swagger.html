@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Unoapi Cloud — Swagger UI</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
-    <link id="swagger-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-themes@4.1.3/themes/3.x/dark.css" disabled>
     <style>
-      :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
-      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
+      :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; 
+        /* HTTP method accents */
+        --c-get:#22c55e; --c-post:#3b82f6; --c-put:#f59e0b; --c-delete:#ef4444; --c-patch:#a855f7; --c-options:#10b981; --c-head:#64748b; --c-trace:#f472b6; }
+      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; 
+        --c-get:#16a34a; --c-post:#2563eb; --c-put:#d97706; --c-delete:#dc2626; --c-patch:#7c3aed; --c-options:#059669; --c-head:#475569; --c-trace:#db2777; }
       html, body { margin: 0; padding: 0; height: 100%; }
-      body { background:var(--bg); color:var(--fg); transition: background .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
+      body { background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
       .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); color: var(--fg); flex-wrap: wrap; }
       #swagger-ui { height: calc(100% - 54px); }
       .btn { appearance:none; border:1px solid var(--border); background:var(--card); color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; line-height:1.2; }
@@ -22,19 +24,74 @@
       .btn-outline-primary:hover { background: var(--link); color: #fff; }
       /* Hide Swagger's internal topbar to avoid duplication */
       .swagger-ui .topbar { display: none !important; }
-      /* Ensure light theme uses Swagger defaults */
-      body[data-theme="light"] #swagger-ui { background: #ffffff; }
-      /* Improve some dark theme contrast even without dark.css */
-      body[data-theme="dark"] #swagger-ui { color: #e6e6e6; }
-      body[data-theme="dark"] .swagger-ui .model, 
-      body[data-theme="dark"] .swagger-ui .opblock,
-      body[data-theme="dark"] .swagger-ui .information-container,
-      body[data-theme="dark"] .swagger-ui .scheme-container,
-      body[data-theme="dark"] .swagger-ui .opblock-tag-section {
-        background: #0f1115;
-      }
-      body[data-theme="dark"] .swagger-ui .opblock-summary { background: #0f1115; }
-      body[data-theme="dark"] .swagger-ui .opblock .opblock-summary-method { filter: brightness(1.1); }
+      /* Base */
+      #swagger-ui, .swagger-ui { background: var(--bg); color: var(--fg); }
+      .swagger-ui a { color: var(--link); }
+      .swagger-ui .markdown code, .swagger-ui pre, .swagger-ui .microlight, .swagger-ui .highlight-code pre { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border); }
+      .swagger-ui table { color: var(--fg); }
+      .swagger-ui table thead tr th, .swagger-ui table thead tr td, .swagger-ui table tbody tr td { border-color: var(--border) !important; }
+      /* Blocks */
+      .swagger-ui .information-container,
+      .swagger-ui .scheme-container,
+      .swagger-ui .opblock,
+      .swagger-ui .model,
+      .swagger-ui .opblock-tag-section { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      .swagger-ui .opblock-summary { background: var(--rowAlt) !important; color: var(--fg) !important; }
+      .swagger-ui .opblock .opblock-summary-method { filter: brightness(1.05); }
+      .swagger-ui .response-col_status { color: var(--fg) }
+      /* Method colors */
+      .swagger-ui .opblock.opblock-get { border-color: var(--c-get) !important; }
+      .swagger-ui .opblock.opblock-post { border-color: var(--c-post) !important; }
+      .swagger-ui .opblock.opblock-put { border-color: var(--c-put) !important; }
+      .swagger-ui .opblock.opblock-delete { border-color: var(--c-delete) !important; }
+      .swagger-ui .opblock.opblock-patch { border-color: var(--c-patch) !important; }
+      .swagger-ui .opblock.opblock-options { border-color: var(--c-options) !important; }
+      .swagger-ui .opblock.opblock-head { border-color: var(--c-head) !important; }
+      .swagger-ui .opblock.opblock-trace { border-color: var(--c-trace) !important; }
+      .swagger-ui .opblock.opblock-get .opblock-summary { border-color: var(--c-get) !important; }
+      .swagger-ui .opblock.opblock-post .opblock-summary { border-color: var(--c-post) !important; }
+      .swagger-ui .opblock.opblock-put .opblock-summary { border-color: var(--c-put) !important; }
+      .swagger-ui .opblock.opblock-delete .opblock-summary { border-color: var(--c-delete) !important; }
+      .swagger-ui .opblock.opblock-patch .opblock-summary { border-color: var(--c-patch) !important; }
+      .swagger-ui .opblock.opblock-options .opblock-summary { border-color: var(--c-options) !important; }
+      .swagger-ui .opblock.opblock-head .opblock-summary { border-color: var(--c-head) !important; }
+      .swagger-ui .opblock.opblock-trace .opblock-summary { border-color: var(--c-trace) !important; }
+      .swagger-ui .opblock-summary .opblock-summary-method { color: #fff !important; }
+      .swagger-ui .opblock.opblock-get .opblock-summary .opblock-summary-method { background: var(--c-get) !important; }
+      .swagger-ui .opblock.opblock-post .opblock-summary .opblock-summary-method { background: var(--c-post) !important; }
+      .swagger-ui .opblock.opblock-put .opblock-summary .opblock-summary-method { background: var(--c-put) !important; }
+      .swagger-ui .opblock.opblock-delete .opblock-summary .opblock-summary-method { background: var(--c-delete) !important; }
+      .swagger-ui .opblock.opblock-patch .opblock-summary .opblock-summary-method { background: var(--c-patch) !important; }
+      .swagger-ui .opblock.opblock-options .opblock-summary .opblock-summary-method { background: var(--c-options) !important; }
+      .swagger-ui .opblock.opblock-head .opblock-summary .opblock-summary-method { background: var(--c-head) !important; }
+      .swagger-ui .opblock.opblock-trace .opblock-summary .opblock-summary-method { background: var(--c-trace) !important; }
+      /* Forms */
+      .swagger-ui input[type="text"], .swagger-ui select, .swagger-ui textarea { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: 6px; }
+      .swagger-ui input::placeholder, .swagger-ui textarea::placeholder { color: var(--muted); }
+      .swagger-ui .btn, .swagger-ui .btn.execute { background: var(--card); color: var(--fg); border-color: var(--border); }
+      .swagger-ui .btn.execute { background: var(--link); border-color: var(--link); color: #fff; }
+      .swagger-ui .btn.authorize, .swagger-ui .authorization__btn { background: var(--link) !important; border-color: var(--link) !important; color: #fff !important; }
+      .swagger-ui .btn.try-out__btn { background: var(--link) !important; border-color: var(--link) !important; color: #fff !important; }
+      .swagger-ui .btn.cancel, .swagger-ui .btn.clear-opblock { background: var(--rowAlt) !important; border-color: var(--border) !important; color: var(--fg) !important; }
+      /* Button hovers/active/focus */
+      .swagger-ui .btn.execute:hover,
+      .swagger-ui .btn.authorize:hover,
+      .swagger-ui .authorization__btn:hover,
+      .swagger-ui .btn.try-out__btn:hover { filter: brightness(1.08) !important; }
+      .swagger-ui .btn.cancel:hover,
+      .swagger-ui .btn.clear-opblock:hover { filter: brightness(1.06) !important; }
+      .swagger-ui .btn:active { transform: translateY(1px); transition: transform .05s ease; }
+      .swagger-ui .btn:focus { outline: 2px solid transparent; box-shadow: 0 0 0 2px rgba(100,149,237,.25); }
+      .swagger-ui .btn[disabled], .swagger-ui .btn.disabled { opacity: .6; cursor: not-allowed; }
+      /* Authorize modal */
+      .swagger-ui .modal-ux, .swagger-ui .modal-ux-content { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      .swagger-ui .modal-ux-header, .swagger-ui .modal-ux .modal-ux-header { border-bottom: 1px solid var(--border) !important; }
+      .swagger-ui .auth-container input[type="text"],
+      .swagger-ui .auth-container input[type="password"],
+      .swagger-ui .auth-container select { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      /* Misc */
+      .swagger-ui .copy-to-clipboard { color: var(--muted); }
+      .swagger-ui .model-box, .swagger-ui .model .property.primitive { background: var(--card); border-color: var(--border); }
       @media (max-width: 900px) { .topbar strong { flex-basis: 100%; font-size: 16px; } }
     </style>
   </head>
@@ -58,13 +115,7 @@
           presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
           layout: 'BaseLayout',
         });
-        function setTheme(t){
-          document.body.setAttribute('data-theme', t);
-          // toggle dark stylesheet for Swagger UI
-          var link = document.getElementById('swagger-dark');
-          if (link) link.disabled = (t !== 'dark');
-          try{ localStorage.setItem('unoapi_docs_theme', t) }catch{}
-        }
+        function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
         const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
         const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));

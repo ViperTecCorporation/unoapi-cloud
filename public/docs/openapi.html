@@ -5,8 +5,8 @@
     <title>Unoapi Cloud — OpenAPI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { --bg:#0b0c0f; --fg:#e6e6e6; --border:#222; }
-      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --border:#e5e7eb; }
+      :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; }
+      body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; }
       body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
       .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); flex-wrap: wrap; }
       .btn { appearance:none; border:1px solid var(--border); background:var(--card); color:var(--fg); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; line-height:1.2; }
@@ -16,6 +16,22 @@
       .btn-primary:hover { filter: brightness(1.08); }
       .btn-outline-primary { background: transparent; color: var(--link); border-color: var(--link); }
       .btn-outline-primary:hover { background: var(--link); color: #fff; }
+      /* Button states like Swagger */
+      .btn:focus { outline: 2px solid transparent; box-shadow: 0 0 0 2px rgba(100,149,237,.25); }
+      .btn:active { transform: translateY(1px); transition: transform .05s ease; }
+      .btn[disabled], .btn.disabled { opacity: .6; cursor: not-allowed; }
+
+      /* Redoc overrides to harmonize with theme */
+      #redoc-container { background: var(--bg); color: var(--fg); }
+      .redoc-wrap .menu-content { background: var(--card) !important; border-right: 1px solid var(--border) !important; }
+      .redoc-wrap .menu-content a { color: var(--fg); }
+      .redoc-wrap .menu-content .active, .redoc-wrap .menu-content .active-item { background: var(--rowAlt) !important; color: var(--fg) !important; }
+      .redoc-wrap .api-content { background: var(--bg) !important; }
+      .redoc-wrap h1, .redoc-wrap h2, .redoc-wrap h3, .redoc-wrap h4, .redoc-wrap h5, .redoc-wrap h6 { color: var(--fg) !important; }
+      .redoc-wrap a { color: var(--link) !important; }
+      .redoc-wrap pre, .redoc-wrap code, .redoc-wrap pre code { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      .redoc-wrap table { color: var(--fg); }
+      .redoc-wrap table th, .redoc-wrap table td { border-color: var(--border) !important; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
   </head>
@@ -31,29 +47,63 @@
     <div id="redoc-container" style="height: calc(100vh - 54px);"></div>
     <script>
       function setTheme(t){ document.body.setAttribute('data-theme', t); try{ localStorage.setItem('unoapi_docs_theme', t) }catch{} }
+      function cssVar(name){ return getComputedStyle(document.body).getPropertyValue(name).trim() }
+      function getRedocTheme(){
+        // Map theme colors from CSS vars
+        const link = cssVar('--link') || '#3b82f6';
+        const fg = cssVar('--fg') || '#e6e6e6';
+        const muted = cssVar('--muted') || '#9aa0a6';
+        const bg = cssVar('--bg') || '#0b0c0f';
+        const card = cssVar('--card') || '#15171c';
+        const border = cssVar('--border') || '#222';
+        return {
+          colors: {
+            primary: { main: link },
+            text: { primary: fg, secondary: muted },
+            http: {
+              get: '#22c55e', post: '#3b82f6', put: '#f59e0b', delete: '#ef4444', patch: '#a855f7', options: '#10b981', basic: link
+            },
+            border: { dark: border, light: border }
+          },
+          sidebar: { backgroundColor: card, textColor: fg, activeTextColor: fg, activeBgColor: cssVar('--rowAlt') || '#12141a' },
+          rightPanel: { backgroundColor: card },
+          typography: {
+            fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif',
+            code: { backgroundColor: bg, color: fg }
+          }
+        };
+      }
+      let __OPENAPI_SPEC__ = null;
+      async function loadSpec(){
+        if (__OPENAPI_SPEC__) return __OPENAPI_SPEC__;
+        const url = '/docs/openapi.json';
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
+        __OPENAPI_SPEC__ = await res.json();
+        return __OPENAPI_SPEC__;
+      }
+      async function renderRedoc(){
+        try {
+          const spec = await loadSpec();
+          const container = document.getElementById('redoc-container');
+          container.innerHTML = '';
+          Redoc.init(spec, { theme: getRedocTheme() }, container);
+        } catch (e) {
+          const url = '/docs/openapi.json';
+          const el = document.getElementById('redoc-container');
+          el.innerHTML = '<pre style="padding:12px">Failed to load OpenAPI spec ('+url+'): '+(e && e.message ? e.message : e)+'</pre>';
+          console.error('Redoc load error:', e);
+        }
+      }
       (function(){
         const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
         const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
         document.getElementById('toggle-theme').addEventListener('click', function(){
-          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
+          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next); renderRedoc();
         })
       })();
-
-      (async function(){
-        const url = '/docs/openapi.json';
-        try {
-          const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-          if (!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
-          const spec = await res.json();
-          Redoc.init(spec, {}, document.getElementById('redoc-container'));
-          console.log('Redoc loaded spec from', url);
-        } catch (e) {
-          const el = document.getElementById('redoc-container');
-          el.innerHTML = '<pre style="padding:12px">Failed to load OpenAPI spec ('+url+'): '+(e && e.message ? e.message : e)+'</pre>';
-          console.error('Redoc load error:', e);
-        }
-      })();
+      renderRedoc();
     </script>
   </body>
 </html>
