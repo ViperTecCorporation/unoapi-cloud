@@ -8,17 +8,9 @@
     <style>
       :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; 
         /* HTTP method accents */
-        --c-get:#22c55e; --c-post:#3b82f6; --c-put:#f59e0b; --c-delete:#ef4444; --c-patch:#a855f7; --c-options:#10b981; --c-head:#64748b; --c-trace:#f472b6;
-        /* subtle backgrounds (dark) */
-        --c-get-bg: rgba(34,197,94,.10); --c-post-bg: rgba(59,130,246,.10); --c-put-bg: rgba(245,158,11,.10); --c-delete-bg: rgba(239,68,68,.10);
-        --c-patch-bg: rgba(168,85,247,.10); --c-options-bg: rgba(16,185,129,.10); --c-head-bg: rgba(100,116,139,.10); --c-trace-bg: rgba(244,114,182,.10);
-      }
+        --c-get:#22c55e; --c-post:#3b82f6; --c-put:#f59e0b; --c-delete:#ef4444; --c-patch:#a855f7; --c-options:#10b981; --c-head:#64748b; --c-trace:#f472b6; }
       body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; 
-        --c-get:#16a34a; --c-post:#2563eb; --c-put:#d97706; --c-delete:#dc2626; --c-patch:#7c3aed; --c-options:#059669; --c-head:#475569; --c-trace:#db2777;
-        /* subtle backgrounds (light) */
-        --c-get-bg: rgba(22,163,74,.10); --c-post-bg: rgba(37,99,235,.10); --c-put-bg: rgba(217,119,6,.10); --c-delete-bg: rgba(220,38,38,.10);
-        --c-patch-bg: rgba(124,58,237,.10); --c-options-bg: rgba(5,150,105,.10); --c-head-bg: rgba(71,85,105,.10); --c-trace-bg: rgba(219,39,119,.10);
-      }
+        --c-get:#16a34a; --c-post:#2563eb; --c-put:#d97706; --c-delete:#dc2626; --c-patch:#7c3aed; --c-options:#059669; --c-head:#475569; --c-trace:#db2777; }
       html, body { margin: 0; padding: 0; height: 100%; }
       body { background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
       .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); color: var(--fg); flex-wrap: wrap; }
@@ -64,15 +56,15 @@
       .swagger-ui .opblock.opblock-options .opblock-summary { border-color: var(--c-options) !important; }
       .swagger-ui .opblock.opblock-head .opblock-summary { border-color: var(--c-head) !important; }
       .swagger-ui .opblock.opblock-trace .opblock-summary { border-color: var(--c-trace) !important; }
-      .swagger-ui .opblock-summary .opblock-summary-method { color: var(--fg) !important; border: 1px solid transparent; }
-      .swagger-ui .opblock.opblock-get .opblock-summary .opblock-summary-method { background: var(--c-get-bg) !important; color: var(--c-get) !important; border-color: var(--c-get) !important; }
-      .swagger-ui .opblock.opblock-post .opblock-summary .opblock-summary-method { background: var(--c-post-bg) !important; color: var(--c-post) !important; border-color: var(--c-post) !important; }
-      .swagger-ui .opblock.opblock-put .opblock-summary .opblock-summary-method { background: var(--c-put-bg) !important; color: var(--c-put) !important; border-color: var(--c-put) !important; }
-      .swagger-ui .opblock.opblock-delete .opblock-summary .opblock-summary-method { background: var(--c-delete-bg) !important; color: var(--c-delete) !important; border-color: var(--c-delete) !important; }
-      .swagger-ui .opblock.opblock-patch .opblock-summary .opblock-summary-method { background: var(--c-patch-bg) !important; color: var(--c-patch) !important; border-color: var(--c-patch) !important; }
-      .swagger-ui .opblock.opblock-options .opblock-summary .opblock-summary-method { background: var(--c-options-bg) !important; color: var(--c-options) !important; border-color: var(--c-options) !important; }
-      .swagger-ui .opblock.opblock-head .opblock-summary .opblock-summary-method { background: var(--c-head-bg) !important; color: var(--c-head) !important; border-color: var(--c-head) !important; }
-      .swagger-ui .opblock.opblock-trace .opblock-summary .opblock-summary-method { background: var(--c-trace-bg) !important; color: var(--c-trace) !important; border-color: var(--c-trace) !important; }
+      .swagger-ui .opblock-summary .opblock-summary-method { color: #fff !important; }
+      .swagger-ui .opblock.opblock-get .opblock-summary .opblock-summary-method { background: var(--c-get) !important; }
+      .swagger-ui .opblock.opblock-post .opblock-summary .opblock-summary-method { background: var(--c-post) !important; }
+      .swagger-ui .opblock.opblock-put .opblock-summary .opblock-summary-method { background: var(--c-put) !important; }
+      .swagger-ui .opblock.opblock-delete .opblock-summary .opblock-summary-method { background: var(--c-delete) !important; }
+      .swagger-ui .opblock.opblock-patch .opblock-summary .opblock-summary-method { background: var(--c-patch) !important; }
+      .swagger-ui .opblock.opblock-options .opblock-summary .opblock-summary-method { background: var(--c-options) !important; }
+      .swagger-ui .opblock.opblock-head .opblock-summary .opblock-summary-method { background: var(--c-head) !important; }
+      .swagger-ui .opblock.opblock-trace .opblock-summary .opblock-summary-method { background: var(--c-trace) !important; }
       /* Forms */
       .swagger-ui input[type="text"], .swagger-ui select, .swagger-ui textarea { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: 6px; }
       .swagger-ui input::placeholder, .swagger-ui textarea::placeholder { color: var(--muted); }
@@ -101,38 +93,6 @@
       .swagger-ui .copy-to-clipboard { color: var(--muted); }
       .swagger-ui .model-box, .swagger-ui .model .property.primitive { background: var(--card); border-color: var(--border); }
       @media (max-width: 900px) { .topbar strong { flex-basis: 100%; font-size: 16px; } }
-
-      /* Dark theme harmonization overrides */
-      .swagger-ui .markdown code,
-      .swagger-ui pre,
-      .swagger-ui .microlight,
-      .swagger-ui .highlight-code pre,
-      .swagger-ui .response-col_description pre,
-      .swagger-ui .curl-command pre { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border); border-radius: 6px; }
-      .swagger-ui .opblock { border: 1px solid var(--border) !important; box-shadow: none !important; border-radius: 8px; }
-      .swagger-ui .opblock-summary { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-left: 3px solid var(--border) !important; }
-      .swagger-ui .opblock-summary:hover { background: var(--rowAlt) !important; }
-      .swagger-ui .opblock .opblock-summary-method { filter: none; }
-      /* neutralize full-color borders, use left accent only */
-      .swagger-ui .opblock.opblock-get,
-      .swagger-ui .opblock.opblock-post,
-      .swagger-ui .opblock.opblock-put,
-      .swagger-ui .opblock.opblock-delete,
-      .swagger-ui .opblock.opblock-patch,
-      .swagger-ui .opblock.opblock-options,
-      .swagger-ui .opblock.opblock-head,
-      .swagger-ui .opblock.opblock-trace { border-color: var(--border) !important; }
-      .swagger-ui .opblock.opblock-get .opblock-summary { border-left-color: var(--c-get) !important; }
-      .swagger-ui .opblock.opblock-post .opblock-summary { border-left-color: var(--c-post) !important; }
-      .swagger-ui .opblock.opblock-put .opblock-summary { border-left-color: var(--c-put) !important; }
-      .swagger-ui .opblock.opblock-delete .opblock-summary { border-left-color: var(--c-delete) !important; }
-      .swagger-ui .opblock.opblock-patch .opblock-summary { border-left-color: var(--c-patch) !important; }
-      .swagger-ui .opblock.opblock-options .opblock-summary { border-left-color: var(--c-options) !important; }
-      .swagger-ui .opblock.opblock-head .opblock-summary { border-left-color: var(--c-head) !important; }
-      .swagger-ui .opblock.opblock-trace .opblock-summary { border-left-color: var(--c-trace) !important; }
-      .swagger-ui .parameters thead tr th { background: var(--rowAlt) !important; }
-      .swagger-ui .parameters tbody tr td { background: var(--card) !important; }
-      .swagger-ui .opblock-summary .opblock-summary-method { color: #0b0c0f !important; font-weight: 700; }
     </style>
   </head>
   <body>
@@ -159,10 +119,3 @@
         const saved=(localStorage.getItem('unoapi_docs_theme')||'').toLowerCase();
         const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
-        document.getElementById('toggle-theme').addEventListener('click', function(){
-          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next);
-        })
-      });
-    </script>
-  </body>
-  </html>

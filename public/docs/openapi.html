@@ -5,7 +5,10 @@
     <title>Unoapi Cloud — OpenAPI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; }
+      :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a;
+        /* HTTP accents for badges */
+        --c-get:#22c55e; --c-post:#3b82f6; --c-put:#f59e0b; --c-delete:#ef4444; --c-patch:#a855f7; --c-options:#10b981;
+      }
       body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; }
       body { margin:0; background:var(--bg); color:var(--fg); transition: background .2s ease, color .2s ease; font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; }
       .topbar { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); flex-wrap: wrap; }
@@ -24,12 +27,16 @@
       /* Redoc overrides to harmonize with theme */
       #redoc-container { background: var(--bg); color: var(--fg); }
       .redoc-wrap .menu-content { background: var(--card) !important; border-right: 1px solid var(--border) !important; }
-      .redoc-wrap .menu-content a { color: var(--fg); }
+      .redoc-wrap .menu-item-text, .redoc-wrap .menu-content a { color: var(--fg) !important; }
       .redoc-wrap .menu-content .active, .redoc-wrap .menu-content .active-item { background: var(--rowAlt) !important; color: var(--fg) !important; }
+      .redoc-wrap .search-input { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
       .redoc-wrap .api-content { background: var(--bg) !important; }
+      .redoc-wrap .right-panel { background: var(--card) !important; border-left: 1px solid var(--border) !important; }
       .redoc-wrap h1, .redoc-wrap h2, .redoc-wrap h3, .redoc-wrap h4, .redoc-wrap h5, .redoc-wrap h6 { color: var(--fg) !important; }
       .redoc-wrap a { color: var(--link) !important; }
-      .redoc-wrap pre, .redoc-wrap code, .redoc-wrap pre code { background: var(--bg) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      .redoc-wrap pre, .redoc-wrap code, .redoc-wrap pre code { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: 6px; }
+      .redoc-wrap .example-panel, .redoc-wrap .response-panel, .redoc-wrap .json-panel, .redoc-wrap .code-sample { background: var(--card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
+      .redoc-wrap .response-title, .redoc-wrap .mime-type { background: var(--rowAlt) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; }
       .redoc-wrap table { color: var(--fg); }
       .redoc-wrap table th, .redoc-wrap table td { border-color: var(--border) !important; }
     </style>
@@ -63,13 +70,16 @@
             http: {
               get: '#22c55e', post: '#3b82f6', put: '#f59e0b', delete: '#ef4444', patch: '#a855f7', options: '#10b981', basic: link
             },
-            border: { dark: border, light: border }
+            border: { dark: border, light: border },
+            success: { main: '#22c55e', contrastText: fg },
+            error: { main: '#ef4444', contrastText: fg },
+            warning: { main: '#f59e0b', contrastText: fg },
           },
           sidebar: { backgroundColor: card, textColor: fg, activeTextColor: fg, activeBgColor: cssVar('--rowAlt') || '#12141a' },
-          rightPanel: { backgroundColor: card },
+          rightPanel: { backgroundColor: card, textColor: fg },
           typography: {
             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif',
-            code: { backgroundColor: bg, color: fg }
+            code: { backgroundColor: card, color: fg }
           }
         };
       }
@@ -100,7 +110,10 @@
         const prefersDark= window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
         document.getElementById('toggle-theme').addEventListener('click', function(){
-          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark'; setTheme(next); renderRedoc();
+          const next= document.body.getAttribute('data-theme')==='dark' ? 'light':'dark';
+          setTheme(next);
+          // Ensure computed styles updated before re-init
+          requestAnimationFrame(() => renderRedoc());
         })
       })();
       renderRedoc();
