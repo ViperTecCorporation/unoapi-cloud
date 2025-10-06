@@ -518,12 +518,13 @@ paths:
                 type: object
                 properties:
                   success: { type: boolean }
-                example: { success: true }
+                example:
+                  success: true
 
   /webhooks/fake/{phone}:
     post:
       summary: Webhook de teste (Fake)
-      description: Recebe qualquer payload e responde `{ "success": true }`.
+      description: 'Recebe qualquer payload e responde `{ "success": true }`.'
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       requestBody:
@@ -545,7 +546,8 @@ paths:
                 type: object
                 properties:
                   success: { type: boolean }
-                example: { success: true }
+                example:
+                  success: true
 
 components:
   securitySchemes:
