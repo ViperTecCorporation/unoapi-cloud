@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Unoapi Cloud API
-  version: 1.1.0
+  version: 2.5.2
   description: |
     API compatível com WhatsApp Cloud (formato de payload), utilizando Baileys como transporte.
     - Endpoints espelham em grande parte a estrutura do Cloud API (ex.: `v15.0/{phone}/messages`).
