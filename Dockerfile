@@ -14,6 +14,7 @@ ADD ./src ./src
 ADD ./public ./public
 ADD ./docs ./docs
 ADD ./scripts ./scripts
+ADD ./data ./data
 ADD ./tsconfig.json ./tsconfig.json
 RUN yarn build
 RUN yarn build:docs
@@ -35,6 +36,8 @@ RUN addgroup -S u && adduser -S u -G u
 WORKDIR /home/u/app
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/data ./data
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/package.json ./package.json

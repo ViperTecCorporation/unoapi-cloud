@@ -3,7 +3,7 @@ import { IGNORE_OWN_MESSAGES_DECRYPT_ERROR, UNOAPI_EXCHANGE_BRIDGE_NAME, UNOAPI_
 import { Listener } from '../services/listener'
 import logger from '../services/logger'
 import { Outgoing } from '../services/outgoing'
-import { DecryptError, isOutgoingMessage } from '../services/transformer'
+import { DecryptError, isDecryptError, isOutgoingMessage } from '../services/transformer'
 import { getConfig } from '../services/config'
 
 export class ListenerJob {
@@ -17,18 +17,18 @@ export class ListenerJob {
     this.getConfig = getConfig
   }
 
-  async consume(phone: string, data: object, options?: { countRetries: number; maxRetries: number, priority: 0 }) {
+  async consume(phone: string, data: object, options?: { countRetries: number; maxRetries: number; priority: 0 }) {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
       logger.info(`Ignore listener routing key ${phone} server ${config.server} is not server current server ${UNOAPI_SERVER_NAME}...`)
-      return;
+      return
     }
     if (config.provider !== 'baileys') {
       logger.info(`Ignore listener routing key ${phone} is not provider baileys...`)
-      return;
+      return
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a = { ...data as any }
+    const a = { ...(data as any) }
     const { messages, type } = a
     if (a.splited) {
       try {
@@ -36,8 +36,10 @@ export class ListenerJob {
       } catch (error) {
         const store = await config.getStore(phone, config)
         const { dataStore } = store
-        if (error instanceof DecryptError) {
-          if ((await dataStore.loadStatus(error.getMessageId())) != 'decryption_failed') {
+        if (isDecryptError(error)) {
+          const currentStatus = await dataStore.loadStatus(error.getMessageId())
+          logger.debug('Retrieved message %s status %s', error.getMessageId(), currentStatus)
+          if (currentStatus != 'decryption_failed') {
             logger.debug('Ignore decrypt error because message status is not decryption_failed %s', error.getMessageId())
             return
           } else if (IGNORE_OWN_MESSAGES_DECRYPT_ERROR && isOutgoingMessage(error.getContent())) {
@@ -61,21 +63,21 @@ export class ListenerJob {
               `${UNOAPI_QUEUE_LISTENER}.${UNOAPI_SERVER_NAME}`,
               phone,
               { messages: { keys: [m] }, type, splited: true },
-              { type: 'direct' }
+              { type: 'direct' },
             )
-         })
+          }),
         )
       } else {
-        await Promise.all(messages.
-          map(async (m: object) => {
+        await Promise.all(
+          messages.map(async (m: object) => {
             return amqpPublish(
               UNOAPI_EXCHANGE_BRIDGE_NAME,
               `${UNOAPI_QUEUE_LISTENER}.${UNOAPI_SERVER_NAME}`,
               phone,
               { messages: [m], type, splited: true },
-              { type: 'direct' }
+              { type: 'direct' },
             )
-          })
+          }),
         )
       }
     }

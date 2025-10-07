@@ -5,7 +5,6 @@ import fs from 'fs'
 import YAML from 'yaml'
 
 class IndexController {
-
   public root(req: Request, res: Response) {
     logger.debug('root method %s', JSON.stringify(req.method))
     logger.debug('root headers %s', JSON.stringify(req.headers))

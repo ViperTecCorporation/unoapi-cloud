@@ -43,7 +43,7 @@ export const redisConnect = async (redisUrl = REDIS_URL) => {
 }
 
 export const redisGet = async (key: string) => {
-  logger.trace(`Getting ${key}`)
+  logger.trace('Getting %s', key)
   try {
     return client.get(key)
   } catch (error) {
@@ -237,6 +237,7 @@ export const getMessageStatus = async (phone: string, id: string) => {
 
 export const setMessageStatus = async (phone: string, id: string, status: string) => {
   const key = messageStatusKey(phone, id)
+  logger.trace('Setting %s => %s', key, status)
   await client.set(key, status, { EX: DATA_TTL })
 }
 
@@ -253,7 +254,7 @@ export const getTemplates = async (phone: string) => {
 export const setTemplates = async (phone: string, value: any) => {
   const { id } = value
   if (!id) {
-    throw new Error(`New template has no ID or an invalid format`);
+    throw new Error(`New template has no ID or an invalid format`)
   }
   const current = (await getTemplates(phone)) || {}
   const key = templateKey(phone)
@@ -267,11 +268,11 @@ export const setTemplates = async (phone: string, value: any) => {
       }
     } else {
       config = []
-      current.forEach(element => {
+      current.forEach((element) => {
         if (element.id !== id) {
           config.push(element)
         }
-      });
+      })
       config.push(value)
     }
   }
@@ -292,12 +293,12 @@ export const getConfig = async (phone: string) => {
 export const setConfig = async (phone: string, value: any) => {
   const currentConfig = await getConfig(phone)
   const key = configKey(phone)
-  const currentWebhooks: Webhook[] = currentConfig && currentConfig.webhooks || []
-  const newWebhooks: Webhook[] = value && value.webhooks || []
+  const currentWebhooks: Webhook[] = (currentConfig && currentConfig.webhooks) || []
+  const newWebhooks: Webhook[] = (value && value.webhooks) || []
   const updatedWebooks: Webhook[] = []
   const baseWebhook = value.overrideWebhooks || currentWebhooks.length == 0 ? newWebhooks : currentWebhooks
   const searchWebhooks = value.overrideWebhooks ? currentWebhooks : newWebhooks
-  baseWebhook.forEach(n => {
+  baseWebhook.forEach((n) => {
     const c = searchWebhooks.find((c) => c.id === n.id)
     if (c) {
       updatedWebooks.push({ ...c, ...n })
@@ -398,17 +399,17 @@ export const getMessage = async <T>(phone: string, jid: string, id: string): Pro
   }
 }
 
-export const getConnectCount = async(phone: string) => {
+export const getConnectCount = async (phone: string) => {
   const keyPattern = connectCountKey(phone, '*')
   const keys = await redisKeys(keyPattern)
   return keys.length || 0
 }
 
-export const clearConnectCount = async(phone: string) => {
+export const clearConnectCount = async (phone: string) => {
   const keyPattern = connectCountKey(phone, '*')
   const keys = await redisKeys(keyPattern)
   for (let index = 0; index < keys.length.length; index++) {
-    const key = keys[index];
+    const key = keys[index]
     await redisDel(key)
   }
 }
