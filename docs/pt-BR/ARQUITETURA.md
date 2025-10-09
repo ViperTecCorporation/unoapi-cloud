@@ -65,6 +65,24 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 - Desconexões:
   - Detecta `loggedOut/connectionReplaced/restartRequired`, notifica e reconecta conforme configuração.
 
+### Entrega de Webhooks & Retentativas
+
+- Caminho de entrega
+  - Webhooks de saída são produzidos em `UNOAPI_QUEUE_OUTGOING` e consumidos por `jobs/outgoing.ts`, que chama `OutgoingCloudApi.sendHttp()`.
+  - Eventos gerados pela API HTTP (`/messages`) e pelo listener Baileys também disparam webhooks dentro de consumidores AMQP; portanto, herdam o mesmo modelo de retentativa.
+- Modelo de retry (envelope AMQP)
+  - Se o consumidor lançar erro (HTTP não‑2xx do webhook, timeout ou exceção), a mensagem é republicada com atraso fixo de 60s.
+  - As retentativas seguem até `UNOAPI_MESSAGE_RETRY_LIMIT` (padrão 5).
+  - Ao atingir o limite, a mensagem vai para a dead‑letter da fila.
+- Timeouts e delays
+  - Timeout HTTP por webhook: `webhook.timeoutMs` (AbortSignal timeout).
+  - Timeout global do consumidor: `CONSUMER_TIMEOUT_MS` (padrão 360000ms).
+  - Atraso de retry: 60s, via exchange delayed.
+- Notificação de falhas
+  - Com `NOTIFY_FAILED_MESSAGES=true`, ao estourar as retentativas, um texto de diagnóstico é enviado para o número da sessão com detalhes do erro/stack.
+- Reenvio a partir de dead‑letter (opcional)
+  - O processo `waker` consome dead‑letters e reenfileira nas filas principais, dando nova chance às mensagens.
+
 ## Configuração (destaques)
 
 - Sessão/Conexão: `CONNECTION_TYPE`, `QR_TIMEOUT_MS`, `VALIDATE_SESSION_NUMBER`, `CLEAN_CONFIG_ON_DISCONNECT`.

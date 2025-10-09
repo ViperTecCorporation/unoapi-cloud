@@ -94,6 +94,18 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
   - Ao atingir o limite, a API agenda o envio via RabbitMQ com esse atraso em vez de responder HTTP 429.
   - Exemplo: `RATE_LIMIT_BLOCK_SECONDS=60`
 
+## Webhooks / Filas / Retentativas
+
+- `UNOAPI_MESSAGE_RETRY_LIMIT` — Máximo de tentativas em consumidores AMQP antes de ir para a dead‑letter. Padrão `5`.
+  - Exemplo: `UNOAPI_MESSAGE_RETRY_LIMIT=7`
+- `UNOAPI_MESSAGE_RETRY_DELAY` — Atraso padrão (ms) usado por utilitários ao publicar mensagens com delay. Padrão `10000`.
+  - Observação: o caminho de retry do consumidor usa um reenvio fixo de 60s.
+  - Exemplo: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
+- `CONSUMER_TIMEOUT_MS` — Tempo máximo (ms) para um consumidor processar a mensagem antes de forçar retry. Padrão `360000`.
+  - Exemplo: `CONSUMER_TIMEOUT_MS=180000`
+- `NOTIFY_FAILED_MESSAGES` — Envia um texto de diagnóstico para o número da sessão quando as tentativas se esgotam. Padrão `true`.
+  - Exemplo: `NOTIFY_FAILED_MESSAGES=false`
+
 ## Mídia & Timeouts
 
 - `FETCH_TIMEOUT_MS` — Timeout para checagens HEAD/download de mídia.

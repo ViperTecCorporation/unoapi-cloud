@@ -66,6 +66,24 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 - Disconnection handling:
   - Detects loggedOut/connectionReplaced/restartRequired, notifies, and reconnects when configured.
 
+### Webhook Delivery & Retries
+
+- Delivery path
+  - Outgoing webhooks are produced to `UNOAPI_QUEUE_OUTGOING` and consumed by `jobs/outgoing.ts` which calls `OutgoingCloudApi.sendHttp()`.
+  - Events produced by the HTTP API (`/messages`) and Baileys listener ultimately trigger webhook sends inside AMQP consumers as well, so the same retry model applies.
+- Retry model (AMQP envelope)
+  - If the consumer throws (non-2xx from webhook, timeout or any error), the message is re‑published with a fixed delay of 60s.
+  - Retries continue until `UNOAPI_MESSAGE_RETRY_LIMIT` (default 5) is reached.
+  - After the limit, the message goes to the dead‑letter queue.
+- Timeouts and delays
+  - Per‑webhook HTTP timeout: `webhook.timeoutMs` (AbortSignal timeout).
+  - Consumer global timeout: `CONSUMER_TIMEOUT_MS` (default 360000ms).
+  - Retry delay: fixed 60s (consumer path) using the delayed exchange.
+- Failure notification
+  - If `NOTIFY_FAILED_MESSAGES=true`, a diagnostic text is sent to the session number with stack/error details when a message exhausts retries.
+- Dead‑letter requeue (optional)
+  - The `waker` process listens dead‑letter queues and re‑enqueues messages back to their main queues to give them another chance.
+
 ### LID ⇄ PN Handling (Meow compatibility)
 
 - For consistent webhooks and UX, the system prioritizes PN (digits only) in `wa_id`, `from`, and `recipient_id`.

@@ -94,6 +94,18 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - When a limit is hit, the API schedules the send via RabbitMQ with this delay instead of returning HTTP 429.
   - Example: `RATE_LIMIT_BLOCK_SECONDS=60`
 
+## Webhooks / Queues / Retries
+
+- `UNOAPI_MESSAGE_RETRY_LIMIT` — Max delivery attempts in AMQP consumers before dead‑letter. Default `5`.
+  - Example: `UNOAPI_MESSAGE_RETRY_LIMIT=7`
+- `UNOAPI_MESSAGE_RETRY_DELAY` — Default delay used by helpers when publishing delayed messages (ms). Default `10000`.
+  - Note: the consumer retry path uses a fixed 60s requeue delay.
+  - Example: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
+- `CONSUMER_TIMEOUT_MS` — Max time (ms) allowed for a consumer to process a message before forcing retry. Default `360000`.
+  - Example: `CONSUMER_TIMEOUT_MS=180000`
+- `NOTIFY_FAILED_MESSAGES` — Send a diagnostic text to the session number when retries are exhausted. Default `true`.
+  - Example: `NOTIFY_FAILED_MESSAGES=false`
+
 ## Media & Timeouts
 
 - `FETCH_TIMEOUT_MS` — Timeout for media HEAD/download checks. Default per code.
