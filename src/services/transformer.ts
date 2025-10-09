@@ -329,6 +329,29 @@ export const isIndividualJid = (jid: string) => {
   return isIndividual
 }
 
+// Garante PN (somente dígitos) a partir de número/JID (PN/LID)
+// Retorna string vazia quando não conseguir inferir com segurança
+export const ensurePn = (value?: string): string => {
+  try {
+    if (!value) return ''
+    // se já for só números (com ou sem +)
+    if (/^\+?\d+$/.test(value)) return value.replace('+', '')
+    // se for JID, normaliza (remove device suffix e resolve LID->PN quando possível)
+    const jid = value.includes('@') ? formatJid(value) : value
+    try {
+      const normalized = jidNormalizedUser(jid as any)
+      if (isPnUser(normalized)) {
+        return jidToPhoneNumber(normalized, '').replace('+', '')
+      }
+    } catch {}
+    // tenta converter diretamente se já parecer PN JID
+    if (isPnUser(jid as any)) {
+      return jidToPhoneNumber(jid, '').replace('+', '')
+    }
+  } catch {}
+  return ''
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const isIndividualMessage = (payload: any) => {
   const {
@@ -676,7 +699,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               picture: payload.profilePicture,
             },
             ...groupMetadata,
-            wa_id: senderPhone.replace('+', '') || senderId,
+            wa_id: ensurePn(senderPhone) || ensurePn(senderId) || ensurePn(payload?.key?.remoteJidAlt) || ensurePn(payload?.key?.participantAlt) || ensurePn(payload?.participantAlt) || ensurePn(payload?.participantPn) || ensurePn(payload?.key?.senderPn) || ensurePn(payload?.key?.participantPn),
           },
         ],
         statuses,
@@ -695,7 +718,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const message: any = {
-      from: (fromMe ? phone.replace('+', '') : senderPhone.replace('+', '') || senderId),
+      from: (fromMe ? phone.replace('+', '') : (ensurePn(senderPhone) || ensurePn(senderId))),
       id: whatsappMessageId,
     }
     if (payload.messageTimestamp) {
@@ -976,7 +999,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
-        recipient_id: senderPhone.replace('+', '') || senderId,
+        recipient_id: ensurePn(senderPhone) || ensurePn(senderId),
         status: cloudApiStatus,
       }
       if (payload.messageTimestamp) {

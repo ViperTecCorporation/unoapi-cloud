@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-base: &base
   build:
     dockerfile: develop.Dockerfile
@@ -10,6 +8,8 @@ x-base: &base
     - ./:/app
     - /app/node_modules
   working_dir: /app
+  env_file: 
+    - /.env
   environment:
     NODE_ENV: development
     NODE_OPTIONS: --inspect=0.0.0.0:9229
@@ -18,7 +18,7 @@ x-base: &base
     AMQP_URL: amqp://guest:guest@rabbitmq:5672?frameMax=8192
     BASE_URL: http://web:9876
     REDIS_URL: redis://redis:6379
-    STORAGE_ENDPOINT: http://minio:9000
+    STORAGE_ENDPOINT: http://minio:9002
     GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
 
 x-minio: &minio
@@ -27,8 +27,10 @@ x-minio: &minio
   expose:
     - 9002:9000
     - 9003:9001
+  env_file: 
+    - /.env
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    test: ["CMD", "curl", "-f", "http://localhost:9002/minio/health/live"]
     interval: 30s
     timeout: 20s
     retries: 3
@@ -43,6 +45,8 @@ services:
       - 9229:9229
     depends_on:
       - worker
+    env_file: 
+    - /.env
 
   worker:
     <<: *base
@@ -53,6 +57,8 @@ services:
     depends_on:
       - redis
       - rabbitmq
+    env_file: 
+    - /.env
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -75,6 +81,8 @@ services:
   minio:
     <<: *minio
     restart: on-failure
+    env_file: 
+    - /.env
     ports:
       - 9002:9000
       - 9003:9001
@@ -90,7 +98,7 @@ services:
         sleep 5
       done &&
       ## Configure bucket
-      /usr/bin/mc alias set local http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD &&
+      /usr/bin/mc alias set local http://localhost:9001 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD &&
       if ! /usr/bin/mc ls local/$STORAGE_BUCKET_NAME > /dev/null 2>&1; then
         /usr/bin/mc mb local/$STORAGE_BUCKET_NAME &&
         echo 'Bucket created successfully'
