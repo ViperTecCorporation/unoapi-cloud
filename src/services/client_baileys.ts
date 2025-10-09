@@ -577,13 +577,40 @@ export class ClientBaileys implements Client {
             disappearingMessagesInChat,
             ...options,
           }
-          // Apply addressing mode for groups (default to PN if not specified)
+          // Apply addressing mode for groups
+          // If env GROUP_SEND_ADDRESSING_MODE is set, honor it; otherwise pick by majority from group metadata
           try {
             if (to && to.endsWith('@g.us')) {
-              const preferred = (GROUP_SEND_ADDRESSING_MODE || 'pn')
-              const mode = preferred === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
-              messageOptions.addressingMode = mode
-              logger.debug('Applied group addressingMode %s for %s', preferred, to)
+              let applied = ''
+              if (GROUP_SEND_ADDRESSING_MODE) {
+                const preferred = GROUP_SEND_ADDRESSING_MODE
+                const mode = preferred === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+                messageOptions.addressingMode = mode
+                applied = preferred
+              }
+              // Heuristic: if not forced by env, choose majority between LID vs PN participants
+              if (!applied && GROUP_SEND_MEMBERSHIP_CHECK) {
+                try {
+                  const gm = await this.fetchGroupMetadata(to)
+                  const parts: any[] = (gm?.participants || []) as any[]
+                  let lid = 0, pn = 0
+                  for (const p of parts) {
+                    const jid = `${p?.id || p?.jid || p?.lid || ''}`
+                    if (!jid) continue
+                    if (jid.includes('@lid')) lid++
+                    else pn++
+                  }
+                  const mode = lid > pn ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
+                  messageOptions.addressingMode = mode
+                  applied = lid > pn ? 'lid' : 'pn'
+                } catch {}
+              }
+              if (!applied) {
+                // Fallback: don't force; let Baileys decide
+                delete (messageOptions as any).addressingMode
+                applied = 'auto'
+              }
+              logger.debug('Applied group addressingMode %s for %s', applied, to)
             }
           } catch (e) {
             logger.warn(e, 'Ignore error applying group addressingMode')

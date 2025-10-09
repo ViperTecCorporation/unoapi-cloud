@@ -747,13 +747,45 @@ export const connect = async ({
             } catch {}
             const targets = Array.from(set)
             if (targets.length) {
-              await (sock as any).assertSessions(targets, true)
-              logger.warn('Recovered from No sessions by asserting %s targets for group %s; retrying send', targets.length, id)
+              // First, try a single assert for all targets
+              try {
+                await (sock as any).assertSessions(targets, true)
+                logger.warn('Recovered from No sessions by asserting %s targets for group %s; retrying send', targets.length, id)
+              } catch (ae) {
+                logger.warn(ae as any, 'Bulk assertSessions failed; retrying in chunks')
+                // Fallback: chunked asserts to avoid internal size/time limits
+                const chunkSize = 150
+                for (let i = 0; i < targets.length; i += chunkSize) {
+                  const chunk = targets.slice(i, i + chunkSize)
+                  try {
+                    await (sock as any).assertSessions(chunk, true)
+                  } catch (ce) {
+                    logger.warn(ce as any, 'Ignore error asserting chunk %s-%s', i, i + chunk.length)
+                  }
+                }
+              }
             }
+            // Small delay to allow sender keys to propagate before retrying
+            try { await delay(150); } catch {}
             full = await sock?.sendMessage(id, message, opts)
           } catch (e) {
             logger.warn(e as any, 'Retry after No sessions failed')
-            throw err
+            // Last attempt: toggle addressingMode and try once more
+            try {
+              const altOpts: any = { ...(opts || {}) }
+              try {
+                const curr = (opts as any)?.addressingMode
+                if (curr === WAMessageAddressingMode.LID) altOpts.addressingMode = WAMessageAddressingMode.PN
+                else altOpts.addressingMode = WAMessageAddressingMode.LID
+              } catch {}
+              logger.warn('Toggling addressingMode to attempt recovery from No sessions on %s', id)
+              // small wait to avoid hammering
+              try { await delay(120) } catch {}
+              full = await sock?.sendMessage(id, message, altOpts)
+            } catch (ee) {
+              logger.warn(ee as any, 'Final retry after No sessions failed')
+              throw err
+            }
           }
         } else {
           throw err
