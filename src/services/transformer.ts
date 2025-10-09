@@ -662,6 +662,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const { key: { id: whatsappMessageId, fromMe } } = payload
     const [chatJid, senderPhone, senderId] = getChatAndNumberAndId(payload)
     const messageType = getMessageType(payload)
+    // Device-sent messages (from the phone) often arrive as messages.update with deviceSentMessage wrapper.
+    // When detected, unwrap into a synthetic payload so we can emit the actual content as a normal message webhook.
+    if (payload?.update?.message?.deviceSentMessage?.message) {
+      const inner = payload.update.message.deviceSentMessage.message
+      const changedPayload = { ...payload, message: inner }
+      return fromBaileysMessageContent(phone, changedPayload, config)
+    }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
     let profileName
     if (fromMe) {
