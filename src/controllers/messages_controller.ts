@@ -38,6 +38,7 @@ import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
 import logger from '../services/logger'
 import { phoneNumberToJid } from '../services/transformer'
+import { allowSend } from '../services/rate_limit'
 
 export class MessagesController {
   protected endpoint = 'messages'
@@ -83,6 +84,18 @@ export class MessagesController {
         options.font = payload.font
       } else if (typeof bodyOptions.font !== 'undefined') {
         options.font = bodyOptions.font
+      }
+      // Anti-spam: enforce per-session and per-destination minute limits
+      const to = (payload?.to && phoneNumberToJid(payload.to)) || ''
+      const decision = await allowSend(phone, to || '')
+      if (!decision.allowed) {
+        const code = decision.reason === 'rate_to_exceeded' ? 29 : 28
+        return res.status(429).json({
+          error: {
+            code,
+            title: `Rate limit exceeded (${decision.reason}). Try again in ${decision.retryAfterSec || 60}s`,
+          },
+        })
       }
       const response: ResponseUno = await this.incoming.send(phone, payload, options)
       logger.debug('%s response %s', this.endpoint, JSON.stringify(response.ok))

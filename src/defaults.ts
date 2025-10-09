@@ -202,6 +202,14 @@ export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER 
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
+// Anti-spam / rate limits (per session)
+// Max messages per minute por sessão (0 = desabilitado)
+export const RATE_LIMIT_GLOBAL_PER_MINUTE = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_MINUTE || '0')
+// Max mensagens por minuto por destinatário (0 = desabilitado)
+export const RATE_LIMIT_PER_TO_PER_MINUTE = parseInt(process.env.RATE_LIMIT_PER_TO_PER_MINUTE || '0')
+// Tempo de bloqueio ao exceder (em segundos). Se 0, apenas retorna erro sem bloquear.
+export const RATE_LIMIT_BLOCK_SECONDS = parseInt(process.env.RATE_LIMIT_BLOCK_SECONDS || '60')
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }

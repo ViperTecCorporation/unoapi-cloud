@@ -131,6 +131,28 @@ const redisSetAndExpire = async function (key: string, value: any, ttl: number) 
   }
 }
 
+// Atomic increment with TTL. Sets TTL on first increment (value === 1)
+export const redisIncrWithTtl = async (key: string, ttlSec: number): Promise<number> => {
+  logger.trace(`INCR ${key} with ttl ${ttlSec}s`)
+  try {
+    const v = await client.incr(key)
+    if (v === 1 && ttlSec > 0) {
+      try { await client.expire(key, ttlSec) } catch {}
+    }
+    return v
+  } catch (error) {
+    if (!client) {
+      await getRedis()
+      const v = await client.incr(key)
+      if (v === 1 && ttlSec > 0) {
+        try { await client.expire(key, ttlSec) } catch {}
+      }
+      return v
+    }
+    throw error
+  }
+}
+
 export const authKey = (phone: string) => {
   return `${BASE_KEY}auth:${phone}`
 }
@@ -513,6 +535,10 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
   const key = unoIdKey(phone, idBaileys)
   return redisSetAndExpire(key, idUno, DATA_TTL)
 }
+
+// Rate limit keys
+export const rateGlobalKey = (session: string) => `${BASE_KEY}ratelimit:${session}:global`
+export const rateToKey = (session: string, to: string) => `${BASE_KEY}ratelimit:${session}:to:${to}`
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getKey = async (phone: string, id: string): Promise<any | undefined> => {
