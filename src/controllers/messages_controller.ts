@@ -89,13 +89,10 @@ export class MessagesController {
       const to = (payload?.to && phoneNumberToJid(payload.to)) || ''
       const decision = await allowSend(phone, to || '')
       if (!decision.allowed) {
-        const code = decision.reason === 'rate_to_exceeded' ? 29 : 28
-        return res.status(429).json({
-          error: {
-            code,
-            title: `Rate limit exceeded (${decision.reason}). Try again in ${decision.retryAfterSec || 60}s`,
-          },
-        })
+        // Não retorna 429: agenda o envio via fila com atraso
+        const retrySec = decision.retryAfterSec || 60
+        options.delay = retrySec * 1000
+        logger.warn('Rate limited %s -> %s; scheduling in %ss', phone, to, retrySec)
       }
       const response: ResponseUno = await this.incoming.send(phone, payload, options)
       logger.debug('%s response %s', this.endpoint, JSON.stringify(response.ok))
