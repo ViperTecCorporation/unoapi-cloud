@@ -45,7 +45,11 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
 
     config.server = config.server || 'server_1'
     config.provider = config.provider || 'baileys'
-    
+    // Enforce session-level storage flags when using Redis-backed config
+    // Avoid sessions coming with useRedis/useS3=false due to stale values in unoapi-config
+    config.useRedis = true
+    config.useS3 = true
+
     const filter: MessageFilter = new MessageFilter(phone, config)
     config.shouldIgnoreJid = filter.isIgnoreJid.bind(filter)
     config.shouldIgnoreKey = filter.isIgnoreKey.bind(filter)

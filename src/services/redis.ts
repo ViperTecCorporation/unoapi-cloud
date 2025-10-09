@@ -327,6 +327,10 @@ export const setConfig = async (phone: string, value: any) => {
   })
   value.webhooks = updatedWebooks
   const config = { ...currentConfig, ...value }
+  // Enforce per-session storage flags to avoid false overrides via templates/UI
+  // Since this setter persists to Redis, sessions using Redis must have useRedis/useS3 true
+  try { (config as any).useRedis = true } catch {}
+  try { (config as any).useS3 = true } catch {}
   delete config.overrideWebhooks
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
   configs.delete(phone)
