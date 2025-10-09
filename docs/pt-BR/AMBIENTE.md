@@ -76,6 +76,24 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
   - Use para melhorar confiabilidade em cenários com variações de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+## Cache de Mapeamento LID/PN
+
+- `JIDMAP_CACHE_ENABLED` — Habilita cache PN↔LID. Padrão `true`.
+  - Armazena por sessão o mapeamento entre JIDs LID e PN para reduzir consultas e melhorar entrega em grupos grandes.
+  - Exemplo: `JIDMAP_CACHE_ENABLED=true`
+- `JIDMAP_TTL_SECONDS` — TTL das entradas do cache. Padrão `604800` (7 dias).
+  - Exemplo: `JIDMAP_TTL_SECONDS=604800`
+
+## Anti‑Spam / Rate Limits
+
+- `RATE_LIMIT_GLOBAL_PER_MINUTE` — Máximo de mensagens por minuto por sessão. Padrão `0` (desativado).
+  - Exemplo: `RATE_LIMIT_GLOBAL_PER_MINUTE=60`
+- `RATE_LIMIT_PER_TO_PER_MINUTE` — Máximo de mensagens por minuto por destinatário (por sessão). Padrão `0`.
+  - Exemplo: `RATE_LIMIT_PER_TO_PER_MINUTE=20`
+- `RATE_LIMIT_BLOCK_SECONDS` — Atraso sugerido (em segundos) quando o limite é excedido. Padrão `60`.
+  - Ao atingir o limite, a API agenda o envio via RabbitMQ com esse atraso em vez de responder HTTP 429.
+  - Exemplo: `RATE_LIMIT_BLOCK_SECONDS=60`
+
 ## Mídia & Timeouts
 
 - `FETCH_TIMEOUT_MS` — Timeout para checagens HEAD/download de mídia.

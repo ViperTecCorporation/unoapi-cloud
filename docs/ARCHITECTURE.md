@@ -55,6 +55,7 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 - `Store` provides `sessionStore` and `dataStore` (Redis or File). Key capabilities:
   - `data_store_*`: cache JIDs (`onWhatsApp` results), messages, media URLs, group metadata.
   - `session_store`: connection state machine (connecting/online/offline/standby), timeouts and reconnect control.
+  - `src/services/rate_limit.ts`: per‑session and per‑destination rate limits (Redis/memory) with delayed scheduling.
 
 ## Error Handling & Resilience
 
@@ -64,6 +65,27 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
   - Auto‑retry once on server ack 421 by toggling addressing mode (PN⇄LID).
 - Disconnection handling:
   - Detects loggedOut/connectionReplaced/restartRequired, notifies, and reconnects when configured.
+
+### LID ⇄ PN Handling (Meow compatibility)
+
+- For consistent webhooks and UX, the system prioritizes PN (digits only) in `wa_id`, `from`, and `recipient_id`.
+- LID→PN mapping is achieved via:
+  - Enriched fields (`senderPn/participantPn`) provided by the Baileys client.
+  - Normalization using `jidNormalizedUser`.
+  - Per‑session PN↔LID cache (Redis/memory) with configurable TTL.
+- Group sends:
+  - Pre‑assert sessions for all participants (including LID/PN variants) to reduce “No sessions” and ack 421.
+  - Default addressing mode can be configured (`GROUP_SEND_ADDRESSING_MODE`) and there is an automatic fallback (PN⇄LID) when 421 is detected.
+
+### Edited Messages
+
+- Edits preserve the same `id` as the original message so webhook consumers update content instead of creating a new item.
+- No custom “edited” status is added; Meta’s standard is preserved.
+
+### Anti‑Spam (Rate Limit)
+
+- Limits per session and per destination per minute.
+- When a limit is exceeded, the send is automatically scheduled in the delayed queue (RabbitMQ) instead of returning 429, smoothing peaks and reducing ban risk.
 
 ## Configuration Highlights (env)
 

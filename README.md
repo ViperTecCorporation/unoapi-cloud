@@ -15,6 +15,16 @@ RESTful API service with multi device support with a Whatsapp Cloud API format
 The media files are saved in file system at folder data with the session or in s3 or compatible and redis.
 
 
+## Behavior Notes
+
+- LID/PN (Meow) handling:
+  - Webhooks expose PN (digits) in `wa_id`, `from` and `recipient_id`. LID is resolved via normalization and a per‑session PN↔LID cache.
+  - Group sends pre‑assert sessions for participants and support addressing fallback on ack 421.
+- Edited messages:
+  - Keep the same `messages[].id` as the original; consumers should update content. No custom “edited” status is added (Meta standard preserved).
+- Rate limiting (optional):
+  - Configure per‑session and per‑destination/minute caps via env. When exceeded, messages are scheduled with delay in RabbitMQ instead of returning 429.
+
 ## Read qrcode or config
 
 Go to `http://localhost:9876/session/XXX`, when XXX is your phone number, by example `http://localhost:9876/session/5549988290955`. When disconnect whatsapp number this show the qrcode, read to connect, unoapi response with auth token, save him. When already connect, they show the number config saved in redis, you cloud update, put the auth token and save.

@@ -76,6 +76,24 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+## LID/PN Mapping Cache
+
+- `JIDMAP_CACHE_ENABLED` — Enable PN↔LID cache. Default `true`.
+  - Stores per‑session mapping between LID JIDs and PN JIDs to reduce runtime lookups and improve delivery in large groups.
+  - Example: `JIDMAP_CACHE_ENABLED=true`
+- `JIDMAP_TTL_SECONDS` — TTL for cache entries. Default `604800` (7 days).
+  - Example: `JIDMAP_TTL_SECONDS=604800`
+
+## Anti‑Spam / Rate Limits
+
+- `RATE_LIMIT_GLOBAL_PER_MINUTE` — Max messages per minute per session. Default `0` (disabled).
+  - Example: `RATE_LIMIT_GLOBAL_PER_MINUTE=60`
+- `RATE_LIMIT_PER_TO_PER_MINUTE` — Max messages per minute per destination (per session). Default `0` (disabled).
+  - Example: `RATE_LIMIT_PER_TO_PER_MINUTE=20`
+- `RATE_LIMIT_BLOCK_SECONDS` — Suggested delay (in seconds) when limits are exceeded. Default `60`.
+  - When a limit is hit, the API schedules the send via RabbitMQ with this delay instead of returning HTTP 429.
+  - Example: `RATE_LIMIT_BLOCK_SECONDS=60`
+
 ## Media & Timeouts
 
 - `FETCH_TIMEOUT_MS` — Timeout for media HEAD/download checks. Default per code.
