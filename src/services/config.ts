@@ -88,6 +88,10 @@ export type Config = {
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
+  // Rate limit (per-session overrides)
+  rateLimitGlobalPerMinute?: number
+  rateLimitPerToPerMinute?: number
+  rateLimitBlockSeconds?: number
 }
 
 export const defaultConfig: Config = {
@@ -157,7 +161,10 @@ export const defaultConfig: Config = {
   whatsappVersion: undefined,
   openaiApiKey: undefined,
   openaiApiTranscribeModel: undefined,
-  openaiAssistantId: undefined
+  openaiAssistantId: undefined,
+  rateLimitGlobalPerMinute: 0,
+  rateLimitPerToPerMinute: 0,
+  rateLimitBlockSeconds: 60
 }
 
 export interface getConfig {
