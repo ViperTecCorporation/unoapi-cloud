@@ -44,6 +44,10 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
   - `status_skipped`: entradas ignoradas por não terem WhatsApp.
   - `status_recipients`: quantidade de destinatários válidos.
 
+### Segurança/Política para Status
+
+- `STATUS_BROADCAST_ENABLED` (env): quando definido como `false`, o envio para `status@broadcast` é bloqueado antes de chegar ao WhatsApp. Útil para evitar risco de bloqueio de conta quando a política não permite uso de Status.
+
 ## Fluxo de Entrada (Incoming)
 
 - `socket.ts` assina eventos do Baileys (messages.upsert, update, receipts, groups, calls, etc.).
@@ -64,6 +68,15 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
   - Auto‑retry em ack 421 alternando modo de endereçamento (PN⇄LID).
 - Desconexões:
   - Detecta `loggedOut/connectionReplaced/restartRequired`, notifica e reconecta conforme configuração.
+
+### Recuperação automática em grupos ("No sessions")
+
+- Em casos raros, o libsignal pode retornar “No sessions” ao enviar em grupos (falta de sessão de cifra para algum participante).
+- O socket realiza um fallback automático:
+  1. Consulta os participantes do grupo (inclui variantes PN/LID e a própria identidade).
+  2. Executa `assertSessions` para todos.
+  3. Faz uma nova tentativa única de envio.
+- Esse comportamento reduz falhas intermitentes sem alterar a API de chamada.
 
 ### Entrega de Webhooks & Retentativas
 

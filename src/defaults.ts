@@ -175,6 +175,10 @@ export const QR_TIMEOUT_MS = parseInt(process.env.QR_TIMEOUT_MS || '60000')
 export const STATUS_FAILED_WEBHOOK_URL = process.env.STATUS_FAILED_WEBHOOK_URL || ''
 // Status broadcast behavior
 export const STATUS_ALLOW_LID: boolean = process.env.STATUS_ALLOW_LID === _undefined ? true : process.env.STATUS_ALLOW_LID == 'true'
+// Enable/disable sending Status (status@broadcast). When disabled, outgoing status
+// messages are rejected before reaching WhatsApp to avoid potential account risk.
+export const STATUS_BROADCAST_ENABLED: boolean =
+  process.env.STATUS_BROADCAST_ENABLED === _undefined ? true : process.env.STATUS_BROADCAST_ENABLED == 'true'
 
 export const VALIDATE_SESSION_NUMBER: boolean =
   process.env.VALIDATE_SESSION_NUMBER === _undefined ? false : process.env.VALIDATE_SESSION_NUMBER == 'true'

@@ -66,6 +66,9 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
 - `STATUS_ALLOW_LID` — Permite JIDs LID na lista de status. Padrão `true`.
   - Coloque `false` para normalizar para PN (`@s.whatsapp.net`).
   - Exemplo: `STATUS_ALLOW_LID=false`
+- `STATUS_BROADCAST_ENABLED` — Habilita envio de Status (status@broadcast). Padrão `true`.
+  - Defina `false` para bloquear qualquer Status antes de chegar ao WhatsApp (útil para evitar risco de bloqueio de conta).
+  - Exemplo: `STATUS_BROADCAST_ENABLED=false`
 
 ## Envio em Grupos
 
@@ -75,6 +78,9 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
 - `GROUP_SEND_FALLBACK_ORDER` — Ordem de fallback no ack 421, ex.: `pn,lid`. Padrão `pn,lid`.
   - Use para melhorar confiabilidade em cenários com variações de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
+
+Observação de confiabilidade:
+- Em um erro raro do libsignal (“No sessions”) durante envios em grupos, o serviço agora reassegura as sessões de todos os participantes e tenta reenviar uma vez automaticamente.
 
 ## Cache de Mapeamento LID/PN
 

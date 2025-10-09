@@ -44,6 +44,10 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
   - `status_skipped`: the raw inputs ignored for having no WhatsApp.
   - `status_recipients`: how many valid recipients were relayed.
 
+### Security/Policy for Status
+
+- `STATUS_BROADCAST_ENABLED` (env): when set to `false`, sending to `status@broadcast` is blocked before reaching WhatsApp. Useful to reduce account risk when Status usage is not allowed by policy.
+
 ## Incoming Events Flow
 
 - `socket.ts` subscribes to Baileys events (messages.upsert, messages.update, receipts, groups, calls, etc.).
@@ -65,6 +69,15 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
   - Auto‑retry once on server ack 421 by toggling addressing mode (PN⇄LID).
 - Disconnection handling:
   - Detects loggedOut/connectionReplaced/restartRequired, notifies, and reconnects when configured.
+
+### Automatic recovery in groups ("No sessions")
+
+- In rare cases, libsignal can return “No sessions” when sending to groups (missing cipher sessions for some participant).
+- The socket now performs an automatic fallback:
+  1. Fetches group participants (including PN/LID variants and self identity).
+  2. Calls `assertSessions` for all.
+  3. Retries the send once.
+- This reduces intermittent failures without changing the caller API.
 
 ### Webhook Delivery & Retries
 

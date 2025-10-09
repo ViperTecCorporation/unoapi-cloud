@@ -66,6 +66,9 @@ This guide explains key environment variables, when to use them, and why. Copy `
 - `STATUS_ALLOW_LID` — Allow LID JIDs in status recipients. Default `true`.
   - Set `false` to normalize to PN (`@s.whatsapp.net`) for consistency.
   - Example: `STATUS_ALLOW_LID=false`
+- `STATUS_BROADCAST_ENABLED` — Enable Status (status@broadcast) sending. Default `true`.
+  - Set `false` to block any outgoing Status before reaching WhatsApp (useful to avoid account risk).
+  - Example: `STATUS_BROADCAST_ENABLED=false`
 
 ## Group Sending
 
@@ -75,6 +78,9 @@ This guide explains key environment variables, when to use them, and why. Copy `
 - `GROUP_SEND_FALLBACK_ORDER` — Fallback order on ack 421, e.g., `pn,lid`. Default `pn,lid`.
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
+
+Reliability note:
+- On a rare libsignal error “No sessions” during group sends, the service now re-asserts sessions for all group participants and retries the send once automatically.
 
 ## LID/PN Mapping Cache
 

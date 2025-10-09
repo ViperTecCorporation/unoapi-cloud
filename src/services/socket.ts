@@ -35,6 +35,7 @@ import {
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
+import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -624,6 +625,10 @@ export const connect = async ({
       logger.warn(e, 'Ignore error on preassert group sessions')
     }
     if (id) {
+      // Block Status (status@broadcast) sending when disabled via env to avoid account risk
+      if (id === 'status@broadcast' && !STATUS_BROADCAST_ENABLED) {
+        throw new SendError(16, 'status_broadcast_disabled')
+      }
       const { composing, ...restOptions } = options || {}
       if (composing) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -707,8 +712,53 @@ export const connect = async ({
         const size = Array.isArray((opts as any).statusJidList) ? (opts as any).statusJidList.length : 'none'
         logger.debug('Status@broadcast without statusJidList (size: %s); skipping relayMessage', size)
       }
-      // general path: send, then track for possible fallback on ack 421
-      const full = await sock?.sendMessage(id, message, opts)
+      // general path: send, with fallback when libsignal reports missing sessions
+      let full
+      try {
+        full = await sock?.sendMessage(id, message, opts)
+      } catch (err: any) {
+        const msg = (err?.message || `${err || ''}`).toString().toLowerCase()
+        const isNoSessions = msg.includes('no sessions') || msg.includes('nosessions')
+        if (isNoSessions && typeof id === 'string' && id.endsWith('@g.us')) {
+          try {
+            // Re-assert sessions for all group participants (including PN/LID variants) and retry once
+            const gm = await dataStore.loadGroupMetada(id, sock!)
+            const raw: string[] = (gm?.participants || [])
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
+              .filter((v) => !!v)
+            const set = new Set<string>()
+            for (const j of raw) {
+              set.add(j)
+              try {
+                if (isLidUser(j)) {
+                  const pn = jidNormalizedUser(j)
+                  set.add(pn)
+                  try { await (dataStore as any).setJidMapping?.(phone, pn, j) } catch {}
+                }
+              } catch {}
+            }
+            try {
+              const self = state?.creds?.me?.id
+              if (self) {
+                set.add(self)
+                try { set.add(jidNormalizedUser(self)) } catch {}
+              }
+            } catch {}
+            const targets = Array.from(set)
+            if (targets.length) {
+              await (sock as any).assertSessions(targets, true)
+              logger.warn('Recovered from No sessions by asserting %s targets for group %s; retrying send', targets.length, id)
+            }
+            full = await sock?.sendMessage(id, message, opts)
+          } catch (e) {
+            logger.warn(e as any, 'Retry after No sessions failed')
+            throw err
+          }
+        } else {
+          throw err
+        }
+      }
       try {
         if (full?.key?.id && typeof id === 'string' && id.endsWith('@g.us')) {
           let mode: 'pn' | 'lid' | '' = ''
