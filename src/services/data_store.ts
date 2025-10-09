@@ -51,4 +51,8 @@ export type DataStore  = {
   cleanSession: (removeConfig: boolean) => Promise<void>
   loadTemplates(): Promise<object[]>
   setTemplates(templates: string): Promise<void>
+  // PN <-> LID JID mapping cache (optional)
+  getPnForLid?: (sessionPhone: string, lidJid: string) => Promise<string | undefined>
+  getLidForPn?: (sessionPhone: string, pnJid: string) => Promise<string | undefined>
+  setJidMapping?: (sessionPhone: string, pnJid: string, lidJid: string) => Promise<void>
 }

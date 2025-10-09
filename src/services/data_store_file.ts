@@ -54,6 +54,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const medias: Map<string, string> = new Map()
   const messages: Map<string, any> = new Map()
   const groups: NodeCache = new NodeCache()
+  // JID mapping cache (PN <-> LID) per-process
+  const jidMap: NodeCache = new NodeCache()
   const store = await useMultiFileAuthState(SESSION_DIR)
   const dataStore = store as DataStore
   dataStore.type = 'file'
@@ -95,6 +97,11 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     json?.medias.entries().forEach(([key, value]) => {
       medias.set(key, value)
     })
+  }
+  // JID map helpers
+  const jidMapGet = (key: string) => jidMap.get<string>(key)
+  const jidMapSet = (key: string, val: string, ttlSec: number) => {
+    try { jidMap.set(key, val, ttlSec) } catch {}
   }
 	dataStore.writeToFile = (path: string) => {
     const { writeFileSync } = require('fs')
@@ -164,6 +171,21 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     return data
   }
 
+  // JID mapping cache (PN <-> LID)
+  dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
+    return jidMapGet(`pn:${sessionPhone}:${lidJid}`)
+  }
+  dataStore.getLidForPn = async (sessionPhone: string, pnJid: string) => {
+    return jidMapGet(`lid:${sessionPhone}:${pnJid}`)
+  }
+  dataStore.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
+    const ttl = HOUR * 24 * 7 // 7 days
+    if (pnJid && lidJid) {
+      jidMapSet(`pn:${sessionPhone}:${lidJid}`, pnJid, ttl)
+      jidMapSet(`lid:${sessionPhone}:${pnJid}`, lidJid, ttl)
+    }
+  }
+
   dataStore.setStatus = async (id: string, status: MessageStatus) => {
     statuses.set(id, status)
   }
@@ -190,7 +212,17 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       lid = jid
     }
     if (!jid || lid) {
-      let results: unknown
+    let results: unknown
+    // quick mapping: if input is a LID JID and a PN is cached, return it
+    try {
+      if (isIndividualJid(phoneOrJid) && (phoneOrJid || '').includes('@lid')) {
+        const pn = await dataStore.getPnForLid?.(phone, phoneOrJid)
+        if (pn) {
+          await dataStore.setJid(phoneOrJid, pn)
+          return pn
+        }
+      }
+    } catch {}
       try {
         logger.debug(`Verifing if ${phoneOrJid} exist on WhatsApp`)
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

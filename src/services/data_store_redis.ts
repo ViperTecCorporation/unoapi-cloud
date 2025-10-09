@@ -29,7 +29,8 @@ import { Config } from './config'
 import logger from './logger'
 import { getDataStoreFile } from './data_store_file'
 import { defaultConfig } from './config'
-import { CLEAN_CONFIG_ON_DISCONNECT } from '../defaults'
+import { CLEAN_CONFIG_ON_DISCONNECT, JIDMAP_CACHE_ENABLED } from '../defaults'
+import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping } from './redis'
 
 export const getDataStoreRedis: getDataStore = async (phone: string, config: Config): Promise<DataStore> => {
   if (!dataStores.has(phone)) {
@@ -217,6 +218,19 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       }
       
     }
+  }
+  // JID map cache (PN <-> LID)
+  store.getPnForLid = async (sessionPhone: string, lidJid: string) => {
+    if (!JIDMAP_CACHE_ENABLED) return undefined
+    try { return (await redisGetPnForLid(sessionPhone, lidJid)) || undefined } catch { return undefined }
+  }
+  store.getLidForPn = async (sessionPhone: string, pnJid: string) => {
+    if (!JIDMAP_CACHE_ENABLED) return undefined
+    try { return (await redisGetLidForPn(sessionPhone, pnJid)) || undefined } catch { return undefined }
+  }
+  store.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
+    if (!JIDMAP_CACHE_ENABLED) return
+    try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
   }
   return store
 }

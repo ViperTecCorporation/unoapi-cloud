@@ -1,5 +1,5 @@
 import { createClient } from '@redis/client'
-import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL } from '../defaults'
+import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS } from '../defaults'
 import logger from './logger'
 import { GroupMetadata } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config'
@@ -193,6 +193,26 @@ export const profilePictureKey = (phone: string, jid: string) => {
 
 export const groupKey = (phone: string, jid: string) => {
   return `${BASE_KEY}group:${phone}:${jid}`
+}
+
+// JID mapping PN <-> LID keys
+const jidMapPnKey = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:pn:${pnJid}`
+const jidMapLidKey = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:lid:${lidJid}`
+
+export const getPnForLid = async (session: string, lidJid: string) => {
+  return redisGet(jidMapPnKey(session, lidJid))
+}
+export const getLidForPn = async (session: string, pnJid: string) => {
+  return redisGet(jidMapLidKey(session, pnJid))
+}
+export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
+  if (!pnJid || !lidJid) return
+  try {
+    await redisSetAndExpire(jidMapPnKey(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+  } catch {}
+  try {
+    await redisSetAndExpire(jidMapLidKey(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+  } catch {}
 }
 
 export const blacklist = (from: string, webhookId: string, to: string) => {

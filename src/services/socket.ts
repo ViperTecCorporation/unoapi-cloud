@@ -566,7 +566,9 @@ export const connect = async ({
         set.add(id)
         try {
           if (isLidUser(id)) {
-            set.add(jidNormalizedUser(id))
+            const pn = jidNormalizedUser(id)
+            set.add(pn)
+            try { await (dataStore as any).setJidMapping?.(phone, pn, id) } catch {}
           }
         } catch {}
         try {
@@ -591,25 +593,27 @@ export const connect = async ({
         const gm = await dataStore.loadGroupMetada(id, sock!)
         const raw: string[] = (gm?.participants || [])
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((p: any) => (p?.id || p?.jid || '').toString())
+          .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
           .filter((v) => !!v)
         const set = new Set<string>()
         for (const j of raw) {
           set.add(j)
           try {
             if (isLidUser(j)) {
-              set.add(jidNormalizedUser(j))
+              const pn = jidNormalizedUser(j)
+              set.add(pn)
+              try { await (dataStore as any).setJidMapping?.(phone, pn, j) } catch {}
             }
           } catch {}
         }
         // include self identities as well
-        try {
-          const self = state?.creds?.me?.id
-          if (self) {
-            set.add(self)
-            try { set.add(jidNormalizedUser(self)) } catch {}
-          }
-        } catch {}
+          try {
+            const self = state?.creds?.me?.id
+            if (self) {
+              set.add(self)
+              try { set.add(jidNormalizedUser(self)) } catch {}
+            }
+          } catch {}
         const targets = Array.from(set)
         if (targets.length) {
           await (sock as any).assertSessions(targets, true)

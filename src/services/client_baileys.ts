@@ -594,9 +594,16 @@ export class ClientBaileys implements Client {
               const gm = await this.fetchGroupMetadata(to)
               const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
               const participants = gm?.participants || []
-              const isParticipant = participants.length > 0 && !!participants.find?.((p: any) => jidNormalizedUser(p?.id || p?.jid) === myId)
+              const isParticipant = participants.length > 0 && !!participants.find?.((p: any) => {
+                const anyId = p?.id || p?.jid || p?.lid
+                try {
+                  return anyId && jidNormalizedUser(anyId) === myId
+                } catch {
+                  return false
+                }
+              })
               if (!isParticipant) {
-                logger.warn('Membership not verified for group %s (self: %s) — proceeding to send', to, myId)
+                logger.warn('Membership not verified for group %s (self: %s, participants: %s) — proceeding to send', to, myId, participants.length)
               }
             } catch (err) {
               logger.warn(err, 'Ignore error on group membership check; proceeding to send')
@@ -794,10 +801,12 @@ export class ClientBaileys implements Client {
         // Preserve original LID and expose a PN-normalized variant
         k.senderLid = k.remoteJid
         k.senderPn = jidNormalizedUser(k.remoteJid)
+        try { await this.store?.dataStore?.setJidMapping?.(this.phone, k.senderPn, k.senderLid) } catch {}
       }
       if (k?.participant && isLidUser(k.participant)) {
         k.participantLid = k.participant
         k.participantPn = jidNormalizedUser(k.participant)
+        try { await this.store?.dataStore?.setJidMapping?.(this.phone, k.participantPn, k.participantLid) } catch {}
       }
     } catch (e) {
       logger.warn(e, 'Ignore LID normalization error')
