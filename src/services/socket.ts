@@ -35,6 +35,7 @@ import {
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
+import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS } from '../defaults'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -156,6 +157,9 @@ export const connect = async ({
   const { dataStore, state, saveCreds, sessionStore } = store
   // Track recent group sends to enable a single fallback retry on ack 421
   const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
+  // Throttle heavy assert operations
+  const lastGroupAssert = new Map<string, number>()
+  const lastReceiptAssert = new Map<string, number>()
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
       // Normalize possible LID JID to PN JID before extracting phone
@@ -409,6 +413,7 @@ export const connect = async ({
       const wrapped = async (updates: any[]) => {
         try {
           const targets = new Set<string>()
+          let groupKey: string | null = null
           if (Array.isArray(updates)) {
             for (const u of updates) {
               const type = u?.receipt?.type || u?.type || u?.update?.type
@@ -417,16 +422,28 @@ export const connect = async ({
               if (type === 'retry') {
                 if (remoteJid && remoteJid.endsWith('@g.us') && participant) {
                   targets.add(participant)
+                  groupKey = remoteJid
                 } else if (remoteJid) {
                   targets.add(remoteJid)
                 }
               }
             }
           }
+          // Throttle receipt-based asserts per group
+          const now = Date.now()
+          if (groupKey) {
+            const last = lastReceiptAssert.get(groupKey) || 0
+            if (now - last < RECEIPT_RETRY_ASSERT_COOLDOWN_MS) {
+              logger.debug('Skip receipt assert: cooldown active for %s', groupKey)
+              return (callback as any)(updates)
+            }
+            lastReceiptAssert.set(groupKey, now)
+          }
           if (targets.size) {
+            const list = Array.from(targets).slice(0, RECEIPT_RETRY_ASSERT_MAX_TARGETS)
             try {
-              await (sock as any).assertSessions(Array.from(targets), true)
-              logger.debug('Asserted %s sessions on retry receipt', targets.size)
+              await (sock as any).assertSessions(list, true)
+              logger.debug('Asserted %s sessions on retry receipt', list.length)
             } catch (e) {
               logger.warn(e as any, 'Ignore error asserting sessions on retry receipt')
             }
@@ -721,7 +738,15 @@ export const connect = async ({
         const isNoSessions = msg.includes('no sessions') || msg.includes('nosessions')
         if (isNoSessions && typeof id === 'string' && id.endsWith('@g.us')) {
           try {
-            // Re-assert sessions for all group participants (including PN/LID variants) and retry once
+            // Flood window guard per group
+            const now = Date.now()
+            const last = lastGroupAssert.get(id) || 0
+            if (now - last < GROUP_ASSERT_FLOOD_WINDOW_MS) {
+              logger.warn('Skip heavy assert for %s (within flood window %sms)', id, GROUP_ASSERT_FLOOD_WINDOW_MS)
+              throw err
+            }
+            lastGroupAssert.set(id, now)
+            // Re-assert sessions for group participants (including PN/LID variants) and retry once
             const gm = await dataStore.loadGroupMetada(id, sock!)
             const raw: string[] = (gm?.participants || [])
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -730,13 +755,7 @@ export const connect = async ({
             const set = new Set<string>()
             for (const j of raw) {
               set.add(j)
-              try {
-                if (isLidUser(j)) {
-                  const pn = jidNormalizedUser(j)
-                  set.add(pn)
-                  try { await (dataStore as any).setJidMapping?.(phone, pn, j) } catch {}
-                }
-              } catch {}
+              try { if (isLidUser(j)) set.add(jidNormalizedUser(j)) } catch {}
             }
             try {
               const self = state?.creds?.me?.id
@@ -746,9 +765,19 @@ export const connect = async ({
               }
             } catch {}
             const targets = Array.from(set)
+            const groupSize = raw.length
+            // If the group is very large, avoid heavy asserts and rely on PN addressing + delays
+            if (groupSize > GROUP_LARGE_THRESHOLD) {
+              const extra = Math.min(NO_SESSION_RETRY_MAX_DELAY_MS, (Math.ceil(groupSize / 200) * NO_SESSION_RETRY_PER_200_DELAY_MS))
+              logger.warn('Large group (%s) detected for %s; skipping heavy assert and retrying after %sms', groupSize, id, NO_SESSION_RETRY_BASE_DELAY_MS + extra)
+              try { await delay(NO_SESSION_RETRY_BASE_DELAY_MS + extra) } catch {}
+              full = await sock?.sendMessage(id, message, opts)
+              // If still fails, fall into catch to toggle addressingMode
+              return full
+            }
             if (targets.length) {
               // Try bulk first, then chunked, then split-by-scheme (LID vs PN) chunked
-              const chunkSize = 150
+              const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
               const assertChunked = async (arr: string[]) => {
                 for (let i = 0; i < arr.length; i += chunkSize) {
                   const chunk = arr.slice(i, i + chunkSize)
@@ -772,8 +801,8 @@ export const connect = async ({
                 try { if (pns.length) await assertChunked(pns) } catch {}
               }
               // Adaptive delay based on fanout size to let sender keys propagate
-              const extra = Math.min(2000, (Math.ceil(targets.length / 200) * 300))
-              try { await delay(150 + extra) } catch {}
+              const extra = Math.min(NO_SESSION_RETRY_MAX_DELAY_MS, (Math.ceil(targets.length / 200) * NO_SESSION_RETRY_PER_200_DELAY_MS))
+              try { await delay(NO_SESSION_RETRY_BASE_DELAY_MS + extra) } catch {}
             }
             full = await sock?.sendMessage(id, message, opts)
           } catch (e) {

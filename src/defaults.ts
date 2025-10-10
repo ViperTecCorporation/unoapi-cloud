@@ -201,6 +201,19 @@ export const GROUP_SEND_PREASSERT_SESSIONS =
 export const GROUP_SEND_RETRY_ON_421 =
   process.env.GROUP_SEND_RETRY_ON_421 == _undefined ? true : process.env.GROUP_SEND_RETRY_ON_421 == 'true'
 export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER || 'pn,lid')
+// Consider a group as "large" when participant count exceeds this threshold
+export const GROUP_LARGE_THRESHOLD = parseInt(process.env.GROUP_LARGE_THRESHOLD || '800')
+
+// Controls for large-group No-sessions fallback (assertSessions)
+export const GROUP_ASSERT_CHUNK_SIZE = parseInt(process.env.GROUP_ASSERT_CHUNK_SIZE || '100')
+export const GROUP_ASSERT_FLOOD_WINDOW_MS = parseInt(process.env.GROUP_ASSERT_FLOOD_WINDOW_MS || '5000')
+export const NO_SESSION_RETRY_BASE_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_BASE_DELAY_MS || '150')
+export const NO_SESSION_RETRY_PER_200_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_PER_200_DELAY_MS || '300')
+export const NO_SESSION_RETRY_MAX_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_MAX_DELAY_MS || '2000')
+
+// Throttle asserts triggered by message-receipt 'retry' events
+export const RECEIPT_RETRY_ASSERT_COOLDOWN_MS = parseInt(process.env.RECEIPT_RETRY_ASSERT_COOLDOWN_MS || '15000')
+export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RETRY_ASSERT_MAX_TARGETS || '400')
 
 // JID mapping cache (PN <-> LID)
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'

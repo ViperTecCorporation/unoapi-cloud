@@ -578,7 +578,8 @@ export class ClientBaileys implements Client {
             ...options,
           }
           // Apply addressing mode for groups
-          // If env GROUP_SEND_ADDRESSING_MODE is set, honor it; otherwise pick by majority from group metadata
+          // If env GROUP_SEND_ADDRESSING_MODE is set, honor it; otherwise pick by majority from group metadata.
+          // For very large groups, force PN to reduce fanout to LID devices.
           try {
             if (to && to.endsWith('@g.us')) {
               let applied = ''
@@ -593,6 +594,11 @@ export class ClientBaileys implements Client {
                 try {
                   const gm = await this.fetchGroupMetadata(to)
                   const parts: any[] = (gm?.participants || []) as any[]
+                  const size = parts.length || 0
+                  if (size > GROUP_LARGE_THRESHOLD) {
+                    messageOptions.addressingMode = WAMessageAddressingMode.PN
+                    applied = 'pn'
+                  } else {
                   let lid = 0, pn = 0
                   for (const p of parts) {
                     const jid = `${p?.id || p?.jid || p?.lid || ''}`
@@ -603,6 +609,7 @@ export class ClientBaileys implements Client {
                   const mode = lid > pn ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
                   messageOptions.addressingMode = mode
                   applied = lid > pn ? 'lid' : 'pn'
+                  }
                 } catch {}
               }
               if (!applied) {
