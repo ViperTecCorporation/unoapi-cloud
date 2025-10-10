@@ -324,24 +324,18 @@ export const connect = async ({
     let remoteJid = key.remoteJid || k.remoteJidAlt
     const id = key.id
     let participant = key.participant || k.participantAlt
-    // handle status@broadcast retries where WA doesn't include remoteJid
+    // For status@broadcast receipts, avoid attempting resend via getMessage
     let jid = remoteJid
     if (!jid && participant) {
       logger.debug('Retry without remoteJid; using participant %s for id %s', participant, id)
       jid = participant
     }
-    jid = jid || 'status@broadcast'
-    logger.debug('load message for jid %s id %s', jid, id)
-    let message = await dataStore.loadMessage(jid, id!)
-    if (!message && jid !== 'status@broadcast') {
-      logger.debug('Not found under %s; trying status@broadcast for id %s', jid, id)
-      message = await dataStore.loadMessage('status@broadcast', id!)
-      if (message) {
-        logger.debug('Found message id %s under status@broadcast', id)
-      } else {
-        logger.debug('Message id %s not found under %s nor status@broadcast', id, jid)
-      }
+    if (!jid || jid === 'status@broadcast') {
+      logger.debug('Skip getMessage for jid %s id %s (status broadcast or unknown)', jid || '<empty>', id)
+      return undefined
     }
+    logger.debug('load message for jid %s id %s', jid, id)
+    const message = await dataStore.loadMessage(jid, id!)
     return message?.message || undefined
   }
 
@@ -414,12 +408,16 @@ export const connect = async ({
         try {
           const targets = new Set<string>()
           let groupKey: string | null = null
+          let isStatus = false
           if (Array.isArray(updates)) {
             for (const u of updates) {
               const type = u?.receipt?.type || u?.type || u?.update?.type
               const remoteJid: string | undefined = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
               const participant: string | undefined = u?.key?.participant || u?.participant || u?.attrs?.participant
               if (type === 'retry') {
+                if (remoteJid === 'status@broadcast') {
+                  isStatus = true
+                }
                 if (remoteJid && remoteJid.endsWith('@g.us') && participant) {
                   targets.add(participant)
                   groupKey = remoteJid
@@ -428,6 +426,10 @@ export const connect = async ({
                 }
               }
             }
+          }
+          if (isStatus) {
+            logger.debug('Skip receipt-based assert for status@broadcast')
+            return (callback as any)(updates)
           }
           // Throttle receipt-based asserts per group
           const now = Date.now()
