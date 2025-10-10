@@ -74,10 +74,13 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 - Em casos raros, o libsignal pode retornar “No sessions” ao enviar em grupos (falta de sessão de cifra para algum participante).
 - O socket realiza um fallback automático:
   1. Consulta os participantes do grupo (inclui variantes PN/LID e a própria identidade).
-  2. Executa `assertSessions` para todos.
-  3. Faz uma nova tentativa única de envio.
+  2. Executa `assertSessions` para todos (massa → chunks → divisão PN/LID quando ajuda), respeitando limites para evitar sobrecarga.
+  3. Aplica um atraso adaptativo para propagação do sender-key e tenta enviar novamente uma vez; se ainda falhar, alterna o addressingMode (PN↔LID) para uma última tentativa.
 - Esse comportamento reduz falhas intermitentes sem alterar a API de chamada.
 
+Heurísticas para grupos grandes
+- Quando o grupo é “grande” (ver `GROUP_LARGE_THRESHOLD`), o cliente prefere endereçamento PN e evita asserts pesados, usando atraso adaptativo.
+- Asserts disparados por recibos (`message-receipt.update` com retry) são limitados por grupo e quantidade de alvos para evitar loops e alta CPU.
 ### Entrega de Webhooks & Retentativas
 
 - Caminho de entrega

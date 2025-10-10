@@ -75,9 +75,13 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 - In rare cases, libsignal can return “No sessions” when sending to groups (missing cipher sessions for some participant).
 - The socket now performs an automatic fallback:
   1. Fetches group participants (including PN/LID variants and self identity).
-  2. Calls `assertSessions` for all.
-  3. Retries the send once.
+  2. Calls `assertSessions` for all (bulk → chunks → split LID vs PN when helpful), respecting throttles to avoid overload.
+  3. Applies an adaptive delay to allow sender-key propagation and retries the send once; if it still fails, toggles addressingMode (PN↔LID) for a final attempt.
 - This reduces intermittent failures without changing the caller API.
+
+Large-group heuristics
+- When a group is “large” (see `GROUP_LARGE_THRESHOLD`), the client prefers PN addressing and skips heavy bulk asserts, relying on adaptive delay.
+- Receipt-based asserts (triggered by `message-receipt.update` with retry) are throttled per group and limited in target count to avoid loops and high CPU.
 
 ### Webhook Delivery & Retries
 

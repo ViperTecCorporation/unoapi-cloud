@@ -79,6 +79,21 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+Large groups (No-sessions mitigation & throttles)
+- `GROUP_LARGE_THRESHOLD` — Consider a group as “large” when participant count exceeds this threshold. Default `800`.
+  - When large, the client forces PN addressing to reduce LID device fanout and skips heavy bulk asserts.
+  - Example: `GROUP_LARGE_THRESHOLD=1000`
+- `GROUP_ASSERT_CHUNK_SIZE` — Chunk size for `assertSessions()` in group fallbacks. Default `100` (min 20).
+  - Example: `GROUP_ASSERT_CHUNK_SIZE=80`
+- `GROUP_ASSERT_FLOOD_WINDOW_MS` — Flood window to avoid repeated heavy asserts per group. Default `5000`.
+  - Example: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
+- `NO_SESSION_RETRY_BASE_DELAY_MS` — Base delay before retrying send after asserts. Default `150`.
+- `NO_SESSION_RETRY_PER_200_DELAY_MS` — Extra delay per 200 targets. Default `300`.
+- `NO_SESSION_RETRY_MAX_DELAY_MS` — Cap for adaptive delay. Default `2000`.
+  - Example: `NO_SESSION_RETRY_BASE_DELAY_MS=250`, `NO_SESSION_RETRY_PER_200_DELAY_MS=400`, `NO_SESSION_RETRY_MAX_DELAY_MS=3000`
+- `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` — Cooldown between asserts triggered by `message-receipt.update` retry per group. Default `15000`.
+- `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limit targets for receipt-based asserts. Default `400`.
+
 Reliability note:
 - On a rare libsignal error “No sessions” during group sends, the service now re-asserts sessions for all group participants and retries the send once automatically.
 
