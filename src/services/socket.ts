@@ -441,11 +441,13 @@ export const connect = async ({
           }
           if (targets.size) {
             const list = Array.from(targets).slice(0, RECEIPT_RETRY_ASSERT_MAX_TARGETS)
-            try {
-              await (sock as any).assertSessions(list, true)
-              logger.debug('Asserted %s sessions on retry receipt', list.length)
-            } catch (e) {
-              logger.warn(e as any, 'Ignore error asserting sessions on retry receipt')
+            if (list.length > 0) {
+              try {
+                await (sock as any).assertSessions(list, true)
+                logger.debug('Asserted %s sessions on retry receipt', list.length)
+              } catch (e) {
+                logger.warn(e as any, 'Ignore error asserting sessions on retry receipt')
+              }
             }
           }
         } catch (e) {
