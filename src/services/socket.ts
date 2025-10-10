@@ -747,16 +747,11 @@ export const connect = async ({
             } catch {}
             const targets = Array.from(set)
             if (targets.length) {
-              // First, try a single assert for all targets
-              try {
-                await (sock as any).assertSessions(targets, true)
-                logger.warn('Recovered from No sessions by asserting %s targets for group %s; retrying send', targets.length, id)
-              } catch (ae) {
-                logger.warn(ae as any, 'Bulk assertSessions failed; retrying in chunks')
-                // Fallback: chunked asserts to avoid internal size/time limits
-                const chunkSize = 150
-                for (let i = 0; i < targets.length; i += chunkSize) {
-                  const chunk = targets.slice(i, i + chunkSize)
+              // Try bulk first, then chunked, then split-by-scheme (LID vs PN) chunked
+              const chunkSize = 150
+              const assertChunked = async (arr: string[]) => {
+                for (let i = 0; i < arr.length; i += chunkSize) {
+                  const chunk = arr.slice(i, i + chunkSize)
                   try {
                     await (sock as any).assertSessions(chunk, true)
                   } catch (ce) {
@@ -764,9 +759,22 @@ export const connect = async ({
                   }
                 }
               }
+              try {
+                await (sock as any).assertSessions(targets, true)
+                logger.warn('Recovered from No sessions by asserting %s targets for group %s; retrying send', targets.length, id)
+              } catch (ae) {
+                logger.warn(ae as any, 'Bulk assertSessions failed; retrying in chunks')
+                await assertChunked(targets)
+                // Split by LID vs PN and assert again (some servers behave better separated)
+                const lids = targets.filter(j => j.includes('@lid'))
+                const pns = targets.filter(j => !j.includes('@lid'))
+                try { if (lids.length) await assertChunked(lids) } catch {}
+                try { if (pns.length) await assertChunked(pns) } catch {}
+              }
+              // Adaptive delay based on fanout size to let sender keys propagate
+              const extra = Math.min(2000, (Math.ceil(targets.length / 200) * 300))
+              try { await delay(150 + extra) } catch {}
             }
-            // Small delay to allow sender keys to propagate before retrying
-            try { await delay(150); } catch {}
             full = await sock?.sendMessage(id, message, opts)
           } catch (e) {
             logger.warn(e as any, 'Retry after No sessions failed')
