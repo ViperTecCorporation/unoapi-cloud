@@ -901,15 +901,6 @@ export const connect = async ({
               full = await sock?.sendMessage(id, message, altOpts)
             } catch (ee) {
               logger.warn(ee as any, 'Final retry after No sessions failed')
-              // Best-effort mode: do not propagate error; pretend success upstream
-              if (GROUP_NO_SESSIONS_BEST_EFFORT) {
-                const fakeKeyId = (message as any)?.key?.id || `no-session-${Date.now()}`
-                logger.warn('GROUP_NO_SESSIONS_BEST_EFFORT enabled; acknowledging send for %s with fake id %s', id, fakeKeyId)
-                return {
-                  key: { id: fakeKeyId, remoteJid: id, fromMe: true },
-                  __best_effort: true,
-                } as any
-              }
               throw err
             }
           }

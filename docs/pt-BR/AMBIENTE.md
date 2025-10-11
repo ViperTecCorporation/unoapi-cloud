@@ -92,7 +92,7 @@ Grupos grandes (mitigação de “No sessions” e controle de carga)
 - `NO_SESSION_RETRY_MAX_DELAY_MS` — Teto para o atraso adaptativo. Padrão `2000`.
   - Exemplo: `NO_SESSION_RETRY_BASE_DELAY_MS=250`, `NO_SESSION_RETRY_PER_200_DELAY_MS=400`, `NO_SESSION_RETRY_MAX_DELAY_MS=3000`
 - `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` — Cooldown entre asserts disparados por recibos `message-receipt.update` por grupo. Padrão `15000`.
-- `RECEIPT_RETRY_ASSERT_MAX_TARGETSnn-  — Ao falhar com "No sessions" em grupos, não propaga erro e reconhece como "enviado". Padrão .n  - ATENÇÃO: Isso NÃO entrega a mensagem; apenas retorna um objeto de sucesso para diagnóstico/teste.` — Limite de alvos para asserts via recibos. Padrão `400`.
+- `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limite de alvos para asserts via recibos. Padrão `400`.
 
 Observação de confiabilidade:
 - Em um erro raro do libsignal (“No sessions”) durante envios em grupos, o serviço agora reassegura as sessões de todos os participantes e tenta reenviar uma vez automaticamente.
@@ -193,6 +193,3 @@ Observação de confiabilidade:
 
 - Inglês: /docs/examples/.env.example.en
 - Português (Brasil): /docs/pt-BR/exemplos/.env.exemplo
-
--  — Ao falhar com "No sessions" em grupos, não propaga erro e reconhece como "enviado". Padrão .
-  - ATENÇÃO: Isso NÃO entrega a mensagem; apenas retorna um objeto de sucesso para diagnóstico/teste.
