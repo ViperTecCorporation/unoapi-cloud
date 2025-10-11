@@ -135,7 +135,7 @@ export const isSaveMedia = (message: WAMessage) => {
 
 export const normalizeMessageContent = (
   content: WAMessageContent | null | undefined
-): WAMessageContent | undefined => {
+): WAMessageContent | proto.IMessage | undefined => {
   content =
     // unwrap edited message to original content
     content?.editedMessage?.message ||
@@ -148,7 +148,7 @@ export const normalizeMessageContent = (
 		content?.documentWithCaptionMessage?.message ||
     content ||
     undefined;
-  return content;
+  return (content || undefined) as any;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
