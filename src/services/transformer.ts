@@ -679,8 +679,17 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
     }
     // Also unwrap editedMessage wrappers into their inner original message content
-    const innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
+    let innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
     if (innerEditedMsg) {
+      // If inner edited content is a media without url but with caption, convert to text(conversation: caption)
+      try {
+        const tmp: any = { message: innerEditedMsg }
+        const t = getMessageType(tmp)
+        const b = getBinMessage(tmp as any)
+        if (t && TYPE_MESSAGES_TO_PROCESS_FILE.includes(t) && !b?.message?.url && b?.message?.caption) {
+          innerEditedMsg = { conversation: b.message.caption } as any
+        }
+      } catch {}
       const { update: _omitEdit, ...restEdit } = payload || {}
       const changedPayload = { ...restEdit, message: innerEditedMsg }
       return fromBaileysMessageContent(phone, changedPayload, config)
