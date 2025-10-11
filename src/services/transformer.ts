@@ -688,6 +688,18 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const b = getBinMessage(tmp as any)
         if (t && TYPE_MESSAGES_TO_PROCESS_FILE.includes(t) && !b?.message?.url && b?.message?.caption) {
           innerEditedMsg = { conversation: b.message.caption } as any
+        } else if (['viewOnceMessage','viewOnceMessageV2','viewOnceMessageV2Extension','documentWithCaptionMessage'].includes(`${t}`)) {
+          const inner = (b as any)?.message?.message || (b as any)?.message
+          if (inner && typeof inner === 'object') {
+            const keys = Object.keys(inner || {})
+            const innerType = keys.find((k) => TYPE_MESSAGES_TO_PROCESS_FILE.includes(k))
+            if (innerType) {
+              const innerMsg = (inner as any)[innerType]
+              if (innerMsg && !innerMsg.url && innerMsg.caption) {
+                innerEditedMsg = { conversation: innerMsg.caption } as any
+              }
+            }
+          }
         }
       } catch {}
       const { update: _omitEdit, ...restEdit } = payload || {}
@@ -832,8 +844,18 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const editedMessageType = getMessageType(editedMessagePayload)
         const editedBinMessage = getBinMessage(editedMessagePayload)
         if (editedMessageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(editedMessageType) && !editedBinMessage?.message?.url && editedBinMessage?.message?.caption) {
-          editedMessagePayload.message = {
-            conversation: editedBinMessage?.message?.caption
+          editedMessagePayload.message = { conversation: editedBinMessage?.message?.caption }
+        } else if (['viewOnceMessage','viewOnceMessageV2','viewOnceMessageV2Extension','documentWithCaptionMessage'].includes(`${editedMessageType}`)) {
+          const inner = (editedBinMessage as any)?.message?.message || (editedBinMessage as any)?.message
+          if (inner && typeof inner === 'object') {
+            const keys = Object.keys(inner || {})
+            const innerType = keys.find((k) => TYPE_MESSAGES_TO_PROCESS_FILE.includes(k))
+            if (innerType) {
+              const innerMsg = (inner as any)[innerType]
+              if (innerMsg && !innerMsg.url && innerMsg.caption) {
+                editedMessagePayload.message = { conversation: innerMsg.caption }
+              }
+            }
           }
         }
         return fromBaileysMessageContent(phone, editedMessagePayload, config)
@@ -859,12 +881,28 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       // {"key":{"remoteJid":"554891710539@s.whatsapp.net","fromMe":false,"id":"3EB016D7881A2C29E25378"},"messageTimestamp":1704301811,"pushName":"Rodrigo","broadcast":false,"message":{"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"n3DiVMM5RFh8Cg==","senderTimestamp":"1703800265","recipientKeyHash":"5IqwqCOTqgXgCA==","recipientTimestamp":"1704205568"},"deviceListMetadataVersion":2},"documentWithCaptionMessage":{"message":{"documentMessage":{"url":"https://mmg.whatsapp.net/v/t62.7119-24/24248058_881769707068106_5138895532383847851_n.enc?ccb=11-4&oh=01_AdQM6YlfR3dW_UvRoLmPQeqOl08pdn8DNtTCTP1DMz4gcA&oe=65BCEDEA&_nc_sid=5e03e0&mms3=true","mimetype":"text/csv","title":"Clientes-03-01-2024-11-38-32.csv","fileSha256":"dmBD4FB1aoDA9fnIRXbvqgExKmxqK6qjGFIGETMmH4Y=","fileLength":"266154","mediaKey":"Mmu+1SthUQuVn8JM+W1Uwttkb3Vo/VQlSJQd/ddNixU=","fileName":"Clientes-03-01-2024-11-38-32.csv","fileEncSha256":"+EadJ+TTn43nOvcccdXAdHSYt9KQy+R7lcsmwkotQnY=","directPath":"/v/t62.7119-24/24248058_881769707068106_5138895532383847851_n.enc?ccb=11-4&oh=01_AdQM6YlfR3dW_UvRoLmPQeqOl08pdn8DNtTCTP1DMz4gcA&oe=65BCEDEA&_nc_sid=5e03e0","mediaKeyTimestamp":"1704301417","contactVcard":false,"contextInfo":{"ephemeralSettingTimestamp":"1702988379","disappearingMode":{"initiator":"CHANGED_IN_CHAT"}},"caption":"pode subir essa campanha por favor"}}}}}
       case 'documentWithCaptionMessage':
       // {"key":{"remoteJid":"554988290955@s.whatsapp.net","fromMe":false,"id":"3A3BD07D3529A482876A"},"messageTimestamp":1726448401,"pushName":"Clairton Rodrigo Heinzen","broadcast":false,"message":{"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"FxWbzja6L9qr6A==","senderTimestamp":"1725477022","recipientKeyHash":"HDhq+OTRdd9hhg==","recipientTimestamp":"1725986929"},"deviceListMetadataVersion":2},"viewOnceMessageV2Extension":{"message":{"audioMessage":{"url":"https://mmg.whatsapp.net/v/t62.7117-24/26550443_409309922183140_5545513783776136395_n.enc?ccb=11-4&oh=01_Q5AaIFdNmgUqP86I5VM6WLnt4i1h6wxOoPGY2kvj7wQlhE4c&oe=670EF9DE&_nc_sid=5e03e0&mms3=true","mimetype":"audio/ogg; codecs=opus","fileSha256":"kIFwwAF/PlmPp/Lxy2lVKgt8aq+fzSe+XmRwT5/Cn5A=","fileLength":"11339","seconds":8,"ptt":true,"mediaKey":"MEOnPR/10pkdQhNjjoB1yJXOZ/x9XAJk0m1XI1g7tdM=","fileEncSha256":"ZS1J1Zkjd93jz8TVg9rlNSotMCVbbZyBR/lOIwQhkSI=","directPath":"/v/t62.7117-24/26550443_409309922183140_5545513783776136395_n.enc?ccb=11-4&oh=01_Q5AaIFdNmgUqP86I5VM6WLnt4i1h6wxOoPGY2kvj7wQlhE4c&oe=670EF9DE&_nc_sid=5e03e0","mediaKeyTimestamp":"1726448391","streamingSidecar":"hRM//de8KSrVng==","waveform":"AAYEAgEBAQMGFxscHBQkJBscIyMcHBUPCQQCAQEAAAEPIRwkHhgXGBQJBAIBAAAAAAAAAAAAAAAAAAAAAAAAAA==","viewOnce":true}}}}}
-      case 'viewOnceMessageV2Extension':
+      case 'viewOnceMessageV2Extension': {
+        // If inner content is media missing url but with caption, convert to text before unwrap
+        let nextMessage: any = binMessage.message
+        try {
+          const inner = (binMessage as any)?.message?.message || (binMessage as any)?.message
+          if (inner && typeof inner === 'object') {
+            const keys = Object.keys(inner || {})
+            const innerType = keys.find((k) => TYPE_MESSAGES_TO_PROCESS_FILE.includes(k))
+            if (innerType) {
+              const innerMsg = (inner as any)[innerType]
+              if (innerMsg && !innerMsg.url && innerMsg.caption) {
+                nextMessage = { conversation: innerMsg.caption }
+              }
+            }
+          }
+        } catch {}
         const changedPayload = {
           ...(payload ? (({ update: _omitUpdate3, ...r }) => r)(payload) : payload),
-          message: binMessage.message,
+          message: nextMessage,
         }
         return fromBaileysMessageContent(phone, changedPayload, config)
+      }
 
       case 'messageStubType': {
         const isDecryptStub =
