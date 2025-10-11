@@ -700,6 +700,18 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               }
             }
           }
+        } else if (`${t}` === 'protocolMessage') {
+          const em = (b as any)?.message?.editedMessage
+          if (em && typeof em === 'object') {
+            const keys = Object.keys(em || {})
+            const mkey = keys.find((k) => TYPE_MESSAGES_TO_PROCESS_FILE.includes(k))
+            if (mkey) {
+              const innerMsg = (em as any)[mkey]
+              if (innerMsg && !innerMsg.url && innerMsg.caption) {
+                innerEditedMsg = { conversation: innerMsg.caption } as any
+              }
+            }
+          }
         }
       } catch {}
       const { update: _omitEdit, ...restEdit } = payload || {}
@@ -865,9 +877,21 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         // {"key":{"remoteJid":"351912490567@s.whatsapp.net","fromMe":false,"id":"3EB0C77FBE5C8DACBEC5"},"messageTimestamp":1741714271,"pushName":"Pedro Paiva","broadcast":false,"message":{"protocolMessage":{"key":{"remoteJid":"351211450051@s.whatsapp.net","fromMe":true,"id":"3EB05C0B7B1A0C12284EE0"},"type":"MESSAGE_EDIT","editedMessage":{"conversation":"blablabla2","messageContextInfo":{"messageSecret":"4RYW9eIV1O4j5vjNmY059bZRymJ+B2aTfi9it9+2RxA="}},"timestampMs":"1741714271693"},"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"UgdPt0CEKvqhyg==","senderTimestamp":"1741018303","senderAccountType":"E2EE","receiverAccountType":"E2EE","recipientKeyHash":"EhuHta8R2tH+8g==","recipientTimestamp":"1740522549"},"deviceListMetadataVersion":2,"messageSecret":"4RYW9eIV1O4j5vjNmY059bZRymJ+B2aTfi9it9+2RxA="}}}
         if (binMessage.editedMessage) {
           // Unwrap into the inner edited content and drop any update field to avoid recursion
-          const inner = (binMessage.editedMessage as any)?.message
+          let inner = (binMessage.editedMessage as any)?.message
             || ((binMessage.editedMessage as any)?.conversation ? { conversation: (binMessage.editedMessage as any).conversation } : undefined)
             || (binMessage.editedMessage as any)
+          try {
+            if (inner && typeof inner === 'object') {
+              const keys = Object.keys(inner || {})
+              const innerType = keys.find((k) => TYPE_MESSAGES_TO_PROCESS_FILE.includes(k))
+              if (innerType) {
+                const innerMsg = (inner as any)[innerType]
+                if (innerMsg && !innerMsg.url && innerMsg.caption) {
+                  inner = { conversation: innerMsg.caption } as any
+                }
+              }
+            }
+          } catch {}
           const { update: _omitUpdate2, ...restProto } = payload || {}
           return fromBaileysMessageContent(phone, { ...restProto, message: inner }, config)
         } else {
