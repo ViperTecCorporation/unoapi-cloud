@@ -138,7 +138,7 @@ export const normalizeMessageContent = (
 ): WAMessageContent | undefined => {
   content =
     // unwrap edited message to original content
-    content?.editedMessage?.message ||
+    content(content as any)?.protocolMessage?.editedMessage?.message ||
     content?.protocolMessage?.editedMessage?.message ||
     content?.ephemeralMessage?.message?.viewOnceMessage?.message ||
     content?.ephemeralMessage?.message ||
@@ -153,7 +153,7 @@ export const normalizeMessageContent = (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getBinMessage = (waMessage: WAMessage): { messageType: string; message: any } | undefined => {
-  const message: proto.IMessage | undefined = normalizeMessageContent(waMessage.message)
+  const message: proto.IMessage | undefined = normalizeMessageContent(normalizeMessageContent(waMessage.message) || undefined) as any
   const messageType = getMessageType({ message })
   if (message && messageType && message[messageType]) {
     return { messageType, message: message[messageType] }

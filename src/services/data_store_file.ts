@@ -305,7 +305,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           if (isLidUser(jid)) {
             const pn = jidNormalizedUser(jid)
             if (pn) {
-              await dataStore.setJidMapping?.(phone, pn, jid)
+              await dataStore.setJidMapping?.(phone, pn, jid as string)
             }
           }
         } catch {}
