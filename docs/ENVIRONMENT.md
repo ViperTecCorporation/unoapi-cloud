@@ -94,6 +94,9 @@ Large groups (No-sessions mitigation & throttles)
 - `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` — Cooldown between asserts triggered by `message-receipt.update` retry per group. Default `15000`.
 - `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limit targets for receipt-based asserts. Default `400`.
 
+- `GROUP_NO_SESSIONS_BEST_EFFORT` — Acknowledge group sends on final "No sessions" instead of erroring. Default `false`.
+  - WARNING: This does not deliver the message; it only returns a success-like object for diagnostics.
+
 Reliability note:
 - On a rare libsignal error “No sessions” during group sends, the service now re-asserts sessions for all group participants and retries the send once automatically.
 

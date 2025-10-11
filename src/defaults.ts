@@ -219,6 +219,11 @@ export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RET
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
+// Best-effort mode: when a group send fails with "No sessions", optionally do not propagate the error.
+// Instead, pretend success to upstream and let follow-up retries or reads catch up.
+// WARNING: This does not deliver the message; only for diagnostics/experiments.
+export const GROUP_NO_SESSIONS_BEST_EFFORT = process.env.GROUP_NO_SESSIONS_BEST_EFFORT == 'true'
+
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
 export const RATE_LIMIT_GLOBAL_PER_MINUTE = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_MINUTE || '0')
