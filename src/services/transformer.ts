@@ -681,7 +681,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     // Also unwrap editedMessage wrappers into their inner original message content
     const innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
     if (innerEditedMsg) {
-      const changedPayload = { ...payload, message: innerEditedMsg }
+      const { update: _omitEdit, ...restEdit } = payload || {}
+      const changedPayload = { ...restEdit, message: innerEditedMsg }
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
@@ -814,10 +815,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         // {"key":{"remoteJid":"X@s.whatsapp.net","fromMe":false,"id":"X"},"messageTimestamp":1742222988,"pushName":"X","message":{"editedMessage":{"message":{"conversation":"Bom dia, tudo bem?"}}},"verifiedBizName":"X"}
         const editedMessage = binMessage.message.protocolMessage ? binMessage.message.protocolMessage[messageType] : binMessage.message
         // Keep envelope key.id (Cloud API expects current event id), only replace message content
-        const editedMessagePayload: any = {
-          ...payload,
-          message: editedMessage,
-        }
+        const { update: _omitUpdate1, ...restEdited } = payload || {}
+        const editedMessagePayload: any = { ...restEdited, message: editedMessage }
         const editedMessageType = getMessageType(editedMessagePayload)
         const editedBinMessage = getBinMessage(editedMessagePayload)
         if (editedMessageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(editedMessageType) && !editedBinMessage?.message?.url && editedBinMessage?.message?.caption) {
@@ -831,7 +830,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       case 'protocolMessage':
         // {"key":{"remoteJid":"351912490567@s.whatsapp.net","fromMe":false,"id":"3EB0C77FBE5C8DACBEC5"},"messageTimestamp":1741714271,"pushName":"Pedro Paiva","broadcast":false,"message":{"protocolMessage":{"key":{"remoteJid":"351211450051@s.whatsapp.net","fromMe":true,"id":"3EB05C0B7B1A0C12284EE0"},"type":"MESSAGE_EDIT","editedMessage":{"conversation":"blablabla2","messageContextInfo":{"messageSecret":"4RYW9eIV1O4j5vjNmY059bZRymJ+B2aTfi9it9+2RxA="}},"timestampMs":"1741714271693"},"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"UgdPt0CEKvqhyg==","senderTimestamp":"1741018303","senderAccountType":"E2EE","receiverAccountType":"E2EE","recipientKeyHash":"EhuHta8R2tH+8g==","recipientTimestamp":"1740522549"},"deviceListMetadataVersion":2,"messageSecret":"4RYW9eIV1O4j5vjNmY059bZRymJ+B2aTfi9it9+2RxA="}}}
         if (binMessage.editedMessage) {
-          return fromBaileysMessageContent(phone, { ...payload, message: { editedMessage: { message: { protocolMessage: binMessage }}}}, config)
+          // Unwrap into the inner edited content and drop any update field to avoid recursion
+          const inner = (binMessage.editedMessage as any)?.message
+            || ((binMessage.editedMessage as any)?.conversation ? { conversation: (binMessage.editedMessage as any).conversation } : undefined)
+            || (binMessage.editedMessage as any)
+          const { update: _omitUpdate2, ...restProto } = payload || {}
+          return fromBaileysMessageContent(phone, { ...restProto, message: inner }, config)
         } else {
           logger.debug(`Ignore message type ${messageType}`)
           return [null, senderPhone, senderId]
@@ -845,7 +849,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       // {"key":{"remoteJid":"554988290955@s.whatsapp.net","fromMe":false,"id":"3A3BD07D3529A482876A"},"messageTimestamp":1726448401,"pushName":"Clairton Rodrigo Heinzen","broadcast":false,"message":{"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"FxWbzja6L9qr6A==","senderTimestamp":"1725477022","recipientKeyHash":"HDhq+OTRdd9hhg==","recipientTimestamp":"1725986929"},"deviceListMetadataVersion":2},"viewOnceMessageV2Extension":{"message":{"audioMessage":{"url":"https://mmg.whatsapp.net/v/t62.7117-24/26550443_409309922183140_5545513783776136395_n.enc?ccb=11-4&oh=01_Q5AaIFdNmgUqP86I5VM6WLnt4i1h6wxOoPGY2kvj7wQlhE4c&oe=670EF9DE&_nc_sid=5e03e0&mms3=true","mimetype":"audio/ogg; codecs=opus","fileSha256":"kIFwwAF/PlmPp/Lxy2lVKgt8aq+fzSe+XmRwT5/Cn5A=","fileLength":"11339","seconds":8,"ptt":true,"mediaKey":"MEOnPR/10pkdQhNjjoB1yJXOZ/x9XAJk0m1XI1g7tdM=","fileEncSha256":"ZS1J1Zkjd93jz8TVg9rlNSotMCVbbZyBR/lOIwQhkSI=","directPath":"/v/t62.7117-24/26550443_409309922183140_5545513783776136395_n.enc?ccb=11-4&oh=01_Q5AaIFdNmgUqP86I5VM6WLnt4i1h6wxOoPGY2kvj7wQlhE4c&oe=670EF9DE&_nc_sid=5e03e0","mediaKeyTimestamp":"1726448391","streamingSidecar":"hRM//de8KSrVng==","waveform":"AAYEAgEBAQMGFxscHBQkJBscIyMcHBUPCQQCAQEAAAEPIRwkHhgXGBQJBAIBAAAAAAAAAAAAAAAAAAAAAAAAAA==","viewOnce":true}}}}}
       case 'viewOnceMessageV2Extension':
         const changedPayload = {
-          ...payload,
+          ...(payload ? (({ update: _omitUpdate3, ...r }) => r)(payload) : payload),
           message: binMessage.message,
         }
         return fromBaileysMessageContent(phone, changedPayload, config)
