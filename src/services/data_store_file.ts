@@ -160,23 +160,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   dataStore.setImageUrl = async (jid: string, url: string) => {
     const { mediaStore } = await config.getStore(phone, config)
     const { saveProfilePicture } = mediaStore
-    // Salva para o JID informado e para a variante mapeada (PN<->LID) para facilitar futuros gets
+    // Salva uma vez; saveProfilePicture agora grava PN e LID quando possível
     try {
       await saveProfilePicture({ imgUrl: url, id: jid })
-    } catch {}
-    try {
-      let alt: string | undefined
-      if (isLidUser(jid)) {
-        const pn = await dataStore.getPnForLid?.(phone, jid)
-        alt = pn
-      } else {
-        const lid = await dataStore.getLidForPn?.(phone, jid)
-        alt = lid
-      }
-      if (alt) {
-        logger.debug('setImageUrl: also saving for mapped variant %s (from %s)', alt, jid)
-        try { await saveProfilePicture({ imgUrl: url, id: alt }) } catch {}
-      }
     } catch {}
   }
   dataStore.loadImageUrl = async (jid: string, sock: WASocket) => {

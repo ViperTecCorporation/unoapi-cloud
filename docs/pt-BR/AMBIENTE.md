@@ -134,6 +134,37 @@ Observação de confiabilidade:
 
 ## Mídia & Timeouts
 
+## Fotos de Perfil
+
+- Visão geral: o serviço enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens são salvas no S3 (recomendado em produção) ou no filesystem local e expostas como URLs no payload.
+
+- Habilitar/desabilitar
+  - `SEND_PROFILE_PICTURE` — Incluir fotos de perfil no webhook. Padrão `true`.
+
+- Backends de armazenamento
+  - S3 (preferencial): habilitado quando existe `STORAGE_ENDPOINT`. Usa `@aws-sdk/client-s3` com credenciais de `STORAGE_*`. Os arquivos são gravados em `<phone>/profile-pictures/<canonico>.jpg`, onde `<canonico>` é o número (somente dígitos) para usuários, ou o JID do grupo para grupos.
+  - Filesystem: padrão quando não há S3 configurado. Arquivos ficam em `<baseStore>/medias/<phone>/profile-pictures/<canonico>.jpg`.
+
+- URLs retornadas ao webhook
+  - S3: é gerada uma URL pré‑assinada por requisição usando `DATA_URL_TTL` (segundos). O link expira após o TTL.
+  - Filesystem: a URL pública é baseada em `BASE_URL`, via rota de download: `BASE_URL/v15.0/download/<phone>/profile-pictures/<canonico>.jpg`.
+  - Primeira busca: na primeira vez, o serviço pode retornar a URL do CDN do WhatsApp enquanto baixa e persiste a imagem; nas próximas, a URL será do seu storage (S3 ou filesystem).
+
+- Retenção e limpeza
+  - `DATA_TTL` — Retenção padrão (em segundos) para mídias (incluindo fotos de perfil). Padrão 30 dias.
+  - Com S3 e AMQP, o serviço agenda um job para remover o objeto após `DATA_TTL`.
+  - No filesystem, a remoção é feita diretamente no diretório local de mídias.
+
+- Pontos de integração (alto nível)
+  - O cliente enriquece o payload com:
+    - Contato: `contacts[0].profile.picture`
+    - Grupo: `group_picture`
+  - O data store resolve uma URL cacheada quando houver; caso contrário, consulta o WhatsApp (`profilePictureUrl`), persiste no storage e retorna uma URL.
+
+- Configuração necessária
+  - Para S3: `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET_NAME`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` e opcionalmente `STORAGE_FORCE_PATH_STYLE`.
+  - Para filesystem: garanta que `BASE_URL` aponte para um domínio público (para que `/v15.0/download/...` funcione para os consumidores do webhook).
+
 - `FETCH_TIMEOUT_MS` — Timeout para checagens HEAD/download de mídia.
   - Aumente ao enviar mídias grandes hospedadas em servidores lentos.
   - Exemplo: `FETCH_TIMEOUT_MS=15000`

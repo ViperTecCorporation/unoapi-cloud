@@ -145,8 +145,41 @@ Large-group heuristics
   - `src/services/data_store_file.ts` / `src/services/data_store_redis.ts` — message/JID/group/media caches.
   - `src/services/session_store.ts` — session state machine.
 - Common:
-  - `src/services/transformer.ts` — Cloud API ↔ Baileys content mapping, JID/phone helpers.
-  - `src/defaults.ts` — feature flags and defaults.
+- `src/services/transformer.ts` — Cloud API ↔ Baileys content mapping, JID/phone helpers.
+- `src/defaults.ts` — feature flags and defaults.
+
+## Profile Pictures Flow
+
+Flow overview (when SEND_PROFILE_PICTURE=true):
+
+```
+[Baileys] --profilePictureUrl(jid)--> [socket.fetchImageUrl]
+   │                                     │
+   │                          calls DataStore.loadImageUrl(jid, sock)
+   │                                     │
+   │                   ┌──────── if cached URL exists ────────┐
+   │                   │        return cached URL             │
+   │                   └───────────────────────────────────────┘
+   │                                     │
+   │                        fetch CDN URL from WhatsApp
+   │                                     │
+   │                         persist via mediaStore.saveProfilePicture
+   │                                     │
+   ├───────── S3 backend ────────────────┴──────── filesystem backend ────────┐
+   │  PutObject to <phone>/profile-pictures/<canonical>.jpg                    │
+   │  return signed URL (expires DATA_URL_TTL)                                │
+   │                                                                           │
+   │                                              write file under <baseStore>/medias
+   │                                              return BASE_URL/v15.0/download/...
+   └───────────────────────────────────────────────────────────────────────────┘
+
+Transformer injects URL into webhook payload:
+- Contact: contacts[0].profile.picture
+- Group: group_picture
+
+Retention & cleanup:
+- Objects follow DATA_TTL. With S3+AMQP, a delayed job removes the object; on FS, files are deleted directly when required.
+```
 
 ## Message Lifecycles (Quick Maps)
 

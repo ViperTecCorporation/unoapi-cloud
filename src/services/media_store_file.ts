@@ -1,5 +1,5 @@
 import { proto, WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
-import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn } from './transformer'
+import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { writeFile } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync, createReadStream } from 'fs'
 import { MediaStore, getMediaStore, mediaStores } from './media_store'
@@ -301,24 +301,50 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.saveProfilePicture = async (contact: Contact) => {
-    const canonical = ensurePn(contact.id) || contact.id
-    logger.debug('Saving profile picture canonical id: %s (from %s)', canonical, contact.id)
-    const phoneNumber = jidToPhoneNumberIfUser(canonical)
-    const fName = profilePictureFileName(canonical)
+    const originalId = contact.id as string
+    const variants = new Set<string>()
+    try {
+      const pn = ensurePn(originalId)
+      if (pn) variants.add(pn)
+      if ((originalId || '').includes('@lid')) {
+        variants.add(originalId)
+      } else if (pn) {
+        try {
+          const ds = await getDataStore(phone, config)
+          const lid = await (ds as any).getLidForPn?.(phone, phoneNumberToJid(pn))
+          if (lid) variants.add(lid)
+        } catch {}
+      }
+    } catch {}
+    // Fallback: if we couldn't resolve any variant, keep original id
+    if (variants.size === 0 && originalId) variants.add(originalId)
+
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
-      logger.debug('Removing profile picture file %s...', phoneNumber)
-      await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`)
-    } else if (contact.imgUrl) {
+      for (const id of variants) {
+        const fName = profilePictureFileName(id)
+        logger.debug('Removing profile picture file %s...', jidToPhoneNumberIfUser(id))
+        try { await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`) } catch {}
+      }
+      return
+    }
+    if (contact.imgUrl) {
       const base = await mediaStore.getFileUrl(PROFILE_PICTURE_FOLDER, DATA_URL_TTL)
-      const complete = `${base}/${fName}`
-      logger.debug('Saving profile picture file %s....', phoneNumber)
       if (!existsSync(base)) {
         mkdirSync(base, { recursive: true })
       }
+      logger.debug('Saving profile picture variants %s...', Array.from(variants).join(', '))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
-      await writeFile(complete, buffer)
-      logger.debug('Saved profile picture file %s!!', phoneNumber)
+      for (const id of variants) {
+        const fName = profilePictureFileName(id)
+        const complete = `${base}/${fName}`
+        try {
+          await writeFile(complete, buffer)
+          logger.debug('Saved profile picture file %s!', jidToPhoneNumberIfUser(id))
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error saving profile picture variant %s', id)
+        }
+      }
     }
   }
 

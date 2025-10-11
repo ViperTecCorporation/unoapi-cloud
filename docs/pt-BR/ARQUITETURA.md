@@ -142,6 +142,39 @@ Para ver logs de aprendizado PN→LID e asserts, ajuste `LOG_LEVEL`/`UNO_LOG_LEV
   - `src/services/transformer.ts`
   - `src/defaults.ts`
 
+## Fluxo de Fotos de Perfil
+
+Visão geral (quando `SEND_PROFILE_PICTURE=true`):
+
+```
+[Baileys] --profilePictureUrl(jid)--> [socket.fetchImageUrl]
+   │                                     │
+   │                       chama DataStore.loadImageUrl(jid, sock)
+   │                                     │
+   │                 ┌──── se já houver URL em cache, retorna ────┐
+   │                 │                                             │
+   │                 └─────────────────────────────────────────────┘
+   │                                     │
+   │                   busca URL CDN no WhatsApp (primeira vez)
+   │                                     │
+   │                     persiste via mediaStore.saveProfilePicture
+   │                                     │
+   ├──────── backend S3 ────────────────┴──────── backend filesystem ────────┐
+   │  PutObject em <phone>/profile-pictures/<canonico>.jpg                    │
+   │  retorna URL pré‑assinada (expira em DATA_URL_TTL)                      │
+   │                                                                           │
+   │                                            grava arquivo em <baseStore>/medias
+   │                                            retorna BASE_URL/v15.0/download/...
+   └──────────────────────────────────────────────────────────────────────────┘
+
+O Transformer injeta a URL no payload do webhook:
+- Contato: contacts[0].profile.picture
+- Grupo: group_picture
+
+Retenção e limpeza:
+- Objetos seguem DATA_TTL. Com S3+AMQP, um job com delay remove o objeto; no FS, a remoção é local quando necessário.
+```
+
 ## Mapas de Ciclo de Vida
 
 - Envio → Controller → Incoming → Client → Socket.send → Baileys → DataStore → Response

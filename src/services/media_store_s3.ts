@@ -1,5 +1,5 @@
 import { Contact } from '@whiskeysockets/baileys'
-import { jidToPhoneNumberIfUser, toBuffer, ensurePn } from './transformer'
+import { jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EXCHANGE_BROKER_NAME } from '../defaults'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
@@ -107,19 +107,44 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
   }
 
   mediaStore.saveProfilePicture = async (contact: Partial<Contact>) => {
-    const canonical = ensurePn(contact.id as string) || (contact.id as string)
-    const phoneNumber = jidToPhoneNumberIfUser(canonical)
-    logger.debug('Received profile picture s3 %s (canonical %s) with %s...', phoneNumber, canonical, contact.imgUrl)
-    const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(canonical)}`
+    const originalId = contact.id as string
+    const variants = new Set<string>()
+    try {
+      const pn = ensurePn(originalId)
+      if (pn) variants.add(pn)
+      if ((originalId || '').includes('@lid')) {
+        variants.add(originalId)
+      } else if (pn) {
+        try {
+          const ds = await getDataStore(phone, config)
+          const lid = await (ds as any).getLidForPn?.(phone, phoneNumberToJid(pn))
+          if (lid) variants.add(lid)
+        } catch {}
+      }
+    } catch {}
+    if (variants.size === 0 && originalId) variants.add(originalId)
+
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
-      logger.debug('Removing profile picture s3 %s...', phoneNumber)
-      await mediaStore.removeMedia(fileName)
-    } else if (contact.imgUrl) {
-      logger.debug('Saving profile picture s3 %s...', phoneNumber)
+      for (const id of variants) {
+        const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
+        logger.debug('Removing profile picture s3 %s...', jidToPhoneNumberIfUser(id))
+        try { await mediaStore.removeMedia(fileName) } catch {}
+      }
+      return
+    }
+    if (contact.imgUrl) {
+      logger.debug('Saving profile picture s3 variants %s...', Array.from(variants).join(', '))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
-      await mediaStore.saveMediaBuffer(fileName, buffer)
-      logger.debug('Saved profile picture s3 %s!', phoneNumber)
+      for (const id of variants) {
+        const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
+        try {
+          await mediaStore.saveMediaBuffer(fileName, buffer)
+          logger.debug('Saved profile picture s3 %s!', jidToPhoneNumberIfUser(id))
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error saving S3 profile picture variant %s', id)
+        }
+      }
     }
   }
 

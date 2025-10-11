@@ -135,6 +135,37 @@ Reliability note:
 
 ## Media & Timeouts
 
+## Profile Pictures
+
+- Overview: The service can enrich webhook payloads with contact and group profile pictures. When enabled, images are stored either on S3 (recommended in production) or on the local filesystem and exposed as URLs in webhook events.
+
+- Enable/disable
+  - `SEND_PROFILE_PICTURE` — Include profile pictures in webhook payloads. Default `true`.
+
+- Storage backends
+  - S3 (preferred): enabled when `STORAGE_ENDPOINT` is set. Uses `@aws-sdk/client-s3` with credentials from `STORAGE_*` envs. Files are written as `<phone>/profile-pictures/<canonical>.jpg` where `<canonical>` is the contact number (digits only) for users, or the group JID for groups.
+  - Filesystem: default when no S3 endpoint is configured. Files are stored under `<baseStore>/medias/<phone>/profile-pictures/<canonical>.jpg`.
+
+- URLs returned to webhooks
+  - S3: A pre‑signed URL is generated per request using `DATA_URL_TTL` (seconds). Link expires after TTL.
+  - Filesystem: A public URL is generated from `BASE_URL`, using the download route: `BASE_URL/v15.0/download/<phone>/profile-pictures/<canonical>.jpg`.
+  - First fetch: on the very first retrieval the service may return the WhatsApp CDN URL while it downloads and persists the image; subsequent events will use the storage URL (S3 or filesystem).
+
+- Lifetime and cleanup
+  - `DATA_TTL` — Default retention for stored media (including profile pictures) in seconds. Default 30 days.
+  - When S3 is enabled and AMQP is configured, the service enqueues a timed job to delete the object after `DATA_TTL`.
+  - For filesystem storage, cleanup is performed directly in the local media path.
+
+- Integration points (high level)
+  - The client enriches outgoing webhook payloads with:
+    - Contact: `contacts[0].profile.picture`
+    - Group: `group_picture`
+  - The data store resolves a cached URL when available; otherwise it queries WhatsApp (`profilePictureUrl`), persists to storage, and returns a URL.
+
+- Required configuration
+  - For S3: `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET_NAME`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, and optionally `STORAGE_FORCE_PATH_STYLE`.
+  - For filesystem: ensure `BASE_URL` points to a publicly reachable domain so that `/v15.0/download/...` links work for webhook consumers.
+
 - `FETCH_TIMEOUT_MS` — Timeout for media HEAD/download checks. Default per code.
   - Increase when sending large media from slow servers.
   - Example: `FETCH_TIMEOUT_MS=15000`
