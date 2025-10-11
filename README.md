@@ -15,15 +15,25 @@ RESTful API service with multi device support with a Whatsapp Cloud API format
 The media files are saved in file system at folder data with the session or in s3 or compatible and redis.
 
 
-## Behavior Notes
+## Addressing, Webhooks and Pictures
 
-- LID/PN (Meow) handling:
-  - Webhooks expose PN (digits) in `wa_id`, `from` and `recipient_id`. LID is resolved via normalization and a per‑session PN↔LID cache.
-  - Group sends pre‑assert sessions for participants and support addressing fallback on ack 421.
-- Edited messages:
-  - Keep the same `messages[].id` as the original; consumers should update content. No custom “edited” status is added (Meta standard preserved).
-- Rate limiting (optional):
-  - Configure per‑session and per‑destination/minute caps via env. When exceeded, messages are scheduled with delay in RabbitMQ instead of returning 429.
+- LID/PN handling
+  - Webhooks prefer PN (digits) in `wa_id`, `from` and `recipient_id`; when PN cannot be inferred safely, a LID/JID is returned as fallback.
+  - Internally, the API uses LID whenever possible (1:1 and groups) to reduce “no sessions” and decryption issues, while keeping webhooks PN‑first for compatibility.
+  - A PN↔LID cache is maintained per session (file/redis) and is updated from Baileys events and observations.
+
+- Group sends
+  - Default addressingMode is LID. You can force via `GROUP_SEND_ADDRESSING_MODE=lid|pn`.
+  - The API pre‑asserts sessions for group participants prioritizing LIDs, with fallbacks and a final addressingMode toggle on failures such as ack 421.
+
+- Edited/device‑sent messages
+  - Edited messages are unwrapped to their original content (no recursion); device‑sent updates with inline content are converted to normal message payloads.
+
+- Profile pictures
+  - Stored and looked up by a canonical PN identifier whenever possible, so PN and LID variants point to the same file. The same applies to S3 keys.
+
+Notes on Rate Limiting
+- Optional per‑session and per‑destination caps are available via env. When exceeded, messages may be scheduled in RabbitMQ instead of returning 429.
 
 ## Read qrcode or config
 
@@ -434,6 +444,7 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 - Development: see `docs/DEVELOPMENT.md`
 - Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
 - Environment variables: see `docs/ENVIRONMENT.md` (PT-BR: `docs/pt-BR/AMBIENTE.md`)
+- Changelog: see `CHANGELOG.md` (PT-BR: `docs/pt-BR/CHANGELOG.md`)
 - In the browser: open `http://localhost:9876/docs/`
   - OpenAPI viewer: `http://localhost:9876/docs/openapi.html` (serves `docs/openapi.yaml`)
   - OpenAPI JSON: `http://localhost:9876/docs/swagger.json`

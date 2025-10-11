@@ -459,6 +459,34 @@ export const connect = async ({
       }
       // @ts-ignore
       eventsMap.set(event, wrapped)
+    } else if (event === 'lid-mapping.update') {
+      // Cache PN <-> LID mapping updates to aid future asserts and normalization
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (updates: any) => {
+        try {
+          const arr: any[] = Array.isArray(updates) ? updates : [updates]
+          for (const u of arr) {
+            const values: string[] = []
+            try {
+              const flat = JSON.stringify(u)
+              const re = /\b[0-9]+@[a-zA-Z\.]+/g
+              let m
+              while ((m = re.exec(flat)) !== null) { values.push(m[0]) }
+            } catch {}
+            const lid = values.find((s) => (s || '').includes('@lid'))
+            const pn = values.find((s) => (s || '').includes('@s.whatsapp.net'))
+            if (lid && pn) {
+              try { await (dataStore as any).setJidMapping?.(phone, pn, lid) } catch {}
+              logger.debug('Updated PN<->LID mapping: %s <=> %s', pn, lid)
+            }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on lid-mapping.update handler')
+        }
+        return (callback as any)(updates)
+      }
+      // @ts-ignore
+      eventsMap.set(event, wrapped)
     } else {
       eventsMap.set(event, callback)
     }
@@ -578,9 +606,37 @@ export const connect = async ({
     options: any = { composing: false },
   ) => {
     await validateStatus()
-    // If recipient is a LID JID, normalize to PN to improve deliverability
-    const toNormalized = isLidUser(to) ? jidNormalizedUser(to) : to
-    const id =  isIndividualJid(toNormalized) ? await exists(toNormalized) : toNormalized
+    // Prefer LID for 1:1 when a mapping exists; keep groups unchanged
+    let idCandidate = to
+    let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    try {
+      if (id && isIndividualJid(id) && !isLidUser(id)) {
+        logger.debug('1:1 send: PN target %s — trying to learn LID mapping', id)
+        let mapped = await (dataStore as any).getLidForPn?.(phone, id)
+        if (!mapped) {
+          logger.debug('1:1 send: no cached LID for %s — assertSessions to trigger mapping', id)
+          try { await (sock as any).assertSessions([id], true) } catch (e) { logger.debug('assertSessions PN %s ignored: %s', id, (e as any)?.message || e) }
+          try { mapped = await (dataStore as any).getLidForPn?.(phone, id) } catch {}
+        }
+        if (!mapped) {
+          logger.debug('1:1 send: still no LID for %s — retry exists()', id)
+          try {
+            const again = await exists(id)
+            if (again && isLidUser(again)) {
+              logger.debug('1:1 send: exists() returned LID %s for PN %s — caching', again, id)
+              try { await (dataStore as any).setJidMapping?.(phone, id, again) } catch {}
+              mapped = again
+            }
+          } catch (e) { logger.debug('exists() retry failed to yield LID for %s: %s', id, (e as any)?.message || e) }
+        }
+        if (mapped) {
+          logger.debug('Switching 1:1 send target to LID %s (from PN %s)', mapped, id)
+          id = mapped
+        } else {
+          logger.debug('Proceeding with PN target %s for 1:1 (no LID learned)', id)
+        }
+      }
+    } catch {}
     // For 1:1 sends, proactively assert sessions to reduce decrypt failures and improve ack reliability
     try {
       if (id && isIndividualJid(id)) {
@@ -609,7 +665,7 @@ export const connect = async ({
     } catch (e) {
       logger.warn(e as any, 'Ignore error on preassert 1:1 sessions')
     }
-    // For group sends, proactively assert sessions for all participants to reduce ack 421
+    // For group sends, proactively assert LID sessions for all participants
     try {
       if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
         const gm = await dataStore.loadGroupMetada(id, sock!)
@@ -617,29 +673,40 @@ export const connect = async ({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
           .filter((v) => !!v)
-        const set = new Set<string>()
+        const lids: string[] = []
+        const pnsFallback: string[] = []
         for (const j of raw) {
-          set.add(j)
-          try {
-            if (isLidUser(j)) {
+          if (isLidUser(j)) {
+            lids.push(j)
+            try {
               const pn = jidNormalizedUser(j)
-              set.add(pn)
-              try { await (dataStore as any).setJidMapping?.(phone, pn, j) } catch {}
-            }
-          } catch {}
+              await (dataStore as any).setJidMapping?.(phone, pn, j)
+            } catch {}
+          } else {
+            try {
+              const lid = await (dataStore as any).getLidForPn?.(phone, j)
+              if (lid) lids.push(lid)
+              else pnsFallback.push(j)
+            } catch { pnsFallback.push(j) }
+          }
         }
-        // include self identities as well
-          try {
-            const self = state?.creds?.me?.id
-            if (self) {
-              set.add(self)
-              try { set.add(jidNormalizedUser(self)) } catch {}
-            }
-          } catch {}
-        const targets = Array.from(set)
-        if (targets.length) {
-          await (sock as any).assertSessions(targets, true)
-          logger.debug('Preasserted %s sessions for group %s', targets.length, id)
+        try {
+          const self = state?.creds?.me?.id
+          if (self) {
+            if (isLidUser(self)) lids.push(self)
+            else pnsFallback.push(self)
+          }
+        } catch {}
+        const unique = (arr: string[]) => Array.from(new Set(arr))
+        const lidsU = unique(lids)
+        if (lidsU.length) {
+          await (sock as any).assertSessions(lidsU, true)
+          logger.debug('Preasserted %s LID sessions for group %s', lidsU.length, id)
+        }
+        const pnsU = unique(pnsFallback)
+        if (pnsU.length) {
+          await (sock as any).assertSessions(pnsU, true)
+          logger.debug('Additionally asserted %s PN sessions for group %s', pnsU.length, id)
         }
       }
     } catch (e) {
@@ -756,19 +823,28 @@ export const connect = async ({
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
               .filter((v) => !!v)
-            const set = new Set<string>()
+            // Prefer LID targets when asserting sessions
+            const lids: string[] = []
+            const pnsFallback: string[] = []
             for (const j of raw) {
-              set.add(j)
-              try { if (isLidUser(j)) set.add(jidNormalizedUser(j)) } catch {}
+              if (isLidUser(j)) {
+                lids.push(j)
+              } else {
+                try {
+                  const lid = await (dataStore as any).getLidForPn?.(phone, j)
+                  if (lid) lids.push(lid)
+                  else pnsFallback.push(j)
+                } catch { pnsFallback.push(j) }
+              }
             }
             try {
               const self = state?.creds?.me?.id
               if (self) {
-                set.add(self)
-                try { set.add(jidNormalizedUser(self)) } catch {}
+                if (isLidUser(self)) lids.push(self)
+                else pnsFallback.push(self)
               }
             } catch {}
-            const targets = Array.from(set)
+            const targets = Array.from(new Set([...lids, ...pnsFallback]))
             const groupSize = raw.length
             // If the group is very large, avoid heavy asserts and rely on PN addressing + delays
             if (groupSize > GROUP_LARGE_THRESHOLD) {

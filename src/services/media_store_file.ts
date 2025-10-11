@@ -1,5 +1,5 @@
 import { proto, WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
-import { getBinMessage, jidToPhoneNumberIfUser, toBuffer } from './transformer'
+import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn } from './transformer'
 import { writeFile } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync, createReadStream } from 'fs'
 import { MediaStore, getMediaStore, mediaStores } from './media_store'
@@ -292,16 +292,19 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.getProfilePictureUrl = async (baseUrl: string, jid: string) => {
-    const phoneNumber = jidToPhoneNumberIfUser(jid)
+    const canonical = ensurePn(jid) || jid // padroniza para PN quando possível
+    logger.debug('Profile picture path canonical id: %s (from %s)', canonical, jid)
     const base = await mediaStore.getFileUrl(PROFILE_PICTURE_FOLDER, DATA_URL_TTL)
-    const fName = profilePictureFileName(phoneNumber)
+    const fName = profilePictureFileName(canonical)
     const complete = `${base}/${fName}`
     return existsSync(complete) ? `${baseUrl}/v15.0/download/${phone}/${PROFILE_PICTURE_FOLDER}/${fName}` : undefined
   }
 
   mediaStore.saveProfilePicture = async (contact: Contact) => {
-    const phoneNumber = jidToPhoneNumberIfUser(contact.id)
-    const fName = profilePictureFileName(contact.id)
+    const canonical = ensurePn(contact.id) || contact.id
+    logger.debug('Saving profile picture canonical id: %s (from %s)', canonical, contact.id)
+    const phoneNumber = jidToPhoneNumberIfUser(canonical)
+    const fName = profilePictureFileName(canonical)
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
       logger.debug('Removing profile picture file %s...', phoneNumber)
       await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`)

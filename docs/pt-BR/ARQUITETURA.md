@@ -28,7 +28,7 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
    - Para Status (Stories), garante `broadcast` e prepara `statusJidList`.
    - Chama `sendMessage` provido por `socket.ts`.
 5) `socket.ts` mantém o `WASocket` conectado e expõe `send/exists/read/...`.
-   - Valida o estado da sessão, mapeia LID⇄PN quando necessário, e pré‑assegura sessões para reduzir erros de decrypt/ack.
+   - Valida o estado da sessão, prioriza LID internamente quando possível (1:1 e grupos), mapeia LID⇄PN e pré‑assegura sessões (LID primeiro) para reduzir erros de decrypt/ack.
    - Para `status@broadcast`, resolve cada entrada de `statusJidList` via `exists()` e remove números sem WhatsApp. Só destinatários válidos são relayados.
 6) O Baileys envia a mensagem, o Unoapi persiste chaves/mensagem no DataStore e retorna resposta no formato Cloud API.
 
@@ -58,13 +58,14 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 
 - `Store` provê `sessionStore` e `dataStore` (Redis ou Arquivo):
   - `data_store_*`: cache de JIDs (onWhatsApp), mensagens, URLs de mídia, metadados de grupos.
+  - Cache PN↔LID: mantido por sessão (arquivo/redis) e populado por eventos do Baileys e consultas.
   - `session_store`: máquina de estados de conexão (connecting/online/offline/standby), timeouts e reconexões.
 
 ## Tratamento de Erros e Resiliência
 
 - Checagens antes de enviar:
   - Valida estado da sessão (connecting/offline/disconnected/standby) → mapeado em códigos `SendError`.
-  - Para grupos, checagem branda de participação; pré‑assert de sessões dos participantes.
+  - Para grupos, checagem branda de participação; pré‑assert de sessões dos participantes (prioridade LID).
   - Auto‑retry em ack 421 alternando modo de endereçamento (PN⇄LID).
 - Desconexões:
   - Detecta `loggedOut/connectionReplaced/restartRequired`, notifica e reconecta conforme configuração.
@@ -81,6 +82,22 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 Heurísticas para grupos grandes
 - Quando o grupo é “grande” (ver `GROUP_LARGE_THRESHOLD`), o cliente prefere endereçamento PN e evita asserts pesados, usando atraso adaptativo.
 - Asserts disparados por recibos (`message-receipt.update` com retry) são limitados por grupo e quantidade de alvos para evitar loops e alta CPU.
+
+## LID/PN e Webhooks
+
+- Webhooks preferem PN para `wa_id`, `from` e `recipient_id`. Se não for possível obter PN com segurança, o LID/JID é retornado como fallback.
+- Internamente (envio e asserts), usamos LID sempre que possível: 1:1 tenta aprender PN→LID em tempo de execução; em grupos, asserts são feitos com LID prioritariamente.
+- Imagens de perfil: salvas e consultadas por um identificador canônico PN quando possível (inclusive em S3), evitando duplicidade entre PN/LID.
+
+### Variáveis de Ambiente relevantes
+
+- `GROUP_SEND_ADDRESSING_MODE` (''|lid|pn): vazio implica LID por padrão.
+- `GROUP_SEND_PREASSERT_SESSIONS` (true): habilita assert prévio de sessões em grupos (LID primeiro).
+- `GROUP_LARGE_THRESHOLD` (800): acima disso, evita asserts pesados e usa atrasos adaptativos.
+- `JIDMAP_CACHE_ENABLED` (true) e `JIDMAP_TTL_SECONDS` (604800): cache PN↔LID.
+- `STATUS_BROADCAST_ENABLED` (true): habilita/desabilita o envio para `status@broadcast`.
+
+Para ver logs de aprendizado PN→LID e asserts, ajuste `LOG_LEVEL`/`UNO_LOG_LEVEL` para `debug`.
 ### Entrega de Webhooks & Retentativas
 
 - Caminho de entrega

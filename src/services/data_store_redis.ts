@@ -1,4 +1,4 @@
-import { proto, WAMessage, WAMessageKey, GroupMetadata } from '@whiskeysockets/baileys'
+import { proto, WAMessage, WAMessageKey, GroupMetadata, isLidUser, jidNormalizedUser } from '@whiskeysockets/baileys'
 import { DataStore, MessageStatus } from './data_store'
 import { jidToPhoneNumber, phoneNumberToJid, isIndividualJid } from './transformer'
 import { getDataStore, dataStores } from './data_store'
@@ -56,19 +56,58 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     await setKey(phone, id, key)
   }
   store.getImageUrl = async (jid: string) => {
-    const phoneNumber = jidToPhoneNumber(jid)
-    const url = await getProfilePicture(phone, phoneNumber)
-    if (url) {
-      url
-    } else {
+    // Tentar tanto pelo JID informado quanto por sua variante mapeada (PN<->LID)
+    const tryGet = async (keyJid: string): Promise<string | undefined> => {
+      const phoneKey = jidToPhoneNumber(keyJid)
+      const cached = await getProfilePicture(phone, phoneKey)
+      return cached || undefined
+    }
+    let url = await tryGet(jid)
+    if (!url) {
+      try {
+        let alt: string | undefined
+        if (isLidUser(jid)) {
+          const pn = await store.getPnForLid?.(phone, jid)
+          alt = pn
+        } else {
+          const lid = await store.getLidForPn?.(phone, jid)
+          alt = lid
+        }
+        if (alt) {
+          logger.debug('getImageUrl(redis): fallback to mapped variant %s for %s', alt, jid)
+          url = await tryGet(alt)
+        }
+      } catch {}
+    }
+    if (!url) {
       const { mediaStore } = await config.getStore(phone, config)
       const { getProfilePictureUrl } = mediaStore
       const profileUrl = await getProfilePictureUrl('', jid)
       if (profileUrl) {
-        await setProfilePicture(phone, phoneNumber, profileUrl)
+        // salvar para ambos (jid e variante)
+        const saveFor = async (keyJid: string) => {
+          const phoneKey = jidToPhoneNumber(keyJid)
+          try { await setProfilePicture(phone, phoneKey, profileUrl) } catch {}
+        }
+        await saveFor(jid)
+        try {
+          let alt: string | undefined
+          if (isLidUser(jid)) {
+            const pn = await store.getPnForLid?.(phone, jid)
+            alt = pn
+          } else {
+            const lid = await store.getLidForPn?.(phone, jid)
+            alt = lid
+          }
+          if (alt) {
+            logger.debug('getImageUrl(redis): also saving profile picture for mapped variant %s (from %s)', alt, jid)
+            await saveFor(alt)
+          }
+        } catch {}
         return profileUrl
       }
     }
+    return url
   }
   store.getGroupMetada = async (jid: string) => {
     return getGroup(phone, jid)
@@ -222,7 +261,21 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   // JID map cache (PN <-> LID)
   store.getPnForLid = async (sessionPhone: string, lidJid: string) => {
     if (!JIDMAP_CACHE_ENABLED) return undefined
-    try { return (await redisGetPnForLid(sessionPhone, lidJid)) || undefined } catch { return undefined }
+    try {
+      const cached = (await redisGetPnForLid(sessionPhone, lidJid)) || undefined
+      if (cached) return cached
+    } catch {}
+    // Fallback: derive PN from LID using Baileys normalization and persist
+    try {
+      if (isLidUser(lidJid)) {
+        const pn = jidNormalizedUser(lidJid)
+        if (pn) {
+          try { await redisSetJidMapping(sessionPhone, pn, lidJid); logger.debug('jidMap(redis): derived PN %s from LID %s and cached', pn, lidJid) } catch {}
+          return pn
+        }
+      }
+    } catch {}
+    return undefined
   }
   store.getLidForPn = async (sessionPhone: string, pnJid: string) => {
     if (!JIDMAP_CACHE_ENABLED) return undefined

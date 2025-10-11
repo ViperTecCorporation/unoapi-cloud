@@ -97,11 +97,13 @@
         navOpenapiRedoc: 'OpenAPI (Redoc)',
         navOpenapiSwagger: 'OpenAPI (Swagger UI)',
         navEnvironment: 'Environment',
+        navChangelog: 'Changelog',
         h2Architecture: 'Architecture Overview',
         h2Development: 'Development Guide',
         h2Environment: 'Environment Variables',
         h2Install: 'Installation Guide',
         h2Status: 'Status/Broadcast',
+        h2Changelog: 'Changelog',
       },
       'pt-BR': {
         langLabel: 'Idioma:',
@@ -114,11 +116,13 @@
         navOpenapiRedoc: 'OpenAPI (Redoc)',
         navOpenapiSwagger: 'OpenAPI (Swagger UI)',
         navEnvironment: 'Ambiente',
+        navChangelog: 'Histórico de Mudanças',
         h2Architecture: 'Visão de Arquitetura',
         h2Development: 'Guia de Desenvolvimento',
         h2Environment: 'Variáveis de Ambiente',
         h2Install: 'Guia de Instalação',
         h2Status: 'Status/Transmissão',
+        h2Changelog: 'Histórico de Mudanças',
       }
     }
     function t(key){ const d = I18N[currentLang] || I18N['en']; return d[key] || key }
@@ -185,12 +189,14 @@
         load('env', '/docs/pt-BR/AMBIENTE.md');
         load('status-content', '/docs/pt-BR/STATUS_BROADCAST.md');
         load('install-content', '/docs/pt-BR/INSTALACAO.md');
+        load('changelog-content', '/docs/pt-BR/CHANGELOG.md');
       } else {
         load('arch', '/docs/ARCHITECTURE.md');
         load('dev', '/docs/DEVELOPMENT.md');
         load('env', '/docs/ENVIRONMENT.md');
         load('status-content', '/docs/STATUS_BROADCAST.md');
         load('install-content', '/docs/INSTALLATION.md');
+        load('changelog-content', '/CHANGELOG.md');
       }
       applyStaticI18n()
     }
@@ -257,6 +263,7 @@
         <a href="/docs/openapi.html" data-i18n="navOpenapiRedoc">OpenAPI (Redoc)</a>
         <a href="/docs/swagger.html" data-i18n="navOpenapiSwagger">OpenAPI (Swagger UI)</a>
         <a href="#environment" data-i18n="navEnvironment">Environment</a>
+        <a href="#changelog" data-i18n="navChangelog">Changelog</a>
       </nav>
       <section>
         <article id="architecture">
@@ -282,6 +289,10 @@
         <article id="status">
           <h2 data-i18n="h2Status">Status/Broadcast</h2>
           <div id="status-content"></div>
+        </article>
+        <article id="changelog">
+          <h2 data-i18n="h2Changelog">Changelog</h2>
+          <div id="changelog-content"></div>
         </article>
       </section>
     </main>

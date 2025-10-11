@@ -137,6 +137,9 @@ export const normalizeMessageContent = (
   content: WAMessageContent | null | undefined
 ): WAMessageContent | undefined => {
   content =
+    // unwrap edited message to original content
+    content?.editedMessage?.message ||
+    content?.protocolMessage?.editedMessage?.message ||
     content?.ephemeralMessage?.message?.viewOnceMessage?.message ||
     content?.ephemeralMessage?.message ||
     content?.viewOnceMessage?.message ||
@@ -161,10 +164,11 @@ export const getNormalizedMessage = (waMessage: WAMessage): WAMessage | undefine
   const binMessage = getBinMessage(waMessage)
   if (binMessage) {
     let { message } = binMessage
-    if (message.editedMessage) {
-      message = message.protocolMessage?.editedMessage
-    } else if (message.protocolMessage?.editedMessage) {
-      message = message.protocolMessage?.editedMessage
+    // unwrap edited message to the inner original message
+    if (message?.editedMessage?.message) {
+      message = message.editedMessage.message
+    } else if (message?.protocolMessage?.editedMessage?.message) {
+      message = message.protocolMessage.editedMessage.message
     }
     return { key: waMessage.key, message: { [binMessage.messageType]: message } }
   }
@@ -662,17 +666,23 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const { key: { id: whatsappMessageId, fromMe } } = payload
     const [chatJid, senderPhone, senderId] = getChatAndNumberAndId(payload)
     const messageType = getMessageType(payload)
-    // Device-sent messages (from the phone) often arrive as messages.update with message content (sometimes under deviceSentMessage).
-    // When detected, unwrap into a synthetic payload so we can emit the actual content as a normal message webhook.
+    // Device-sent messages (from the phone) may arrive under messages.update with message content.
+    // Unwrap to a plain message payload and DROP the update field to avoid recursion.
     const innerUpdateMsg = payload?.update?.message?.deviceSentMessage?.message || payload?.update?.message
     if (innerUpdateMsg) {
-      // Identify if the inner update contains a supported message type
       const keys = Object.keys(innerUpdateMsg || {})
       const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k))
       if (hasReadable) {
-        const changedPayload = { ...payload, message: innerUpdateMsg }
+        const { update: _omit, ...rest } = payload
+        const changedPayload = { ...rest, message: innerUpdateMsg }
         return fromBaileysMessageContent(phone, changedPayload, config)
       }
+    }
+    // Also unwrap editedMessage wrappers into their inner original message content
+    const innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
+    if (innerEditedMsg) {
+      const changedPayload = { ...payload, message: innerEditedMsg }
+      return fromBaileysMessageContent(phone, changedPayload, config)
     }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
     let profileName
@@ -711,7 +721,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               picture: payload.profilePicture,
             },
             ...groupMetadata,
-            wa_id: ensurePn(senderPhone) || ensurePn(senderId) || ensurePn(payload?.key?.remoteJidAlt) || ensurePn(payload?.key?.participantAlt) || ensurePn(payload?.participantAlt) || ensurePn(payload?.participantPn) || ensurePn(payload?.key?.senderPn) || ensurePn(payload?.key?.participantPn),
+            wa_id: (
+              ensurePn(senderPhone) ||
+              ensurePn(senderId) ||
+              ensurePn(payload?.key?.remoteJidAlt) ||
+              ensurePn(payload?.key?.participantAlt) ||
+              ensurePn(payload?.participantAlt) ||
+              ensurePn(payload?.participantPn) ||
+              ensurePn(payload?.key?.senderPn) ||
+              ensurePn(payload?.key?.participantPn)
+            ) || (payload?.key?.participant || payload?.key?.remoteJid || senderId),
           },
         ],
         statuses,
@@ -730,7 +749,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const message: any = {
-      from: (fromMe ? phone.replace('+', '') : (ensurePn(senderPhone) || ensurePn(senderId))),
+      from: (fromMe ? phone.replace('+', '') : (ensurePn(senderPhone) || ensurePn(senderId) || senderId)),
       id: whatsappMessageId,
     }
     if (payload.messageTimestamp) {
@@ -1012,7 +1031,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
-        recipient_id: ensurePn(senderPhone) || ensurePn(senderId),
+        recipient_id: ensurePn(senderPhone) || ensurePn(senderId) || senderId,
         status: cloudApiStatus,
       }
       if (payload.messageTimestamp) {

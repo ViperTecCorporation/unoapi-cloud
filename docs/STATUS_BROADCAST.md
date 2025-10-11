@@ -28,6 +28,12 @@ To assist monitoring and client UX, the HTTP response includes two extra fields 
 
 These fields are added without breaking the Cloud API response structure (`messages/contacts`).
 
+## LID/PN Handling for Status
+
+- Recipient normalization optionally converts LID JIDs to PN when `STATUS_ALLOW_LID=false`; when `true` (default), LIDs are allowed in the recipient list.
+- Webhook payloads still prefer PN for `wa_id`/`recipient_id` whenever safely resolvable; otherwise a LID/JID is returned as fallback.
+- Internally, the transport may use LID to improve session availability and reduce decrypt issues; this does not change the external webhook shape.
+
 ## Rationale
 
 - Large lists may contain numbers without WhatsApp, which previously caused Baileys errors and could drop the socket.

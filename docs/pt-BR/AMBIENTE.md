@@ -74,7 +74,7 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
 
 - `GROUP_SEND_MEMBERSHIP_CHECK` — Avisa se não for membro do grupo. Padrão `true`.
 - `GROUP_SEND_PREASSERT_SESSIONS` — Pré-assegura sessões dos participantes. Padrão `true`.
-- `GROUP_SEND_ADDRESSING_MODE` — Prefira `pn` ou `lid`. Padrão vazio (auto).
+- `GROUP_SEND_ADDRESSING_MODE` — Prefira `pn` ou `lid`. Padrão vazio (interpreta como LID por padrão).
 - `GROUP_SEND_FALLBACK_ORDER` — Ordem de fallback no ack 421, ex.: `pn,lid`. Padrão `pn,lid`.
   - Use para melhorar confiabilidade em cenários com variações de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
@@ -99,6 +99,11 @@ Observação de confiabilidade:
 
 ## Cache de Mapeamento LID/PN
 
+## Comportamento LID/PN
+
+- Webhooks preferem PN. Quando não for possível resolver PN com segurança, LID/JID é retornado como fallback.
+- Internamente, a API usa LID quando disponível para 1:1 e grupos. Em 1:1, o mapeamento PN→LID é aprendido em tempo de execução (assertSessions/exists e eventos).
+- Imagens de perfil são salvas e consultadas por um identificador PN canônico quando possível (também para chaves S3), para PN e LID apontarem para o mesmo arquivo.
 - `JIDMAP_CACHE_ENABLED` — Habilita cache PN↔LID. Padrão `true`.
   - Armazena por sessão o mapeamento entre JIDs LID e PN para reduzir consultas e melhorar entrega em grupos grandes.
   - Exemplo: `JIDMAP_CACHE_ENABLED=true`

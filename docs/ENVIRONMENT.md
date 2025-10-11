@@ -74,7 +74,7 @@ This guide explains key environment variables, when to use them, and why. Copy `
 
 - `GROUP_SEND_MEMBERSHIP_CHECK` — Warn if not a group member. Default `true`.
 - `GROUP_SEND_PREASSERT_SESSIONS` — Pre-assert sessions for participants. Default `true`.
-- `GROUP_SEND_ADDRESSING_MODE` — Prefer `pn` or `lid`. Default unset (auto).
+- `GROUP_SEND_ADDRESSING_MODE` — Prefer `pn` or `lid`. Default unset (treated as LID by default).
 - `GROUP_SEND_FALLBACK_ORDER` — Fallback order on ack 421, e.g., `pn,lid`. Default `pn,lid`.
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
@@ -104,6 +104,12 @@ Reliability note:
   - Example: `JIDMAP_CACHE_ENABLED=true`
 - `JIDMAP_TTL_SECONDS` — TTL for cache entries. Default `604800` (7 days).
   - Example: `JIDMAP_TTL_SECONDS=604800`
+
+## LID/PN Behavior
+
+- Webhooks prefer PN. When PN cannot be resolved safely, LID/JID is returned as a fallback.
+- Internally, the API uses LID when available for 1:1 and groups. For 1:1, PN→LID mappings are learned on-the-fly (assertSessions/exists, and events).
+- Profile pictures are stored and retrieved by a canonical PN whenever possible (same for S3 keys), so PN and LID variants reference the same asset.
 
 ## Anti‑Spam / Rate Limits
 

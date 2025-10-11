@@ -383,6 +383,10 @@ export class ClientBaileys implements Client {
       logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
       return this.listener.process(this.phone, messages, 'update')
     })
+    // Track LID<->PN mapping updates from Baileys to feed DataStore cache
+    this.event('lid-mapping.update' as any, (updates: any) => {
+      try { logger.debug('lid-mapping.update %s %s', this.phone, JSON.stringify(updates)) } catch {}
+    })
     this.event('message-receipt.update', (updates: object[]) => {
       logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(updates))
       this.listener.process(this.phone, updates, 'update')
@@ -577,9 +581,9 @@ export class ClientBaileys implements Client {
             disappearingMessagesInChat,
             ...options,
           }
-          // Apply addressing mode for groups
-          // If env GROUP_SEND_ADDRESSING_MODE is set, honor it; otherwise pick by majority from group metadata.
-          // For very large groups, force PN to reduce fanout to LID devices.
+          // Apply addressing mode para grupos
+          // Se GROUP_SEND_ADDRESSING_MODE estiver setada, respeita. Caso contrário, usa LID por padrão
+          // para reduzir "session not found" em grupos grandes.
           try {
             if (to && to.endsWith('@g.us')) {
               let applied = ''
@@ -589,28 +593,10 @@ export class ClientBaileys implements Client {
                 messageOptions.addressingMode = mode
                 applied = preferred
               }
-              // Heuristic: if not forced by env, choose majority between LID vs PN participants
-              if (!applied && GROUP_SEND_MEMBERSHIP_CHECK) {
-                try {
-                  const gm = await this.fetchGroupMetadata(to)
-                  const parts: any[] = (gm?.participants || []) as any[]
-                  const size = parts.length || 0
-                  if (size > GROUP_LARGE_THRESHOLD) {
-                    messageOptions.addressingMode = WAMessageAddressingMode.PN
-                    applied = 'pn'
-                  } else {
-                  let lid = 0, pn = 0
-                  for (const p of parts) {
-                    const jid = `${p?.id || p?.jid || p?.lid || ''}`
-                    if (!jid) continue
-                    if (jid.includes('@lid')) lid++
-                    else pn++
-                  }
-                  const mode = lid > pn ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
-                  messageOptions.addressingMode = mode
-                  applied = lid > pn ? 'lid' : 'pn'
-                  }
-                } catch {}
+              // Caso não haja preferência via env, usar LID por padrão
+              if (!applied) {
+                messageOptions.addressingMode = WAMessageAddressingMode.LID
+                applied = 'lid'
               }
               if (!applied) {
                 // Fallback: don't force; let Baileys decide

@@ -5,7 +5,8 @@ import {
   WASocket,
   useMultiFileAuthState,
   GroupMetadata,
-  isLidUser
+  isLidUser,
+  jidNormalizedUser,
 } from '@whiskeysockets/baileys'
 import { isIndividualJid, jidToPhoneNumber, phoneNumberToJid } from './transformer'
 import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'fs'
@@ -16,6 +17,7 @@ import { Config } from './config'
 import logger from './logger'
 import NodeCache from 'node-cache'
 import { BASE_URL } from '../defaults'
+import { JIDMAP_CACHE_ENABLED, JIDMAP_TTL_SECONDS } from '../defaults'
 
 export const MEDIA_DIR = './data/medias'
 const HOUR = 60 * 60
@@ -56,6 +58,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const groups: NodeCache = new NodeCache()
   // JID mapping cache (PN <-> LID) per-process
   const jidMap: NodeCache = new NodeCache()
+  const JMAP_ENABLED = JIDMAP_CACHE_ENABLED
+  const JMAP_TTL = JIDMAP_TTL_SECONDS
   const store = await useMultiFileAuthState(SESSION_DIR)
   const dataStore = store as DataStore
   dataStore.type = 'file'
@@ -126,28 +130,76 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     return new Promise<void>((resolve) => keys.set(id, key) && resolve())
   }
   dataStore.getImageUrl = async (jid: string) => {
-    const phoneNumber = jidToPhoneNumber(jid)
-    logger.debug('Retriving profile picture %s...', phoneNumber)
     const { mediaStore } = await config.getStore(phone, config)
-    const url = await mediaStore.getProfilePictureUrl(BASE_URL, jid)
-    logger.debug('Retrived profile picture %s!', url)
+    // Tenta pelo JID recebido; se PN e houver LID mapeado, tenta LID também
+    const tryVariants = async (baseJid: string): Promise<string | undefined> => {
+      const primary = await mediaStore.getProfilePictureUrl(BASE_URL, baseJid)
+      if (primary) return primary
+      try {
+        // tentar variante mapeada
+        let alt: string | undefined
+        if (isLidUser(baseJid)) {
+          const pn = await dataStore.getPnForLid?.(phone, baseJid)
+          alt = pn
+        } else {
+          const lid = await dataStore.getLidForPn?.(phone, baseJid)
+          alt = lid
+        }
+        if (alt) {
+          logger.debug('getImageUrl: fallback to mapped variant %s for %s', alt, baseJid)
+          const other = await mediaStore.getProfilePictureUrl(BASE_URL, alt)
+          if (other) return other
+        }
+      } catch {}
+      return undefined
+    }
+    const url = await tryVariants(jid)
+    logger.debug('Retrieved profile picture %s for %s', url, jid)
     return url
   }
   dataStore.setImageUrl = async (jid: string, url: string) => {
-    logger.debug('Saving profile picture %s...', jid)
     const { mediaStore } = await config.getStore(phone, config)
     const { saveProfilePicture } = mediaStore
-    await saveProfilePicture({ imgUrl: url, id: jid })
-    logger.debug('Saved profile picture %s!', jid)
+    // Salva para o JID informado e para a variante mapeada (PN<->LID) para facilitar futuros gets
+    try {
+      await saveProfilePicture({ imgUrl: url, id: jid })
+    } catch {}
+    try {
+      let alt: string | undefined
+      if (isLidUser(jid)) {
+        const pn = await dataStore.getPnForLid?.(phone, jid)
+        alt = pn
+      } else {
+        const lid = await dataStore.getLidForPn?.(phone, jid)
+        alt = lid
+      }
+      if (alt) {
+        logger.debug('setImageUrl: also saving for mapped variant %s (from %s)', alt, jid)
+        try { await saveProfilePicture({ imgUrl: url, id: alt }) } catch {}
+      }
+    } catch {}
   }
   dataStore.loadImageUrl = async (jid: string, sock: WASocket) => {
     logger.debug('Search profile picture for %s', jid)
     let url = await dataStore.getImageUrl(jid)
     if (!url) {
-      logger.debug('Get profile picture in socket for %s', jid)
-      url = await sock.profilePictureUrl(jid)
+      // Preferir LID quando existir mapeamento
+      let preferred = jid
+      try {
+        if (!isLidUser(jid)) {
+          const lid = await dataStore.getLidForPn?.(phone, jid)
+          if (lid) preferred = lid
+        }
+      } catch {}
+      logger.debug('Get profile picture in socket for %s (preferred: %s)', jid, preferred)
+      url = await sock.profilePictureUrl(preferred)
+      if (!url && preferred !== jid) {
+        // fallback para JID original
+        logger.debug('Profile picture not found for preferred %s, retry with original %s', preferred, jid)
+        url = await sock.profilePictureUrl(jid)
+      }
       if (url) {
-        await dataStore.setImageUrl(jid, url)
+        await dataStore.setImageUrl(preferred, url)
       }
     }
     logger.debug('Found %s profile picture for %s', url, jid)
@@ -172,19 +224,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
 
   // JID mapping cache (PN <-> LID)
-  dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
-    return jidMapGet(`pn:${sessionPhone}:${lidJid}`)
-  }
-  dataStore.getLidForPn = async (sessionPhone: string, pnJid: string) => {
-    return jidMapGet(`lid:${sessionPhone}:${pnJid}`)
-  }
-  dataStore.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
-    const ttl = HOUR * 24 * 7 // 7 days
-    if (pnJid && lidJid) {
-      jidMapSet(`pn:${sessionPhone}:${lidJid}`, pnJid, ttl)
-      jidMapSet(`lid:${sessionPhone}:${pnJid}`, lidJid, ttl)
-    }
-  }
+  // previous PN<->LID helpers replaced by unified cache below
 
   dataStore.setStatus = async (id: string, status: MessageStatus) => {
     statuses.set(id, status)
@@ -261,6 +301,14 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         logger.debug(`${phoneOrJid} exists on WhatsApp, as jid: ${result.jid}`)
         jid = result.jid
         await dataStore.setJid(phoneOrJid, jid!)
+        try {
+          if (isLidUser(jid)) {
+            const pn = jidNormalizedUser(jid)
+            if (pn) {
+              await dataStore.setJidMapping?.(phone, pn, jid)
+            }
+          }
+        } catch {}
       } else {
         if (lid) {
           logger.warn(`${phoneOrJid} not retrieve jid on WhatsApp baileys return lid ${lid}`)
@@ -293,6 +341,47 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
   dataStore.setMessage = async (jid: string, message: WAMessage) => {
     messages.get(jid)?.set(`${jid}-${message?.key?.id!}`, message)
+  }
+  // --- PN <-> LID mapping helpers (optional) ---
+  dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
+    if (!JMAP_ENABLED) return undefined
+    try {
+      if (typeof lidJid !== 'string') return undefined
+      const key = `PN_FOR:${lidJid}`
+      const cached = jidMapGet(key)
+      if (cached) return cached
+      // Fallback: derive PN from LID via Baileys normalization
+      try {
+        if (isLidUser(lidJid)) {
+          const pn = jidNormalizedUser(lidJid)
+          if (pn) {
+            // Persist mapping both ways
+            logger.debug('jidMap: derived PN %s from LID %s (file-store)', pn, lidJid)
+            await dataStore.setJidMapping?.(sessionPhone, pn, lidJid)
+            return pn
+          }
+        }
+      } catch {}
+      return undefined
+    } catch { return undefined }
+  }
+  dataStore.getLidForPn = async (_sessionPhone: string, pnJid: string) => {
+    if (!JMAP_ENABLED) return undefined
+    try {
+      if (typeof pnJid !== 'string') return undefined
+      const key = `LID_FOR:${pnJid}`
+      return jidMapGet(key)
+    } catch { return undefined }
+  }
+  dataStore.setJidMapping = async (_sessionPhone: string, pnJid: string, lidJid: string) => {
+    if (!JMAP_ENABLED) return
+    try {
+      if (typeof pnJid !== 'string' || typeof lidJid !== 'string') return
+      jidMapSet(`PN_FOR:${lidJid}`, pnJid, JMAP_TTL)
+      jidMapSet(`LID_FOR:${pnJid}`, lidJid, JMAP_TTL)
+      // also reflect mapping in generic JID cache to speed up loadJid()
+      try { jids.set(pnJid, pnJid); jids.set(lidJid, pnJid) } catch {}
+    } catch {}
   }
   dataStore.cleanSession = async (_removeConfig = false) => {
     const sessionDir = `${SESSION_DIR}/${phone}`
