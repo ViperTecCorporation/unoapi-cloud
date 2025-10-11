@@ -765,9 +765,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       case 'ptvMessage':
         let mediaType = messageType.replace('Message', '')
         const mediaKey = `${phone}/${whatsappMessageId}`
-        const mimetype = (binMessage.fileName && mime.lookup(binMessage.fileName)) || binMessage.mimetype.split(';')[0]
-        const extension = mime.extension(mimetype)
-        const filename = binMessage.fileName || `${payload.key.id}.${extension}`
+        // Be defensive: edited/device-sent updates may omit mimetype/url
+        const rawMime = ((binMessage && (binMessage as any).fileName) && (mime.lookup((binMessage as any).fileName) as string))
+                      || (binMessage && (binMessage as any).mimetype) || ''
+        const mimetype = (rawMime && rawMime.split(';')[0]) || 'application/octet-stream'
+        const extension = (mime.extension(mimetype) || 'bin') as string
+        const filename = (binMessage && (binMessage as any).fileName) || `${whatsappMessageId}.${extension}`
         if (mediaType == 'pvt') {
           mediaType = mimetype.split('/')[0]
         }
