@@ -153,14 +153,56 @@
         }
 
     </style>
+    <style id="uno-theme">
+        :root {
+            --bg: #ffffff;
+            --fg: #111827;
+            --muted: #f3f4f6;
+            --border: #e5e7eb;
+            --card: #ffffff;
+            --card-fg: #111827;
+            --row-alt: rgba(0,0,0,0.03);
+            --link: #0d6efd;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0b0f14;
+                --fg: #e5e7eb;
+                --muted: #0f172a;
+                --border: #253445;
+                --card: #111827;
+                --card-fg: #e5e7eb;
+                --row-alt: rgba(255,255,255,0.05);
+                --link: #7aa2f7;
+            }
+        }
+        html.theme-light { color-scheme: light; }
+        html.theme-dark { color-scheme: dark; }
+        body { background-color: var(--bg); color: var(--fg); }
+        a { color: var(--link); }
+        .navbar, .dropdown-menu { background-color: var(--card) !important; color: var(--card-fg) !important; }
+        .navbar .nav-link, .navbar-brand { color: var(--card-fg) !important; }
+        .modal-content { background-color: var(--card); color: var(--card-fg); border-color: var(--border); }
+        .modal-header, .modal-footer { border-color: var(--border); }
+        .table { color: var(--fg); }
+        .table-striped > tbody > tr:nth-of-type(odd) > * { background-color: var(--row-alt) !important; }
+        .form-control, .form-select { background-color: var(--card); color: var(--card-fg); border-color: var(--border); }
+        .form-control::placeholder { color: #9aa4b2; opacity: 1; }
+        .btn { border-color: transparent; }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <img src="https://raw.githubusercontent.com/clairton/unoapi-cloud/61c7e67e3d043b5d6cc142fd2192b78efffefce0/logos/Unoapi_logo.svg" alt="Logo" width="250" height="80" class="d-inline-block align-text-top">
+                <img src="/logos/unoapi_logo.png" alt="Unoapi" style="height:44px;width:auto;" class="d-inline-block align-text-top">
             </a>
+            <div class="ms-auto d-flex align-items-center">
+              <a class="btn" href="https://github.com/clairton/unoapi-cloud" target="_blank" rel="noopener" title="GitHub">
+                <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+              </a>
+            </div>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -502,6 +544,222 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script id="uno-i18n-theme">
+      (function(){
+        const html = document.documentElement;
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const savedTheme = localStorage.getItem('theme');
+        const theme = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : (prefersDark ? 'dark' : 'light');
+        html.classList.remove('theme-light','theme-dark');
+        html.classList.add('theme-' + theme);
+
+        const langMap = { 'pt':'pt', 'pt-br':'pt', 'en':'en', 'es':'es' };
+        const savedLang = localStorage.getItem('lang');
+        const navLang = (navigator.language || 'pt').toLowerCase();
+        const lang = (savedLang || langMap[navLang] || navLang.slice(0,2) || 'pt').slice(0,2);
+        html.setAttribute('lang', lang === 'pt' ? 'pt-BR' : lang);
+
+        const i18n = {
+          pt: {
+            'login.tokenConfigured': 'Token configurado:',
+            'login.tokenPlaceholder': 'Insira o token aqui',
+            'login.connect': 'Conectar',
+            'errors.invalidOrFailed': 'Erro: Token inválido ou conexão falhou.',
+            'table.header.label': 'Identificação',
+            'table.header.number': 'Número',
+            'table.header.status': 'Status',
+            'table.header.server': 'Server',
+            'table.header.actions': 'Ações',
+            'modal.addSession.title': 'Adicionar Sessão',
+            'modal.addSession.number': 'Número da Conexão',
+            'modal.addSession.numberPlaceholder': 'Número no formato 55 DDD NUMERO',
+            'actions.configure': 'Configurar',
+            'modal.edit.title': 'Editar/Adicionar Sessão',
+            'form.label': 'Identificação',
+            'form.authToken': 'Auth Token',
+            'form.openaiApiKey': 'Openai Api Key',
+            'form.openaiApiTranscribeModel': 'Openai Transcribe Model',
+            'form.wavoipToken': 'Token Wavoip',
+            'form.rejectCallsWebhook': 'Mensagem de Ligação Recebida e/ou Rejeitada',
+            'form.connectionType': 'Tipo de Conexão',
+            'form.connectionType.qrcode': 'QrCode',
+            'form.connectionType.pairing_code': 'PairingCode',
+            'form.connectionType.forward': 'Forward',
+            'form.proxyUrl': 'Proxy Url (Precisa Reiniciar a Unoapi ao Alterar)',
+            'form.rejectCalls': 'Mensagem ao Rejeitar Chamadas',
+            'form.server': 'Server',
+            'modal.connect.title': 'Conectar Sessão',
+            'connect.waiting': 'Aguarde o evento com o QrCode/PairingCode',
+            'connect.placeholder': 'QrCode/PairingCode será exibido aqui',
+            'modal.message.title': 'Testar Sessão',
+            'message.to': 'Whatsapp Destinatário',
+            'message.text': 'Mensagem em texto',
+            'actions.send': 'Enviar',
+            'actions.edit': 'Editar',
+            'actions.connect': 'Conectar',
+            'actions.delete': 'Deletar',
+            'actions.test': 'Testar',
+            'actions.addWebhook': 'Adicionar Webhook'
+          },
+          en: {
+            'login.tokenConfigured': 'Configured token:',
+            'login.tokenPlaceholder': 'Enter token here',
+            'login.connect': 'Connect',
+            'errors.invalidOrFailed': 'Error: Invalid token or connection failed.',
+            'table.header.label': 'Label',
+            'table.header.number': 'Number',
+            'table.header.status': 'Status',
+            'table.header.server': 'Server',
+            'table.header.actions': 'Actions',
+            'modal.addSession.title': 'Add Session',
+            'modal.addSession.number': 'Connection Number',
+            'modal.addSession.numberPlaceholder': 'Number like 55 DDD NUMBER',
+            'actions.configure': 'Configure',
+            'modal.edit.title': 'Edit/Add Session',
+            'form.label': 'Label',
+            'form.authToken': 'Auth Token',
+            'form.openaiApiKey': 'OpenAI API Key',
+            'form.openaiApiTranscribeModel': 'OpenAI Transcribe Model',
+            'form.wavoipToken': 'Wavoip Token',
+            'form.rejectCallsWebhook': 'Received and/or Rejected Call Message',
+            'form.connectionType': 'Connection Type',
+            'form.connectionType.qrcode': 'QrCode',
+            'form.connectionType.pairing_code': 'PairingCode',
+            'form.connectionType.forward': 'Forward',
+            'form.proxyUrl': 'Proxy Url (Restart Unoapi to apply)',
+            'form.rejectCalls': 'Message when Rejecting Calls',
+            'form.server': 'Server',
+            'modal.connect.title': 'Connect Session',
+            'connect.waiting': 'Wait for QR/PairingCode event',
+            'connect.placeholder': 'QR/PairingCode will appear here',
+            'modal.message.title': 'Test Session',
+            'message.to': 'Recipient WhatsApp',
+            'message.text': 'Text message',
+            'actions.send': 'Send',
+            'actions.edit': 'Edit',
+            'actions.connect': 'Connect',
+            'actions.delete': 'Delete',
+            'actions.test': 'Test',
+            'actions.addWebhook': 'Add Webhook'
+          },
+          es: {
+            'login.tokenConfigured': 'Token configurado:',
+            'login.tokenPlaceholder': 'Ingrese el token aquí',
+            'login.connect': 'Conectar',
+            'errors.invalidOrFailed': 'Error: Token inválido o conexión fallida.',
+            'table.header.label': 'Identificación',
+            'table.header.number': 'Número',
+            'table.header.status': 'Estado',
+            'table.header.server': 'Servidor',
+            'table.header.actions': 'Acciones',
+            'modal.addSession.title': 'Agregar Sesión',
+            'modal.addSession.number': 'Número de Conexión',
+            'modal.addSession.numberPlaceholder': 'Número en formato 55 DDD NÚMERO',
+            'actions.configure': 'Configurar',
+            'modal.edit.title': 'Editar/Agregar Sesión',
+            'form.label': 'Identificación',
+            'form.authToken': 'Token de Autenticación',
+            'form.openaiApiKey': 'Clave API de OpenAI',
+            'form.openaiApiTranscribeModel': 'Modelo de Transcripción de OpenAI',
+            'form.wavoipToken': 'Token Wavoip',
+            'form.rejectCallsWebhook': 'Mensaje de llamada recibida y/o rechazada',
+            'form.connectionType': 'Tipo de Conexión',
+            'form.connectionType.qrcode': 'QrCode',
+            'form.connectionType.pairing_code': 'PairingCode',
+            'form.connectionType.forward': 'Forward',
+            'form.proxyUrl': 'URL de Proxy (Reinicie Unoapi para aplicar)',
+            'form.rejectCalls': 'Mensaje al rechazar llamadas',
+            'form.server': 'Servidor',
+            'modal.connect.title': 'Conectar Sesión',
+            'connect.waiting': 'Espere el evento con QR/PairingCode',
+            'connect.placeholder': 'El QR/PairingCode aparecerá aquí',
+            'modal.message.title': 'Probar Sesión',
+            'message.to': 'WhatsApp destinatario',
+            'message.text': 'Mensaje de texto',
+            'actions.send': 'Enviar',
+            'actions.edit': 'Editar',
+            'actions.connect': 'Conectar',
+            'actions.delete': 'Eliminar',
+            'actions.test': 'Probar',
+            'actions.addWebhook': 'Agregar Webhook'
+          }
+        };
+        function tr(key){ return (i18n[lang] && i18n[lang][key]) || (i18n.pt[key]) || key; }
+
+        function applyI18n(){
+          try {
+            const byFor = (id, key) => { const el = document.querySelector('label[for="'+id+'"]'); if (el) el.textContent = tr(key); };
+            const setText = (sel, key) => { const el = document.querySelector(sel); if (el) el.textContent = tr(key); };
+            const setBtnWithIcon = (sel, key) => { const el = document.querySelector(sel); if (el) { const icon = el.querySelector('i'); el.innerHTML = ''; if (icon) el.appendChild(icon); el.appendChild(document.createTextNode(' ' + tr(key))); } };
+            // Login
+            byFor('tokenInput','login.tokenConfigured');
+            const tokenInput = document.getElementById('tokenInput'); if (tokenInput) tokenInput.placeholder = tr('login.tokenPlaceholder');
+            setBtnWithIcon('#connectButton','login.connect');
+            setText('#errorMessage','errors.invalidOrFailed');
+            // Table headers
+            const headers = document.querySelectorAll('#sessionsTable thead th');
+            if (headers && headers.length >= 5) {
+              headers[0].textContent = tr('table.header.label');
+              headers[1].textContent = tr('table.header.number');
+              headers[2].textContent = tr('table.header.status');
+              headers[3].textContent = tr('table.header.server');
+              headers[4].textContent = tr('table.header.actions');
+            }
+            // Add instance modal
+            setText('#addInstanceModalLabel','modal.addSession.title');
+            byFor('instanceNumber','modal.addSession.number');
+            const inst = document.getElementById('instanceNumber'); if (inst) inst.placeholder = tr('modal.addSession.numberPlaceholder');
+            const addFooterBtn = document.querySelector('#addInstanceModal .modal-footer button'); if (addFooterBtn) addFooterBtn.textContent = tr('actions.configure');
+            // Edit modal
+            setText('#editModalLabel','modal.edit.title');
+            byFor('label','form.label');
+            byFor('authToken','form.authToken');
+            byFor('openaiApiKey','form.openaiApiKey');
+            byFor('openaiApiTranscribeModel','form.openaiApiTranscribeModel');
+            byFor('wavoipToken','form.wavoipToken');
+            byFor('rejectCallsWebhook','form.rejectCallsWebhook');
+            byFor('connectionType','form.connectionType');
+            const opts = document.querySelectorAll('#connectionType option');
+            if (opts && opts.length >= 3) {
+              opts[0].textContent = tr('form.connectionType.qrcode');
+              opts[1].textContent = tr('form.connectionType.pairing_code');
+              opts[2].textContent = tr('form.connectionType.forward');
+            }
+            byFor('proxyUrl','form.proxyUrl');
+            byFor('rejectCalls','form.rejectCalls');
+            byFor('server','form.server');
+            const saveBtn = document.getElementById('saveEditButton'); if (saveBtn) saveBtn.textContent = tr('actions.configure');
+            // Connect modal
+            setText('#connectModalLabel','modal.connect.title');
+            setText('#qrCodeMessage','connect.waiting');
+            const qr = document.getElementById('qrCodeContainer'); if (qr) qr.textContent = tr('connect.placeholder');
+            // Message modal
+            setText('#messageModalLabel','modal.message.title');
+            byFor('messageModalNumber','message.to');
+            byFor('messageModalText','message.text');
+            const msgBtn = document.querySelector('#messageModal .modal-footer button'); if (msgBtn) msgBtn.textContent = tr('actions.send');
+            // Add webhook button
+            const awb = document.getElementById('addWebhookButton'); if (awb) awb.textContent = tr('actions.addWebhook');
+            // Action buttons inside table
+            translateActionButtons();
+          } catch(e) { console.warn('i18n apply error', e); }
+        }
+
+        function translateActionButtons(){
+          document.querySelectorAll('#sessionsTable .edit-btn').forEach(b => { const i = b.querySelector('i'); b.innerHTML=''; if (i) i && b.appendChild(i); b.appendChild(document.createTextNode(' ' + tr('actions.edit'))); });
+          document.querySelectorAll('#sessionsTable .connect-btn').forEach(b => { const i = b.querySelector('i'); b.innerHTML=''; if (i) b.appendChild(i); b.appendChild(document.createTextNode(' ' + tr('actions.connect'))); });
+          document.querySelectorAll('#sessionsTable .delete-btn').forEach(b => { const i = b.querySelector('i'); b.innerHTML=''; if (i) b.appendChild(i); b.appendChild(document.createTextNode(' ' + tr('actions.delete'))); });
+          document.querySelectorAll('#sessionsTable .message-btn').forEach(b => { const i = b.querySelector('i'); b.innerHTML=''; if (i) b.appendChild(i); b.appendChild(document.createTextNode(' ' + tr('actions.test'))); });
+        }
+
+        const mo = new MutationObserver(() => { translateActionButtons(); });
+        document.addEventListener('DOMContentLoaded', function(){
+          applyI18n();
+          const table = document.getElementById('sessionsTable');
+          if (table) mo.observe(table, { childList:true, subtree:true });
+        });
+      })();
+    </script>
     <script>
         const apiUrl = `${window.location.origin}`;
         const tokenKey = "whatsappApiToken";
