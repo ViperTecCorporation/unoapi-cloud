@@ -38,6 +38,13 @@ export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '85')
 
+// Convert downloaded audio (e.g., OGG/OGA/OPUS) to MP3 before storing/sending (iOS Safari compatibility)
+export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 = process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? false : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'
+export const DOWNLOAD_AUDIO_FFMPEG_MP3_PARAMS = JSON.parse(
+  process.env.DOWNLOAD_AUDIO_FFMPEG_MP3_PARAMS ||
+    '["-vn","-ar","48000","-ac","1","-c:a","libmp3lame","-b:a","128k","-map_metadata","-1","-f","mp3"]'
+)
+
 export const WEBHOOK_FORWARD_PHONE_NUMBER_ID = process.env.WEBHOOK_FORWARD_PHONE_NUMBER_ID || ''
 export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID || ''
 export const WEBHOOK_FORWARD_TOKEN = process.env.WEBHOOK_FORWARD_TOKEN || ''

@@ -8,7 +8,8 @@ import { Response } from 'express'
 import { getDataStore } from './data_store'
 import { Config } from './config'
 import logger from './logger'
-import { DATA_URL_TTL, FETCH_TIMEOUT_MS } from '../defaults'
+import { DATA_URL_TTL, FETCH_TIMEOUT_MS, DOWNLOAD_AUDIO_CONVERT_TO_MP3 } from '../defaults'
+import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import mediaToBuffer from '../utils/media_to_buffer'
 
@@ -39,21 +40,30 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.saveMediaForwarder = async (message: any) => {
-    const filePath = mediaStore.getFilePath(phone, message.id, message[message.type].mime_type)
+    let inMime = message[message.type].mime_type as string
+    let convertToMp3 = false
+    if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && message.type === 'audio') {
+      const low = (inMime || '').toLowerCase()
+      if (low.includes('ogg') || low.includes('opus') || low.includes('oga')) {
+        convertToMp3 = true
+      }
+    }
+    const filePath = mediaStore.getFilePath(phone, message.id, convertToMp3 ? 'audio/mpeg' : inMime)
     const url = `${config.webhookForward.url}/${config.webhookForward.version}/${message[message.type].id}`
     const { buffer } = await mediaToBuffer(url, config.webhookForward.token!, config.webhookForward?.timeoutMs || 0)
+    const outBuffer = convertToMp3 ? await convertBufferToMp3(buffer) : buffer
     logger.debug('Saving buffer %s...', filePath)
-    await mediaStore.saveMediaBuffer(filePath, buffer)
+    await mediaStore.saveMediaBuffer(filePath, outBuffer)
     logger.debug('Saved buffer %s!', filePath)
     const mediaId = `${phone}/${message.id}`
     // "type"=>"audio", "audio"=>{"mime_type"=>"audio/ogg; codecs=opus", "sha256"=>"HgQo1XoLPSCGlIQYu7eukl4ty1yIu2kAWvoKgqLCnu4=", "id"=>"642476532090165", "voice"=>true}}]
     const payload = {
       messaging_product: 'whatsapp',
-      mime_type: message[message.type].mime_type,
+      mime_type: convertToMp3 ? 'audio/mpeg' : message[message.type].mime_type,
       sha256: message[message.type].sha256,
       // file_size: binMessage?.message?.fileLength,
       id: mediaId,
-      filename: message[message.type].filename || filePath,
+      filename: (convertToMp3 ? filePath : (message[message.type].filename || filePath)),
     }
     const dataStore = await getDataStore(phone, config)
     await dataStore.setMediaPayload(message.id, payload)
@@ -217,9 +227,25 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         throw e
       }
     }
-    const filePath = mediaStore.getFilePath(phone, waMessage.key.id!, binMessage?.message?.mimetype)
+    let chosenMime: string = binMessage?.message?.mimetype
+    let outBuffer: Buffer = buffer
+    try {
+      if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && (mapMediaType[initial?.messageType] === 'audio')) {
+        const low = (chosenMime || '').toLowerCase()
+        const looksOgg = low.includes('ogg') || low.includes('opus') || low.includes('oga')
+        if (looksOgg) {
+          logger.debug('Converting downloaded audio to MP3 for %s', waMessage.key.id)
+          outBuffer = await convertBufferToMp3(buffer)
+          chosenMime = 'audio/mpeg'
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Failed to convert audio to MP3; storing original')
+      outBuffer = buffer
+    }
+    const filePath = mediaStore.getFilePath(phone, waMessage.key.id!, chosenMime)
     logger.debug('Saving buffer %s...', filePath)
-    await mediaStore.saveMediaBuffer(filePath, buffer)
+    await mediaStore.saveMediaBuffer(filePath, outBuffer)
     logger.debug('Saved buffer %s!', filePath)
     const mediaId = waMessage.key.id
     const mimeType = mime.lookup(filePath)
@@ -229,7 +255,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       sha256: binMessage?.message?.fileSha256,
       file_size: binMessage?.message?.fileLength,
       id: `${phone}/${mediaId}`,
-      filename: binMessage?.message?.fileName || filePath,
+      filename: (chosenMime === 'audio/mpeg' ? filePath : (binMessage?.message?.fileName || filePath)),
     }
     const dataStore = await getDataStore(phone, config)
     await dataStore.setMediaPayload(mediaId!, payload)
