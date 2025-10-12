@@ -51,8 +51,20 @@ export class TranscriberJob {
       if (config.groqApiKey) {
         logger.debug('Transcriber audio with Groq for session %s to %s', phone, destinyPhone)
         const splitedLink = link.split('/')
-        const fileName = `${splitedLink[splitedLink.length - 1]}${extension}`
-        const file = await toFile(buffer, fileName)
+        const originalName = `${splitedLink[splitedLink.length - 1]}${extension}`
+        const allowed = new Set(['flac','mp3','mp4','mpeg','mpga','m4a','ogg','opus','wav','webm'])
+        const nameParts = originalName.split('.')
+        const rawExt = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '').toLowerCase()
+        let normExt = rawExt
+        if (normExt === 'oga') {
+          normExt = 'ogg'
+        }
+        if (!allowed.has(normExt) || !normExt) {
+          normExt = 'ogg'
+        }
+        const baseName = nameParts.length > 1 ? nameParts.slice(0, -1).join('.') : (originalName || 'audio')
+        const uploadName = `${baseName}.${normExt}`
+        const file = await toFile(buffer, uploadName)
         const form = new FormData()
         form.append('file', file as unknown as Blob)
         form.append('model', config.groqApiTranscribeModel || 'whisper-large-v3')
