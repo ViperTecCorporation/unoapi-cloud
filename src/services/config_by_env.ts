@@ -58,6 +58,9 @@ import {
   OPENAI_API_KEY,
   OPENAI_API_TRANSCRIBE_MODEL,
   OPENAI_API_ASSISTANT_ID,
+  GROQ_API_KEY,
+  GROQ_API_TRANSCRIBE_MODEL,
+  GROQ_API_BASE_URL,
   WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL,
 } from '../defaults'
 
@@ -97,6 +100,9 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.openaiApiKey = OPENAI_API_KEY
     config.openaiApiTranscribeModel = OPENAI_API_TRANSCRIBE_MODEL
     config.openaiAssistantId = OPENAI_API_ASSISTANT_ID
+    config.groqApiKey = GROQ_API_KEY
+    config.groqApiTranscribeModel = GROQ_API_TRANSCRIBE_MODEL
+    config.groqApiBaseUrl = GROQ_API_BASE_URL
     // Rate limits from env (can be overridden per-session via UI)
     config.rateLimitGlobalPerMinute = RATE_LIMIT_GLOBAL_PER_MINUTE
     config.rateLimitPerToPerMinute = RATE_LIMIT_PER_TO_PER_MINUTE

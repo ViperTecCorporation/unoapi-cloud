@@ -88,6 +88,9 @@ export type Config = {
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
+  groqApiKey: string | undefined
+  groqApiTranscribeModel: string | undefined
+  groqApiBaseUrl: string | undefined
   // Rate limit (per-session overrides)
   rateLimitGlobalPerMinute?: number
   rateLimitPerToPerMinute?: number
@@ -162,6 +165,9 @@ export const defaultConfig: Config = {
   openaiApiKey: undefined,
   openaiApiTranscribeModel: undefined,
   openaiAssistantId: undefined,
+  groqApiKey: undefined,
+  groqApiTranscribeModel: undefined,
+  groqApiBaseUrl: undefined,
   rateLimitGlobalPerMinute: 0,
   rateLimitPerToPerMinute: 0,
   rateLimitBlockSeconds: 60

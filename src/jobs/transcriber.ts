@@ -48,7 +48,29 @@ export class TranscriberJob {
       )
       const extension = config.connectionType == 'forward' ? `.${mime.extension(mimeType)}` : ''
       let transcriptionText = ''
-      if (config.openaiApiKey) {
+      if (config.groqApiKey) {
+        logger.debug('Transcriber audio with Groq for session %s to %s', phone, destinyPhone)
+        const splitedLink = link.split('/')
+        const fileName = `${splitedLink[splitedLink.length - 1]}${extension}`
+        const file = await toFile(buffer, fileName)
+        const form = new FormData()
+        form.append('file', file as unknown as Blob)
+        form.append('model', config.groqApiTranscribeModel || 'whisper-large-v3')
+        const baseUrl = (config.groqApiBaseUrl || 'https://api.groq.com/openai/v1').replace(/\/$/, '')
+        const res = await fetch(`${baseUrl}/audio/transcriptions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.groqApiKey}`,
+          },
+          body: form as unknown as BodyInit,
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '')
+          throw new Error(`Groq transcription failed: ${res.status} ${res.statusText} ${errText}`)
+        }
+        const json = await res.json() as { text?: string }
+        transcriptionText = json.text || ''
+      } else if (config.openaiApiKey) {
         logger.debug('Transcriber audio with OpenAI for session %s to %s', phone, destinyPhone)
         const openai = new OpenAI({ apiKey: config.openaiApiKey })
         const splitedLink = link.split('/')

@@ -333,7 +333,13 @@
           ratePerTo: 'Per-destination per minute',
           ratePerToPh: '0 = disabled',
           rateBlock: 'Block seconds when exceeded',
-          rateBlockPh: '60'
+          rateBlockPh: '60',
+          groqApiKeyLabel: 'Groq API Key',
+          groqApiKeyPh: 'Groq API Key',
+          groqApiTranscribeModelLabel: 'Groq Transcribe Model',
+          groqApiTranscribeModelPh: 'e.g. whisper-large-v3',
+          groqApiBaseUrlLabel: 'Groq API Base URL',
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
         },
         'pt-BR': {
           langLabel: 'Idioma:',
@@ -371,7 +377,13 @@
           ratePerTo: 'Por destinatário por minuto',
           ratePerToPh: '0 = desativado',
           rateBlock: 'Segundos de bloqueio ao exceder',
-          rateBlockPh: '60'
+          rateBlockPh: '60',
+          groqApiKeyLabel: 'Chave da API Groq',
+          groqApiKeyPh: 'Chave da API Groq',
+          groqApiTranscribeModelLabel: 'Modelo de Transcrição (Groq)',
+          groqApiTranscribeModelPh: 'ex.: whisper-large-v3',
+          groqApiBaseUrlLabel: 'URL Base da API Groq',
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
         }
       };
       function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
@@ -537,6 +549,18 @@
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="openaiApiTranscribeModel" class="form-label">Openai Transcribe Model</label>
                                 <input type="text" class="form-control" id="openaiApiTranscribeModel" name="openaiApiTranscribeModel" placeholder="Openai Transcribe Model">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="groqApiKey" class="form-label" data-i18n="groqApiKeyLabel">Groq API Key</label>
+                                <input type="text" class="form-control" id="groqApiKey" name="groqApiKey" placeholder="Groq API Key" data-i18n-placeholder="groqApiKeyPh">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="groqApiTranscribeModel" class="form-label" data-i18n="groqApiTranscribeModelLabel">Groq Transcribe Model</label>
+                                <input type="text" class="form-control" id="groqApiTranscribeModel" name="groqApiTranscribeModel" placeholder="e.g. whisper-large-v3" data-i18n-placeholder="groqApiTranscribeModelPh">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="groqApiBaseUrl" class="form-label" data-i18n="groqApiBaseUrlLabel">Groq API Base URL</label>
+                                <input type="text" class="form-control" id="groqApiBaseUrl" name="groqApiBaseUrl" placeholder="https://api.groq.com/openai/v1" data-i18n-placeholder="groqApiBaseUrlPh">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="wavoipToken" class="form-label">Wavoip Token</label>
@@ -1139,6 +1163,9 @@
                 $('#wavoipToken').val(session.wavoipToken);
                 $('#openaiApiKey').val(session.openaiApiKey);
                 $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel);
+                $('#groqApiKey').val(session.groqApiKey);
+                $('#groqApiTranscribeModel').val(session.groqApiTranscribeModel);
+                $('#groqApiBaseUrl').val(session.groqApiBaseUrl);
                 $('#rejectCallsWebhook').val(session.rejectCallsWebhook);
                 $('#rejectCalls').val(session.rejectCalls);
                 $('#ignoreGroupMessages').prop('checked', session.ignoreGroupMessages);
@@ -1239,6 +1266,9 @@
                         wavoipToken: $('#wavoipToken').val(),
                         openaiApiKey: $('#openaiApiKey').val(),
                         openaiApiTranscribeModel: $('#openaiApiTranscribeModel').val(),
+                        groqApiKey: $('#groqApiKey').val(),
+                        groqApiTranscribeModel: $('#groqApiTranscribeModel').val(),
+                        groqApiBaseUrl: $('#groqApiBaseUrl').val(),
                         rejectCalls: $('#rejectCalls').val(),
                         rejectCallsWebhook: $('#rejectCallsWebhook').val(),
                         ignoreGroupMessages: $('#ignoreGroupMessages').is(':checked'),

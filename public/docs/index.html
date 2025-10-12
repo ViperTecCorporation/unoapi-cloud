@@ -98,12 +98,14 @@
         navOpenapiSwagger: 'OpenAPI (Swagger UI)',
         navEnvironment: 'Environment',
         navChangelog: 'Changelog',
+        navTranscription: 'Audio Transcription',
         h2Architecture: 'Architecture Overview',
         h2Development: 'Development Guide',
         h2Environment: 'Environment Variables',
         h2Install: 'Installation Guide',
         h2Status: 'Status/Broadcast',
         h2Changelog: 'Changelog',
+        h2Transcription: 'Audio Transcription',
       },
       'pt-BR': {
         langLabel: 'Idioma:',
@@ -125,6 +127,13 @@
         h2Changelog: 'Histórico de Mudanças',
       }
     }
+    // Ensure dynamic keys for new sections exist in both locales
+    try {
+      I18N['en'].navTranscription = I18N['en'].navTranscription || 'Audio Transcription';
+      I18N['en'].h2Transcription = I18N['en'].h2Transcription || 'Audio Transcription';
+      I18N['pt-BR'].navTranscription = I18N['pt-BR'].navTranscription || 'Transcrição de Áudio';
+      I18N['pt-BR'].h2Transcription = I18N['pt-BR'].h2Transcription || 'Transcrição de Áudio';
+    } catch {}
     function t(key){ const d = I18N[currentLang] || I18N['en']; return d[key] || key }
     function applyStaticI18n(){
       document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')) })
@@ -190,6 +199,7 @@
         load('status-content', '/docs/pt-BR/STATUS_BROADCAST.md');
         load('install-content', '/docs/pt-BR/INSTALACAO.md');
         load('changelog-content', '/docs/pt-BR/CHANGELOG.md');
+        load('transcription-content', '/docs/pt-BR/TRANSCRICAO_AUDIO.md');
       } else {
         load('arch', '/docs/ARCHITECTURE.md');
         load('dev', '/docs/DEVELOPMENT.md');
@@ -197,6 +207,7 @@
         load('status-content', '/docs/STATUS_BROADCAST.md');
         load('install-content', '/docs/INSTALLATION.md');
         load('changelog-content', '/CHANGELOG.md');
+        load('transcription-content', '/docs/TRANSCRIPTION_AUDIO.md');
       }
       applyStaticI18n()
     }
@@ -259,6 +270,7 @@
         <a href="#architecture" data-i18n="navArchitecture">Architecture Overview</a>
         <a href="#development" data-i18n="navDevelopment">Development Guide</a>
         <a href="#status" data-i18n="navStatus">Status/Broadcast</a>
+        <a href="#transcription" data-i18n="navTranscription">Audio Transcription</a>
         <a href="#install" data-i18n="navInstall">Installation Guide</a>
         <a href="/docs/openapi.html" data-i18n="navOpenapiRedoc">OpenAPI (Redoc)</a>
         <a href="/docs/swagger.html" data-i18n="navOpenapiSwagger">OpenAPI (Swagger UI)</a>
@@ -289,6 +301,10 @@
         <article id="status">
           <h2 data-i18n="h2Status">Status/Broadcast</h2>
           <div id="status-content"></div>
+        </article>
+        <article id="transcription">
+          <h2 data-i18n="h2Transcription">Audio Transcription</h2>
+          <div id="transcription-content"></div>
         </article>
         <article id="changelog">
           <h2 data-i18n="h2Changelog">Changelog</h2>

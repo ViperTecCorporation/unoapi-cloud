@@ -13,6 +13,16 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 - Feat: profile pictures use canonical PN for filenames/keys (FS and S3); getters/setters consider PN and LID variants and log fallbacks.
 - Docs: update README and environment/architecture docs (PT-BR and EN) to describe LID/PN behavior, group addressing, webhook PN-first policy, and profile picture canonicalization.
 
+## 3.0.0-beta-52
+
+- Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).
+- Feat: per-session Groq configuration persisted in Redis and prioritized over env:
+  - `groqApiKey`, `groqApiTranscribeModel` (default `whisper-large-v3`), `groqApiBaseUrl` (default `https://api.groq.com/openai/v1`).
+- Config: new environment variables wired into config loader:
+  - `GROQ_API_KEY`, `GROQ_API_TRANSCRIBE_MODEL`, `GROQ_API_BASE_URL`.
+- UI: add Groq fields to the session config modal in `public/index.html` (`Groq API Key`, `Groq Transcribe Model`, `Groq API Base URL`) with i18n (EN/PT-BR).
+- Docs: add transcription guides `docs/TRANSCRIPTION_AUDIO.md` (EN) and `docs/pt-BR/TRANSCRICAO_AUDIO.md` (PT-BR); linked new section "Audio Transcription" in `public/docs/index.html`.
+
 ---
 
 ## 3.0.0-beta-47
