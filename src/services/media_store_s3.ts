@@ -1,6 +1,7 @@
 import { Contact } from '@whiskeysockets/baileys'
 import { jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
-import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EXCHANGE_BROKER_NAME } from '../defaults'
+import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EXCHANGE_BROKER_NAME, DOWNLOAD_AUDIO_CONVERT_TO_MP3 } from '../defaults'
+import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3'
@@ -37,6 +38,18 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
 
   mediaStore.saveMediaBuffer = async (fileName: string, content: Buffer) => {
     logger.debug(`Uploading file ${fileName} to bucket ${bucket}....`)
+    try {
+      if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && fileName.toLowerCase().endsWith('.mp3')) {
+        // Safety guard: if key is .mp3 but content is OGG/Opus, convert buffer to mp3
+        const isOgg = content.length > 4 && content[0] === 0x4f && content[1] === 0x67 && content[2] === 0x67 && content[3] === 0x53 // 'OggS'
+        if (isOgg) {
+          logger.debug('S3 guard: converting OGG content to MP3 for key %s', fileName)
+          content = await convertBufferToMp3(content)
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'S3 guard: failed to convert audio to MP3; uploading original for %s', fileName)
+    }
     const putParams = {
       Bucket: bucket,
       Key: fileName,
