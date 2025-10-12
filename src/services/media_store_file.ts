@@ -230,7 +230,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     let chosenMime: string = binMessage?.message?.mimetype
     let outBuffer: Buffer = buffer
     try {
-      if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && (mapMediaType[initial?.messageType] === 'audio')) {
+      if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && initial?.messageType && (mapMediaType[initial.messageType] === 'audio')) {
         const low = (chosenMime || '').toLowerCase()
         const looksOgg = low.includes('ogg') || low.includes('opus') || low.includes('oga')
         if (looksOgg) {
