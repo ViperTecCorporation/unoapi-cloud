@@ -1,7 +1,9 @@
 FROM node:24-bookworm-slim AS builder
 
 ENV NODE_ENV=development
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
