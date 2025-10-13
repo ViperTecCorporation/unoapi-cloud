@@ -9,11 +9,7 @@ WORKDIR /app
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
-# Usa Corepack para ativar Yarn 1 conforme packageManager e executar install
-RUN corepack enable \
-    && corepack use yarn@1.22.22 \
-    && yarn --version \
-    && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress
+RUN corepack enable && yarn install --no-progress
 
 COPY ./src ./src
 COPY ./public ./public
@@ -21,8 +17,8 @@ COPY ./docs ./docs
 COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
-RUN yarn build \
-    && yarn build:docs
+RUN yarn build
+RUN yarn build:docs
 
 FROM node:24-bookworm-slim
 
