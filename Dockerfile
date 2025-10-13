@@ -9,7 +9,8 @@ WORKDIR /app
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
-RUN corepack enable && yarn install --no-progress
+RUN corepack enable && corepack prepare yarn@1.22.22 --activate \
+    && yarn install --no-progress
 
 COPY ./src ./src
 COPY ./public ./public
@@ -17,8 +18,8 @@ COPY ./docs ./docs
 COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
-RUN yarn build
-RUN yarn build:docs
+RUN yarn build \
+    && yarn build:docs
 
 FROM node:24-bookworm-slim
 

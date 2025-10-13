@@ -24,7 +24,10 @@ services:
   cloud:
     <<: *base
     restart: on-failure
-    entrypoint: yarn cloud-dev
+    entrypoint:
+      - sh
+      - -lc
+      - yarn install --check-files && yarn cloud-dev
     ports:
       - 9876:9876
       - 9229:9229
