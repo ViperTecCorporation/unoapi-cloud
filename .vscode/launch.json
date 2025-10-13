@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Attach: web",
+      "name": "Attach: cloud",
       "type": "node",
       "request": "attach",
       "address": "localhost",
