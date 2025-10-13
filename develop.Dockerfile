@@ -21,7 +21,7 @@ COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./src ./src
 
-RUN corepack enable \
-    && corepack prepare yarn@1.22.22 --activate \
+RUN npm install -g yarn@1.22.22 \
+    && yarn --version \
     && yarn install --no-progress \
     && yarn build:docs

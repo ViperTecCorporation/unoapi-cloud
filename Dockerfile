@@ -9,7 +9,9 @@ WORKDIR /app
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
-RUN corepack enable && corepack prepare yarn@1.22.22 --activate \
+# Instala Yarn clássico via npm (evita problemas com corepack no Node 24)
+RUN npm install -g yarn@1.22.22 \
+    && yarn --version \
     && yarn install --no-progress
 
 COPY ./src ./src
