@@ -17,8 +17,7 @@ COPY ./docs ./docs
 COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
-RUN yarn build
-RUN yarn build:docs
+RUN corepack enable && corepack use yarn@1.22.22 && yarn --version && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress && yarn build:docs
 
 FROM node:24-bookworm-slim
 
