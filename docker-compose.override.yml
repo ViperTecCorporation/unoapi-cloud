@@ -1,0 +1,14 @@
+version: '3.8'
+
+# Overrides for local debugging in Docker
+services:
+  web:
+    # Expose Node inspector and run TS entrypoint under tsx
+    entrypoint: sh -c "node --inspect=0.0.0.0:9229 --import tsx src/cloud.ts"
+    ports:
+      - "9876:9876"
+      - "9229:9229"
+    environment:
+      NODE_ENV: development
+      # Enable polling on some hosts/VMs if file watching is flaky
+      # CHOKIDAR_USEPOLLING: '1'
