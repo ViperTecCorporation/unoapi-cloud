@@ -16,6 +16,9 @@ RUN corepack enable \
     && yarn --version \
     && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress
 
+# Garante a compilação do Baileys instalado via Git antes do build
+RUN node scripts/prepare-baileys.mjs || true
+
 COPY ./src ./src
 COPY ./public ./public
 COPY ./docs ./docs
