@@ -44,6 +44,11 @@ export type Config = {
   ignoreNewsletterMessages: boolean
   ignoreBroadcastMessages: boolean
   ignoreBroadcastStatuses: boolean
+  // Controle de fan-out de recibos/status em grupos
+  // Se true, ignora recibos individuais (read/played/delivery por participante)
+  ignoreGroupIndividualReceipts: boolean
+  // Se true, para groups em messages.update repassa somente DELIVERY_ACK (delivered)
+  groupOnlyDeliveredStatus: boolean
   readOnReceipt: boolean
   ignoreHistoryMessages: boolean
   ignoreYourselfMessages: boolean
@@ -102,6 +107,8 @@ export const defaultConfig: Config = {
   ignoreNewsletterMessages: true,
   ignoreBroadcastStatuses: true,
   ignoreBroadcastMessages: false,
+  ignoreGroupIndividualReceipts: true,
+  groupOnlyDeliveredStatus: true,
   readOnReceipt: false,
   ignoreHistoryMessages: true,
   ignoreOwnMessages: true,

@@ -1,6 +1,7 @@
 import { MessageFilter } from './message_filter'
 import { getConfig, defaultConfig, Config, configs, connectionType } from './config'
 import { RATE_LIMIT_BLOCK_SECONDS, RATE_LIMIT_GLOBAL_PER_MINUTE, RATE_LIMIT_PER_TO_PER_MINUTE } from '../defaults'
+import { GROUP_IGNORE_INDIVIDUAL_RECEIPTS, GROUP_ONLY_DELIVERED_STATUS } from '../defaults'
 import logger from './logger'
 import { Level } from 'pino'
 
@@ -73,6 +74,8 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.readOnReceipt = READ_ON_RECEIPT
     config.ignoreBroadcastStatuses = IGNORE_BROADCAST_STATUSES
     config.ignoreBroadcastMessages = IGNORE_BROADCAST_MESSAGES
+    config.ignoreGroupIndividualReceipts = GROUP_IGNORE_INDIVIDUAL_RECEIPTS
+    config.groupOnlyDeliveredStatus = GROUP_ONLY_DELIVERED_STATUS
     config.ignoreHistoryMessages = IGNORE_HISTORY_MESSAGES
     config.ignoreDataStore = IGNORE_DATA_STORE
     config.ignoreYourselfMessages = IGNORE_YOURSELF_MESSAGES

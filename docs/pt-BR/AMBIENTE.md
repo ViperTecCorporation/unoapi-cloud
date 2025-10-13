@@ -79,6 +79,26 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
   - Use para melhorar confiabilidade em cenários com variações de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+### Controles de fan-out de recibos/status em grupos
+
+Em grupos grandes, recibos por participante (lido/tocado/entregue por pessoa) podem sobrecarregar seu webhook/socket. Estes toggles reduzem o volume de eventos mantendo um único sinal de entrega no nível do grupo.
+
+- `GROUP_IGNORE_INDIVIDUAL_RECEIPTS` — Suprime `message-receipt.update` por participante para mensagens de grupo. Padrão `true`.
+  - Coloque `false` para receber recibos por usuário (lido/tocado/entregue) em grupos.
+- `GROUP_ONLY_DELIVERED_STATUS` — Em `messages.update` de grupos, encaminha apenas `DELIVERY_ACK` (entregue). Padrão `true`.
+  - Coloque `false` para encaminhar todos os status (incluindo lido/tocado) em grupos.
+
+Exemplo (reduzir carga em grupos grandes):
+```env
+GROUP_IGNORE_INDIVIDUAL_RECEIPTS=true
+GROUP_ONLY_DELIVERED_STATUS=true
+```
+Restaurar comportamento legado (recibos completos por usuário):
+```env
+GROUP_IGNORE_INDIVIDUAL_RECEIPTS=false
+GROUP_ONLY_DELIVERED_STATUS=false
+```
+
 Grupos grandes (mitigação de “No sessions” e controle de carga)
 - `GROUP_LARGE_THRESHOLD` — Considera o grupo “grande” quando o número de participantes ultrapassa esse valor. Padrão `800`.
   - Em grupos grandes, o cliente força endereçamento PN para reduzir fanout LID e pula asserts pesados.

@@ -97,6 +97,26 @@ Large groups (No-sessions mitigation & throttles)
 Reliability note:
 - On a rare libsignal error “No sessions” during group sends, the service now re-asserts sessions for all group participants and retries the send once automatically.
 
+### Group receipt/status fan-out controls
+
+When groups get large, per-recipient receipts (read/played/delivered per participant) can flood your webhook/socket. These toggles reduce event fan‑out while preserving a single group‑level delivery signal.
+
+- `GROUP_IGNORE_INDIVIDUAL_RECEIPTS` — Suppress `message-receipt.update` per participant for group messages. Default `true`.
+  - Set `false` to receive per‑user read/played/delivery receipts in groups.
+- `GROUP_ONLY_DELIVERED_STATUS` — On `messages.update` for groups, forward only `DELIVERY_ACK` (delivered). Default `true`.
+  - Set `false` to forward all status updates (including read/played) for groups.
+
+Example (keep load low in big groups):
+```env
+GROUP_IGNORE_INDIVIDUAL_RECEIPTS=true
+GROUP_ONLY_DELIVERED_STATUS=true
+```
+Restore legacy behavior (full receipts per user):
+```env
+GROUP_IGNORE_INDIVIDUAL_RECEIPTS=false
+GROUP_ONLY_DELIVERED_STATUS=false
+```
+
 ## LID/PN Mapping Cache
 
 - `JIDMAP_CACHE_ENABLED` — Enable PN↔LID cache. Default `true`.

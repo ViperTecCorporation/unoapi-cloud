@@ -380,6 +380,24 @@ export class ClientBaileys implements Client {
           logger.warn('Server ack 421 for group %s message %s (fromMe: %s)', key?.remoteJid, key?.id, key?.fromMe)
         }
       } catch {}
+      // Para grupos: quando habilitado, emitir apenas evento de "entregue" (DELIVERY_ACK)
+      try {
+        const useFilter = !!this.config.groupOnlyDeliveredStatus
+        if (useFilter) {
+          const filtered = Array.isArray(messages)
+            ? (messages as any[]).filter((m: any) => {
+                const jid = m?.key?.remoteJid || m?.remoteJid
+                if (typeof jid === 'string' && jid.endsWith('@g.us')) {
+                  const st = m?.status ?? m?.update?.status
+                  return st === 3 || st === '3' || st === 'DELIVERY_ACK'
+                }
+                return true
+              })
+            : messages
+          logger.debug('messages.update %s %s', this.phone, JSON.stringify(filtered))
+          return this.listener.process(this.phone, filtered as any, 'update')
+        }
+      } catch {}
       logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
       return this.listener.process(this.phone, messages, 'update')
     })
@@ -388,6 +406,24 @@ export class ClientBaileys implements Client {
       try { logger.debug('lid-mapping.update %s %s', this.phone, JSON.stringify(updates)) } catch {}
     })
     this.event('message-receipt.update', (updates: object[]) => {
+      // Para mensagens de grupo, quando habilitado, ignorar recibos individuais (read/played/delivery por participante)
+      try {
+        if (this.config.ignoreGroupIndividualReceipts) {
+          const filtered = Array.isArray(updates)
+            ? (updates as any[]).filter((u: any) => {
+                const jid = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
+                return !(typeof jid === 'string' && jid.endsWith('@g.us'))
+              })
+            : updates
+          if (Array.isArray(filtered) && filtered.length === 0) {
+            logger.debug('message-receipt.update %s ignorado para grupos (0 itens)', this.phone)
+            return
+          }
+          logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(filtered))
+          this.listener.process(this.phone, filtered as any, 'update')
+          return
+        }
+      } catch {}
       logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(updates))
       this.listener.process(this.phone, updates, 'update')
     })

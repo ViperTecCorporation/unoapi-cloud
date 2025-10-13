@@ -221,6 +221,14 @@ export const NO_SESSION_RETRY_BASE_DELAY_MS = parseInt(process.env.NO_SESSION_RE
 export const NO_SESSION_RETRY_PER_200_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_PER_200_DELAY_MS || '300')
 export const NO_SESSION_RETRY_MAX_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_MAX_DELAY_MS || '2000')
 
+// Group receipt/status fan-out controls
+// If true, suprime recibos individuais de grupos (message-receipt.update por participante)
+export const GROUP_IGNORE_INDIVIDUAL_RECEIPTS =
+  process.env.GROUP_IGNORE_INDIVIDUAL_RECEIPTS === _undefined ? true : process.env.GROUP_IGNORE_INDIVIDUAL_RECEIPTS == 'true'
+// Se true, em "messages.update" para grupos, só repassa DELIVERY_ACK (delivered)
+export const GROUP_ONLY_DELIVERED_STATUS =
+  process.env.GROUP_ONLY_DELIVERED_STATUS === _undefined ? true : process.env.GROUP_ONLY_DELIVERED_STATUS == 'true'
+
 // Throttle asserts triggered by message-receipt 'retry' events
 export const RECEIPT_RETRY_ASSERT_COOLDOWN_MS = parseInt(process.env.RECEIPT_RETRY_ASSERT_COOLDOWN_MS || '15000')
 export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RETRY_ASSERT_MAX_TARGETS || '400')
