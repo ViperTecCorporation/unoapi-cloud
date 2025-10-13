@@ -464,6 +464,8 @@ export class ClientBaileys implements Client {
               fromMe: false,
               id: uuid(),
               remoteJid: from,
+              // Ajuda o transformer a resolver PN mesmo quando o evento vier em LID
+              senderPn: isLidUser(from) ? jidNormalizedUser(from) : from,
             }
             const message = {
               key: waMessageKey,
