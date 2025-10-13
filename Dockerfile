@@ -9,15 +9,19 @@ WORKDIR /app
 COPY ./package.json ./package.json
 COPY ./yarn.lock ./yarn.lock
 COPY ./vendor ./vendor
-RUN corepack enable && yarn install --no-progress
+COPY ./scripts ./scripts
+# Instala dependências já com o postinstall disponível
+RUN corepack enable \
+    && corepack use yarn@1.22.22 \
+    && yarn --version \
+    && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress
 
 COPY ./src ./src
 COPY ./public ./public
 COPY ./docs ./docs
-COPY ./scripts ./scripts
 COPY ./logos ./logos
 COPY ./tsconfig.json ./tsconfig.json
-RUN corepack enable && corepack use yarn@1.22.22 && yarn --version && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress && yarn build:docs
+RUN yarn build && yarn build:docs
 
 FROM node:24-bookworm-slim
 
