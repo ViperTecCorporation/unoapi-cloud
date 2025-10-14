@@ -154,6 +154,13 @@ Observação de confiabilidade:
 
 ## Mídia & Timeouts
 
+### Deduplicação de entrada
+
+Alguns provedores/dispositivos podem emitir a mesma mensagem do WA mais de uma vez durante reconexões ou importação de histórico. Use a janela abaixo para suprimir duplicatas que chegam em sequência.
+
+- `INBOUND_DEDUP_WINDOW_MS` — Ignora o processamento se outra mensagem com o mesmo `remoteJid` e `id` chegar dentro desta janela (ms). Padrão `7000`.
+  - Exemplo: `INBOUND_DEDUP_WINDOW_MS=5000`
+
 ## Fotos de Perfil
 
 - Visão geral: o serviço enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens são salvas no S3 (recomendado em produção) ou no filesystem local e expostas como URLs no payload.

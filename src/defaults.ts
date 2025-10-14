@@ -245,6 +245,10 @@ export const RATE_LIMIT_PER_TO_PER_MINUTE = parseInt(process.env.RATE_LIMIT_PER_
 // Tempo de bloqueio ao exceder (em segundos). Se 0, apenas retorna erro sem bloquear.
 export const RATE_LIMIT_BLOCK_SECONDS = parseInt(process.env.RATE_LIMIT_BLOCK_SECONDS || '60')
 
+// Deduplication window for inbound messages (ms)
+// If the same WA message id arrives again within this window, it will be skipped.
+export const INBOUND_DEDUP_WINDOW_MS = parseInt(process.env.INBOUND_DEDUP_WINDOW_MS || '7000')
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }

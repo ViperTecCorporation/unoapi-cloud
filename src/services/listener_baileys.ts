@@ -6,7 +6,7 @@ import { getConfig } from './config'
 import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError } from './transformer'
 import { WAMessage, delay } from '@whiskeysockets/baileys'
 import { Template } from './template'
-import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS } from '../defaults'
+import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
 import { v1 as uuid } from 'uuid'
 
 const  delays: Map<String, number> = new Map()
@@ -32,6 +32,8 @@ export class ListenerBaileys implements Listener {
   private outgoing: Outgoing
   private getConfig: getConfig
   private broadcast: Broadcast
+  // Dedup map (messageId -> lastSeen epoch ms)
+  private static seen: Map<string, number> = new Map()
 
   constructor(outgoing: Outgoing, broadcast: Broadcast, getConfig: getConfig) {
     this.outgoing = outgoing
@@ -48,7 +50,8 @@ export class ListenerBaileys implements Listener {
       })
     }
     const config = await this.getConfig(phone)
-    if (type === 'append' && !config.ignoreOwnMessages) {
+    // Evita duplicação comum de eventos 'append' com status PENDING
+    if (type === 'append') {
       // filter self message send with this session to not send same message many times
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages = messages.filter((m: any) => !['PENDING', 1, '1'].includes(m?.status))
@@ -90,6 +93,32 @@ export class ListenerBaileys implements Listener {
     let i: WAMessage = message as WAMessage
     const messageType = getMessageType(message)
     logger.debug(`messageType %s...`, messageType)
+    // Deduplicação leve para mensagens (não afeta 'update'/'receipt')
+    try {
+      if (messageType && !['update', 'receipt'].includes(`${messageType}`)) {
+        const id = i?.key?.id
+        const jid = i?.key?.remoteJid
+        if (id && jid) {
+          const now = Date.now()
+          const key = `${jid}|${id}`
+          const last = ListenerBaileys.seen.get(key) || 0
+          if (now - last < INBOUND_DEDUP_WINDOW_MS) {
+            logger.debug('Dedup skip for %s within %sms', key, INBOUND_DEDUP_WINDOW_MS)
+            return
+          }
+          ListenerBaileys.seen.set(key, now)
+          // Best-effort cleanup to bound map size
+          if (ListenerBaileys.seen.size > 50000) {
+            try {
+              const cutoff = now - INBOUND_DEDUP_WINDOW_MS * 2
+              for (const [k, ts] of ListenerBaileys.seen) {
+                if (ts < cutoff) ListenerBaileys.seen.delete(k)
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
     if (messageType && !['update', 'receipt'].includes(messageType)) {

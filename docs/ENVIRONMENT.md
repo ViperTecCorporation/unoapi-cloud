@@ -155,6 +155,13 @@ GROUP_ONLY_DELIVERED_STATUS=false
 
 ## Media & Timeouts
 
+### Inbound deduplication
+
+Some providers/devices may occasionally emit the same WA message more than once during reconnects or history sync. Use the window below to suppress duplicates quickly arriving back‑to‑back.
+
+- `INBOUND_DEDUP_WINDOW_MS` — Skip processing a message if another with the same `remoteJid` and `id` arrives within this window (ms). Default `7000`.
+  - Example: `INBOUND_DEDUP_WINDOW_MS=5000`
+
 ## Profile Pictures
 
 - Overview: The service can enrich webhook payloads with contact and group profile pictures. When enabled, images are stored either on S3 (recommended in production) or on the local filesystem and exposed as URLs in webhook events.
