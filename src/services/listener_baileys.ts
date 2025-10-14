@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError } from './transformer'
 import { WAMessage, delay } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS } from '../defaults'
@@ -159,6 +159,16 @@ export class ListenerBaileys implements Listener {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const i: any = message
         data = await template.bind(phone, i.template.name, i.template.components)
+      } else if (error instanceof DecryptError) {
+        // Se a descriptografia falhar, ainda encaminhamos um payload explicando o erro
+        // para que a aplicação possa tratar (ex.: orientar abrir o WhatsApp no telefone)
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data = (error as any).getContent?.() || undefined
+        } catch {}
+        if (!data) {
+          throw error
+        }
       } else {
         throw error
       }
