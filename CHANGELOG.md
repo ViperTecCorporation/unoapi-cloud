@@ -13,6 +13,20 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 - Feat: profile pictures use canonical PN for filenames/keys (FS and S3); getters/setters consider PN and LID variants and log fallbacks.
 - Docs: update README and environment/architecture docs (PT-BR and EN) to describe LID/PN behavior, group addressing, webhook PN-first policy, and profile picture canonicalization.
 
+## 3.0.0-beta-57
+
+- Feat(groups): reduce webhook/socket fan-out for group receipts/status
+  - New env flags (default true): `GROUP_IGNORE_INDIVIDUAL_RECEIPTS`, `GROUP_ONLY_DELIVERED_STATUS`
+  - Ignore `message-receipt.update` per participant in groups; forward only group-level `DELIVERY_ACK` via `messages.update` when enabled
+  - Docs: sections added in EN/PT-BR and .env.example updated
+- Fix(calls): rejected call notify webhook now returns PN instead of LID
+  - Send `key.senderPn` in the synthetic notify event; transformer prioritizes PN for `contacts[0].wa_id` and `messages[0].from`
+- Fix(decrypt): forward a structured payload to webhook on decrypt failures (DecryptError)
+  - Prevents silent drops and helps clients guide end-users (e.g., open WhatsApp on phone)
+- Fix(webhook): lightweight inbound deduplication to avoid duplicates during reconnect/history import
+  - New `INBOUND_DEDUP_WINDOW_MS` (default 7000ms); skip same `remoteJid|id` seen within the window
+- Chore: bump version to 3.0.0-beta-57
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).
