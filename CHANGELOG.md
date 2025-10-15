@@ -27,6 +27,13 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
   - New `INBOUND_DEDUP_WINDOW_MS` (default 7000ms); skip same `remoteJid|id` seen within the window
 - Chore: bump version to 3.0.0-beta-57
 
+## 3.0.0-beta-58
+
+- Fix(status 1:1): map provider id to UNO id in `message-receipt.update` for correct delivered/read correlation
+  - Ensures webhook status updates use the same id returned on send; avoids stuck “delivered” or missing “read” in 1:1
+  - Applies id normalization before emitting the webhook (ListenerBaileys)
+- Chore: version bump to 3.0.0-beta-58
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).
