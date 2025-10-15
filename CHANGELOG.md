@@ -34,6 +34,15 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
   - Applies id normalization before emitting the webhook (ListenerBaileys)
 - Chore: version bump to 3.0.0-beta-58
 
+## 3.0.0-beta-59
+
+- Fix(logging): avoid JSON.stringify on WAProto (WAMessage) objects to prevent `long.isZero` runtime error
+  - Sanitize logs in sender/listener to print jid/id/type instead of full WAProto objects
+  - Prevents false negatives that caused job retries and duplicate sends
+- Feat(outgoing): idempotency guard for job retries
+  - New `OUTGOING_IDEMPOTENCY_ENABLED` (default true). Incoming job checks store (key/status) for UNO id and skips resend if already processed
+- Chore: bump version to 3.0.0-beta-59
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).

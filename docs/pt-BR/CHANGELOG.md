@@ -34,6 +34,15 @@ O formato segue o Keep a Changelog e adota SemVer quando aplicável.
   - Normalização do id aplicada antes de emitir o webhook (ListenerBaileys)
 - Tarefa: bump de versão para 3.0.0-beta-58
 
+## 3.0.0-beta-59
+
+- Correção(logging): evitar JSON.stringify em objetos WAProto (WAMessage) para prevenir erro `long.isZero`
+  - Sanitiza logs no sender/listener para exibir jid/id/type em vez do objeto completo
+  - Evita falsos negativos que causavam retry do job e envios duplicados
+- Recurso(saída): idempotência para retries do job
+  - Nova `OUTGOING_IDEMPOTENCY_ENABLED` (padrão true). Job consulta o store (key/status) pelo id UNO e ignora reenvio se já estiver processado
+- Tarefa: bump de versão para 3.0.0-beta-59
+
 ## 3.0.0-beta-52
 
 - Recurso: adiciona provedor de transcrição de áudio Groq (endpoint compatível com OpenAI em `/audio/transcriptions`) com prioridade Groq → OpenAI → Whisper local (`audio2textjs`).
