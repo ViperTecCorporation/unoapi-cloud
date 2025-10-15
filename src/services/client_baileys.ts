@@ -600,7 +600,14 @@ export class ClientBaileys implements Client {
                   quoted = await this.store?.dataStore.loadMessage(remoteJid, unoId)
                 }
               }
-              logger.debug('Quoted message %s!', JSON.stringify(quoted))
+              try {
+                const qid = quoted?.key?.id
+                const qjid = quoted?.key?.remoteJid
+                const qtype = quoted?.message ? Object.keys(quoted.message)[0] : 'unknown'
+                logger.debug('Quoted message loaded (jid=%s id=%s type=%s)', qjid, qid, qtype)
+              } catch {
+                logger.debug('Quoted message loaded')
+              }
             }
           }
           if (payload?.ttl) {

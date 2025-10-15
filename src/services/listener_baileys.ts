@@ -89,7 +89,13 @@ export class ListenerBaileys implements Listener {
   }
 
   public async sendOne(phone: string, message: object) {
-    logger.debug(`Listener receive message %s`, JSON.stringify(message))
+    try {
+      const k: any = (message as any)?.key || {}
+      const type = getMessageType(message)
+      logger.debug(`Listener receive message (jid=%s id=%s type=%s)`, k?.remoteJid, k?.id, type)
+    } catch {
+      logger.debug('Listener receive message')
+    }
     let i: WAMessage = message as WAMessage
     const messageType = getMessageType(message)
     logger.debug(`messageType %s...`, messageType)
