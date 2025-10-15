@@ -249,6 +249,12 @@ export const RATE_LIMIT_BLOCK_SECONDS = parseInt(process.env.RATE_LIMIT_BLOCK_SE
 // If the same WA message id arrives again within this window, it will be skipped.
 export const INBOUND_DEDUP_WINDOW_MS = parseInt(process.env.INBOUND_DEDUP_WINDOW_MS || '7000')
 
+// Outgoing idempotency guard
+// If enabled, the incoming job will skip sending a message when it finds
+// evidence that the UNO id has already been processed (key/status present in store).
+export const OUTGOING_IDEMPOTENCY_ENABLED: boolean =
+  process.env.OUTGOING_IDEMPOTENCY_ENABLED === _undefined ? true : process.env.OUTGOING_IDEMPOTENCY_ENABLED == 'true'
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }

@@ -38,6 +38,20 @@ export class IncomingJob {
     const waId = jidToPhoneNumber(payload.to, '')
     const timestamp = Math.floor(new Date().getTime() / 1000).toString()
     // const retries: number = a.retries ? a.retries + 1 : 1
+    // Idempotency guard: skip send if this UNO id looks already processed
+    try {
+      if (config.outgoingIdempotency) {
+        const store = await config.getStore(phone, config)
+        const existingKey = await store.dataStore.loadKey(idUno)
+        const existingStatus = await store.dataStore.loadStatus(idUno)
+        if (existingKey || existingStatus) {
+          logger.info('Skip send (idempotent) for %s — already processed (key/status present)', idUno)
+          return { ok: { success: true, idempotent: true } }
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error checking outgoing idempotency')
+    }
     const response = await this.incoming.send(phone, payload, options)
     logger.debug('%s response %s -> %s', config.provider, phone, JSON.stringify(response))
     const channelNumber = phone.replace('+', '')

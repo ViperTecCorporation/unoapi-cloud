@@ -162,6 +162,13 @@ Some providers/devices may occasionally emit the same WA message more than once 
 - `INBOUND_DEDUP_WINDOW_MS` — Skip processing a message if another with the same `remoteJid` and `id` arrives within this window (ms). Default `7000`.
   - Example: `INBOUND_DEDUP_WINDOW_MS=5000`
 
+### Outgoing idempotency
+
+Skip sending the same message again when a job retry happens after a successful send.
+
+- `OUTGOING_IDEMPOTENCY_ENABLED` — When `true` (default), the incoming job checks the store (key/status) for the UNO id before sending; if it looks processed, it skips the send.
+  - Example: `OUTGOING_IDEMPOTENCY_ENABLED=false` (to disable)
+
 ## Profile Pictures
 
 - Overview: The service can enrich webhook payloads with contact and group profile pictures. When enabled, images are stored either on S3 (recommended in production) or on the local filesystem and exposed as URLs in webhook events.

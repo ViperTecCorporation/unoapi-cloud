@@ -1,6 +1,6 @@
 import { MessageFilter } from './message_filter'
 import { getConfig, defaultConfig, Config, configs, connectionType } from './config'
-import { RATE_LIMIT_BLOCK_SECONDS, RATE_LIMIT_GLOBAL_PER_MINUTE, RATE_LIMIT_PER_TO_PER_MINUTE } from '../defaults'
+import { RATE_LIMIT_BLOCK_SECONDS, RATE_LIMIT_GLOBAL_PER_MINUTE, RATE_LIMIT_PER_TO_PER_MINUTE, OUTGOING_IDEMPOTENCY_ENABLED } from '../defaults'
 import { GROUP_IGNORE_INDIVIDUAL_RECEIPTS, GROUP_ONLY_DELIVERED_STATUS } from '../defaults'
 import logger from './logger'
 import { Level } from 'pino'
@@ -110,6 +110,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.rateLimitGlobalPerMinute = RATE_LIMIT_GLOBAL_PER_MINUTE
     config.rateLimitPerToPerMinute = RATE_LIMIT_PER_TO_PER_MINUTE
     config.rateLimitBlockSeconds = RATE_LIMIT_BLOCK_SECONDS
+    config.outgoingIdempotency = OUTGOING_IDEMPOTENCY_ENABLED
     config.useRedis = !!process.env.REDIS_URL
     config.useS3 = !!process.env.STORAGE_ENDPOINT
     config.webhooks[0].url = WEBHOOK_URL

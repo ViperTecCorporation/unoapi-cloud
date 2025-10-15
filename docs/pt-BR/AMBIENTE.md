@@ -161,6 +161,13 @@ Alguns provedores/dispositivos podem emitir a mesma mensagem do WA mais de uma v
 - `INBOUND_DEDUP_WINDOW_MS` — Ignora o processamento se outra mensagem com o mesmo `remoteJid` e `id` chegar dentro desta janela (ms). Padrão `7000`.
   - Exemplo: `INBOUND_DEDUP_WINDOW_MS=5000`
 
+### Idempotência de saída
+
+Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem‑sucedido.
+
+- `OUTGOING_IDEMPOTENCY_ENABLED` — Quando `true` (padrão), o job de entrada checa no store (key/status) para o id UNO antes de enviar; se já parecer processado, ignora o envio.
+  - Exemplo: `OUTGOING_IDEMPOTENCY_ENABLED=false` (para desabilitar)
+
 ## Fotos de Perfil
 
 - Visão geral: o serviço enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens são salvas no S3 (recomendado em produção) ou no filesystem local e expostas como URLs no payload.

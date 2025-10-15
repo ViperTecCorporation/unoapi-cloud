@@ -100,6 +100,8 @@ export type Config = {
   rateLimitGlobalPerMinute?: number
   rateLimitPerToPerMinute?: number
   rateLimitBlockSeconds?: number
+  // Guardar reenvio indevido em caso de retry do job
+  outgoingIdempotency: boolean
 }
 
 export const defaultConfig: Config = {
@@ -177,7 +179,8 @@ export const defaultConfig: Config = {
   groqApiBaseUrl: undefined,
   rateLimitGlobalPerMinute: 0,
   rateLimitPerToPerMinute: 0,
-  rateLimitBlockSeconds: 60
+  rateLimitBlockSeconds: 60,
+  outgoingIdempotency: true
 }
 
 export interface getConfig {
