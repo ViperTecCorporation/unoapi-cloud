@@ -460,12 +460,26 @@ export class ClientBaileys implements Client {
           
           const messageCallsWebhook = this.config.rejectCallsWebhook || this.config.messageCallsWebhook
           if (messageCallsWebhook) {
+            // Tenta resolver PN para o remetente da chamada (quando vier em LID)
+            let senderPnJid: string | undefined = undefined
+            try {
+              if (isLidUser(from)) {
+                senderPnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from)
+              }
+            } catch {}
+            try {
+              if (!senderPnJid && isLidUser(from)) {
+                // Fallback leve: normaliza o JID (pode retornar PN em alguns cenários)
+                senderPnJid = jidNormalizedUser(from)
+              }
+            } catch {}
+            const remoteJidKey = senderPnJid || from
             const waMessageKey = {
               fromMe: false,
               id: uuid(),
-              remoteJid: from,
-              // Ajuda o transformer a resolver PN mesmo quando o evento vier em LID
-              senderPn: isLidUser(from) ? jidNormalizedUser(from) : from,
+              remoteJid: remoteJidKey,
+              // Ajuda o transformer a resolver PN mesmo quando o evento vier em LID (usa mapping quando disponível)
+              senderPn: senderPnJid || (isLidUser(from) ? undefined : from),
             }
             const message = {
               key: waMessageKey,
