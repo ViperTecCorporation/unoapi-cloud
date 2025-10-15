@@ -148,6 +148,16 @@ export class ListenerBaileys implements Listener {
         i.key.id = idUno
       }
     }
+    // receipt: map provider id -> UNO id to keep status correlation
+    if (messageType === 'receipt' && key?.id) {
+      try {
+        const idUno = await store.dataStore.loadUnoId(key.id)
+        if (idUno) {
+          logger.debug('Unoapi receipt id %s to Baileys id %s', idUno, key.id)
+          i.key.id = idUno
+        }
+      } catch {}
+    }
 
     // reaction
     if (i?.message?.reactionMessage?.key?.id) {
