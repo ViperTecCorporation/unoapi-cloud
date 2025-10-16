@@ -886,6 +886,24 @@ export class ClientBaileys implements Client {
     } else {
       remoteJid = key.remoteJid
     }
+    // Primeiro tenta anexar foto diretamente com o JID conhecido (evita depender de onWhatsApp)
+    try {
+      if (remoteJid && this.config.sendProfilePicture) {
+        const direct = await this.fetchImageUrl(remoteJid)
+        if (direct) {
+          try { message['profilePicture'] = direct } catch {}
+        } else {
+          // Fallback: resolve JID via exists() e tenta novamente
+          try {
+            const resolved = await this.exists(remoteJid)
+            if (resolved) {
+              const url = await this.fetchImageUrl(resolved)
+              if (url) { try { message['profilePicture'] = url } catch {} }
+            }
+          } catch {}
+        }
+      }
+    } catch (e) { logger.debug(e as any, 'Ignore error attaching direct profile picture') }
     // Normalize LID senders to PN where possible to improve downstream delivery/webhook payloads
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
