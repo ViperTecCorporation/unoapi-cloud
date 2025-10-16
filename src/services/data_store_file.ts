@@ -167,29 +167,47 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
   dataStore.loadImageUrl = async (jid: string, sock: WASocket) => {
     logger.debug('Search profile picture for %s', jid)
-    let url = await dataStore.getImageUrl(jid)
-    if (!url) {
-      // Preferir LID quando existir mapeamento
-      let preferred = jid
+    const { mediaStore } = await config.getStore(phone, config)
+    // Canonical deve ser o número (PN). Se não soubermos, tentar mapear via PN<->LID.
+    let canonicalPn = ensurePn(jid) || ''
+    if (!canonicalPn) {
       try {
-        if (!isLidUser(jid)) {
-          const lid = await dataStore.getLidForPn?.(phone, jid)
-          if (lid) preferred = lid
+        if (isLidUser(jid)) {
+          const pnJid = await dataStore.getPnForLid?.(phone, jid)
+          canonicalPn = ensurePn(pnJid) || ''
         }
       } catch {}
-      logger.debug('Get profile picture in socket for %s (preferred: %s)', jid, preferred)
-      url = await sock.profilePictureUrl(preferred)
-      if (!url && preferred !== jid) {
-        // fallback para JID original
-        logger.debug('Profile picture not found for preferred %s, retry with original %s', preferred, jid)
-        url = await sock.profilePictureUrl(jid)
-      }
-      if (url) {
-        await dataStore.setImageUrl(preferred, url)
+    }
+    const preferredJid = canonicalPn ? `${canonicalPn}@s.whatsapp.net` : jid
+    const buildLocalUrl = async (): Promise<string | undefined> => {
+      try { return await mediaStore.getProfilePictureUrl(BASE_URL, preferredJid) } catch { return undefined }
+    }
+
+    // Tentar local primeiro se não for forçar refresh
+    const force = PROFILE_PICTURE_FORCE_REFRESH
+    let localUrl = force ? undefined : await buildLocalUrl()
+
+    // Se não existe local ou forçar atualização, buscar no WhatsApp e persistir
+    if (!localUrl) {
+      let remoteUrl: string | undefined
+      try {
+        // Preferir JID canônico (PN) ao consultar a foto
+        const queryJid = preferredJid
+        logger.debug('Fetch profile picture from WA for %s', queryJid)
+        remoteUrl = await sock.profilePictureUrl(queryJid)
+        if (!remoteUrl && queryJid !== jid) {
+          logger.debug('Retry profile picture fetch for original %s', jid)
+          remoteUrl = await sock.profilePictureUrl(jid)
+        }
+      } catch {}
+      if (remoteUrl) {
+        await dataStore.setImageUrl(preferredJid, remoteUrl)
+        // Recalcular URL local após persistir
+        localUrl = await buildLocalUrl()
       }
     }
-    logger.debug('Found %s profile picture for %s', url, jid)
-    return url
+    logger.debug('Found %s profile picture for %s (canonical=%s)', localUrl, jid, canonicalPn || '<unknown>')
+    return localUrl
   }
 
   dataStore.getGroupMetada = async (jid: string) => {

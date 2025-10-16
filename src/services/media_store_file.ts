@@ -318,10 +318,19 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.getProfilePictureUrl = async (baseUrl: string, jid: string) => {
-    const canonical = ensurePn(jid) || jid // padroniza para PN quando possível
-    logger.debug('Profile picture path canonical id: %s (from %s)', canonical, jid)
+    // Nome do arquivo deve ser o número (PN). Se não houver, tentar mapear via PN<->LID.
+    let canonical = ensurePn(jid)
+    if (!canonical && (jid || '').includes('@lid')) {
+      try {
+        const ds = await getDataStore(phone, config)
+        const pn = await (ds as any).getPnForLid?.(phone, jid)
+        canonical = ensurePn(pn)
+      } catch {}
+    }
+    const id = canonical || jid
+    logger.debug('Profile picture path canonical id: %s (from %s)', id, jid)
     const base = await mediaStore.getFileUrl(PROFILE_PICTURE_FOLDER, DATA_URL_TTL)
-    const fName = profilePictureFileName(canonical)
+    const fName = profilePictureFileName(id)
     const complete = `${base}/${fName}`
     return existsSync(complete) ? `${baseUrl}/v15.0/download/${phone}/${PROFILE_PICTURE_FOLDER}/${fName}` : undefined
   }

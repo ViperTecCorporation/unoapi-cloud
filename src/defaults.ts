@@ -168,6 +168,9 @@ export const STORAGE_ENDPOINT = process.env.STORAGE_ENDPOINT || 'http://localhos
 export const STORAGE_FORCE_PATH_STYLE: boolean =
   process.env.STORAGE_FORCE_PATH_STYLE === _undefined ? false : process.env.STORAGE_FORCE_PATH_STYLE == 'true'
 export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE === _undefined ? true : process.env.SEND_PROFILE_PICTURE != 'false'
+// Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
+export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
+  process.env.PROFILE_PICTURE_FORCE_REFRESH === _undefined ? true : process.env.PROFILE_PICTURE_FORCE_REFRESH == 'true'
 export const IGNORED_CONNECTIONS_NUMBERS = JSON.parse(process.env.IGNORED_CONNECTIONS_NUMBERS || '[]')
 export const IGNORED_TO_NUMBERS = JSON.parse(process.env.IGNORED_TO_NUMBERS || '[]')
 export const CLEAN_CONFIG_ON_DISCONNECT =
