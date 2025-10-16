@@ -634,13 +634,17 @@ export class ClientBaileys implements Client {
           await toDelay(this.phone, to)
           // Prefetch foto de perfil do destino (1:1 ou grupo) para garantir cache atualizado em FS/S3
           try {
-            if (this.config.sendProfilePicture && typeof id === 'string') {
-              logger.info('PROFILE_PICTURE prefetch start: %s', id)
-              const fetched = await this.fetchImageUrl(id)
-              logger.info('PROFILE_PICTURE prefetch done: %s -> %s', id, fetched || '<none>')
+            if (this.config.sendProfilePicture && typeof to === 'string') {
+              const prefetchJid = to.includes('@') ? to : phoneNumberToJid(to)
+              logger.info('PROFILE_PICTURE prefetch start: %s', prefetchJid)
+              const fetched = await this.fetchImageUrl(prefetchJid)
+              logger.info('PROFILE_PICTURE prefetch done: %s -> %s', prefetchJid, fetched || '<none>')
             }
           } catch (e) {
-            logger.warn(e as any, 'PROFILE_PICTURE prefetch error for %s', id)
+            try {
+              const prefetchJid = to.includes('@') ? to : phoneNumberToJid(to)
+              logger.warn(e as any, 'PROFILE_PICTURE prefetch error for %s', prefetchJid)
+            } catch { logger.warn(e as any, 'PROFILE_PICTURE prefetch error') }
           }
           let response
           // merge base options and ensure status broadcast defaults when applicable
