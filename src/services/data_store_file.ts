@@ -179,7 +179,17 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       } catch {}
     }
     const preferredJid = canonicalPn ? `${canonicalPn}@s.whatsapp.net` : jid
-    logger.info('PROFILE_PICTURE lookup: input=%s canonicalPn=%s preferredJid=%s', jid, canonicalPn || '<unknown>', preferredJid)
+    let mappedLid: string | undefined
+    try {
+      if (canonicalPn) {
+        // obter LID mapeado para o PN canônico
+        mappedLid = await dataStore.getLidForPn?.(phone, preferredJid)
+      } else if (isLidUser(jid)) {
+        // já é LID; mappedLid é o próprio jid
+        mappedLid = jid
+      }
+    } catch {}
+    logger.info('PROFILE_PICTURE lookup: input=%s canonicalPn=%s preferredJid=%s mappedLid=%s', jid, canonicalPn || '<unknown>', preferredJid, mappedLid || '<none>')
     const buildLocalUrl = async (): Promise<string | undefined> => {
       try { return await mediaStore.getProfilePictureUrl(BASE_URL, preferredJid) } catch { return undefined }
     }
@@ -195,13 +205,26 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     if (!localUrl) {
       let remoteUrl: string | undefined
       try {
-        // Preferir JID canônico (PN) ao consultar a foto
-        const queryJid = preferredJid
-        logger.debug('Fetch profile picture from WA for %s', queryJid)
-        remoteUrl = await sock.profilePictureUrl(queryJid)
-        if (!remoteUrl && queryJid !== jid) {
-          logger.debug('Retry profile picture fetch for original %s', jid)
-          remoteUrl = await sock.profilePictureUrl(jid)
+        // Ordem de tentativa:
+        // - Se entrada for LID: tenta LID primeiro, depois PN
+        // - Se entrada for PN: tenta PN primeiro, depois LID (se mapeado)
+        const attempts: string[] = []
+        if (isLidUser(jid)) {
+          if (mappedLid) attempts.push(mappedLid)
+          if (preferredJid) attempts.push(preferredJid)
+        } else {
+          if (preferredJid) attempts.push(preferredJid)
+          if (mappedLid) attempts.push(mappedLid)
+        }
+        // garantir que o jid original também entre como fallback final
+        if (!attempts.includes(jid)) attempts.push(jid)
+        for (const aj of attempts) {
+          logger.debug('Fetch profile picture from WA for %s', aj)
+          try { remoteUrl = await (sock as any).profilePictureUrl(aj, 'image') } catch {}
+          if (!remoteUrl) {
+            try { remoteUrl = await (sock as any).profilePictureUrl(aj, 'preview') } catch {}
+          }
+          if (remoteUrl) break
         }
       } catch {}
       if (remoteUrl) {
