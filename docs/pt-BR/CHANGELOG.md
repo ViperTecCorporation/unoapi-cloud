@@ -43,6 +43,14 @@ O formato segue o Keep a Changelog e adota SemVer quando aplicável.
   - Nova `OUTGOING_IDEMPOTENCY_ENABLED` (padrão true). Job consulta o store (key/status) pelo id UNO e ignora reenvio se já estiver processado
 - Tarefa: bump de versão para 3.0.0-beta-59
 
+## 3.0.0-beta-60
+
+- Recurso(foto de perfil): padroniza nome de arquivo como número (PN) e suporta atualização do cache
+  - Sempre salva como `<pn>.jpg` (ex.: `5566996269251.jpg`), mapeando LID→PN quando necessário
+  - `PROFILE_PICTURE_FORCE_REFRESH` (padrão true) para atualizar o cache buscando no WhatsApp antes de retornar a URL
+  - `getProfilePictureUrl` (S3/FS) resolve LID→PN e retorna URL nomeada pelo PN
+- Correção(webhook): inclui foto de perfil também em updates/receipts usando cache local quando `sendProfilePicture` estiver ativo
+
 ## 3.0.0-beta-52
 
 - Recurso: adiciona provedor de transcrição de áudio Groq (endpoint compatível com OpenAI em `/audio/transcriptions`) com prioridade Groq → OpenAI → Whisper local (`audio2textjs`).

@@ -43,6 +43,15 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
   - New `OUTGOING_IDEMPOTENCY_ENABLED` (default true). Incoming job checks store (key/status) for UNO id and skips resend if already processed
 - Chore: bump version to 3.0.0-beta-59
 
+## 3.0.0-beta-60
+
+- Feat(profile): canonicalize profile picture filenames to phone number (PN) and support refresh
+  - Always store filenames as `<pn>.jpg` (e.g., `5566996269251.jpg`), mapping LID→PN when needed
+  - Add `PROFILE_PICTURE_FORCE_REFRESH` (default true) to refresh cache by fetching from WhatsApp before returning URL
+  - Ensure S3/FS `getProfilePictureUrl` resolves LID→PN and returns URL named by PN
+- Fix(webhook): include profile picture for updates/receipts using local cache
+  - Enrich `contacts[0].profile.picture` on update/receipt payloads when `sendProfilePicture` is enabled
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).
