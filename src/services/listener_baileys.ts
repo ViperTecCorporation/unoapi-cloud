@@ -218,6 +218,28 @@ export class ListenerBaileys implements Listener {
         throw error
       }
     } finally {
+      // Enriquecer contatos com foto de perfil também em updates/receipts (cache local)
+      try {
+        if (data && this.config.sendProfilePicture) {
+          const change = (data as any)?.entry?.[0]?.changes?.[0]?.value
+          const contact = change?.contacts?.[0]
+          const profile = contact?.profile || (contact && (contact.profile = {}))
+          if (contact && !profile?.picture) {
+            const waId: string = `${contact.wa_id || ''}`.replace('+', '')
+            if (waId) {
+              const jid = `${waId}@s.whatsapp.net`
+              try {
+                const url = await store?.dataStore?.getImageUrl(jid)
+                if (url) {
+                  profile.picture = url
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error enriching profile picture on update')
+      }
       const state = data?.entry[0]?.changes[0]?.value?.statuses?.[0] || {}
       try {
         if (state?.id && state?.status) {
