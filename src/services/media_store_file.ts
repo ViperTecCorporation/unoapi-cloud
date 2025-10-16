@@ -337,29 +337,20 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
 
   mediaStore.saveProfilePicture = async (contact: Contact) => {
     const originalId = contact.id as string
-    const variants = new Set<string>()
-    try {
-      const pn = ensurePn(originalId)
-      if (pn) variants.add(pn)
-      if ((originalId || '').includes('@lid')) {
-        variants.add(originalId)
-      } else if (pn) {
-        try {
-          const ds = await getDataStore(phone, config)
-          const lid = await (ds as any).getLidForPn?.(phone, phoneNumberToJid(pn))
-          if (lid) variants.add(lid)
-        } catch {}
-      }
-    } catch {}
-    // Fallback: if we couldn't resolve any variant, keep original id
-    if (variants.size === 0 && originalId) variants.add(originalId)
+    // Canonical por PN; se vier LID, busca PN no mapping
+    let canonicalPn = ensurePn(originalId)
+    if (!canonicalPn && (originalId || '').includes('@lid')) {
+      try {
+        const ds = await getDataStore(phone, config)
+        const pnJid = await (ds as any).getPnForLid?.(phone, originalId)
+        canonicalPn = ensurePn(pnJid)
+      } catch {}
+    }
+    const targetId = canonicalPn || originalId
 
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
-      for (const id of variants) {
-        const fName = profilePictureFileName(id)
-        logger.debug('Removing profile picture file %s...', jidToPhoneNumberIfUser(id))
-        try { await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`) } catch {}
-      }
+      const fName = profilePictureFileName(targetId)
+      try { await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`) } catch {}
       return
     }
     if (contact.imgUrl) {
@@ -367,18 +358,16 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       if (!existsSync(base)) {
         mkdirSync(base, { recursive: true })
       }
-      logger.info('PROFILE_PICTURE saving (FS) variants: %s', Array.from(variants).join(', '))
+      logger.info('PROFILE_PICTURE saving (FS) target: %s (from %s)', targetId, originalId)
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
-      for (const id of variants) {
-        const fName = profilePictureFileName(id)
-        const complete = `${base}/${fName}`
-        try {
-          await writeFile(complete, buffer)
-          logger.info('PROFILE_PICTURE saved (FS): %s', jidToPhoneNumberIfUser(id))
-        } catch (e) {
-          logger.warn(e as any, 'Ignore error saving profile picture variant %s', id)
-        }
+      const fName = profilePictureFileName(targetId)
+      const complete = `${base}/${fName}`
+      try {
+        await writeFile(complete, buffer)
+        logger.info('PROFILE_PICTURE saved (FS): %s', jidToPhoneNumberIfUser(targetId))
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error saving profile picture %s', targetId)
       }
     }
   }
