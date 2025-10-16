@@ -220,7 +220,7 @@ export class ListenerBaileys implements Listener {
     } finally {
       // Enriquecer contatos com foto de perfil também em updates/receipts (cache local)
       try {
-        if (data && this.config.sendProfilePicture) {
+        if (data && config.sendProfilePicture) {
           const change = (data as any)?.entry?.[0]?.changes?.[0]?.value
           const contact = change?.contacts?.[0]
           const profile = contact?.profile || (contact && (contact.profile = {}))

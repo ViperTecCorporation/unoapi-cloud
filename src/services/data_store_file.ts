@@ -8,7 +8,7 @@ import {
   isLidUser,
   jidNormalizedUser,
 } from '@whiskeysockets/baileys'
-import { isIndividualJid, jidToPhoneNumber, phoneNumberToJid } from './transformer'
+import { isIndividualJid, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
 import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'fs'
 import { DataStore, MessageStatus } from './data_store'
 import { SESSION_DIR } from './session_store_file'
@@ -16,7 +16,7 @@ import { getDataStore, dataStores } from './data_store'
 import { Config } from './config'
 import logger from './logger'
 import NodeCache from 'node-cache'
-import { BASE_URL } from '../defaults'
+import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH } from '../defaults'
 import { JIDMAP_CACHE_ENABLED, JIDMAP_TTL_SECONDS } from '../defaults'
 
 export const MEDIA_DIR = './data/medias'
