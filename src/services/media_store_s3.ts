@@ -155,14 +155,14 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       return
     }
     if (contact.imgUrl) {
-      logger.debug('Saving profile picture s3 variants %s...', Array.from(variants).join(', '))
+      logger.info('PROFILE_PICTURE saving (S3) variants: %s', Array.from(variants).join(', '))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
       for (const id of variants) {
         const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
         try {
           await mediaStore.saveMediaBuffer(fileName, buffer)
-          logger.debug('Saved profile picture s3 %s!', jidToPhoneNumberIfUser(id))
+          logger.info('PROFILE_PICTURE saved (S3): %s', jidToPhoneNumberIfUser(id))
         } catch (e) {
           logger.warn(e as any, 'Ignore error saving S3 profile picture variant %s', id)
         }

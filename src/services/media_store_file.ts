@@ -367,7 +367,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       if (!existsSync(base)) {
         mkdirSync(base, { recursive: true })
       }
-      logger.debug('Saving profile picture variants %s...', Array.from(variants).join(', '))
+      logger.info('PROFILE_PICTURE saving (FS) variants: %s', Array.from(variants).join(', '))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
       for (const id of variants) {
@@ -375,7 +375,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         const complete = `${base}/${fName}`
         try {
           await writeFile(complete, buffer)
-          logger.debug('Saved profile picture file %s!', jidToPhoneNumberIfUser(id))
+          logger.info('PROFILE_PICTURE saved (FS): %s', jidToPhoneNumberIfUser(id))
         } catch (e) {
           logger.warn(e as any, 'Ignore error saving profile picture variant %s', id)
         }

@@ -179,6 +179,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       } catch {}
     }
     const preferredJid = canonicalPn ? `${canonicalPn}@s.whatsapp.net` : jid
+    logger.info('PROFILE_PICTURE lookup: input=%s canonicalPn=%s preferredJid=%s', jid, canonicalPn || '<unknown>', preferredJid)
     const buildLocalUrl = async (): Promise<string | undefined> => {
       try { return await mediaStore.getProfilePictureUrl(BASE_URL, preferredJid) } catch { return undefined }
     }
@@ -186,6 +187,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     // Tentar local primeiro se não for forçar refresh
     const force = PROFILE_PICTURE_FORCE_REFRESH
     let localUrl = force ? undefined : await buildLocalUrl()
+    if (!force && localUrl) {
+      logger.info('PROFILE_PICTURE cache hit (local): %s', localUrl)
+    }
 
     // Se não existe local ou forçar atualização, buscar no WhatsApp e persistir
     if (!localUrl) {
@@ -201,9 +205,13 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         }
       } catch {}
       if (remoteUrl) {
+        logger.info('PROFILE_PICTURE fetched from WA: %s', remoteUrl)
         await dataStore.setImageUrl(preferredJid, remoteUrl)
         // Recalcular URL local após persistir
         localUrl = await buildLocalUrl()
+        if (localUrl) {
+          logger.info('PROFILE_PICTURE persisted -> local URL: %s', localUrl)
+        }
       }
     }
     logger.debug('Found %s profile picture for %s (canonical=%s)', localUrl, jid, canonicalPn || '<unknown>')

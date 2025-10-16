@@ -51,6 +51,15 @@ O formato segue o Keep a Changelog e adota SemVer quando aplicável.
   - `getProfilePictureUrl` (S3/FS) resolve LID→PN e retorna URL nomeada pelo PN
 - Correção(webhook): inclui foto de perfil também em updates/receipts usando cache local quando `sendProfilePicture` estiver ativo
 
+## 3.0.0-beta-61
+
+- Recurso(foto de perfil): prefetch ao enviar e logs detalhados
+  - A cada envio (1:1/grupo) faz prefetch da foto para atualizar o cache do storage proativamente
+  - Logs: início/fim do prefetch, lookup, cache hit, fetch no WA, URL local persistida, gravação FS/S3
+- Correção(build): imports e acesso à config no listener
+  - data_store_file: importa `ensurePn` e `PROFILE_PICTURE_FORCE_REFRESH`
+  - listener_baileys: usa `config` em vez de `this.config`
+
 ## 3.0.0-beta-52
 
 - Recurso: adiciona provedor de transcrição de áudio Groq (endpoint compatível com OpenAI em `/audio/transcriptions`) com prioridade Groq → OpenAI → Whisper local (`audio2textjs`).

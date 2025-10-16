@@ -52,6 +52,15 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 - Fix(webhook): include profile picture for updates/receipts using local cache
   - Enrich `contacts[0].profile.picture` on update/receipt payloads when `sendProfilePicture` is enabled
 
+## 3.0.0-beta-61
+
+- Feat(profile): prefetch profile pictures on send and add detailed logs
+  - On every outbound send (1:1/group) prefetches profile picture to refresh storage cache proactively
+  - Logs: prefetch start/done, lookup, cache hit, fetched-from-WA, persisted local URL, and FS/S3 saves
+- Fix(build): imports and listener config access
+  - data_store_file: import `ensurePn` and `PROFILE_PICTURE_FORCE_REFRESH`
+  - listener_baileys: use runtime `config` instead of `this.config`
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).
