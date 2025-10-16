@@ -728,9 +728,13 @@ export const connect = async ({
         await delay(Math.floor(Math.random() * time) + 200)
         await sock?.sendPresenceUpdate('paused', id)
       }
-      logger.debug(`${phone} is sending message ==> ${id} ${JSON.stringify(message)}`)
+      const msgKind = (message && typeof message === 'object') ? Object.keys(message)[0] : typeof message
+      logger.debug('%s is sending message ==> %s kind=%s', phone, id, msgKind)
       const opts = { ...restOptions }
-      logger.debug('Send baileys from %s to %s -> %s', phone, id, JSON.stringify(message))
+      try {
+        const keys = (message && typeof message === 'object') ? Object.keys(message) : []
+        logger.debug('Send baileys from %s to %s keys=%s', phone, id, JSON.stringify(keys))
+      } catch { logger.debug('Send baileys from %s to %s', phone, id) }
       // Workaround for Stories/Status: current Baileys sendMessage() does not pass statusJidList to relayMessage
       if (
         id === 'status@broadcast' &&
