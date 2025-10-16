@@ -4,7 +4,7 @@ import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EX
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { amqpPublish } from '../amqp'
 import type { Readable } from 'stream'
@@ -117,14 +117,23 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     const id = canonical || jid
     logger.debug('S3 profile picture path canonical id: %s (from %s)', id, jid)
     const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
+    // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
     try {
-      return mediaStore.getFileUrl(fileName, DATA_URL_TTL)
-    } catch (error) {
-      if (error.name === 'NotFound' || error.code === 'NotFound') {
+      await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: fileName }))
+    } catch (error: any) {
+      if ((error?.$metadata?.httpStatusCode === 404) || error?.name === 'NotFound' || error?.code === 'NotFound' || error?.Code === 'NotFound') {
+        logger.debug('PROFILE_PICTURE S3 not found: %s', fileName)
         return ''
-      } else {
-        throw error
       }
+      throw error
+    }
+    try {
+      const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
+      logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
+      return url
+    } catch (error) {
+      logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
+      return ''
     }
   }
 
