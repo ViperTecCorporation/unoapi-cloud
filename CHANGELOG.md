@@ -61,6 +61,14 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
   - data_store_file: import `ensurePn` and `PROFILE_PICTURE_FORCE_REFRESH`
   - listener_baileys: use runtime `config` instead of `this.config`
 
+## 3.0.0-beta-64
+
+- Fix(profile/1:1): robust fetch of profile pictures
+  - Tries PN JID first, then mapped LID JID (image → preview), persists only as `<pn>.jpg`
+  - Logs added for prefetch, lookup, fetch and persist; S3 existence check before presign
+- Fix(logging): avoid JSON.stringify of WAProto-like content during send to prevent `long.isZero` errors
+- Misc: minor build fixes and stability improvements
+
 ## 3.0.0-beta-52
 
 - Feat: add Groq-based audio transcription provider (OpenAI-compatible endpoint at `/audio/transcriptions`) with priority order Groq → OpenAI → local Whisper (`audio2textjs`).

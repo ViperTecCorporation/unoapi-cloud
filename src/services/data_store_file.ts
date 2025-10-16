@@ -6,6 +6,7 @@ import {
   useMultiFileAuthState,
   GroupMetadata,
   isLidUser,
+  isPnUser,
   jidNormalizedUser,
 } from '@whiskeysockets/baileys'
 import { isIndividualJid, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
@@ -388,12 +389,14 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       // Fallback: derive PN from LID via Baileys normalization
       try {
         if (isLidUser(lidJid)) {
-          const pn = jidNormalizedUser(lidJid)
-          if (pn) {
-            // Persist mapping both ways
-            logger.debug('jidMap: derived PN %s from LID %s (file-store)', pn, lidJid)
-            await dataStore.setJidMapping?.(sessionPhone, pn, lidJid)
-            return pn
+          const normalized = jidNormalizedUser(lidJid)
+          if (normalized && isPnUser(normalized as any)) {
+            // Persist mapping both ways somente se for PN válido (@s.whatsapp.net)
+            logger.debug('jidMap: derived PN %s from LID %s (file-store)', normalized, lidJid)
+            await dataStore.setJidMapping?.(sessionPhone, normalized as any, lidJid)
+            return normalized as any
+          } else {
+            logger.debug('jidMap: skip deriving PN from LID %s (normalized=%s not PN)', lidJid, normalized)
           }
         }
       } catch {}

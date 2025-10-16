@@ -60,6 +60,14 @@ O formato segue o Keep a Changelog e adota SemVer quando aplicável.
   - data_store_file: importa `ensurePn` e `PROFILE_PICTURE_FORCE_REFRESH`
   - listener_baileys: usa `config` em vez de `this.config`
 
+## 3.0.0-beta-64
+
+- Correção(foto 1:1): busca robusta de fotos de perfil
+  - Tenta JID PN primeiro e depois LID mapeado (image → preview), sempre salvando como `<pn>.jpg`
+  - Logs de prefetch/lookup/fetch/persist; valida existência no S3 antes de gerar URL
+- Correção(logging): evita JSON.stringify de estruturas WAProto no envio (previne erro `long.isZero`)
+- Miscelânea: pequenos ajustes de build e estabilidade
+
 ## 3.0.0-beta-52
 
 - Recurso: adiciona provedor de transcrição de áudio Groq (endpoint compatível com OpenAI em `/audio/transcriptions`) com prioridade Groq → OpenAI → Whisper local (`audio2textjs`).
