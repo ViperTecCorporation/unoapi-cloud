@@ -756,14 +756,17 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             },
             ...groupMetadata,
             wa_id: (
+              // Prioriza PN fornecido explicitamente na chave
+              ensurePn(payload?.key?.senderPn) ||
+              ensurePn(payload?.key?.participantPn) ||
+              ensurePn(payload?.participantPn) ||
+              // Depois tenta telefones derivados
               ensurePn(senderPhone) ||
               ensurePn(senderId) ||
+              ensurePn(payload?.key?.remoteJid) ||
               ensurePn(payload?.key?.remoteJidAlt) ||
               ensurePn(payload?.key?.participantAlt) ||
-              ensurePn(payload?.participantAlt) ||
-              ensurePn(payload?.participantPn) ||
-              ensurePn(payload?.key?.senderPn) ||
-              ensurePn(payload?.key?.participantPn)
+              ensurePn(payload?.participantAlt)
             ) || (payload?.key?.participant || payload?.key?.remoteJid || senderId),
           },
         ],
@@ -783,7 +786,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const message: any = {
-      from: (fromMe ? phone.replace('+', '') : (ensurePn(senderPhone) || ensurePn(senderId) || senderId)),
+      from: (fromMe
+        ? phone.replace('+', '')
+        : (
+            ensurePn((payload as any)?.key?.senderPn) ||
+            ensurePn((payload as any)?.key?.participantPn) ||
+            ensurePn(senderPhone) ||
+            ensurePn(senderId) ||
+            senderId
+          )
+      ),
       id: whatsappMessageId,
     }
     if (payload.messageTimestamp) {
