@@ -775,7 +775,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       },
       field: 'messages',
     }
-    const data = {
+  const data = {
       object: 'whatsapp_business_account',
       entry: [
         {
@@ -1186,6 +1186,17 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     logger.error(e, 'Error on convert baileys to cloud-api')
     throw e
   }
+  // Log resumido de identificação (evita serializar WAProto inteiro)
+  try {
+    const contactWa = (data as any)?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.wa_id
+    const msgFrom = (data as any)?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const k: any = (payload as any)?.key || {}
+    const logRemote = k?.remoteJid || (payload as any)?.remoteJid
+    const logSenderPn = k?.senderPn || (payload as any)?.senderPn
+    const logParticipantPn = k?.participantPn || (payload as any)?.participantPn
+    logger.info('WEBHOOK ids: wa_id=%s from=%s remoteJid=%s senderPn=%s participantPn=%s', contactWa || '<none>', msgFrom || '<none>', logRemote || '<none>', logSenderPn || '<none>', logParticipantPn || '<none>')
+  } catch {}
 }
 
 export const toBuffer = (arrayBuffer) => {

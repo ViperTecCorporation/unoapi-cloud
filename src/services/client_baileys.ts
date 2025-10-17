@@ -450,6 +450,9 @@ export class ClientBaileys implements Client {
     this.event('call', async (events: any[]) => {
       for (let i = 0; i < events.length; i++) {
         const { from, id, status } = events[i]
+        try {
+          logger.info('CALL event: from=%s id=%s status=%s', from, id, status)
+        } catch {}
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
@@ -473,6 +476,9 @@ export class ClientBaileys implements Client {
                 senderPnJid = jidNormalizedUser(from)
               }
             } catch {}
+            try {
+              logger.info('CALL resolve mapping: from=%s isLid=%s mappedPn=%s', from, isLidUser(from), senderPnJid || '<none>')
+            } catch {}
             const remoteJidKey = senderPnJid || from
             const waMessageKey = {
               fromMe: false,
@@ -481,6 +487,9 @@ export class ClientBaileys implements Client {
               // Ajuda o transformer a resolver PN mesmo quando o evento vier em LID (usa mapping quando disponível)
               senderPn: senderPnJid || (isLidUser(from) ? undefined : from),
             }
+            try {
+              logger.info('CALL notify key: remoteJid=%s senderPn=%s', waMessageKey.remoteJid, waMessageKey['senderPn'] || '<none>')
+            } catch {}
             const message = {
               key: waMessageKey,
               message: {
@@ -488,6 +497,7 @@ export class ClientBaileys implements Client {
               },
             }
             await this.listener.process(this.phone, [message], 'notify')
+            try { logger.info('CALL notify enqueued for %s', from) } catch {}
           }
           setTimeout(() => {
             logger.debug('Clean call rejecteds %s', from)
