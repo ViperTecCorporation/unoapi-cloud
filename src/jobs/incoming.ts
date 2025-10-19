@@ -91,6 +91,7 @@ export class IncomingJob {
         delete messagePayload['link']
         await dataStore.setMediaPayload(idUno, messagePayload)
       }
+      const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
       const webhookMessage = {
         object: 'whatsapp_business_account',
         entry: [
@@ -107,6 +108,7 @@ export class IncomingJob {
                   contacts: [
                     {
                       wa_id: waId,
+                      ...(isGroup ? { group_id: payload.to } : {}),
                       profile: {
                         name: '',
                         picture: '',
@@ -135,8 +137,49 @@ export class IncomingJob {
     } else if (!ok.success) {
       throw `Unknow response ${JSON.stringify(response)}`
     } else if (ok.success) {
-      logger.debug('Message id %s update to status %s', payload?.message_id, payload?.status)
-      return
+      // Fallback: provedor não retornou id da mensagem, ainda assim notificar "new message" no webhook
+      const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
+      const webhookMessage = {
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            id: phone,
+            changes: [
+              {
+                value: {
+                  messaging_product: 'whatsapp',
+                  metadata: {
+                    display_phone_number: phone,
+                    phone_number_id: phone,
+                  },
+                  contacts: [
+                    {
+                      wa_id: waId,
+                      ...(isGroup ? { group_id: payload.to } : {}),
+                      profile: { name: '', picture: '' },
+                    },
+                  ],
+                  messages: [
+                    {
+                      from: phone,
+                      id: idUno,
+                      timestamp,
+                      [payload.type]: payload[payload.type],
+                      type: payload.type,
+                    },
+                  ],
+                },
+                field: 'messages',
+              },
+            ],
+          },
+        ],
+      }
+      const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
+      logger.debug('%s webhooks with sendNewMessages (fallback)', webhooks.length)
+      await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
+      logger.debug('Message id %s update to status %s (fallback notified)', payload?.message_id, payload?.status)
+      // não retorna aqui; continua fluxo de status abaixo
     }
     let outgingPayload
     if (error) {
