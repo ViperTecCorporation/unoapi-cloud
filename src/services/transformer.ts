@@ -1115,13 +1115,27 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     if (cloudApiStatus) {
       const messageId = whatsappMessageId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recipientPn = (
+        // Prioriza PN explícito presente nas chaves do evento
+        ensurePn((payload as any)?.key?.senderPn) ||
+        ensurePn((payload as any)?.key?.participantPn) ||
+        // Depois tenta telefones derivados do payload
+        ensurePn(senderPhone) ||
+        ensurePn(senderId) ||
+        // Por fim, tenta normalizar campos JID brutos
+        ensurePn((payload as any)?.key?.remoteJid) ||
+        ensurePn((payload as any)?.key?.remoteJidAlt) ||
+        ensurePn((payload as any)?.key?.participantAlt) ||
+        ensurePn((payload as any)?.participantAlt) ||
+        ''
+      )
       const state: any = {
         conversation: {
           id: chatJid,
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
-        recipient_id: ensurePn(senderPhone) || ensurePn(senderId) || senderId,
+        recipient_id: recipientPn || senderId,
         status: cloudApiStatus,
       }
       if (payload.messageTimestamp) {
@@ -1142,6 +1156,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         state.errors = [error]
       }
       change.value.statuses.push(state)
+      try {
+        logger.info('STATUS map: id=%s to recipient_id=%s status=%s', messageId || '<none>', state.recipient_id || '<none>', cloudApiStatus || '<none>')
+      } catch {}
     } else {
       // {"key":{"remoteJid":"554988290955@s.whatsapp.net","fromMe":false,"id":"3A4F0B7A946F046A1AD0"},"messageTimestamp":1676632069,"pushName":"Clairton Rodrigo Heinzen","message":{"extendedTextMessage":{"text":"Isso","contextInfo":{"stanzaId":"BAE50C61B223F799","participant":"554998360838@s.whatsapp.net","quotedMessage":{"conversation":"*Odonto Excellence*: teste"}}},"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"31S8mj42p3wLiQ==","senderTimestamp":"1676571145","recipientKeyHash":"tz8qTGvqyPjOUw==","recipientTimestamp":"1675040504"},"deviceListMetadataVersion":2}}}
       const stanzaId = binMessage?.contextInfo?.stanzaId
