@@ -1,13 +1,13 @@
 {
   "name": "unoapi-cloud",
-  "version": "3.0.0-beta-75",
-  "description": "Unoapi Cloud",
+  "version": "3.0.0-beta-76",
+  "description": "Unoapi Cloud Fork Viper Tec baileys 7",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "./dist"
   ],
-  "repository": "github.com/clairton/unoapi-cloud",
+  "repository": "github.com/ViperTecCorporation/unoapi-cloud",
   "author": "Clairton Rodrigo Heinzen<clairton.rodrigo@gmail.com>",
   "license": "GPL-3.0",
   "packageManager": "yarn@1.22.22",
