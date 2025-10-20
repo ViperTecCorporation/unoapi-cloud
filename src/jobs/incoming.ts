@@ -61,7 +61,7 @@ export class IncomingJob {
       await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, this.queueCommander, phone, { payload }, { type: 'topic' })
     }
     const { ok, error } = response
-    const optionsOutgoing: Partial<PublishOption>  =  { delay: 1000 } // to send status after message
+    const optionsOutgoing: Partial<PublishOption>  =  { delay: 0 } // evitar que 'sent' chegue após delivered/read
     if (ok && ok.messages && ok.messages[0] && ok.messages[0].id) {
       const idProvider: string = ok.messages[0].id
       logger.debug('%s id %s to Unoapi id %s', config.provider, idProvider, idUno)
@@ -232,15 +232,27 @@ export class IncomingJob {
           },
         ], 
       }
+      // Se já houver status mais avançado (delivered/read), não enviar 'sent'
+      try {
+        const { dataStore } = await config.getStore(phone, config)
+        const prev = await dataStore.loadStatus(idUno)
+        const rank = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
+        if (rank(prev || '') >= 3) {
+          logger.info("Skip 'sent' webhook for %s (prev status %s)", idUno, prev)
+          outgingPayload = null as any
+        }
+      } catch {}
     }
-    await amqpPublish(
-      UNOAPI_EXCHANGE_BROKER_NAME,
-      UNOAPI_QUEUE_BULK_STATUS,
-      phone,
-      { payload: outgingPayload, type: 'whatsapp' },
-      { type: 'topic' }
-    )
-    await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, outgingPayload, optionsOutgoing)))
+    if (outgingPayload) {
+      await amqpPublish(
+        UNOAPI_EXCHANGE_BROKER_NAME,
+        UNOAPI_QUEUE_BULK_STATUS,
+        phone,
+        { payload: outgingPayload, type: 'whatsapp' },
+        { type: 'topic' }
+      )
+      await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, outgingPayload, optionsOutgoing)))
+    }
     return response
   }
 }
