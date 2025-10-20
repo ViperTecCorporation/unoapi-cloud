@@ -45,7 +45,7 @@ export class ListenerJob {
         })
       } catch {}
       try {
-        await this.listener.process(phone, messages, type)
+        await this.listener.process(phone, a.messages, type)
       } catch (error) {
         if (error instanceof DecryptError && options && options?.countRetries >= options?.maxRetries) {
           // send message asking to open whatsapp to see
