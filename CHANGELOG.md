@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 
 ## [Unreleased]
 
+- Status/Webhook (1:1)
+  - recipient_id sempre em número (PN), mesmo quando o evento chega com @lid
+  - inclui timestamp em statuses (delivered/read) e normaliza id do status (provider → UNO)
+  - filtro anti-regressão/duplicata: evita “sent” depois de “delivered/read” e ignora duplicatas
+- Mensagens de grupo via API (cópia no webhook)
+  - sempre notifica “new message” de grupos e adiciona `contacts[0].group_id = to`
+  - fallback quando o provedor não retorna id (usa `idUno`)
+- Recusa de chamadas (call)
+  - prioriza PN no webhook (wa_id/from) usando mapeamentos; logs detalhados (CALL event/mapping)
+- Fotos de perfil (FS/S3)
+  - nome de arquivo sempre por PN (ex.: `5566996269251.jpg`), mapeando LID→PN antes de salvar
+  - refresh de cache ao consultar (`PROFILE_PICTURE_FORCE_REFRESH=true`), prefetch no envio
+  - busca robusta PN/LID (image→preview) e HeadObject no S3 antes de presign
+- Pipeline de saída
+  - idempotência (`OUTGOING_IDEMPOTENCY_ENABLED=true`) evita reenvio em retries
+  - remove delay do webhook “sent” e não envia se já houver status avançado
+- Estabilidade/Logs
+  - remove JSON.stringify de objetos WAProto (evita `long.isZero`), loga apenas chaves/tipo
+  - deduplicação leve de entrada (`INBOUND_DEDUP_WINDOW_MS`)
+  - logs BAILEYS para `messages.update`/`message-receipt.update` e decisões de status (forward/regression/duplicate)
+
 - Fix: prevent recursive overflow when handling `editedMessage` and device-sent updates in `fromBaileysMessageContent` by unwrapping and dropping the `update` field before recursion.
 - Feat: default group sends to LID addressing; pre-assert sessions prioritizing LIDs; add robust fallback for libsignal "No sessions" and ack 421 with adaptive waits and addressingMode toggling.
 - Feat: 1:1 sends actively learn PN→LID (assertSessions + exists) and use LID internally when available; detailed debug logs for learning path.

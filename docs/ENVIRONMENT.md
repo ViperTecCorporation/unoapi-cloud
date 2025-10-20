@@ -169,6 +169,21 @@ Skip sending the same message again when a job retry happens after a successful 
 - `OUTGOING_IDEMPOTENCY_ENABLED` — When `true` (default), the incoming job checks the store (key/status) for the UNO id before sending; if it looks processed, it skips the send.
   - Example: `OUTGOING_IDEMPOTENCY_ENABLED=false` (to disable)
 
+### Profile Pictures
+
+- Canonical filename: always by phone number (PN). If input is LID, map to PN first and save `<pn>.jpg`.
+- Force refresh: `PROFILE_PICTURE_FORCE_REFRESH=true` (default) re-fetches from WhatsApp before returning the local/storage URL.
+- Prefetch on send: the client prefetches the destination picture on outbound messages (1:1 and groups) to keep the cache fresh.
+- Robust fetch order: for 1:1, attempts PN first, then mapped LID, using modes `image` then `preview`.
+- S3 safety: checks object existence (HeadObject) before generating a presigned URL.
+
+### Status/Webhook Behavior
+
+- 1:1 normalization: `recipient_id` always PN (digits), even when events arrive with @lid.
+- Timestamps: statuses (delivered/read) contain a timestamp (receipt/read when available; else `payload.messageTimestamp`).
+- ID normalization: map provider ids to UNO ids before sending to webhooks.
+- Anti-regression/duplicate: ignore lower-rank updates (e.g., “sent” after “delivered”) and repeated statuses for the same message id.
+
 ## Profile Pictures
 
 - Overview: The service can enrich webhook payloads with contact and group profile pictures. When enabled, images are stored either on S3 (recommended in production) or on the local filesystem and exposed as URLs in webhook events.

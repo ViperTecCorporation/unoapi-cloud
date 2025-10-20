@@ -168,6 +168,21 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem
 - `OUTGOING_IDEMPOTENCY_ENABLED` — Quando `true` (padrão), o job de entrada checa no store (key/status) para o id UNO antes de enviar; se já parecer processado, ignora o envio.
   - Exemplo: `OUTGOING_IDEMPOTENCY_ENABLED=false` (para desabilitar)
 
+### Fotos de Perfil
+
+- Nome canônico do arquivo: sempre pelo número (PN). Se a entrada for LID, mapeie para PN e salve `<pn>.jpg`.
+- Refresh forçado: `PROFILE_PICTURE_FORCE_REFRESH=true` (padrão) busca no WhatsApp e atualiza o cache antes de retornar a URL local/storage.
+- Prefetch no envio: o cliente faz prefetch da foto do destino em mensagens de saída (1:1 e grupos) para manter o cache atualizado.
+- Busca robusta em 1:1: tenta JID PN primeiro e depois LID mapeado, no modo `image` e, se necessário, `preview`.
+- Segurança no S3: valida a existência do objeto (HeadObject) antes de gerar URL pré‑assinada.
+
+### Status/Webhook
+
+- Normalização em 1:1: `recipient_id` sempre PN (somente dígitos), mesmo quando o evento chega com @lid.
+- Timestamps: os statuses (delivered/read) incluem `timestamp` (quando disponível) — ou caem em `payload.messageTimestamp`.
+- Normalização de id: mapeia id do provedor para id UNO antes de enviar ao webhook.
+- Anti‑regressão/duplicata: ignora regressões (ex.: “sent” após “delivered”) e repetidos para o mesmo id.
+
 ## Fotos de Perfil
 
 - Visão geral: o serviço enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens são salvas no S3 (recomendado em produção) ou no filesystem local e expostas como URLs no payload.
