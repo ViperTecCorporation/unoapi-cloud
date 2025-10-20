@@ -68,7 +68,15 @@ export class OutgoingCloudApi implements Outgoing {
     if (webhook.header && webhook.token) {
       headers[webhook.header] = webhook.token
     }
-    const url = webhook.urlAbsolute || `${webhook.url}/${phone}`
+    // Garantir que o endpoint do Chatwoot use o mesmo phone da sessão (metadata.phone_number_id)
+    let url = webhook.urlAbsolute || `${webhook.url}/${phone}`
+    try {
+      const m = url.match(/\/webhooks\/whatsapp\/(\d+)$/)
+      if (m && m[1] !== `${phone}`) {
+        // Reescreve para URL base + phone
+        url = `${webhook.url}/${phone}`
+      }
+    } catch {}
     logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
     let response: Response
     try {
