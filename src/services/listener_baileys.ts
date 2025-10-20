@@ -271,11 +271,10 @@ export class ListenerBaileys implements Listener {
               }
             }
           }
-          logger.debug(`Set status message %s to %s`, id, status)
-          await store?.dataStore?.setStatus(id, status)
+          // NÃO atualiza o status aqui; faremos após decidir enviar (evita auto-duplicata)
         }
       } catch (e) {
-        logger.warn(e as any, 'Ignore error updating status/backfill')
+        logger.warn(e as any, 'Ignore error preparing status/backfill')
       }
     }
     if (data) {
@@ -305,6 +304,16 @@ export class ListenerBaileys implements Listener {
         }
       } catch {}
       const response = this.outgoing.send(phone, data)
+      // Após enviar com sucesso, persiste o novo status (se existir)
+      try {
+        const st = (data as any)?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]
+        if (st?.id && st?.status) {
+          await store?.dataStore?.setStatus(st.id, st.status)
+          logger.debug('Persisted status %s for %s', st.status, st.id)
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error persisting status after send')
+      }
       const to = i?.key?.remoteJid
       await delayFunc(phone, to)
       return response
