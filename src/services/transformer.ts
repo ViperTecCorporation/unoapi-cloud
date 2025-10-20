@@ -756,12 +756,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             },
             ...groupMetadata,
             wa_id: (
-              // Prioriza PN fornecido explicitamente na chave
-              ensurePn(payload?.key?.senderPn) ||
+              // 1) outro lado (derivado do remoteJid já normalizado)
+              ensurePn(senderPhone) ||
+              // 2) alternativas explícitas quando presentes
               ensurePn(payload?.key?.participantPn) ||
               ensurePn(payload?.participantPn) ||
-              // Depois tenta telefones derivados
-              ensurePn(senderPhone) ||
+              ensurePn(payload?.key?.senderPn) ||
+              // 3) fallbacks a partir de JIDs brutos
               ensurePn(senderId) ||
               ensurePn(payload?.key?.remoteJid) ||
               ensurePn(payload?.key?.remoteJidAlt) ||
@@ -1115,14 +1116,15 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     if (cloudApiStatus) {
       const messageId = whatsappMessageId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recipientPn = (
-        // Prioriza PN explícito presente nas chaves do evento
-        ensurePn((payload as any)?.key?.senderPn) ||
-        ensurePn((payload as any)?.key?.participantPn) ||
-        // Depois tenta telefones derivados do payload
+      let recipientPn = (
+        // 1) outro lado (preferência absoluta)
         ensurePn(senderPhone) ||
+        // 2) alternativas explícitas
+        ensurePn((payload as any)?.key?.participantPn) ||
+        ensurePn((payload as any)?.participantPn) ||
+        ensurePn((payload as any)?.key?.senderPn) ||
+        // 3) fallbacks a partir de JIDs brutos
         ensurePn(senderId) ||
-        // Por fim, tenta normalizar campos JID brutos
         ensurePn((payload as any)?.key?.remoteJid) ||
         ensurePn((payload as any)?.key?.remoteJidAlt) ||
         ensurePn((payload as any)?.key?.participantAlt) ||
@@ -1138,6 +1140,15 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         recipient_id: recipientPn || senderId,
         status: cloudApiStatus,
       }
+      // Defensivo: se recipient_id ficou vazio ou igual ao número do próprio canal,
+      // force usar o PN do outro lado (senderPhone derivado do remoteJid)
+      try {
+        const channelPn = `${phone}`.replace('+', '')
+        const otherSide = ensurePn(senderPhone)
+        if (!state.recipient_id || `${state.recipient_id}` === channelPn) {
+          if (otherSide) state.recipient_id = otherSide
+        }
+      } catch {}
       // Preencher timestamp do status (Cloud API espera esse campo). Usar em ordem:
       // 1) messageTimestamp calculado a partir de receipt/read
       // 2) payload.messageTimestamp, se existir

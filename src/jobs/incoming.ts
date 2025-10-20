@@ -220,7 +220,8 @@ export class IncomingJob {
                   statuses: [
                     {
                       id: idUno,
-                      recipient_id: payload?.to,
+                      // Normalize recipient_id sempre como PN (sem '+')
+                      recipient_id: waId,
                       status: 'sent',
                       timestamp,
                     },
