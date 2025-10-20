@@ -750,10 +750,19 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         messages,
         contacts: [
           {
-            profile: {
-              name: profileName,
-              picture: payload.profilePicture,
-            },
+            profile: (
+              () => {
+                // Em eventos de status (update/receipt), não incluir picture
+                // Em novos messages, manter picture (mesmo undefined) para compatibilidade dos testes
+                const p: any = { name: profileName }
+                const mt = `${messageType || ''}`
+                if (!['update', 'receipt'].includes(mt)) {
+                  // manter a chave 'picture' (pode ser undefined) nos eventos de mensagem
+                  p.picture = payload.profilePicture
+                }
+                return p
+              }
+            )(),
             ...groupMetadata,
             wa_id: (
               // 1) outro lado (derivado do remoteJid já normalizado)
@@ -1133,9 +1142,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       )
       const state: any = {
         conversation: {
-          // Cloud API espera um id de conversa próprio; quando não o temos,
-          // usamos o PN do destinatário (sem '@s.whatsapp.net').
-          id: recipientPn || ensurePn(senderPhone) || ensurePn(senderId),
+          // Mantém compatibilidade: usar o JID da conversa (ex.: +1111@s.whatsapp.net)
+          id: chatJid,
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
