@@ -55,7 +55,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const ids: Map<string, string> = new Map()
   const statuses: Map<string, string> = new Map()
   const medias: Map<string, string> = new Map()
-  const messages: Map<string, any> = new Map()
+  // Armazena mensagens como base64 de WebMessageInfo para evitar JSON.stringify do WAProto
+  const messages: Map<string, string> = new Map()
   const groups: NodeCache = new NodeCache()
   // JID mapping cache (PN <-> LID) per-process
   const jidMap: NodeCache = new NodeCache()
@@ -65,7 +66,18 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const dataStore = store as DataStore
   dataStore.type = 'file'
 
-	dataStore.loadMessage = async(jid: string, id: string) => messages.get(`${jid}-${id}`),
+  dataStore.loadMessage = async (jid: string, id: string) => {
+    const b64 = messages.get(`${jid}-${id}`)
+    if (!b64) return undefined
+    try {
+      const bytes = Buffer.from(b64, 'base64')
+      const msg = proto.WebMessageInfo.decode(bytes)
+      return msg as unknown as WAMessage
+    } catch {
+      // retrocompatibilidade: caso algum valor antigo não seja base64 válido
+      try { return JSON.parse(b64) as WAMessage } catch { return undefined }
+    }
+  },
   dataStore.toJSON = () => {
     return {
       messages,
@@ -376,7 +388,14 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     return jids.get(phoneOrJid)
   }
   dataStore.setMessage = async (jid: string, message: WAMessage) => {
-    messages.get(jid)?.set(`${jid}-${message?.key?.id!}`, message)
+    try {
+      const bytes = proto.WebMessageInfo.encode(message as any).finish()
+      const b64 = Buffer.from(bytes).toString('base64')
+      messages.set(`${jid}-${message?.key?.id!}`, b64)
+    } catch {
+      // fallback mínimo
+      try { messages.set(`${jid}-${message?.key?.id!}`, JSON.stringify({ key: message?.key })) } catch {}
+    }
   }
   // --- PN <-> LID mapping helpers (optional) ---
   dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
