@@ -333,7 +333,12 @@ export class ClientBaileys implements Client {
 
   async subscribe() {
     this.event('messages.upsert', async (payload: { messages: any[]; type }) => {
-      logger.debug('messages.upsert %s', this.phone, JSON.stringify(payload))
+      try {
+        const arr: any[] = (payload?.messages || []) as any[]
+        const cnt = arr.length
+        const sample = arr.slice(0, 1).map((m) => ({ jid: m?.key?.remoteJid, id: m?.key?.id, type: Object.keys(m?.message || {})[0] }))
+        logger.debug('messages.upsert %s count=%s sample=%s', this.phone, cnt, JSON.stringify(sample))
+      } catch { logger.debug('messages.upsert %s', this.phone) }
       await this.listener.process(this.phone, payload.messages, payload.type)
       if (this.config.readOnReceipt && payload.messages[0] && !payload.messages[0]?.fromMe) {
         await Promise.all(
@@ -394,16 +399,25 @@ export class ClientBaileys implements Client {
                 return true
               })
             : messages
-          logger.debug('messages.update %s %s', this.phone, JSON.stringify(filtered))
+          try {
+            const sample = filtered.slice(0, 2).map((u: any) => ({ jid: u?.key?.remoteJid, id: u?.key?.id, status: u?.update?.status, stub: u?.update?.messageStubType }))
+            logger.debug('messages.update %s count=%s sample=%s', this.phone, filtered.length, JSON.stringify(sample))
+          } catch { logger.debug('messages.update %s count=%s', this.phone, filtered.length) }
           return this.listener.process(this.phone, filtered as any, 'update')
         }
       } catch {}
-      logger.debug('messages.update %s %s', this.phone, JSON.stringify(messages))
+      try {
+        const sample = messages.slice(0, 2).map((u: any) => ({ jid: u?.key?.remoteJid, id: u?.key?.id, status: (u as any)?.update?.status, stub: (u as any)?.update?.messageStubType }))
+        logger.debug('messages.update %s count=%s sample=%s', this.phone, messages.length, JSON.stringify(sample))
+      } catch { logger.debug('messages.update %s count=%s', this.phone, messages.length) }
       return this.listener.process(this.phone, messages, 'update')
     })
     // Track LID<->PN mapping updates from Baileys to feed DataStore cache
     this.event('lid-mapping.update' as any, (updates: any) => {
-      try { logger.debug('lid-mapping.update %s %s', this.phone, JSON.stringify(updates)) } catch {}
+      try {
+        const sample = updates.slice(0, 2).map((u: any) => ({ from: u?.from, to: u?.to }))
+        logger.debug('lid-mapping.update %s count=%s sample=%s', this.phone, updates.length, JSON.stringify(sample))
+      } catch {}
     })
     this.event('message-receipt.update', (updates: object[]) => {
       // Para mensagens de grupo, quando habilitado, ignorar recibos individuais (read/played/delivery por participante)
@@ -419,17 +433,26 @@ export class ClientBaileys implements Client {
             logger.debug('message-receipt.update %s ignorado para grupos (0 itens)', this.phone)
             return
           }
-          logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(filtered))
+          try {
+            const sample = filtered.slice(0, 2).map((u: any) => ({ jid: u?.key?.remoteJid, id: u?.key?.id, type: (u as any)?.receipt?.type, ts: (u as any)?.receipt?.t }))
+            logger.debug('message-receipt.update %s count=%s sample=%s', this.phone, filtered.length, JSON.stringify(sample))
+          } catch { logger.debug('message-receipt.update %s count=%s', this.phone, filtered.length) }
           this.listener.process(this.phone, filtered as any, 'update')
           return
         }
       } catch {}
-      logger.debug('message-receipt.update %s %s', this.phone, JSON.stringify(updates))
+      try {
+        const sample = updates.slice(0, 2).map((u: any) => ({ jid: (u as any)?.key?.remoteJid, id: (u as any)?.key?.id, type: (u as any)?.receipt?.type, ts: (u as any)?.receipt?.t }))
+        logger.debug('message-receipt.update %s count=%s sample=%s', this.phone, updates.length, JSON.stringify(sample))
+      } catch { logger.debug('message-receipt.update %s count=%s', this.phone, updates.length) }
       this.listener.process(this.phone, updates, 'update')
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.event('messages.delete', (updates: any) => {
-      logger.debug('messages.delete %s', this.phone, JSON.stringify(updates))
+      try {
+        const sample = updates.slice(0, 2).map((u: any) => ({ jid: u?.key?.remoteJid, id: u?.key?.id }))
+        logger.debug('messages.delete %s count=%s sample=%s', this.phone, updates.length, JSON.stringify(sample))
+      } catch { logger.debug('messages.delete %s count=%s', this.phone, updates.length) }
       this.listener.process(this.phone, updates, 'delete')
     })
     if (!this.config.ignoreHistoryMessages) {
