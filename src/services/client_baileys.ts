@@ -614,7 +614,7 @@ export class ClientBaileys implements Client {
           const messageId = payload?.context?.message_id || payload?.context?.id
           if (messageId) {
             const key = await this.store?.dataStore?.loadKey(messageId)
-            logger.debug('Quoted message key %s!', key?.id)
+            try { logger.debug('Quoted message key %s!', key?.id) } catch {}
             if (key?.id) {
               const remoteJid = phoneNumberToJid(to)
               quoted = await this.store?.dataStore.loadMessage(remoteJid, key?.id)
@@ -629,9 +629,7 @@ export class ClientBaileys implements Client {
                 const qjid = quoted?.key?.remoteJid
                 const qtype = quoted?.message ? Object.keys(quoted.message)[0] : 'unknown'
                 logger.debug('Quoted message loaded (jid=%s id=%s type=%s)', qjid, qid, qtype)
-              } catch {
-                logger.debug('Quoted message loaded')
-              }
+              } catch { logger.debug('Quoted message loaded') }
             }
           }
           if (payload?.ttl) {
@@ -737,7 +735,27 @@ export class ClientBaileys implements Client {
           }
 
           if (response) {
-            logger.debug('Sent to baileys %s', JSON.stringify(response))
+            // Evita JSON.stringify no WAProto (pode disparar Long.toString com this incorreto)
+            try {
+              const summary = {
+                key: {
+                  id: (response as any)?.key?.id,
+                  remoteJid: (response as any)?.key?.remoteJid,
+                  fromMe: (response as any)?.key?.fromMe,
+                  participant: (response as any)?.key?.participant,
+                },
+                messageType: (() => {
+                  try { return Object.keys((response as any)?.message || {})[0] } catch { return undefined }
+                })(),
+                messageTimestamp: (response as any)?.messageTimestamp,
+                status: (response as any)?.status,
+              }
+              logger.debug('Sent to baileys %s', JSON.stringify(summary))
+            } catch {
+              try {
+                logger.debug('Sent to baileys (jid=%s id=%s)', (response as any)?.key?.remoteJid, (response as any)?.key?.id)
+              } catch { logger.debug('Sent to baileys') }
+            }
             const key = response.key
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
