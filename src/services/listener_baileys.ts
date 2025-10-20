@@ -243,7 +243,18 @@ export class ListenerBaileys implements Listener {
       const state = data?.entry[0]?.changes[0]?.value?.statuses?.[0] || {}
       try {
         if (state?.id && state?.status) {
-          const id = state.id
+          let id = state.id
+          try {
+            // Normaliza id do status para UNO id quando houver mapeamento (provider->UNO)
+            const mapped = await store?.dataStore?.loadUnoId(id)
+            if (mapped && mapped !== id) {
+              state.id = mapped
+              // também atualiza no payload principal
+              try { (data as any).entry[0].changes[0].value.statuses[0].id = mapped } catch {}
+              logger.debug('Mapped provider id %s to UNO id %s for status', id, mapped)
+              id = mapped
+            }
+          } catch (e) { logger.debug('No UNO id mapping for %s', id) }
           const status = state.status || 'error'
           // Backfill a missing 'delivered' before 'read' when previous status is not delivered/read
           if (status === 'read') {
