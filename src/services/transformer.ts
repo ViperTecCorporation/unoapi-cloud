@@ -1133,7 +1133,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       )
       const state: any = {
         conversation: {
-          id: chatJid,
+          // Cloud API espera um id de conversa próprio; quando não o temos,
+          // usamos o PN do destinatário (sem '@s.whatsapp.net').
+          id: recipientPn || ensurePn(senderPhone) || ensurePn(senderId),
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,
