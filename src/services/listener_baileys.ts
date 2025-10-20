@@ -279,6 +279,31 @@ export class ListenerBaileys implements Listener {
       }
     }
     if (data) {
+      // Guardar contra regressão/duplicata de status (não enviar 'sent' após 'delivered' e nem duplicar)
+      try {
+        const change = (data as any)?.entry?.[0]?.changes?.[0]?.value
+        const st = change?.statuses?.[0]
+        if (st?.id && st?.status) {
+          let sid = st.id
+          try {
+            const mapped = await store?.dataStore?.loadUnoId(sid)
+            if (mapped) { st.id = mapped; sid = mapped }
+          } catch {}
+          const prev = await store?.dataStore?.loadStatus(sid)
+          const rank = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
+          const newR = rank(st.status)
+          const oldR = rank(prev || '')
+          if (oldR > newR) {
+            logger.info('STATUS decision: skip regression prev=%s -> new=%s id=%s', prev || '<none>', st.status, sid)
+            return
+          }
+          if (oldR === newR && prev) {
+            logger.info('STATUS decision: skip duplicate prev=new=%s id=%s', prev, sid)
+            return
+          }
+          logger.info('STATUS decision: forward prev=%s -> new=%s id=%s', prev || '<none>', st.status, sid)
+        }
+      } catch {}
       const response = this.outgoing.send(phone, data)
       const to = i?.key?.remoteJid
       await delayFunc(phone, to)

@@ -362,6 +362,21 @@ export const connect = async ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = async (updates: any[]) => {
         try {
+          // Log resumido de statuses recebidos (read/delivered/etc.)
+          try {
+            const counts: Record<string, number> = {}
+            const samples: string[] = []
+            if (Array.isArray(updates)) {
+              for (const u of updates) {
+                const s = `${u?.update?.status ?? u?.status ?? ''}`
+                counts[s] = (counts[s] || 0) + 1
+                const kid = u?.key?.id || u?.id
+                if (kid && samples.length < 5) samples.push(kid)
+              }
+              const flat = Object.keys(counts).map(k => `${k}:${counts[k]}`).join(', ')
+              logger.info('BAILEYS messages.update: statuses=%s samples=%s', flat || '<none>', samples.join('|') || '<none>')
+            }
+          } catch {}
           if (Array.isArray(updates)) {
             for (const u of updates) {
               const params = u?.update?.messageStubParameters
@@ -406,6 +421,21 @@ export const connect = async ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = async (updates: any[]) => {
         try {
+          // Log resumido dos tipos recebidos (read/delivery/played/retry)
+          try {
+            const counts: Record<string, number> = {}
+            const samples: string[] = []
+            if (Array.isArray(updates)) {
+              for (const u of updates) {
+                const t = `${u?.receipt?.type || u?.type || u?.update?.type || ''}`
+                counts[t] = (counts[t] || 0) + 1
+                const kid = u?.key?.id || u?.id
+                if (kid && samples.length < 5) samples.push(kid)
+              }
+              const flat = Object.keys(counts).map(k => `${k}:${counts[k]}`).join(', ')
+              logger.info('BAILEYS message-receipt.update: types=%s samples=%s', flat || '<none>', samples.join('|') || '<none>')
+            }
+          } catch {}
           const targets = new Set<string>()
           let groupKey: string | null = null
           let isStatus = false
