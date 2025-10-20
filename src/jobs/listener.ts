@@ -5,6 +5,7 @@ import logger from '../services/logger'
 import { Outgoing } from '../services/outgoing'
 import { DecryptError } from '../services/transformer'
 import { getConfig } from '../services/config'
+import { proto } from '@whiskeysockets/baileys'
 
 export class ListenerJob {
   private listener: Listener
@@ -31,6 +32,18 @@ export class ListenerJob {
     const a = data as any
     const { messages, type } = a
     if (a.splited) {
+      // Unpack base64-encoded WAProto messages
+      try {
+        a.messages = (a.messages || []).map((m: any) => {
+          if (m && m.__wa_b64) {
+            try {
+              const bytes = Buffer.from(m.__wa_b64, 'base64')
+              return proto.WebMessageInfo.decode(bytes)
+            } catch {}
+          }
+          return m
+        })
+      } catch {}
       try {
         await this.listener.process(phone, messages, type)
       } catch (error) {
@@ -56,12 +69,20 @@ export class ListenerJob {
         )
       } else {
         await Promise.all(messages.
-          map(async (m: object) => {
+          map(async (m: any) => {
+            // Pack WAProto messages as base64
+            let payloadMsg: any = m
+            try {
+              if (m && (m.key || m.message)) {
+                const bytes = proto.WebMessageInfo.encode(m as any).finish()
+                payloadMsg = { __wa_b64: Buffer.from(bytes).toString('base64') }
+              }
+            } catch {}
             return amqpPublish(
               UNOAPI_EXCHANGE_BRIDGE_NAME,
               `${UNOAPI_QUEUE_LISTENER}.${UNOAPI_SERVER_NAME}`,
               phone,
-              { messages: [m], type, splited: true },
+              { messages: [payloadMsg], type, splited: true },
               { type: 'direct' }
             )
           })
