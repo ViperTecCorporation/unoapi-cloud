@@ -68,16 +68,19 @@ export class ListenerJob {
          })
         )
       } else {
+        const shouldPack = ['message', 'notify', 'qrcode', 'append', 'history'].includes(type)
         await Promise.all(messages.
           map(async (m: any) => {
-            // Pack WAProto messages as base64
+            // Pack WAProto messages as base64 only when appropriate
             let payloadMsg: any = m
-            try {
-              if (m && (m.key || m.message)) {
-                const bytes = proto.WebMessageInfo.encode(m as any).finish()
-                payloadMsg = { __wa_b64: Buffer.from(bytes).toString('base64') }
-              }
-            } catch {}
+            if (shouldPack) {
+              try {
+                if (m && (m.key || m.message)) {
+                  const bytes = proto.WebMessageInfo.encode(m as any).finish()
+                  payloadMsg = { __wa_b64: Buffer.from(bytes).toString('base64') }
+                }
+              } catch {}
+            }
             return amqpPublish(
               UNOAPI_EXCHANGE_BRIDGE_NAME,
               `${UNOAPI_QUEUE_LISTENER}.${UNOAPI_SERVER_NAME}`,

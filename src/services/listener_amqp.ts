@@ -43,16 +43,19 @@ export class ListenerAmqp implements Listener {
     options.priority = options.priority || priorities[type] || 5
     options.delay = options.delay || delays[type](phone) || 0
     options.type = 'direct'
-    // Pack WAProto messages as base64 to avoid JSON.stringify on WAProto
-    const packed = messages.map((m: any) => {
-      try {
-        if (m && (m.key || m.message)) {
-          const bytes = proto.WebMessageInfo.encode(m as any).finish()
-          return { __wa_b64: Buffer.from(bytes).toString('base64') }
-        }
-      } catch {}
-      return m
-    })
+    // Pack WAProto messages only for types that carry full WebMessageInfo
+    const shouldPack = ['message', 'notify', 'qrcode', 'append', 'history'].includes(type as string)
+    const packed = shouldPack
+      ? messages.map((m: any) => {
+          try {
+            if (m && (m.key || m.message)) {
+              const bytes = proto.WebMessageInfo.encode(m as any).finish()
+              return { __wa_b64: Buffer.from(bytes).toString('base64') }
+            }
+          } catch {}
+          return m
+        })
+      : messages
     await amqpPublish(
       UNOAPI_EXCHANGE_BRIDGE_NAME,
       `${UNOAPI_QUEUE_LISTENER}.${UNOAPI_SERVER_NAME}`,
