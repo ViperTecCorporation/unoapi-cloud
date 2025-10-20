@@ -531,17 +531,17 @@ export class ClientBaileys implements Client {
             const currentStatus = await this.store?.dataStore?.loadStatus(payload?.message_id)
             if (currentStatus != status) {
               const key = await this.store?.dataStore?.loadKey(payload?.message_id)
-              logger.debug('key %s for %s', JSON.stringify(key), payload?.message_id)
+              try { logger.debug('key (jid=%s id=%s) for %s', key?.remoteJid, key?.id, payload?.message_id) } catch {}
               if (key?.id) {
                 if (key?.id.indexOf('-') > 0) {
                   logger.debug('Ignore read message for %s with key id %s reading message key %s...', this.phone, key?.id)
                 } else {
-                  logger.debug('baileys %s reading message key %s...', this.phone, JSON.stringify(key))
+                  try { logger.debug('baileys %s reading message (jid=%s id=%s)...', this.phone, key?.remoteJid, key?.id) } catch {}
                   if (await this.readMessages([key])) {
                     await this.store?.dataStore?.setStatus(payload?.message_id, status)
-                    logger.debug('baileys %s read message key %s!', this.phone, JSON.stringify(key))
+                    try { logger.debug('baileys %s read message (jid=%s id=%s)!', this.phone, key?.remoteJid, key?.id) } catch {}
                   } else {
-                    logger.debug('baileys %s not read message key %s!', this.phone, JSON.stringify(key))
+                    try { logger.debug('baileys %s not read message (jid=%s id=%s)!', this.phone, key?.remoteJid, key?.id) } catch {}
                     throw `not online session ${this.phone}`
                   }
                 }
@@ -551,17 +551,17 @@ export class ClientBaileys implements Client {
             }
           } else if (status == 'deleted') {
             const key = await this.store?.dataStore?.loadKey(payload?.message_id)
-            logger.debug('key %s for %s', JSON.stringify(key), payload?.message_id)
+            try { logger.debug('key (jid=%s id=%s) for %s', key?.remoteJid, key?.id, payload?.message_id) } catch {}
             if (key?.id) {
               if (key?.id.indexOf('-') > 0) {
                 logger.debug('Ignore delete message for %s with key id %s reading message key %s...', this.phone, key?.id)
               } else {
-                logger.debug('baileys %s deleting message key %s...', this.phone, JSON.stringify(key))
+                try { logger.debug('baileys %s deleting message (jid=%s id=%s)...', this.phone, key?.remoteJid, key?.id) } catch {}
                 if (await this.sendMessage(key.remoteJid!, { delete: key }, {})) {
                   await this.store?.dataStore?.setStatus(payload?.message_id, status)
-                  logger.debug('baileys %s delete message key %s!', this.phone, JSON.stringify(key))
+                  try { logger.debug('baileys %s delete message (jid=%s id=%s)!', this.phone, key?.remoteJid, key?.id) } catch {}
                 } else {
-                  logger.debug('baileys %s not delete message key %s!', this.phone, JSON.stringify(key))
+                  try { logger.debug('baileys %s not delete message (jid=%s id=%s)!', this.phone, key?.remoteJid, key?.id) } catch {}
                   throw `not online session ${this.phone}`
                 }
               }
