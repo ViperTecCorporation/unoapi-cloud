@@ -1138,9 +1138,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         recipient_id: recipientPn || senderId,
         status: cloudApiStatus,
       }
-      if (payload.messageTimestamp) {
-        state['timestamp'] = payload.messageTimestamp.toString()
-      }
+      // Preencher timestamp do status (Cloud API espera esse campo). Usar em ordem:
+      // 1) messageTimestamp calculado a partir de receipt/read
+      // 2) payload.messageTimestamp, se existir
+      try {
+        if (messageTimestamp) {
+          state['timestamp'] = `${messageTimestamp}`
+        } else if (payload.messageTimestamp) {
+          state['timestamp'] = payload.messageTimestamp.toString()
+        }
+      } catch {}
       if (cloudApiStatus == 'failed') {
         // https://github.com/tawn33y/whatsapp-cloud-api/issues/40#issuecomment-1290036629
         let title = payload?.update?.title || 'The Unoapi Cloud has a error, verify the logs'
