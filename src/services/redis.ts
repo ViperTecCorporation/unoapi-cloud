@@ -1,7 +1,7 @@
 import { createClient } from '@redis/client'
 import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS } from '../defaults'
 import logger from './logger'
-import { GroupMetadata } from '@whiskeysockets/baileys'
+import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config'
 
 export const BASE_KEY = 'unoapi-'
@@ -437,10 +437,20 @@ export const getBulkReport = async (phone: string, id: string) => {
 
 export const getMessage = async <T>(phone: string, jid: string, id: string): Promise<T | undefined> => {
   const key = messageKey(phone, jid, id)
-  const string = await redisGet(key)
-  if (string) {
-    const json = JSON.parse(string)
-    return json
+  const stored = await redisGet(key)
+  if (!stored) return undefined
+  // Detect JSON vs base64-encoded protobuf
+  if (stored.trim().startsWith('{') || stored.trim().startsWith('[')) {
+    try { return JSON.parse(stored) as T } catch { return undefined }
+  }
+  try {
+    const bytes = Buffer.from(stored, 'base64')
+    const msg = proto.WebMessageInfo.decode(bytes)
+    // Return protobuf message instance (compatible at runtime with WAMessage usage)
+    return msg as unknown as T
+  } catch {
+    // last resort: ignore corrupt entry
+    return undefined
   }
 }
 
@@ -467,8 +477,30 @@ export const setConnectCount = async (phone: string, count: number, ttl: number)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setMessage = async (phone: string, jid: string, id: string, value: any) => {
   const key = messageKey(phone, jid, id)
-  const string = JSON.stringify(value)
-  return redisSetAndExpire(key, string, DATA_TTL)
+  // Prefer compact, robust protobuf encoding to avoid JSON Long/toObject pitfalls
+  try {
+    const bytes = proto.WebMessageInfo.encode(value as any).finish()
+    const b64 = Buffer.from(bytes).toString('base64')
+    return redisSetAndExpire(key, b64, DATA_TTL)
+  } catch (e) {
+    // Fallback: store a minimal JSON summary to avoid crashing
+    try {
+      const mt = (() => { try { return Object.keys(value?.message || {})[0] } catch { return undefined } })()
+      const lite: any = {
+        key: {
+          id: value?.key?.id,
+          remoteJid: value?.key?.remoteJid,
+          fromMe: value?.key?.fromMe,
+          participant: value?.key?.participant,
+        },
+        messageTimestamp: value?.messageTimestamp,
+      }
+      if (mt) lite.message = { [mt]: {} }
+      return redisSetAndExpire(key, JSON.stringify(lite), DATA_TTL)
+    } catch {
+      return redisSetAndExpire(key, '{}', DATA_TTL)
+    }
+  }
 }
 
 export const getProfilePicture = async (phone: string, jid: string) => {
