@@ -34,6 +34,23 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 - Feat: profile pictures use canonical PN for filenames/keys (FS and S3); getters/setters consider PN and LID variants and log fallbacks.
 - Docs: update README and environment/architecture docs (PT-BR and EN) to describe LID/PN behavior, group addressing, webhook PN-first policy, and profile picture canonicalization.
 
+## 3.0.0-beta-81
+
+- Fix(webhook/status): padroniza `wa_id`/`recipient_id` como PN (somente dígitos) e corrige URL do webhook para terminar com `:phone_number_id` da sessão.
+  - Evita ficar travado em “sent” no Chatwoot por inbox errada ou recipient invertido.
+  - Ajuste defensivo: se `recipient_id` vier vazio/igual ao canal, força PN do outro lado.
+- Fix(conversation.id): reverte `conversation.id` para o JID da conversa (compatibilidade com testes), mantendo PN nos campos críticos.
+- Fix(status/duplicate): não persiste status antes de decidir enviar; persiste somente após envio para evitar auto-skip como duplicata.
+- Fix(logging/WAMessage): remove JSON.stringify de objetos WAProto em todos os caminhos (send/receive/eventos), logando apenas (jid,id,tipo/status).
+  - Mitiga “TypeError: this.isZero is not a function” (Long/WAProto).
+- Feat(storage/WAMessage): armazena mensagens como protobuf base64 (WebMessageInfo.encode) no Redis e File Store.
+  - `getMessage` decodifica base64; compatível com JSON legado; fallback para JSON mínimo em caso de falha.
+- Fix(AMQP bridge): empacota WAMessage como protobuf base64 somente para tipos `message|notify|qrcode|append|history`.
+  - Não empacotar `update/receipt/delete/status` (preserva campo `update`); evita “Unknown baileys message type undefined”.
+  - Consumer passa mensagens decodificadas (`a.messages`) para o listener (corrige regressão que interrompia envio/recebimento).
+- Fix(tests/compat): mantém `profile.picture` em mensagens novas e suprime em updates quando apropriado, para não gerar `picture: undefined` em testes de status.
+- Chore: logs de eventos (upsert/update/receipt/delete) resumidos (count+sample) para diagnósticos sem serializar WAProto.
+
 ## 3.0.0-beta-57
 
 - Feat(groups): reduce webhook/socket fan-out for group receipts/status
