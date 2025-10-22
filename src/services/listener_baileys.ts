@@ -201,6 +201,7 @@ export class ListenerBaileys implements Listener {
       try {
         if (i?.key?.remoteJid && i?.key?.id && !i?.key?.fromMe) {
           await dataStore.setLastIncomingKey?.(i.key.remoteJid!, i.key)
+          logger.debug('READ_ON_REPLY: set lastIncoming %s -> %s', i.key.remoteJid, i.key.id)
         }
       } catch {}
       // Mapeia PN (apenas dígitos) -> JID reportado pelo evento, sem heurística BR

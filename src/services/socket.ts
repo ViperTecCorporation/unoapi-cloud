@@ -959,9 +959,13 @@ export const connect = async ({
         if (config.readOnReply && id) {
           let target = id
           try { if (isLidUser(target)) target = jidNormalizedUser(target) } catch {}
+          logger.debug('READ_ON_REPLY: enabled for %s (normalized=%s)', id, target)
           const lastKey = await dataStore.getLastIncomingKey?.(target) || await dataStore.getLastIncomingKey?.(id)
           if (lastKey && lastKey.remoteJid && lastKey.id && !lastKey.fromMe) {
+            logger.info('READ_ON_REPLY: reading last incoming id=%s jid=%s', lastKey.id, lastKey.remoteJid)
             await read([lastKey])
+          } else {
+            logger.debug('READ_ON_REPLY: no last incoming pointer for %s', target)
           }
         }
       } catch (e) {
