@@ -197,7 +197,11 @@ export class ListenerBaileys implements Listener {
       const senderPhone = resp[1]
       const senderId = resp[2]
       const { dataStore } = await config.getStore(phone, config)
-      await dataStore.setJidIfNotFound(jidToPhoneNumber(senderPhone, ''), senderId)
+      // Mapeia PN (apenas dígitos) -> JID reportado pelo evento, sem heurística BR
+      try {
+        const pn = (senderPhone || '').replace(/\D/g, '')
+        if (pn) { await dataStore.setJidIfNotFound(pn, senderId) }
+      } catch {}
     } catch (error) {
       if (error instanceof BindTemplateError) {
         const template = new Template(this.getConfig)

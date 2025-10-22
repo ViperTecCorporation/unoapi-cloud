@@ -366,6 +366,27 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         }
       }
     }
+    // Reparar mapeamentos inconsistentes: se cache retornou JID cujo PN difere do input, revalidar
+    try {
+      const inputPn = `${phoneOrJid}`.replace(/\D/g, '')
+      const cachedPn = `${jid || ''}`.split('@')[0].replace(/\D/g, '')
+      if (inputPn && cachedPn && inputPn !== cachedPn) {
+        try {
+          logger.debug('JID cache mismatch %s (cached PN %s). Re-validating via onWhatsApp', phoneOrJid, cachedPn)
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          const res: any = await sock?.onWhatsApp!(inputPn)
+          const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
+          if (ok) {
+            jid = res[0].jid
+            await dataStore.setJid(phoneOrJid, jid!)
+            try { if (isLidUser(jid)) await dataStore.setJidMapping?.(phone, jidNormalizedUser(jid), jid as string) } catch {}
+            logger.info('Repaired JID mapping for %s => %s', phoneOrJid, jid)
+          }
+        } catch (e) {
+          logger.debug('onWhatsApp repair failed for %s: %s', phoneOrJid, (e as any)?.message || e)
+        }
+      }
+    } catch {}
     return jid
   }
   dataStore.loadMediaPayload = async (id: string) => {

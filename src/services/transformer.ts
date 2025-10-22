@@ -316,12 +316,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
 }
 
 export const phoneNumberToJid = (phoneNumber: string) => {
-  if (phoneNumber.indexOf('@') >= 0) {
-    logger.debug('%s already is jid', phoneNumber)
-    return phoneNumber
-  } else {
-    const jid = `${jidToPhoneNumber(phoneNumber, '')}@s.whatsapp.net`
-    logger.debug('transform %s to %s', phoneNumber, jid)
+  try {
+    if (typeof phoneNumber === 'string' && phoneNumber.includes('@')) {
+      logger.debug('%s already is jid', phoneNumber)
+      return phoneNumber
+    }
+    // Conversão PN -> JID SEM heurísticas (apenas dígitos)
+    const pn = ensurePn(`${phoneNumber}`)
+    const jid = `${pn}@s.whatsapp.net`
+    logger.debug('PN->JID transform %s => %s', phoneNumber, jid)
+    return jid
+  } catch {
+    const jid = `${`${phoneNumber}`.replace(/\D/g, '')}@s.whatsapp.net`
+    logger.debug('PN->JID fallback %s => %s', phoneNumber, jid)
     return jid
   }
 }
