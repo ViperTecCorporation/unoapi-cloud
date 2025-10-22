@@ -9,7 +9,7 @@ import {
   UNOAPI_QUEUE_TRANSCRIBER,
   UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED
 } from '../defaults'
-import { extractDestinyPhone, isAudioMessage, isIncomingMessage, jidToPhoneNumber, TYPE_MESSAGES_MEDIA } from '../services/transformer'
+import { extractDestinyPhone, isAudioMessage, isIncomingMessage, TYPE_MESSAGES_MEDIA, normalizeUserOrGroupIdForWebhook } from '../services/transformer'
 import logger from '../services/logger'
 import { getConfig } from '../services/config'
 import { isUpdateMessage, isFailedStatus } from '../services/transformer'
@@ -109,7 +109,7 @@ export class OutgoingJob {
         } else {
           payload.entry[0].changes[0].value.contacts = await Promise.all(
             payload.entry[0].changes[0].value.contacts.map(async contact => {
-              contact.wa_id = jidToPhoneNumber(contact.wa_id, '')
+              contact.wa_id = normalizeUserOrGroupIdForWebhook(contact.wa_id)
               return contact
             })
           )
@@ -132,7 +132,7 @@ export class OutgoingJob {
                   message.reaction.id = unoId
                 }
               }
-              message.from = jidToPhoneNumber(message.from, '')
+              message.from = normalizeUserOrGroupIdForWebhook(message.from)
               return message
             })
           )

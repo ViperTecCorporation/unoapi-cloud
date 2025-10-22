@@ -3,7 +3,7 @@ import { Outgoing } from '../services/outgoing'
 import { UNOAPI_QUEUE_COMMANDER, UNOAPI_QUEUE_BULK_STATUS, FETCH_TIMEOUT_MS, UNOAPI_SERVER_NAME, UNOAPI_EXCHANGE_BROKER_NAME } from '../defaults'
 import { PublishOption, amqpPublish } from '../amqp'
 import { getConfig } from '../services/config'
-import { jidToPhoneNumber, getMimetype, toBuffer, TYPE_MESSAGES_MEDIA } from '../services/transformer'
+import { normalizeUserOrGroupIdForWebhook, getMimetype, toBuffer, TYPE_MESSAGES_MEDIA } from '../services/transformer'
 import logger from '../services/logger'
 import fetch, { Response } from 'node-fetch'
 import mime from 'mime-types'
@@ -35,7 +35,7 @@ export class IncomingJob {
     const payload: any = a.payload
     const options: object = a.options
     const idUno: string = a.id || uuid()
-    const waId = jidToPhoneNumber(payload.to, '')
+    const waId = normalizeUserOrGroupIdForWebhook(payload.to)
     const timestamp = Math.floor(new Date().getTime() / 1000).toString()
     // const retries: number = a.retries ? a.retries + 1 : 1
     // Idempotency guard: skip send if this UNO id looks already processed

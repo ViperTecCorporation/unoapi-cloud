@@ -643,6 +643,79 @@ export const jidToPhoneNumberIfUser = (value: any): string => {
   return isIndividualJid(value) ? jidToPhoneNumber(value, '') : value 
 }
 
+// Normaliza IDs para webhook mantendo grupos intactos e convertendo usuários para PN com regra BR do 9º dígito
+// - Mantém '@g.us' sem alterações (group_id, group_picture, etc.)
+// - Converte '@lid' -> PN JID e depois -> PN
+// - Converte JID de usuário -> PN
+// - Aplica 9º dígito no Brasil somente para PN de usuários (55 + DDD + 8 dígitos iniciando em [6-9])
+export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
+  const brMobile9 = (digits?: string) => {
+    try {
+      const s = `${digits || ''}`.replace(/\D/g, '')
+      if (!s.startsWith('55')) return s
+      if (s.length === 12) {
+        const ddd = s.slice(2, 4)
+        const local = s.slice(4)
+        if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
+      }
+      return s
+    } catch {
+      return `${digits || ''}`
+    }
+  }
+  try {
+    let val = `${value || ''}`
+    if (!val) return val
+    // Não normalizar grupos
+    if (val.includes('@g.us')) return val
+    // Normalizar LID -> PN JID
+    try {
+      if (val.includes('@lid')) {
+        val = jidNormalizedUser(val)
+      }
+    } catch {}
+    // Converter JID de usuário para PN quando aplicável
+    try {
+      if (!/^\+?\d+$/.test(val)) {
+        val = jidToPhoneNumberIfUser(val)
+      }
+    } catch {}
+    // Garantir PN apenas dígitos e aplicar regra do 9º dígito BR
+    try {
+      const pn = ensurePn(val)
+      if (pn) return brMobile9(pn)
+    } catch {}
+    return val
+  } catch {
+    return `${value || ''}`
+  }
+}
+
+// Aplica normalização nos campos de IDs do payload Cloud API pronto para envio
+// - contacts[*].wa_id
+// - messages[*].from
+// - statuses[*].recipient_id
+export const normalizeWebhookValueIds = (cloudValue: any): void => {
+  try {
+    const v: any = cloudValue || {}
+    if (Array.isArray(v.contacts)) {
+      for (const c of v.contacts) {
+        if (c && typeof c.wa_id === 'string') c.wa_id = normalizeUserOrGroupIdForWebhook(c.wa_id)
+      }
+    }
+    if (Array.isArray(v.messages)) {
+      for (const m of v.messages) {
+        if (m && typeof m.from === 'string') m.from = normalizeUserOrGroupIdForWebhook(m.from)
+      }
+    }
+    if (Array.isArray(v.statuses)) {
+      for (const s of v.statuses) {
+        if (s && typeof s.recipient_id === 'string') s.recipient_id = normalizeUserOrGroupIdForWebhook(s.recipient_id)
+      }
+    }
+  } catch {}
+}
+
 /*
 {
   "object": "whatsapp_business_account",

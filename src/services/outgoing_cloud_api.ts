@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, ensurePn, jidToPhoneNumberIfUser } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds } from './transformer'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
 
@@ -62,62 +62,7 @@ export class OutgoingCloudApi implements Outgoing {
       return
     }
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
-    try {
-      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
-      const brMobile9 = (digits?: string) => {
-        try {
-          const s = `${digits || ''}`.replace(/\D/g, '')
-          if (!s.startsWith('55')) return s
-          if (s.length === 12) {
-            const ddd = s.slice(2, 4)
-            const local = s.slice(4)
-            if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
-          }
-          return s
-        } catch { return digits }
-      }
-      const norm = (x?: string) => {
-        let val = `${x || ''}`
-        // Não normalizar grupos: manter @g.us intacto
-        if (val.includes('@g.us')) return val
-        // Se vier LID, normaliza para PN
-        try {
-          if (val.includes('@lid')) {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { jidNormalizedUser } = require('@whiskeysockets/baileys')
-            val = jidNormalizedUser(val)
-          }
-        } catch {}
-        // Converter JID de usuário para PN quando aplicável
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { jidToPhoneNumberIfUser } = require('./transformer')
-          if (!/^\+?\d+$/.test(val)) val = jidToPhoneNumberIfUser(val)
-        } catch {}
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { ensurePn } = require('./transformer')
-          const direct = ensurePn(val)
-          if (direct) return brMobile9(direct)
-        } catch {}
-        return val
-      }
-      if (Array.isArray(v.contacts)) {
-        for (const c of v.contacts) {
-          if (c && typeof c.wa_id === 'string') c.wa_id = norm(c.wa_id)
-        }
-      }
-      if (Array.isArray(v.messages)) {
-        for (const m of v.messages) {
-          if (m && typeof m.from === 'string') m.from = norm(m.from)
-        }
-      }
-      if (Array.isArray(v.statuses)) {
-        for (const s of v.statuses) {
-          if (s && typeof s.recipient_id === 'string') s.recipient_id = norm(s.recipient_id)
-        }
-      }
-    } catch {}
+    try { normalizeWebhookValueIds((message as any)?.entry?.[0]?.changes?.[0]?.value) } catch {}
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
