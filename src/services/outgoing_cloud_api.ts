@@ -64,10 +64,22 @@ export class OutgoingCloudApi implements Outgoing {
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
     try {
       const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const brMobile9 = (digits?: string) => {
+        try {
+          const s = `${digits || ''}`.replace(/\D/g, '')
+          if (!s.startsWith('55')) return s
+          if (s.length === 12) {
+            const ddd = s.slice(2, 4)
+            const local = s.slice(4)
+            if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
+          }
+          return s
+        } catch { return digits }
+      }
       const norm = (x?: string) => {
-        const y = ensurePn(x || '')
-        if (y) return y
-        try { return ensurePn(jidToPhoneNumberIfUser(x || '')) } catch { return x }
+        const direct = ensurePn(x || '')
+        if (direct) return brMobile9(direct)
+        try { return brMobile9(ensurePn(jidToPhoneNumberIfUser(x || ''))) } catch { return x }
       }
       if (Array.isArray(v.contacts)) {
         for (const c of v.contacts) {
