@@ -320,7 +320,9 @@
           connectionType: 'Connection Type', proxyUrlLabel: 'Proxy URL (Restart Unoapi after change)', proxyUrlPh: 'Ex: socks5://user:pass@host:port',
           rejectCallsLabel: 'Message when rejecting calls', rejectCallsPh: 'Leave blank to not auto-reject calls', serverLabel: 'Server',
           ignoreGroupMessages: 'Ignore Group Messages', ignoreNewsletterMessages: 'Ignore Newsletter Messages', ignoreHistoryMessages: 'Ignore Message History',
-          readOnReceipt: 'Mark as read on receive', sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
+          readOnReceipt: 'Mark as read on receive',
+          readOnReply: 'Mark as read on reply',
+          sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
           notifyFailures: 'Notify Failures', sendTyping: 'Send "Typing"', sendReactionAsReply: 'Send Reaction As Reply', ignoreOwnMessages: 'Ignore Own Messages', ignoreYourselfMessages: 'Ignore Yourself Messages', autoConnect: 'Auto Connect', ignoreBroadcastMessages: 'Ignore Broadcast Lists',
           whId: 'ID', whIdPh: 'Webhook ID', whUrlAbs: 'Absolute URL', whUrlAbsPh: 'Webhook Absolute URL', whToken: 'Token', whTokenPh: 'Webhook Token', whHeader: 'Header', whHeaderPh: 'Webhook Header',
           whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', remove: 'Remove',
@@ -364,7 +366,9 @@
           connectionType: 'Tipo de Conexão', proxyUrlLabel: 'Proxy Url (Precisa Reiniciar a Unoapi ao Alterar)', proxyUrlPh: 'Ex: socks5://user:pass@ip/domain:port',
           rejectCallsLabel: 'Mensagem ao Rejeitar Chamadas', rejectCallsPh: 'Deixe em Branco para não Rejeitar ligações automaticamente', serverLabel: 'Server',
           ignoreGroupMessages: 'Ignorar Mensagens de Grupo', ignoreNewsletterMessages: 'Ignorar Mensagens de Newsletter', ignoreHistoryMessages: 'Ignorar Histórico de Mensagens',
-          readOnReceipt: 'Ler a mensagem ao receber', sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
+          readOnReceipt: 'Ler a mensagem ao receber',
+          readOnReply: 'Ler a mensagem ao responder',
+          sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
           notifyFailures: 'Notificar Falhas', sendTyping: 'Enviar "Digitando"', sendReactionAsReply: 'Enviar Reação Como Resposta', ignoreOwnMessages: 'Ignorar Mensagens Próprias', ignoreYourselfMessages: 'Ignorar Suas Mensagens', autoConnect: 'Conexão Automática', ignoreBroadcastMessages: 'Ignorar Listas de Transmissão',
           whId: 'ID', whIdPh: 'ID do Webhook', whUrlAbs: 'URL Absoluta', whUrlAbsPh: 'URL Absoluta do Webhook', whToken: 'Token', whTokenPh: 'Token do Webhook', whHeader: 'Header', whHeaderPh: 'Header do Webhook',
           whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', remove: 'Remover',
@@ -619,6 +623,13 @@
                                     <span class="slider round"></span>
                                 </label>
                                 <label for="readOnReceipt" class="form-label" data-i18n="readOnReceipt">Mark as read on receive</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label class="switch">
+                                    <input type="checkbox" id="readOnReply" name="readOnReply">
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="readOnReply" class="form-label" data-i18n="readOnReply">Mark as read on reply</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
@@ -1172,6 +1183,7 @@
                 $('#ignoreNewsletterMessages').prop('checked', session.ignoreNewsletterMessages);
                 $('#ignoreHistoryMessages').prop('checked', session.ignoreHistoryMessages);
                 $('#readOnReceipt').prop('checked', session.readOnReceipt);
+                try { $('#readOnReply').prop('checked', !!session.readOnReply); } catch {}
                 $('#sendProfilePicture').prop('checked', session.sendProfilePicture);
                 $('#ignoreOwnMessages').prop('checked', session.ignoreOwnMessages);
                 $('#ignoreYourselfMessages').prop('checked', session.ignoreYourselfMessages);
@@ -1275,6 +1287,7 @@
                         ignoreNewsletterMessages: $('#ignoreNewsletterMessages').is(':checked'),
                         ignoreHistoryMessages: $('#ignoreHistoryMessages').is(':checked'),
                         readOnReceipt: $('#readOnReceipt').is(':checked'),
+                        readOnReply: $('#readOnReply').is(':checked'),
                         sendProfilePicture: $('#sendProfilePicture').is(':checked'),
                         ignoreOwnMessages: $('#ignoreOwnMessages').is(':checked'),
                         ignoreYourselfMessages: $('#ignoreYourselfMessages').is(':checked'),
