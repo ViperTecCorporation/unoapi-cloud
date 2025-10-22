@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, ensurePn, jidToPhoneNumberIfUser } from './transformer'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
 
@@ -29,6 +29,30 @@ export class OutgoingCloudApi implements Outgoing {
   }
 
   public async sendHttp(phone: string, webhook: Webhook, message: object, _options: Partial<PublishOption> = {}) {
+    // Sanitize phone fields (avoid leaking LID/JID into wa_id/from/recipient_id)
+    try {
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const norm = (x?: string) => {
+        const y = ensurePn(x || '')
+        if (y) return y
+        try { return ensurePn(jidToPhoneNumberIfUser(x || '')) } catch { return x }
+      }
+      if (Array.isArray(v.contacts)) {
+        for (const c of v.contacts) {
+          if (c && typeof c.wa_id === 'string') c.wa_id = norm(c.wa_id)
+        }
+      }
+      if (Array.isArray(v.messages)) {
+        for (const m of v.messages) {
+          if (m && typeof m.from === 'string') m.from = norm(m.from)
+        }
+      }
+      if (Array.isArray(v.statuses)) {
+        for (const s of v.statuses) {
+          if (s && typeof s.recipient_id === 'string') s.recipient_id = norm(s.recipient_id)
+        }
+      }
+    } catch {}
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)
