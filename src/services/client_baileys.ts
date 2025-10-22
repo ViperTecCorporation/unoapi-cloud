@@ -829,7 +829,23 @@ export class ClientBaileys implements Client {
         const code = e.code
         const title = e.title
         await this.onNotification(title, true)
+        // Retry path for session/crypto errors (No session / Bad MAC)
         if ([3, '3', 12, '12'].includes(code)) {
+          try {
+            // Avoid infinite loop
+            if (!options || !options.__assertRetried) {
+              // Prefer LID when available and trigger a fresh exists();
+              // socket.send() will pre-assert sessions for 1:1 internally
+              const toRaw: string = (typeof payload?.to === 'string') ? payload.to : ''
+              // Normalize to JID form if needed for exists()
+              let target = toRaw
+              try { target = toRaw.includes('@') ? toRaw : phoneNumberToJid(toRaw) } catch {}
+              try { await this.exists(target) } catch {}
+              const newOptions = { ...(options || {}), __assertRetried: true }
+              try { return await this.send(payload, newOptions) } catch {}
+            }
+          } catch {}
+          // Fallback: reconnect session (legacy path)
           await this.close()
           await this.connect(1)
         }
