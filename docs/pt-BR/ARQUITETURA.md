@@ -142,6 +142,27 @@ Para ver logs de aprendizado PN→LID e asserts, ajuste `LOG_LEVEL`/`UNO_LOG_LEV
   - `src/services/transformer.ts`
   - `src/defaults.ts`
 
+## Comportamentos de Leitura (READ_ON_RECEIPT e READ_ON_REPLY)
+
+- READ_ON_RECEIPT
+  - Flag global/por sessão que marca como lidas as mensagens ao receber.
+  - Implementado em `src/services/client_baileys.ts`: após tratar `messages.upsert`, se habilitado e a mensagem não for `fromMe`, chama `readMessages([key])`.
+  - Atua apenas em mensagens futuras (não é retroativo).
+
+- READ_ON_REPLY (por sessão)
+  - Quando habilitado, após um envio bem-sucedido para um chat, o Unoapi marca como lida a última mensagem recebida (não‑fromMe) daquele chat.
+  - Persistência do ponteiro (última recebida por chat):
+    - Interface: `getLastIncomingKey/setLastIncomingKey` em `src/services/data_store.ts`.
+    - File store: mapa em memória em `src/services/data_store_file.ts`.
+    - Redis store: chaves `unoapi-last-incoming:<session>:<jid>` em `src/services/redis.ts`, com ponte em `src/services/data_store_redis.ts`.
+  - Atualização do ponteiro (ao receber): `src/services/listener_baileys.ts` atualiza sempre que processa mensagem de entrada não‑fromMe.
+  - Disparo ao responder (após enviar): `src/services/socket.ts` verifica `config.readOnReply`; se true, busca o ponteiro para o JID alvo (normalizando LID→PN quando necessário) e chama `readMessages([key])`.
+  - `readMessages` pré‑assegura sessões dos JIDs envolvidos para evitar “No sessions” ao aplicar leitura.
+  - Privacidade segue o WhatsApp: o visto depende das configurações de leitura de ambos os usuários.
+
+Flags e configuração
+- `READ_ON_RECEIPT`, `READ_ON_REPLY` estão em `src/defaults.ts` e são ligadas ao config por sessão em `src/services/config_by_env.ts` (campos `readOnReceipt` e `readOnReply` em `src/services/config.ts`).
+
 ## Fluxo de Fotos de Perfil
 
 Visão geral (quando `SEND_PROFILE_PICTURE=true`):

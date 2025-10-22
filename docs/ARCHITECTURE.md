@@ -148,6 +148,27 @@ Large-group heuristics
 - `src/services/transformer.ts` — Cloud API ↔ Baileys content mapping, JID/phone helpers.
 - `src/defaults.ts` — feature flags and defaults.
 
+## Read Behaviors (READ_ON_RECEIPT and READ_ON_REPLY)
+
+- READ_ON_RECEIPT
+  - Global/session flag that marks messages as read upon reception.
+  - Wired in `src/services/client_baileys.ts`: after processing `messages.upsert`, if enabled and the message is not fromMe, calls `readMessages([key])`.
+  - Affects only future messages; does not act retroactively.
+
+- READ_ON_REPLY (per session)
+  - When enabled, after a successful send to a chat, Unoapi marks as read the last incoming (not fromMe) message for that same chat.
+  - Pointer persistence (last incoming per chat):
+    - Interface: `getLastIncomingKey/setLastIncomingKey` in `src/services/data_store.ts`.
+    - File store: in-memory map in `src/services/data_store_file.ts`.
+    - Redis store: keys under `unoapi-last-incoming:<session>:<jid>` via helpers in `src/services/redis.ts` and bridged in `src/services/data_store_redis.ts`.
+  - Pointer update (on receive): `src/services/listener_baileys.ts` updates the pointer whenever an incoming non-fromMe message is processed.
+  - Trigger on reply (after send): `src/services/socket.ts` checks `config.readOnReply`; if true, looks up the last incoming key for the target JID (normalizing LID→PN when needed) and calls `readMessages([key])`.
+  - `readMessages` proactively asserts the sessions for the involved JIDs to avoid “No sessions” on the read operation.
+  - Privacy semantics follow WhatsApp: read receipts depend on both users’ settings.
+
+Flags and configuration
+- `READ_ON_RECEIPT`, `READ_ON_REPLY` are exposed via `src/defaults.ts` and bound to session config in `src/services/config_by_env.ts` (fields `readOnReceipt` and `readOnReply` in `src/services/config.ts`).
+
 ## Profile Pictures Flow
 
 Flow overview (when SEND_PROFILE_PICTURE=true):
