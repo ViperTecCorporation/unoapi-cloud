@@ -146,6 +146,8 @@ export const IGNORE_NEWSLETTER_MESSAGES: boolean = process.env.IGNORE_NEWSLETTER
 export const IGNORE_BROADCAST_STATUSES: boolean =
   process.env.IGNORE_BROADCAST_STATUSES === _undefined ? true : process.env.IGNORE_BROADCAST_STATUSES == 'true'
 export const READ_ON_RECEIPT: boolean = process.env.READ_ON_RECEIPT === _undefined ? false : process.env.READ_ON_RECEIPT == 'true'
+// Marca como lida ao responder (por sessão)
+export const READ_ON_REPLY: boolean = process.env.READ_ON_REPLY === _undefined ? false : process.env.READ_ON_REPLY == 'true'
 export const IGNORE_BROADCAST_MESSAGES: boolean =
   process.env.IGNORE_BROADCAST_MESSAGES === _undefined ? false : process.env.IGNORE_OWN_MESSAGES == 'true'
 export const IGNORE_HISTORY_MESSAGES: boolean =

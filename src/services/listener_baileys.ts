@@ -197,6 +197,12 @@ export class ListenerBaileys implements Listener {
       const senderPhone = resp[1]
       const senderId = resp[2]
       const { dataStore } = await config.getStore(phone, config)
+      // Atualiza ponteiro da última mensagem recebida por chat (para ler ao responder)
+      try {
+        if (i?.key?.remoteJid && i?.key?.id && !i?.key?.fromMe) {
+          await dataStore.setLastIncomingKey?.(i.key.remoteJid!, i.key)
+        }
+      } catch {}
       // Mapeia PN (apenas dígitos) -> JID reportado pelo evento, sem heurística BR
       try {
         const pn = (senderPhone || '').replace(/\D/g, '')

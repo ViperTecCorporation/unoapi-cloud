@@ -50,6 +50,7 @@ export type Config = {
   // Se true, para groups em messages.update repassa somente DELIVERY_ACK (delivered)
   groupOnlyDeliveredStatus: boolean
   readOnReceipt: boolean
+  readOnReply: boolean
   ignoreHistoryMessages: boolean
   ignoreYourselfMessages: boolean
   ignoreOwnMessages: boolean
@@ -112,6 +113,7 @@ export const defaultConfig: Config = {
   ignoreGroupIndividualReceipts: true,
   groupOnlyDeliveredStatus: true,
   readOnReceipt: false,
+  readOnReply: false,
   ignoreHistoryMessages: true,
   ignoreOwnMessages: true,
   ignoreYourselfMessages: true,

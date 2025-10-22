@@ -189,6 +189,11 @@ const messageKey = (phone: string, jid: string, id: string) => {
   return `${BASE_KEY}message:${phone}:${jid}:${id}`
 }
 
+// Última mensagem recebida (não-fromMe) por chat
+const lastIncomingKeyKey = (phone: string, jid: string) => {
+  return `${BASE_KEY}last-incoming:${phone}:${jid}`
+}
+
 export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
@@ -452,6 +457,20 @@ export const getMessage = async <T>(phone: string, jid: string, id: string): Pro
     // last resort: ignore corrupt entry
     return undefined
   }
+}
+
+// Persistência de última mensagem recebida por chat
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const getLastIncomingKey = async (phone: string, jid: string): Promise<any | undefined> => {
+  const key = lastIncomingKeyKey(phone, jid)
+  const stored = await redisGet(key)
+  if (!stored) return undefined
+  try { return JSON.parse(stored) } catch { return undefined }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const setLastIncomingKey = async (phone: string, jid: string, value: any) => {
+  const key = lastIncomingKeyKey(phone, jid)
+  return redisSetAndExpire(key, JSON.stringify(value), DATA_TTL)
 }
 
 export const getConnectCount = async(phone: string) => {

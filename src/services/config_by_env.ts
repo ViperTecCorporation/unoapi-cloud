@@ -43,6 +43,7 @@ import {
   CONNECTION_TYPE,
   QR_TIMEOUT_MS,
   READ_ON_RECEIPT,
+  READ_ON_REPLY,
   IGNORE_NEWSLETTER_MESSAGES,
   WEBHOOK_SEND_NEWSLETTER_MESSAGES,
   WEBHOOK_SEND_UPDATE_MESSAGES,
@@ -72,6 +73,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.ignoreGroupMessages = IGNORE_GROUP_MESSAGES
     config.ignoreNewsletterMessages = IGNORE_NEWSLETTER_MESSAGES
     config.readOnReceipt = READ_ON_RECEIPT
+    config.readOnReply = READ_ON_REPLY
     config.ignoreBroadcastStatuses = IGNORE_BROADCAST_STATUSES
     config.ignoreBroadcastMessages = IGNORE_BROADCAST_MESSAGES
     config.ignoreGroupIndividualReceipts = GROUP_IGNORE_INDIVIDUAL_RECEIPTS

@@ -30,7 +30,7 @@ import logger from './logger'
 import { getDataStoreFile } from './data_store_file'
 import { defaultConfig } from './config'
 import { CLEAN_CONFIG_ON_DISCONNECT, JIDMAP_CACHE_ENABLED } from '../defaults'
-import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping } from './redis'
+import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey } from './redis'
 
 export const getDataStoreRedis: getDataStore = async (phone: string, config: Config): Promise<DataStore> => {
   if (!dataStores.has(phone)) {
@@ -138,6 +138,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     const newJid = isIndividualJid(remoteJid) ? phoneNumberToJid(jidToPhoneNumber(remoteJid)) : remoteJid
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return setMessage(phone, newJid, message.key.id!, message)
+  }
+  store.getLastIncomingKey = async (jid: string) => {
+    return (await redisGetLastIncomingKey(phone, jid)) as any
+  }
+  store.setLastIncomingKey = async (jid: string, key: proto.IMessageKey) => {
+    return redisSetLastIncomingKey(phone, jid, key)
   }
   store.cleanSession = async (removeConfig = CLEAN_CONFIG_ON_DISCONNECT) => {
     if (removeConfig) {

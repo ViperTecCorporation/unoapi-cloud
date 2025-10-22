@@ -48,6 +48,9 @@ export type DataStore  = {
   setJid: (phone: string, jid: string) => Promise<void>
   setJidIfNotFound: (phone: string, jid: string) => Promise<void>
   setMessage: (jid: string, message: WAMessage) => Promise<void>
+  // Última mensagem recebida por chat (para ler ao responder)
+  getLastIncomingKey?: (jid: string) => Promise<WAMessageKey | undefined>
+  setLastIncomingKey?: (jid: string, key: WAMessageKey) => Promise<void>
   cleanSession: (removeConfig: boolean) => Promise<void>
   loadTemplates(): Promise<object[]>
   setTemplates(templates: string): Promise<void>

@@ -954,6 +954,19 @@ export const connect = async ({
       } catch (e) {
         logger.warn(e as any, 'Ignore error tracking pending group send')
       }
+      // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
+      try {
+        if (config.readOnReply && id) {
+          let target = id
+          try { if (isLidUser(target)) target = jidNormalizedUser(target) } catch {}
+          const lastKey = await dataStore.getLastIncomingKey?.(target) || await dataStore.getLastIncomingKey?.(id)
+          if (lastKey && lastKey.remoteJid && lastKey.id && !lastKey.fromMe) {
+            await read([lastKey])
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error on readOnReply')
+      }
       return full
     }
     if (!isValidPhoneNumber(to)) {

@@ -57,6 +57,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const medias: Map<string, string> = new Map()
   // Armazena mensagens como base64 de WebMessageInfo para evitar JSON.stringify do WAProto
   const messages: Map<string, string> = new Map()
+  // Última mensagem recebida (não-fromMe) por jid
+  const lastIncoming: Map<string, proto.IMessageKey> = new Map()
   const groups: NodeCache = new NodeCache()
   // JID mapping cache (PN <-> LID) per-process
   const jidMap: NodeCache = new NodeCache()
@@ -90,6 +92,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           return acc
         }, new Map()),
       medias,
+      lastIncoming,
     }
   }
   dataStore.fromJSON = (json) => {
@@ -113,6 +116,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     })
     json?.medias.entries().forEach(([key, value]) => {
       medias.set(key, value)
+    })
+    json?.lastIncoming.entries().forEach(([key, value]) => {
+      lastIncoming.set(key, value)
     })
   }
   // JID map helpers
@@ -417,6 +423,12 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       // fallback mínimo
       try { messages.set(`${jid}-${message?.key?.id!}`, JSON.stringify({ key: message?.key })) } catch {}
     }
+  }
+  dataStore.getLastIncomingKey = async (jid: string) => {
+    return lastIncoming.get(jid)
+  }
+  dataStore.setLastIncomingKey = async (jid: string, key: WAMessageKey) => {
+    try { lastIncoming.set(jid, key as unknown as proto.IMessageKey) } catch { /* ignore */ }
   }
   // --- PN <-> LID mapping helpers (optional) ---
   dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
