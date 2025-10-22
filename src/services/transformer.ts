@@ -321,8 +321,22 @@ export const phoneNumberToJid = (phoneNumber: string) => {
       logger.debug('%s already is jid', phoneNumber)
       return phoneNumber
     }
-    // Conversão PN -> JID SEM heurísticas (apenas dígitos)
-    const pn = ensurePn(`${phoneNumber}`)
+    // PN -> JID com ajuste do 9º dígito (Brasil)
+    const raw = ensurePn(`${phoneNumber}`)
+    const brMobile9 = (digits?: string) => {
+      try {
+        const s = `${digits || ''}`.replace(/\D/g, '')
+        if (!s.startsWith('55')) return s
+        // 55 + DDD(2) + local; se local tiver 8 dígitos e começar em [6-9], inserir 9 após DDD
+        if (s.length === 12) {
+          const ddd = s.slice(2, 4)
+          const local = s.slice(4)
+          if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
+        }
+        return s
+      } catch { return digits || '' }
+    }
+    const pn = brMobile9(raw)
     const jid = `${pn}@s.whatsapp.net`
     logger.debug('PN->JID transform %s => %s', phoneNumber, jid)
     return jid
