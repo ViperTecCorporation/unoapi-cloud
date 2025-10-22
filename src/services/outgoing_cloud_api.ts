@@ -77,9 +77,30 @@ export class OutgoingCloudApi implements Outgoing {
         } catch { return digits }
       }
       const norm = (x?: string) => {
-        const direct = ensurePn(x || '')
-        if (direct) return brMobile9(direct)
-        try { return brMobile9(ensurePn(jidToPhoneNumberIfUser(x || ''))) } catch { return x }
+        let val = `${x || ''}`
+        // Não normalizar grupos: manter @g.us intacto
+        if (val.includes('@g.us')) return val
+        // Se vier LID, normaliza para PN
+        try {
+          if (val.includes('@lid')) {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { jidNormalizedUser } = require('@whiskeysockets/baileys')
+            val = jidNormalizedUser(val)
+          }
+        } catch {}
+        // Converter JID de usuário para PN quando aplicável
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { jidToPhoneNumberIfUser } = require('./transformer')
+          if (!/^\+?\d+$/.test(val)) val = jidToPhoneNumberIfUser(val)
+        } catch {}
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { ensurePn } = require('./transformer')
+          const direct = ensurePn(val)
+          if (direct) return brMobile9(direct)
+        } catch {}
+        return val
       }
       if (Array.isArray(v.contacts)) {
         for (const c of v.contacts) {
