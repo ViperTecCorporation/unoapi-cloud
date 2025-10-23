@@ -81,7 +81,7 @@ This guide explains key environment variables, when to use them, and why. Copy `
 
 Large groups (No-sessions mitigation & throttles)
 - `GROUP_LARGE_THRESHOLD` — Consider a group as “large” when participant count exceeds this threshold. Default `800`.
-  - When large, the client forces PN addressing to reduce LID device fanout and skips heavy bulk asserts.
+  - When large, the client skips heavy pre‑asserts to reduce load. Addressing remains LID by default (unless configured), and fallback toggles addressing according to `GROUP_SEND_FALLBACK_ORDER` if needed.
   - Example: `GROUP_LARGE_THRESHOLD=1000`
 - `GROUP_ASSERT_CHUNK_SIZE` — Chunk size for `assertSessions()` in group fallbacks. Default `100` (min 20).
   - Example: `GROUP_ASSERT_CHUNK_SIZE=80`
@@ -95,7 +95,7 @@ Large groups (No-sessions mitigation & throttles)
 - `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limit targets for receipt-based asserts. Default `400`.
 
 Reliability note:
-- On a rare libsignal error “No sessions” during group sends, the service now re-asserts sessions for all group participants and retries the send once automatically.
+- On a rare libsignal error “No sessions” during group sends, the service re‑asserts sessions (chunked) and retries once. If it still fails, it toggles addressing mode following `GROUP_SEND_FALLBACK_ORDER` and tries again.
 
 ### Group receipt/status fan-out controls
 

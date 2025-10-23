@@ -30,7 +30,7 @@ import logger from './logger'
 import { getDataStoreFile } from './data_store_file'
 import { defaultConfig } from './config'
 import { CLEAN_CONFIG_ON_DISCONNECT, JIDMAP_CACHE_ENABLED } from '../defaults'
-import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey } from './redis'
+import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey, getContactName as redisGetContactName, setContactName as redisSetContactName, getContactInfo as redisGetContactInfo, setContactInfo as redisSetContactInfo } from './redis'
 
 export const getDataStoreRedis: getDataStore = async (phone: string, config: Config): Promise<DataStore> => {
   if (!dataStores.has(phone)) {
@@ -144,6 +144,18 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   }
   store.setLastIncomingKey = async (jid: string, key: proto.IMessageKey) => {
     return redisSetLastIncomingKey(phone, jid, key)
+  }
+  store.getContactName = async (jid: string) => {
+    return (await redisGetContactName(phone, jid)) || undefined
+  }
+  store.setContactName = async (jid: string, name: string) => {
+    return redisSetContactName(phone, jid, name)
+  }
+  store.getContactInfo = async (jid: string) => {
+    try { const raw = await redisGetContactInfo(phone, jid); return raw ? JSON.parse(raw) : undefined } catch { return undefined }
+  }
+  store.setContactInfo = async (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => {
+    return redisSetContactInfo(phone, jid, info)
   }
   store.cleanSession = async (removeConfig = CLEAN_CONFIG_ON_DISCONNECT) => {
     if (removeConfig) {

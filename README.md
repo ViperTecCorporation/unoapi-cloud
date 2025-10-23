@@ -937,15 +937,29 @@ Improve deliverability and reduce 421 acks when sending to WhatsApp groups.
 GROUP_SEND_MEMBERSHIP_CHECK=true
 
 # Prefer addressing mode when sending to groups (optional): 'pn' or 'lid'
-# Leave empty to let Baileys decide automatically
+# Leave empty to keep default (LID preferred internally)
 GROUP_SEND_ADDRESSING_MODE=
 
 # Proactively assert E2E sessions for all group participants before sending
 GROUP_SEND_PREASSERT_SESSIONS=true
+
+# Fallback order to toggle addressing on ack 421
+GROUP_SEND_FALLBACK_ORDER=pn,lid
+
+# Large groups: skip heavy pre-assert and use chunked fallbacks/throttles
+GROUP_LARGE_THRESHOLD=800
+GROUP_ASSERT_CHUNK_SIZE=100
+GROUP_ASSERT_FLOOD_WINDOW_MS=5000
+NO_SESSION_RETRY_BASE_DELAY_MS=150
+NO_SESSION_RETRY_PER_200_DELAY_MS=300
+NO_SESSION_RETRY_MAX_DELAY_MS=2000
+RECEIPT_RETRY_ASSERT_COOLDOWN_MS=15000
+RECEIPT_RETRY_ASSERT_MAX_TARGETS=400
 ```
 
 Notes:
 - Membership check is non-blocking: it only logs a warning if your session is not found in participants.
-- Addressing mode preference is optional; try `lid` or `pn` if you see delivery issues in specific environments.
-- Preasserting sessions helps rotate/fetch keys and reduces server ack 421.
-- Automatic fallback: on a 421 ack for group sends, the system re-sends once toggling addressing mode (no env required).
+- Default addressing for groups is LID; fallback toggles addressing once following `GROUP_SEND_FALLBACK_ORDER` on 421.
+- Large groups skip heavy pre‑assert; when asserts are needed, they run in chunks and respect a per‑group flood window.
+
+See also: `docs/ENVIRONMENT.md` (PT‑BR: `docs/pt-BR/AMBIENTE.md`).

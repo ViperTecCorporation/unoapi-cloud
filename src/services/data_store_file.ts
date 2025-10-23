@@ -59,6 +59,10 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const messages: Map<string, string> = new Map()
   // Última mensagem recebida (não-fromMe) por jid
   const lastIncoming: Map<string, proto.IMessageKey> = new Map()
+  // Contact names cache per JID (PN or LID)
+  const contactNames: Map<string, string> = new Map()
+  // Contact enriched info per JID (JSON string)
+  const contactInfo: Map<string, string> = new Map()
   const groups: NodeCache = new NodeCache()
   // JID mapping cache (PN <-> LID) per-process
   const jidMap: NodeCache = new NodeCache()
@@ -93,6 +97,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         }, new Map()),
       medias,
       lastIncoming,
+      contactNames,
+      contactInfo,
     }
   }
   dataStore.fromJSON = (json) => {
@@ -119,6 +125,12 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     })
     json?.lastIncoming.entries().forEach(([key, value]) => {
       lastIncoming.set(key, value)
+    })
+    json?.contactNames.entries().forEach(([key, value]) => {
+      contactNames.set(key, value)
+    })
+    json?.contactInfo.entries().forEach(([key, value]) => {
+      contactInfo.set(key, value)
     })
   }
   // JID map helpers
@@ -429,6 +441,20 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
   dataStore.setLastIncomingKey = async (jid: string, key: WAMessageKey) => {
     try { lastIncoming.set(jid, key as unknown as proto.IMessageKey) } catch { /* ignore */ }
+  }
+  dataStore.getContactName = async (jid: string) => {
+    // Prefer name from enriched info, fallback to names map
+    try { const raw = contactInfo.get(jid); if (raw) { const obj = JSON.parse(raw); if (obj?.name) return obj.name } } catch {}
+    return contactNames.get(jid)
+  }
+  dataStore.setContactName = async (jid: string, name: string) => {
+    try { if (jid && name) contactNames.set(jid, name) } catch {}
+  }
+  dataStore.getContactInfo = async (jid: string) => {
+    try { const raw = contactInfo.get(jid); return raw ? JSON.parse(raw) : undefined } catch { return undefined }
+  }
+  dataStore.setContactInfo = async (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => {
+    try { contactInfo.set(jid, JSON.stringify(info || {})) } catch {}
   }
   // --- PN <-> LID mapping helpers (optional) ---
   dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {

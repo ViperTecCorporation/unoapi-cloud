@@ -37,6 +37,7 @@ import {
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
+import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -155,6 +156,17 @@ export const connect = async ({
   const whatsappVersion = config.whatsappVersion
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
+  // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid")
+  const groupFallbackOrder: ('pn' | 'lid')[] = (() => {
+    try {
+      const raw = (GROUP_SEND_FALLBACK_ORDER || 'pn,lid').toString()
+      const parts = raw.split(',').map((s) => s.trim().toLowerCase()).filter((s) => s === 'pn' || s === 'lid') as ('pn' | 'lid')[]
+      const uniq = Array.from(new Set(parts)) as ('pn' | 'lid')[]
+      if (uniq.length === 2) return uniq
+      if (uniq.length === 1) return uniq[0] === 'lid' ? ['lid', 'pn'] : ['pn', 'lid']
+      return ['pn', 'lid']
+    } catch { return ['pn', 'lid'] }
+  })()
   // Track recent group sends to enable a single fallback retry on ack 421
   const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
   // Throttle heavy assert operations
@@ -390,7 +402,7 @@ export const connect = async ({
               ) {
                 const pending = pendingGroupSends.get(key.id)
                 if (pending && pending.retries < 1) {
-                  let next: 'pn' | 'lid' = pending.attempted.has('lid') ? 'pn' : 'lid'
+                  const next: 'pn' | 'lid' = (groupFallbackOrder.find((m) => !pending.attempted.has(m)) || (groupFallbackOrder[0] === 'lid' ? 'pn' : 'lid'))
                   const opts = { ...(pending.options || {}) }
                   opts.addressingMode = next === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
                   logger.warn('Retrying group %s message %s with addressingMode %s', pending.to, key.id, next)
@@ -695,7 +707,7 @@ export const connect = async ({
     } catch (e) {
       logger.warn(e as any, 'Ignore error on preassert 1:1 sessions')
     }
-    // For group sends, proactively assert LID sessions for all participants
+    // For group sends, proactively assert sessions with safeguards for large groups
     try {
       if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
         const gm = await dataStore.loadGroupMetada(id, sock!)
@@ -703,6 +715,23 @@ export const connect = async ({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
           .filter((v) => !!v)
+        const groupSize = raw.length
+        // Flood window guard: avoid re-asserting too frequently for the same group
+        try {
+          const now = Date.now()
+          const last = lastGroupAssert.get(id) || 0
+          if (now - last < GROUP_ASSERT_FLOOD_WINDOW_MS) {
+            logger.debug('Skip preassert for %s (within flood window %sms)', id, GROUP_ASSERT_FLOOD_WINDOW_MS)
+            throw new Error('skip_preassert_flood_window')
+          }
+          lastGroupAssert.set(id, now)
+        } catch {}
+        // For very large groups, skip heavy asserts; manter LID como modo preferencial
+        if (groupSize > GROUP_LARGE_THRESHOLD) {
+          logger.debug('Skip preassert for large group %s (size=%s > %s)', id, groupSize, GROUP_LARGE_THRESHOLD)
+          // skip heavy assert entirely for large groups
+          throw new Error('skip_preassert_large_group')
+        }
         const lids: string[] = []
         const pnsFallback: string[] = []
         for (const j of raw) {
@@ -729,18 +758,32 @@ export const connect = async ({
         } catch {}
         const unique = (arr: string[]) => Array.from(new Set(arr))
         const lidsU = unique(lids)
-        if (lidsU.length) {
-          await (sock as any).assertSessions(lidsU, true)
-          logger.debug('Preasserted %s LID sessions for group %s', lidsU.length, id)
-        }
         const pnsU = unique(pnsFallback)
-        if (pnsU.length) {
-          await (sock as any).assertSessions(pnsU, true)
-          logger.debug('Additionally asserted %s PN sessions for group %s', pnsU.length, id)
+        const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
+        const assertChunked = async (arr: string[]) => {
+          for (let i = 0; i < arr.length; i += chunkSize) {
+            const chunk = arr.slice(i, i + chunkSize)
+            try { await (sock as any).assertSessions(chunk, true) } catch (ce) { logger.warn(ce as any, 'Ignore error asserting chunk %s-%s', i, i + chunk.length) }
+          }
         }
+        if (lidsU.length) {
+          await assertChunked(lidsU)
+        }
+        if (pnsU.length) {
+          await assertChunked(pnsU)
+        }
+        try { logger.debug('Preasserted sessions for group %s (LID=%s PN=%s, chunkSize=%s)', id, lidsU.length, pnsU.length, chunkSize) } catch {}
       }
     } catch (e) {
-      logger.warn(e, 'Ignore error on preassert group sessions')
+      try {
+        const msg = (e as any)?.message || ''
+        if (`${msg}`.includes('skip_preassert')) {
+          // not an error; informational skip
+          logger.debug('Preassert skipped: %s', `${msg}`)
+        } else {
+          logger.warn(e, 'Ignore error on preassert group sessions')
+        }
+      } catch { logger.warn(e as any, 'Ignore error on preassert group sessions') }
     }
     if (id) {
       // Block Status (status@broadcast) sending when disabled via env to avoid account risk

@@ -101,11 +101,11 @@ GROUP_ONLY_DELIVERED_STATUS=false
 
 Grupos grandes (mitigação de “No sessions” e controle de carga)
 - `GROUP_LARGE_THRESHOLD` — Considera o grupo “grande” quando o número de participantes ultrapassa esse valor. Padrão `800`.
-  - Em grupos grandes, o cliente força endereçamento PN para reduzir fanout LID e pula asserts pesados.
+  - Em grupos grandes, o cliente pula pré‑asserts pesados para reduzir carga. O endereçamento permanece LID por padrão (a menos que configurado) e o fallback alterna conforme `GROUP_SEND_FALLBACK_ORDER` quando necessário.
   - Exemplo: `GROUP_LARGE_THRESHOLD=1000`
 - `GROUP_ASSERT_CHUNK_SIZE` — Tamanho dos chunks para `assertSessions()` em fallbacks. Padrão `100` (mín. 20).
   - Exemplo: `GROUP_ASSERT_CHUNK_SIZE=80`
-- `GROUP_ASSERT_FLOOD_WINDOW_MS` — Janela anti-flood para evitar asserts pesados repetidos por grupo. Padrão `5000`.
+- `GROUP_ASSERT_FLOOD_WINDOW_MS` — Janela anti‑flood para evitar asserts pesados repetidos por grupo. Padrão `5000`.
   - Exemplo: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
 - `NO_SESSION_RETRY_BASE_DELAY_MS` — Atraso base antes do retry após asserts. Padrão `150`.
 - `NO_SESSION_RETRY_PER_200_DELAY_MS` — Atraso extra por 200 destinos. Padrão `300`.
@@ -115,7 +115,7 @@ Grupos grandes (mitigação de “No sessions” e controle de carga)
 - `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limite de alvos para asserts via recibos. Padrão `400`.
 
 Observação de confiabilidade:
-- Em um erro raro do libsignal (“No sessions”) durante envios em grupos, o serviço agora reassegura as sessões de todos os participantes e tenta reenviar uma vez automaticamente.
+- Em erro raro do libsignal (“No sessions”) durante envio a grupos, o serviço reassegura sessões (em chunks) e tenta 1x. Persistindo falha, alterna o addressing seguindo `GROUP_SEND_FALLBACK_ORDER` e tenta novamente.
 
 ## Cache de Mapeamento LID/PN
 

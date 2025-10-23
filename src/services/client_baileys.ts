@@ -338,6 +338,38 @@ export class ClientBaileys implements Client {
         const cnt = arr.length
         const sample = arr.slice(0, 1).map((m) => ({ jid: m?.key?.remoteJid, id: m?.key?.id, type: Object.keys(m?.message || {})[0] }))
         logger.debug('messages.upsert %s count=%s sample=%s', this.phone, cnt, JSON.stringify(sample))
+        // Update contact name cache from pushName/verifiedBizName
+        try {
+          const store = this.store
+          if (store) {
+            for (const m of arr) {
+              const name = (m?.verifiedBizName || m?.pushName || '').toString().trim()
+              const k = (m?.key || {}) as any
+              const candidates: string[] = []
+              if (typeof k?.participant === 'string') candidates.push(k.participant)
+              if (typeof k?.remoteJid === 'string') candidates.push(k.remoteJid)
+              for (const j of candidates) {
+                try {
+                  if (j && typeof j === 'string' && !j.endsWith('@g.us')) {
+                    const info: any = { name }
+                    if (isLidUser(j)) {
+                      const pn = jidNormalizedUser(j)
+                      info.lidJid = j
+                      info.pnJid = pn
+                      try { info.pn = jidToPhoneNumber(pn, '').replace('+','') } catch {}
+                    } else {
+                      info.pnJid = j
+                      try { info.pn = jidToPhoneNumber(j, '').replace('+','') } catch {}
+                    }
+                    await store.dataStore.setContactInfo?.(j, info)
+                    await store.dataStore.setContactName?.(j, name)
+                    try { logger.info('CONTACT_CACHE upsert from upsert: jid=%s name=%s pn=%s lid=%s', j, name || '<none>', info.pn || '<none>', info.lidJid || '<none>') } catch {}
+                  }
+                } catch {}
+              }
+            }
+          }
+        } catch {}
       } catch { logger.debug('messages.upsert %s', this.phone) }
       await this.listener.process(this.phone, payload.messages, payload.type)
       if (this.config.readOnReceipt && payload.messages[0] && !payload.messages[0]?.fromMe) {
@@ -411,6 +443,60 @@ export class ClientBaileys implements Client {
         logger.debug('messages.update %s count=%s sample=%s', this.phone, messages.length, JSON.stringify(sample))
       } catch { logger.debug('messages.update %s count=%s', this.phone, messages.length) }
       return this.listener.process(this.phone, messages, 'update')
+    })
+    // Capture contacts roster updates
+    this.event('contacts.set' as any, async (u: any) => {
+      try {
+        const list = (u?.contacts || []) as any[]
+        const store = this.store
+        if (store) {
+          for (const c of list) {
+            const jid = c?.id || c?.jid
+            const name = (c?.verifiedName || c?.businessName || c?.name || c?.notify || '').toString().trim()
+            if (jid && name) {
+              const info: any = { name }
+              if (isLidUser(jid)) { const pn = jidNormalizedUser(jid); info.lidJid = jid; info.pnJid = pn; try{ info.pn = jidToPhoneNumber(pn, '').replace('+','') }catch{} }
+              else { info.pnJid = jid; try{ info.pn = jidToPhoneNumber(jid, '').replace('+','') }catch{} }
+              try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
+              try { await store.dataStore.setContactName?.(jid, name) } catch {}
+              try { logger.info('CONTACT_CACHE set: jid=%s name=%s pn=%s lid=%s', jid, name || '<none>', info.pn || '<none>', info.lidJid || '<none>') } catch {}
+            }
+          }
+        }
+      } catch {}
+    })
+    this.event('contacts.upsert' as any, async (list: any[]) => {
+      try {
+        const store = this.store
+        if (store && Array.isArray(list)) {
+          for (const c of list) {
+            const jid = c?.id || c?.jid
+            const name = (c?.verifiedName || c?.businessName || c?.name || c?.notify || '').toString().trim()
+            if (jid && name) {
+              const info: any = { name }
+              if (isLidUser(jid)) { const pn = jidNormalizedUser(jid); info.lidJid = jid; info.pnJid = pn; try{ info.pn = jidToPhoneNumber(pn, '').replace('+','') }catch{} }
+              else { info.pnJid = jid; try{ info.pn = jidToPhoneNumber(jid, '').replace('+','') }catch{} }
+              try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
+              try { await store.dataStore.setContactName?.(jid, name) } catch {}
+              try { logger.info('CONTACT_CACHE upsert: jid=%s name=%s pn=%s lid=%s', jid, name || '<none>', info.pn || '<none>', info.lidJid || '<none>') } catch {}
+            }
+          }
+        }
+      } catch {}
+    })
+    this.event('contacts.update' as any, async (list: any[]) => {
+      try {
+        const store = this.store
+        if (store && Array.isArray(list)) {
+          for (const c of list) {
+            const jid = c?.id || c?.jid
+            const name = c?.verifiedName || c?.businessName || c?.name || c?.notify
+            if (jid && name) {
+              try { await store.dataStore.setContactName?.(jid, `${name}`) } catch {}
+            }
+          }
+        }
+      } catch {}
     })
     // Track LID<->PN mapping updates from Baileys to feed DataStore cache
     this.event('lid-mapping.update' as any, (updates: any) => {
@@ -938,6 +1024,33 @@ export class ClientBaileys implements Client {
         }
       }
       const gm = groupMetadata!
+      // Build names map for participants (best-effort)
+      try {
+        const names: Record<string, string> = {}
+        const store = this.store
+        if (store && Array.isArray(gm.participants)) {
+          for (const p of gm.participants as any[]) {
+            const ids: string[] = []
+            if (p?.id) ids.push(p.id)
+            if (p?.jid && p?.jid !== p?.id) ids.push(p.jid)
+            if (p?.lid) ids.push(p.lid)
+            for (const j of ids) {
+              try {
+                const n = await store.dataStore.getContactName?.(j)
+                if (n) {
+                  names[j] = n
+                  // Add digits alias for quick mention replacement
+                  try {
+                    const digits = j.includes('@g.us') ? '' : jidToPhoneNumber(j, '').replace('+','')
+                    if (digits) names[digits] = n
+                  } catch {}
+                }
+              } catch {}
+            }
+          }
+        }
+        if (Object.keys(names).length) (gm as any)['names'] = names
+      } catch {}
       message['groupMetadata'] = gm
       logger.debug(`Retrieving group profile picture...`)
       try {

@@ -163,6 +163,48 @@ Para ver logs de aprendizado PN→LID e asserts, ajuste `LOG_LEVEL`/`UNO_LOG_LEV
 Flags e configuração
 - `READ_ON_RECEIPT`, `READ_ON_REPLY` estão em `src/defaults.ts` e são ligadas ao config por sessão em `src/services/config_by_env.ts` (campos `readOnReceipt` e `readOnReply` em `src/services/config.ts`).
 
+## Pipeline de Normalização PN/LID
+
+- Objetivos
+  - Preferir PN (dígitos) em vez de LID para usuários em todos os payloads de webhook.
+  - Manter JIDs de grupo (`@g.us`) intactos.
+  - Preencher o mapeamento PN↔LID de forma oportunista para melhorar conversões futuras.
+
+- Fontes de decisão
+  - Participantes do grupo (`groupMetadata.participants` do Baileys): fornecem PN JIDs; usados para resolver LID → PN imediatamente.
+  - `jidNormalizedUser(lid)`: derivação PN JID a partir do LID (fallback quando não há cache).
+
+- Onde ocorre
+  - `src/services/transformer.ts` (fromBaileysMessageContent): resolve o telefone do remetente usando campos PN, participantes do grupo e, por último, LID normalizado.
+  - `src/services/outgoing_cloud_api.ts`: antes de enviar o webhook, converte
+    - `contacts[*].wa_id` • `messages[*].from` • `statuses[*].recipient_id` para PN quando possível; se vier `@lid` e o cache estiver vazio, deriva PN via `jidNormalizedUser` e atualiza o mapping.
+  - `src/jobs/transcriber.ts`: aplica a mesma conversão antes de enviar o webhook de transcrição.
+
+- Armazenamento do mapping
+  - DataStore expõe `getPnForLid/getLidForPn/setJidMapping` (Redis ou Arquivo).
+  - Cache é por sessão e compartilhado entre Listener/Outgoing/Transcriber.
+
+## Cache de Contatos & Menções
+
+- Cache de contato (por sessão)
+  - API do DataStore:
+    - `setContactInfo(jid, { name?, pnJid?, lidJid?, pn? })` e `getContactInfo(jid)`
+    - `setContactName/getContactName` continuam; passam a ler/escrever junto com o info.
+  - Persistência:
+    - Arquivo: mapas em memória persistidos via `toJSON/fromJSON`.
+    - Redis: chaves `unoapi-contact-info:<sessão>:<jid>` (JSON) e `unoapi-contact-name:<sessão>:<jid>`.
+
+- Alimentação do cache
+  - `messages.upsert`: upsert (nome de `verifiedBizName` ou `pushName`) para `key.participant`/`key.remoteJid`; preenche pnJid/lidJid/pn; loga `CONTACT_CACHE upsert …`.
+  - `contacts.set`, `contacts.upsert`, `contacts.update`: upserts de roster (`verifiedName|businessName|name|notify`); loga `CONTACT_CACHE set|upsert …`.
+  - `getMessageMetadata` (grupo): injeta `groupMetadata.names` consultando o cache e cria apelidos por dígitos (PN) para facilitar substituição de menções.
+
+- Normalização de menções (@...)
+  - Local: `src/services/transformer.ts` nos tipos `conversation`/`extendedTextMessage`.
+  - Usa `contextInfo.mentionedJid` (Baileys) e `groupMetadata.names` quando presente.
+  - Preferência de substituição no body: `@nome` (quando houver) → `@PN` → `@LID-dígitos`.
+  - Logging: emite um debug `MENTION normalized: "antes" -> "depois"` por mensagem.
+
 ## Fluxo de Fotos de Perfil
 
 Visão geral (quando `SEND_PROFILE_PICTURE=true`):

@@ -48,6 +48,12 @@ export type DataStore  = {
   setJid: (phone: string, jid: string) => Promise<void>
   setJidIfNotFound: (phone: string, jid: string) => Promise<void>
   setMessage: (jid: string, message: WAMessage) => Promise<void>
+  // Contact names cache
+  getContactName?: (jid: string) => Promise<string | undefined>
+  setContactName?: (jid: string, name: string) => Promise<void>
+  // Contact enriched cache (name + pn/lid variants)
+  getContactInfo?: (jid: string) => Promise<{ name?: string; pnJid?: string; lidJid?: string; pn?: string } | undefined>
+  setContactInfo?: (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => Promise<void>
   // Última mensagem recebida por chat (para ler ao responder)
   getLastIncomingKey?: (jid: string) => Promise<WAMessageKey | undefined>
   setLastIncomingKey?: (jid: string, key: WAMessageKey) => Promise<void>

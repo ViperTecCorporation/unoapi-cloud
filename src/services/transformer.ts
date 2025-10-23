@@ -1074,8 +1074,52 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'conversation':
       case 'extendedTextMessage':
-        message.text = {
-          body: binMessage?.text || binMessage,
+        {
+          // Build text body and normalize @mentions to preferred alias
+          const raw = (binMessage?.text || binMessage) as string
+          const ctx: any = (binMessage as any)?.contextInfo || {}
+          const nameMap: Record<string, string> = ((payload as any)?.groupMetadata?.names || (payload as any)?.contactNames || {}) as any
+          const mentioned: string[] = Array.isArray(ctx?.mentionedJid) ? ctx.mentionedJid : []
+          const toPn = (jid: string) => {
+            try {
+              if (isLidUser(jid)) {
+                return jidToPhoneNumber(jidNormalizedUser(jid), '').replace('+', '')
+              } else {
+                return jidToPhoneNumber(jid, '').replace('+', '')
+              }
+            } catch {
+              return ''
+            }
+          }
+          let body = `${raw || ''}`
+          try {
+            if (mentioned.length && body) {
+              for (const mj of mentioned) {
+                const lidDigits = `${mj}`.split('@')[0]
+                const pnDigits = toPn(mj)
+                // Prefer contactName > PN > LID digits
+                let alias = pnDigits || lidDigits
+                try {
+                  const normalizedPnJid = (isLidUser(mj) ? jidNormalizedUser(mj) : mj) as any
+                  const contactName = (nameMap && (nameMap[mj] || nameMap[normalizedPnJid] || (pnDigits ? nameMap[`${pnDigits}@s.whatsapp.net`] : undefined))) as string | undefined
+                  if (contactName && contactName.trim()) alias = contactName.trim()
+                } catch {}
+                if (alias) {
+                  const patterns = new Set<string>()
+                  if (lidDigits) patterns.add(lidDigits)
+                  if (pnDigits) patterns.add(pnDigits)
+                  for (const d of patterns) {
+                    if (!d) continue
+                    // replace all occurrences of @<digits>
+                    const re = new RegExp(`@${d}\b`, 'g')
+                    body = body.replace(re, `@${alias}`)
+                  }
+                }
+              }
+            }
+          } catch {}
+          try { logger.debug('MENTION normalized: "%s" -> "%s"', raw || '', body || '') } catch {}
+          message.text = { body }
         }
         message.type = 'text'
         break

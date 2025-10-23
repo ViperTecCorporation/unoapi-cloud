@@ -194,6 +194,14 @@ const lastIncomingKeyKey = (phone: string, jid: string) => {
   return `${BASE_KEY}last-incoming:${phone}:${jid}`
 }
 
+// Contact names cache key
+const contactNameKey = (phone: string, jid: string) => {
+  return `${BASE_KEY}contact-name:${phone}:${jid}`
+}
+const contactInfoKey = (phone: string, jid: string) => {
+  return `${BASE_KEY}contact-info:${phone}:${jid}`
+}
+
 export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
@@ -471,6 +479,23 @@ export const getLastIncomingKey = async (phone: string, jid: string): Promise<an
 export const setLastIncomingKey = async (phone: string, jid: string, value: any) => {
   const key = lastIncomingKeyKey(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(value), DATA_TTL)
+}
+
+export const getContactName = async (phone: string, jid: string) => {
+  const key = contactNameKey(phone, jid)
+  return redisGet(key)
+}
+export const setContactName = async (phone: string, jid: string, name: string) => {
+  const key = contactNameKey(phone, jid)
+  return redisSetAndExpire(key, name, SESSION_TTL)
+}
+export const getContactInfo = async (phone: string, jid: string) => {
+  const key = contactInfoKey(phone, jid)
+  return redisGet(key)
+}
+export const setContactInfo = async (phone: string, jid: string, info: any) => {
+  const key = contactInfoKey(phone, jid)
+  return redisSetAndExpire(key, JSON.stringify(info || {}), SESSION_TTL)
 }
 
 export const getConnectCount = async(phone: string) => {
