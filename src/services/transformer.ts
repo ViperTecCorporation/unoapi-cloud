@@ -1097,6 +1097,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           const raw = (binMessage?.text || binMessage) as string
           const ctx: any = (binMessage as any)?.contextInfo || {}
           const nameMap: Record<string, string> = ((payload as any)?.groupMetadata?.names || (payload as any)?.contactNames || {}) as any
+          const participants: any[] = Array.isArray((payload as any)?.groupMetadata?.participants)
+            ? ((payload as any)?.groupMetadata?.participants as any[])
+            : []
           const mentioned: string[] = Array.isArray(ctx?.mentionedJid) ? ctx.mentionedJid : []
           const toPn = (jid: string) => {
             try {
@@ -1114,7 +1117,15 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             if (mentioned.length && body) {
               for (const mj of mentioned) {
                 const lidDigits = `${mj}`.split('@')[0]
-                const pnDigits = toPn(mj)
+                let pnDigits = toPn(mj)
+                // Fallback: derive PN from group participants when mention is a LID and mapping isn't obvious
+                if ((!pnDigits || pnDigits === lidDigits) && isLidUser(mj) && participants.length) {
+                  try {
+                    const found = participants.find((p: any) => `${p?.lid || ''}` === `${mj}`)
+                    const pnJid: string | undefined = found?.id || found?.jid
+                    if (pnJid) pnDigits = jidToPhoneNumber(pnJid, '').replace('+', '')
+                  } catch {}
+                }
                 // Prefer contactName > PN > LID digits
                 let alias = pnDigits || lidDigits
                 try {
@@ -1123,6 +1134,14 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                     nameMap && (
                       nameMap[mj] ||
                       nameMap[normalizedPnJid] ||
+                      // direct PN JID when known via participants
+                      (participants.length ? (() => {
+                        try {
+                          const found = participants.find((p: any) => `${p?.lid || ''}` === `${mj}`)
+                          const pnJ = found?.id || found?.jid
+                          return pnJ ? (nameMap[pnJ] || undefined) : undefined
+                        } catch { return undefined }
+                      })() : undefined) ||
                       (pnDigits ? (nameMap[`${pnDigits}@s.whatsapp.net`] || nameMap[pnDigits]) : undefined) ||
                       (lidDigits ? nameMap[lidDigits] : undefined)
                     )
