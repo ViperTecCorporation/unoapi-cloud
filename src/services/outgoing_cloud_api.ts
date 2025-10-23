@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber } from './transformer'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
 
@@ -63,6 +63,45 @@ export class OutgoingCloudApi implements Outgoing {
     }
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
     try { normalizeWebhookValueIds((message as any)?.entry?.[0]?.changes?.[0]?.value) } catch {}
+    // Prefer PN over LID in webhook payloads when mapping is available (last-resort: keep LID)
+    try {
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const ds: any = store?.dataStore
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const toPnIfMapped = async (x?: string): Promise<string> => {
+        let val = `${x || ''}`
+        if (!val) return val
+        if (val.includes('@g.us')) return val
+        // If LID and we have a PN mapping, prefer PN digits
+        if (val.includes('@lid')) {
+          try {
+            const mapped = await ds?.getPnForLid?.(phone, val)
+            if (mapped) return jidToPhoneNumber(mapped, '')
+          } catch {}
+        }
+        // If PN JID, convert to digits-only PN
+        try {
+          if (val.includes('@s.whatsapp.net')) return jidToPhoneNumber(val, '')
+        } catch {}
+        return val
+      }
+      if (Array.isArray(v.contacts)) {
+        for (const c of v.contacts) {
+          if (c && typeof c.wa_id === 'string') c.wa_id = await toPnIfMapped(c.wa_id)
+        }
+      }
+      if (Array.isArray(v.messages)) {
+        for (const m of v.messages) {
+          if (m && typeof m.from === 'string') m.from = await toPnIfMapped(m.from)
+        }
+      }
+      if (Array.isArray(v.statuses)) {
+        for (const s of v.statuses) {
+          if (s && typeof s.recipient_id === 'string') s.recipient_id = await toPnIfMapped(s.recipient_id)
+        }
+      }
+    } catch {}
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
