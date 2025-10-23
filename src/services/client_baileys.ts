@@ -1123,38 +1123,48 @@ export class ClientBaileys implements Client {
         }
       }
     } catch (e) { logger.debug(e as any, 'Ignore error attaching direct profile picture') }
-    // Normalize LID senders to PN where possible to improve downstream delivery/webhook payloads
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const k: any = key
-      if (k?.remoteJid && isLidUser(k.remoteJid)) {
-        // Preserve original LID and expose a PN-normalized variant (best effort)
-        k.senderLid = k.remoteJid
-        let pnJid: string | undefined
-        try {
-          const gm: any = (message as any)?.groupMetadata
-          if (gm?.participants?.length) {
-            const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.remoteJid}`)
-            pnJid = found?.id || found?.jid
+      // Normalize LID senders to PN where possible to improve downstream delivery/webhook payloads
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const k: any = key
+        if (k?.remoteJid && isLidUser(k.remoteJid)) {
+          // Preserve original LID and expose a PN-normalized variant (best effort)
+          k.senderLid = k.remoteJid
+          let pnJid: string | undefined
+          // 0) Try mapping cache PN<-LID (DataStore)
+          try {
+            const mapped = await this.store?.dataStore?.getPnForLid?.(this.phone, k.remoteJid)
+            if (mapped && isPnUser(mapped)) pnJid = mapped
+          } catch {}
+          try {
+            const gm: any = (message as any)?.groupMetadata
+            if (gm?.participants?.length) {
+              const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.remoteJid}`)
+              pnJid = found?.id || found?.jid
+            }
+          } catch {}
+          if (!pnJid) {
+            const normalized = jidNormalizedUser(k.remoteJid)
+            if (isPnUser(normalized)) pnJid = normalized as any
           }
-        } catch {}
-        if (!pnJid) {
-          const normalized = jidNormalizedUser(k.remoteJid)
-          if (isPnUser(normalized)) pnJid = normalized as any
+          if (pnJid && isPnUser(pnJid)) {
+            k.senderPn = pnJid
+            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
+          }
         }
-        if (pnJid && isPnUser(pnJid)) {
-          k.senderPn = pnJid
-          try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
-        }
-      }
-      if (k?.participant && isLidUser(k.participant)) {
-        k.participantLid = k.participant
-        let pnJid: string | undefined
-        try {
-          const gm: any = (message as any)?.groupMetadata
-          if (gm?.participants?.length) {
-            const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.participant}`)
-            pnJid = found?.id || found?.jid
+        if (k?.participant && isLidUser(k.participant)) {
+          k.participantLid = k.participant
+          let pnJid: string | undefined
+          // 0) Try mapping cache PN<-LID (DataStore)
+          try {
+            const mapped = await this.store?.dataStore?.getPnForLid?.(this.phone, k.participant)
+            if (mapped && isPnUser(mapped)) pnJid = mapped
+          } catch {}
+          try {
+            const gm: any = (message as any)?.groupMetadata
+            if (gm?.participants?.length) {
+              const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.participant}`)
+              pnJid = found?.id || found?.jid
           }
         } catch {}
         if (!pnJid) {
