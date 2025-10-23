@@ -267,44 +267,56 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'image':
     case 'audio':
     case 'document':
-    case 'video':
-      const link = payload[type].link
-      if (link) {
-        let mimetype: string = getMimetype(payload)
-        if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {
-          response.ptt = true
-        }
-        if (payload[type].filename) {
-          response.fileName = payload[type].filename
-        }
-        if (mimetype) {
-          response.mimetype = mimetype
-        }
-        if (payload[type].caption) {
-          response.caption = customMessageCharactersFunction(payload[type].caption)
-        }
-        response[type] = { url: link }
-        break
+    case 'video': {
+      // Require a valid link; do not fall-through to next case on invalid media
+      const media: any = (payload && payload[type]) || {}
+      const link: string = (media?.link || '').toString()
+      if (!link || !link.trim()) {
+        throw new Error(`invalid_${type}_payload: missing link`)
       }
+      let mimetype: string = getMimetype(payload)
+      if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {
+        response.ptt = true
+      }
+      if (media.filename) {
+        response.fileName = media.filename
+      }
+      if (mimetype) {
+        response.mimetype = mimetype
+      }
+      if (media.caption) {
+        response.caption = customMessageCharactersFunction(media.caption)
+      }
+      response[type] = { url: link }
+      break
+    }
 
-    case 'contacts':
-      const contact = payload[type][0]
-      const contacName = contact['name']['formatted_name']
+    case 'contacts': {
+      const list: any[] = Array.isArray(payload?.[type]) ? payload[type] : []
+      if (!list.length) throw new Error('invalid_contacts_payload: empty list')
+      const first = list[0] || {}
+      const nameObj = first?.name || {}
+      const contactName = nameObj.formatted_name || nameObj.formattedName || nameObj.name || 'Contact'
+      const phonesArr: any[] = Array.isArray(first?.phones) ? first.phones : []
+      if (!phonesArr.length) throw new Error('invalid_contacts_payload: missing phones')
       const contacts: any[] = []
-      for (let index = 0; index < contact['phones'].length; index++) {
-        const phone = contact['phones'][index]
-        const waid = phone['wa_id']
-        const number = phone['phone']
-        const vcard = 'BEGIN:VCARD\n'
-              + 'VERSION:3.0\n'
-              + `N:${contacName}\n`
-              + `TEL;type=CELL;type=VOICE;waid=${waid}:${number}\n`
-              + 'END:VCARD'
+      for (let index = 0; index < phonesArr.length; index++) {
+        const ph = phonesArr[index] || {}
+        const numberRaw = `${ph.phone || ph.wa_id || ''}`
+        const number = numberRaw || ''
+        const waid = `${ph.wa_id || number}`.replace(/\D/g, '')
+        const vcard =
+          'BEGIN:VCARD\n' +
+          'VERSION:3.0\n' +
+          `N:${contactName}\n` +
+          `TEL;type=CELL;type=VOICE;waid=${waid}:${number}\n` +
+          'END:VCARD'
         contacts.push({ vcard })
       }
-      const displayName = contact['phones'].length > 1 ? `${contact['phones'].length} contacts` : contacName
+      const displayName = phonesArr.length > 1 ? `${phonesArr.length} contacts` : contactName
       response[type] = { displayName, contacts }
       break
+    }
 
     case 'template':
       throw new BindTemplateError()
