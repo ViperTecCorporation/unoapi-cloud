@@ -1051,41 +1051,45 @@ export class ClientBaileys implements Client {
       }
       const gm = groupMetadata!
       // Build names map for participants (best-effort)
-          try {
-            const names: Record<string, string> = {}
-            const store = this.store
-            if (store && Array.isArray(gm.participants)) {
-              for (const p of gm.participants as any[]) {
-                const ids: string[] = []
-                if (p?.id) ids.push(p.id)
-                if (p?.jid && p?.jid !== p?.id) ids.push(p.jid)
-                if (p?.lid) ids.push(p.lid)
-                for (const j of ids) {
+      try {
+        const names: Record<string, string> = {}
+        const store = this.store
+        if (store && Array.isArray(gm.participants)) {
+          for (const p of gm.participants as any[]) {
+            const ids: string[] = []
+            if (p?.id) ids.push(p.id)
+            if (p?.jid && p?.jid !== p?.id) ids.push(p.jid)
+            if (p?.lid) ids.push(p.lid)
+            for (const j of ids) {
+              try {
+                let n = await store.dataStore.getContactName?.(j)
+                if (!n) {
+                  // Fallback: contactInfo.name quando name não está salvo
+                  try { n = (await store.dataStore.getContactInfo?.(j))?.name } catch {}
+                }
+                if (n) {
+                  names[j] = n
+                  // Add PN digits alias para replacement rápido
                   try {
-                    const n = await store.dataStore.getContactName?.(j)
-                    if (n) {
-                      names[j] = n
-                      // Add PN digits alias for quick mention replacement
-                      try {
-                        if (!j.includes('@g.us')) {
-                          const pnDigits = jidToPhoneNumber(j, '').replace('+','')
-                          if (pnDigits) names[pnDigits] = n
-                        }
-                      } catch {}
-                      // Add LID digits alias when the id is LID (to match mentions typed as @<lidDigits>)
-                      try {
-                        if (typeof j === 'string' && j.includes('@lid')) {
-                          const lidDigits = j.split('@')[0]
-                          if (lidDigits) names[lidDigits] = n
-                        }
-                      } catch {}
+                    if (!j.includes('@g.us')) {
+                      const pnDigits = jidToPhoneNumber(j, '').replace('+','')
+                      if (pnDigits) names[pnDigits] = n
+                    }
+                  } catch {}
+                  // Add LID digits alias quando o id é LID (para @<lidDigits>)
+                  try {
+                    if (typeof j === 'string' && j.includes('@lid')) {
+                      const lidDigits = j.split('@')[0]
+                      if (lidDigits) names[lidDigits] = n
                     }
                   } catch {}
                 }
-              }
+              } catch {}
             }
-            if (Object.keys(names).length) (gm as any)['names'] = names
-          } catch {}
+          }
+        }
+        if (Object.keys(names).length) (gm as any)['names'] = names
+      } catch {}
       message['groupMetadata'] = gm
       logger.debug(`Retrieving group profile picture...`)
       try {
