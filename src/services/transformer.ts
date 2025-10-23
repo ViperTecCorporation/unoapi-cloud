@@ -428,9 +428,11 @@ export const getNumberAndId = (payload: any): [string, string] => {
   if (pnIsValid) {
     phone = jidToPhoneNumber(pnCandidate, '')
   } else {
-    // Prefer explicit PN fields first
-    if (participantPn || senderPn) {
-      phone = jidToPhoneNumber(participantPn || senderPn, '')
+    // Prefer explicit PN fields first — only if they are PN JIDs
+    if (participantPn && isPnUser(participantPn)) {
+      phone = jidToPhoneNumber(participantPn, '')
+    } else if (senderPn && isPnUser(senderPn)) {
+      phone = jidToPhoneNumber(senderPn, '')
     }
     // Then try map from group metadata participants (if present): find PN by LID
     if (!phone) {

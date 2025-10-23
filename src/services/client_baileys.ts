@@ -976,15 +976,43 @@ export class ClientBaileys implements Client {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const k: any = key
       if (k?.remoteJid && isLidUser(k.remoteJid)) {
-        // Preserve original LID and expose a PN-normalized variant
+        // Preserve original LID and expose a PN-normalized variant (best effort)
         k.senderLid = k.remoteJid
-        k.senderPn = jidNormalizedUser(k.remoteJid)
-        try { await this.store?.dataStore?.setJidMapping?.(this.phone, k.senderPn, k.senderLid) } catch {}
+        let pnJid: string | undefined
+        try {
+          const gm: any = (message as any)?.groupMetadata
+          if (gm?.participants?.length) {
+            const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.remoteJid}`)
+            pnJid = found?.id || found?.jid
+          }
+        } catch {}
+        if (!pnJid) {
+          const normalized = jidNormalizedUser(k.remoteJid)
+          if (isPnUser(normalized)) pnJid = normalized as any
+        }
+        if (pnJid && isPnUser(pnJid)) {
+          k.senderPn = pnJid
+          try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
+        }
       }
       if (k?.participant && isLidUser(k.participant)) {
         k.participantLid = k.participant
-        k.participantPn = jidNormalizedUser(k.participant)
-        try { await this.store?.dataStore?.setJidMapping?.(this.phone, k.participantPn, k.participantLid) } catch {}
+        let pnJid: string | undefined
+        try {
+          const gm: any = (message as any)?.groupMetadata
+          if (gm?.participants?.length) {
+            const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.participant}`)
+            pnJid = found?.id || found?.jid
+          }
+        } catch {}
+        if (!pnJid) {
+          const normalized = jidNormalizedUser(k.participant)
+          if (isPnUser(normalized)) pnJid = normalized as any
+        }
+        if (pnJid && isPnUser(pnJid)) {
+          k.participantPn = pnJid
+          try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
+        }
       }
     } catch (e) {
       logger.warn(e, 'Ignore LID normalization error')
