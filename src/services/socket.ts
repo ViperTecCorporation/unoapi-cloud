@@ -652,30 +652,19 @@ export const connect = async ({
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
     try {
-      if (id && isIndividualJid(id) && !isLidUser(id)) {
-        logger.debug('1:1 send: PN target %s — trying to learn LID mapping', id)
-        let mapped = await (dataStore as any).getLidForPn?.(phone, id)
-        if (!mapped) {
-          logger.debug('1:1 send: no cached LID for %s — assertSessions to trigger mapping', id)
-          try { await (sock as any).assertSessions([id], true) } catch (e) { logger.debug('assertSessions PN %s ignored: %s', id, (e as any)?.message || e) }
-          try { mapped = await (dataStore as any).getLidForPn?.(phone, id) } catch {}
-        }
-        if (!mapped) {
-          logger.debug('1:1 send: still no LID for %s — retry exists()', id)
+      // Prefer PN for 1:1 when mapping exists; convert LID -> PN
+      if (id && isIndividualJid(id)) {
+        if (isLidUser(id)) {
           try {
-            const again = await exists(id)
-            if (again && isLidUser(again)) {
-              logger.debug('1:1 send: exists() returned LID %s for PN %s — caching', again, id)
-              try { await (dataStore as any).setJidMapping?.(phone, id, again) } catch {}
-              mapped = again
+            const pnJid = jidNormalizedUser(id)
+            if (pnJid && isIndividualJid(pnJid)) {
+              logger.debug('1:1 send: switching target to PN %s (from LID %s)', pnJid, id)
+              try { await (dataStore as any).setJidMapping?.(phone, pnJid, id) } catch {}
+              id = pnJid
             }
-          } catch (e) { logger.debug('exists() retry failed to yield LID for %s: %s', id, (e as any)?.message || e) }
-        }
-        if (mapped) {
-          logger.debug('Switching 1:1 send target to LID %s (from PN %s)', mapped, id)
-          id = mapped
+          } catch {}
         } else {
-          logger.debug('Proceeding with PN target %s for 1:1 (no LID learned)', id)
+          logger.debug('1:1 send: PN target %s preferred (skip LID)', id)
         }
       }
     } catch {}

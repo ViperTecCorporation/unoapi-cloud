@@ -348,8 +348,8 @@ export const phoneNumberToJid = (phoneNumber: string) => {
 }
 
 export const isIndividualJid = (jid: string) => {
-  // Treat only PN JIDs (or raw numbers) as individual for phone extraction paths
-  const isIndividual = isPnUser(jid) || jid.indexOf('@') < 0
+  // Treat PN and LID JIDs (or raw numbers) as individual (not group/newsletter)
+  const isIndividual = isPnUser(jid as any) || isLidUser(jid as any) || jid.indexOf('@') < 0
   logger.debug('jid %s is individual? %s', jid, isIndividual)
   return isIndividual
 }
