@@ -4,7 +4,8 @@ import logger from '../services/logger'
 import { Outgoing } from '../services/outgoing'
 import { BASE_URL } from '../defaults'
 import mediaToBuffer from '../utils/media_to_buffer'
-import { extractDestinyPhone } from '../services/transformer'
+import { extractDestinyPhone, jidToPhoneNumber } from '../services/transformer'
+import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { v1 as uuid } from 'uuid'
 import Audio2TextJS from 'audio2textjs'
 import { writeFileSync, rmSync, existsSync, mkdirSync } from 'fs'
@@ -124,6 +125,44 @@ export class TranscriberJob {
         type: 'text',
         timestamp: `${parseInt(audioMessage.timestamp) + 1}`,
       }]
+      // Preferir PN sobre LID no payload do webhook (mesma regra do OutgoingCloudApi)
+      try {
+        const store = await config.getStore(phone, config)
+        const ds: any = store?.dataStore
+        const v: any = output?.entry?.[0]?.changes?.[0]?.value || {}
+        const toPnIfMapped = async (x?: string): Promise<string> => {
+          let val = `${x || ''}`
+          if (!val) return val
+          if (val.includes('@g.us')) return val
+          if (val.includes('@lid')) {
+            try {
+              const mapped = await ds?.getPnForLid?.(phone, val)
+              if (mapped) return jidToPhoneNumber(mapped, '')
+            } catch {}
+            try {
+              const normalized = jidNormalizedUser(val)
+              if (normalized && isPnUser(normalized as any)) {
+                try { await ds?.setJidMapping?.(phone, normalized as any, val) } catch {}
+                return jidToPhoneNumber(normalized, '')
+              }
+            } catch {}
+          }
+          try {
+            if (val.includes('@s.whatsapp.net')) return jidToPhoneNumber(val, '')
+          } catch {}
+          return val
+        }
+        if (Array.isArray(v.contacts)) {
+          for (const c of v.contacts) {
+            if (c && typeof c.wa_id === 'string') c.wa_id = await toPnIfMapped(c.wa_id)
+          }
+        }
+        if (Array.isArray(v.messages)) {
+          for (const m of v.messages) {
+            if (m && typeof m.from === 'string') m.from = await toPnIfMapped(m.from)
+          }
+        }
+      } catch {}
       await Promise.all(
         webhooks.map(async (w) => {
           logger.debug('Transcriber phone %s to %s sending webhook %s', phone, destinyPhone, w.id)
