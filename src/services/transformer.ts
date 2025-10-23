@@ -402,7 +402,9 @@ export const getChatAndNumberAndId = (payload: any): [string, string, string] =>
   const { key: { remoteJid } } = payload
   const split = remoteJid.split('@')
   const id = `${split[0].split(':')[0]}@${split[1]}`
-  if (isIndividualJid(remoteJid)) {
+  // Para LID (usuário @lid), preferimos derivar o PN a partir dos campos *_Pn via getNumberAndId
+  // Assim, o segundo retorno será o telefone (PN) normalizado, conforme esperado pelos testes
+  if (isIndividualJid(remoteJid) && isPnUser(remoteJid as any)) {
     return [id, jidToPhoneNumber(remoteJid, ''), id]
   } else {
     return [id, ...getNumberAndId(payload)]
@@ -644,10 +646,14 @@ export const isFailedStatus = (payload: object) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const jidToPhoneNumber = (value: any, plus = '+', retry = true): string => {
-  if (isLidUser(value) || isJidNewsletter(value)) {
-    return value
-  }
-  const number = (value || '').split('@')[0].split(':')[0].replace('+', '')
+  let v = value
+  try {
+    // Se for LID, tentar normalizar para PN JID primeiro
+    if (isLidUser(v)) {
+      try { v = jidNormalizedUser(v) } catch {}
+    }
+  } catch {}
+  const number = (v || '').split('@')[0].split(':')[0].replace('+', '')
   const country = number.substring(0, 2)
   if (country == '55') {
     const isValid = isValidPhoneNumber(`+${number}`, true)
