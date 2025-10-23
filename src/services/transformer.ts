@@ -430,12 +430,19 @@ export const getNumberAndId = (payload: any): [string, string] => {
   } else {
     // Prefer explicit PN fields first — accept both PN JIDs and plain digits
     if (!phone && typeof participantPn === 'string') {
-      if (isPnUser(participantPn as any)) phone = jidToPhoneNumber(participantPn, '')
-      else if (/^\+?\d+$/.test(participantPn)) phone = ensurePn(participantPn)
+      if (isPnUser(participantPn as any)) {
+        phone = jidToPhoneNumber(participantPn, '')
+      } else if (/^\+?\d+$/.test(participantPn)) {
+        // aplicar regra BR do 9º dígito como em phoneNumberToJid
+        try { phone = jidToPhoneNumber(phoneNumberToJid(participantPn), '') } catch { phone = ensurePn(participantPn) }
+      }
     }
     if (!phone && typeof senderPn === 'string') {
-      if (isPnUser(senderPn as any)) phone = jidToPhoneNumber(senderPn, '')
-      else if (/^\+?\d+$/.test(senderPn)) phone = ensurePn(senderPn)
+      if (isPnUser(senderPn as any)) {
+        phone = jidToPhoneNumber(senderPn, '')
+      } else if (/^\+?\d+$/.test(senderPn)) {
+        try { phone = jidToPhoneNumber(phoneNumberToJid(senderPn), '') } catch { phone = ensurePn(senderPn) }
+      }
     }
     // Then try map from group metadata participants (if present): find PN by LID
     if (!phone) {
