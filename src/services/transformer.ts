@@ -1119,7 +1119,14 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                 let alias = pnDigits || lidDigits
                 try {
                   const normalizedPnJid = (isLidUser(mj) ? jidNormalizedUser(mj) : mj) as any
-                  const contactName = (nameMap && (nameMap[mj] || nameMap[normalizedPnJid] || (pnDigits ? nameMap[`${pnDigits}@s.whatsapp.net`] : undefined))) as string | undefined
+                  const contactName = (
+                    nameMap && (
+                      nameMap[mj] ||
+                      nameMap[normalizedPnJid] ||
+                      (pnDigits ? (nameMap[`${pnDigits}@s.whatsapp.net`] || nameMap[pnDigits]) : undefined) ||
+                      (lidDigits ? nameMap[lidDigits] : undefined)
+                    )
+                  ) as string | undefined
                   if (contactName && contactName.trim()) alias = contactName.trim()
                 } catch {}
                 if (alias) {
