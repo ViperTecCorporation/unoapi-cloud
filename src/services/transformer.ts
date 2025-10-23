@@ -917,17 +917,36 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const message: any = {
-      from: (fromMe
-        ? phone.replace('+', '')
-        : (
-            ensurePn((payload as any)?.key?.senderPn) ||
-            ensurePn((payload as any)?.key?.participantPn) ||
-            ensurePn(senderPhone) ||
-            ensurePn(senderId) ||
-            senderId
-          )
-      ),
+      from: undefined as any,
       id: whatsappMessageId,
+    }
+    // Build 'from' prioritizing PN; when not possible, keep @lid (not bare digits)
+    try {
+      if (fromMe) {
+        message.from = phone.replace('+', '')
+      } else {
+        const fpn = (
+          ensurePn((payload as any)?.key?.senderPn) ||
+          ensurePn((payload as any)?.key?.participantPn) ||
+          ensurePn(senderPhone) ||
+          ensurePn(senderId)
+        )
+        if (fpn) {
+          message.from = fpn
+        } else {
+          // Prefer a JID with suffix when available (e.g., @lid) instead of bare digits
+          const kj: any = (payload as any)?.key || {}
+          const jidFallback = kj?.participant || kj?.remoteJid || senderId
+          if (typeof jidFallback === 'string' && jidFallback.includes('@')) {
+            message.from = jidFallback
+          } else {
+            // last resort: use senderId or digits as provided
+            message.from = senderId || jidFallback || ''
+          }
+        }
+      }
+    } catch {
+      message.from = fromMe ? phone.replace('+', '') : (senderId || '')
     }
     if (payload.messageTimestamp) {
       message['timestamp'] = payload.messageTimestamp.toString()
