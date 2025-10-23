@@ -353,10 +353,14 @@ export class ClientBaileys implements Client {
                   if (j && typeof j === 'string' && !j.endsWith('@g.us')) {
                     const info: any = { name }
                     if (isLidUser(j)) {
-                      const pn = jidNormalizedUser(j)
                       info.lidJid = j
-                      info.pnJid = pn
-                      try { info.pn = jidToPhoneNumber(pn, '').replace('+','') } catch {}
+                      try {
+                        const mapped = await store.dataStore.getPnForLid?.(this.phone, j)
+                        if (mapped && isPnUser(mapped)) {
+                          info.pnJid = mapped
+                          try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                        }
+                      } catch {}
                     } else {
                       info.pnJid = j
                       try { info.pn = jidToPhoneNumber(j, '').replace('+','') } catch {}
@@ -455,8 +459,19 @@ export class ClientBaileys implements Client {
             const name = (c?.verifiedName || c?.businessName || c?.name || c?.notify || '').toString().trim()
             if (jid && name) {
               const info: any = { name }
-              if (isLidUser(jid)) { const pn = jidNormalizedUser(jid); info.lidJid = jid; info.pnJid = pn; try{ info.pn = jidToPhoneNumber(pn, '').replace('+','') }catch{} }
-              else { info.pnJid = jid; try{ info.pn = jidToPhoneNumber(jid, '').replace('+','') }catch{} }
+              if (isLidUser(jid)) {
+                info.lidJid = jid
+                try {
+                  const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
+                  if (mapped && isPnUser(mapped)) {
+                    info.pnJid = mapped
+                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                  }
+                } catch {}
+              } else {
+                info.pnJid = jid
+                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+              }
               try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
               try { await store.dataStore.setContactName?.(jid, name) } catch {}
               try { logger.info('CONTACT_CACHE set: jid=%s name=%s pn=%s lid=%s', jid, name || '<none>', info.pn || '<none>', info.lidJid || '<none>') } catch {}
@@ -474,8 +489,19 @@ export class ClientBaileys implements Client {
             const name = (c?.verifiedName || c?.businessName || c?.name || c?.notify || '').toString().trim()
             if (jid && name) {
               const info: any = { name }
-              if (isLidUser(jid)) { const pn = jidNormalizedUser(jid); info.lidJid = jid; info.pnJid = pn; try{ info.pn = jidToPhoneNumber(pn, '').replace('+','') }catch{} }
-              else { info.pnJid = jid; try{ info.pn = jidToPhoneNumber(jid, '').replace('+','') }catch{} }
+              if (isLidUser(jid)) {
+                info.lidJid = jid
+                try {
+                  const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
+                  if (mapped && isPnUser(mapped)) {
+                    info.pnJid = mapped
+                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                  }
+                } catch {}
+              } else {
+                info.pnJid = jid
+                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+              }
               try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
               try { await store.dataStore.setContactName?.(jid, name) } catch {}
               try { logger.info('CONTACT_CACHE upsert: jid=%s name=%s pn=%s lid=%s', jid, name || '<none>', info.pn || '<none>', info.lidJid || '<none>') } catch {}
