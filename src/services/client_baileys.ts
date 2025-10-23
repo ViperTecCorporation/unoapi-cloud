@@ -1143,6 +1143,22 @@ export class ClientBaileys implements Client {
               pnJid = found?.id || found?.jid
             }
           } catch {}
+          // 1) First inbound attempt: probe exists() using PN-candidate derived from LID (digits or normalized)
+          if (!pnJid) {
+            try {
+              // prefer a normalized PN JID candidate when possible
+              const candidate = (() => {
+                try {
+                  const norm = jidNormalizedUser(k.remoteJid)
+                  return isPnUser(norm) ? (norm as any) : undefined
+                } catch { return undefined }
+              })()
+              const resolved = await this.exists(candidate || k.remoteJid)
+              if (resolved && isPnUser(resolved)) {
+                pnJid = resolved
+              }
+            } catch {}
+          }
           if (!pnJid) {
             const normalized = jidNormalizedUser(k.remoteJid)
             if (isPnUser(normalized)) pnJid = normalized as any
@@ -1165,20 +1181,34 @@ export class ClientBaileys implements Client {
             if (gm?.participants?.length) {
               const found = (gm.participants as any[]).find((p: any) => `${p?.lid || ''}` === `${k.participant}`)
               pnJid = found?.id || found?.jid
+            }
+          } catch {}
+          if (!pnJid) {
+            try {
+              const candidate = (() => {
+                try {
+                  const norm = jidNormalizedUser(k.participant)
+                  return isPnUser(norm) ? (norm as any) : undefined
+                } catch { return undefined }
+              })()
+              const resolved = await this.exists(candidate || k.participant)
+              if (resolved && isPnUser(resolved)) {
+                pnJid = resolved
+              }
+            } catch {}
           }
-        } catch {}
-        if (!pnJid) {
-          const normalized = jidNormalizedUser(k.participant)
-          if (isPnUser(normalized)) pnJid = normalized as any
+          if (!pnJid) {
+            const normalized = jidNormalizedUser(k.participant)
+            if (isPnUser(normalized)) pnJid = normalized as any
+          }
+          if (pnJid && isPnUser(pnJid)) {
+            k.participantPn = pnJid
+            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
+          }
         }
-        if (pnJid && isPnUser(pnJid)) {
-          k.participantPn = pnJid
-          try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
-        }
+      } catch (e) {
+        logger.warn(e, 'Ignore LID normalization error')
       }
-    } catch (e) {
-      logger.warn(e, 'Ignore LID normalization error')
-    }
     if (remoteJid) {
       const jid = await this.exists(remoteJid)
       if (jid) {
