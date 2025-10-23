@@ -695,10 +695,10 @@ export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
     if (!val) return val
     // Não normalizar grupos
     if (val.includes('@g.us')) return val
-    // Normalizar LID -> PN JID
+    // Não normalizar LID -> PN aqui: manter @lid quando não houver mapeamento explícito
     try {
       if (val.includes('@lid')) {
-        val = jidNormalizedUser(val)
+        return val
       }
     } catch {}
     // Converter JID de usuário para PN quando aplicável

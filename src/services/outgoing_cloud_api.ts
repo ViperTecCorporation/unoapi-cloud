@@ -74,20 +74,13 @@ export class OutgoingCloudApi implements Outgoing {
         let val = `${x || ''}`
         if (!val) return val
         if (val.includes('@g.us')) return val
-        // If LID and we have a PN mapping, prefer PN digits
+        // If LID and we have a PN mapping, prefer PN digits; otherwise keep @lid
         if (val.includes('@lid')) {
           try {
             const mapped = await ds?.getPnForLid?.(phone, val)
             if (mapped) return jidToPhoneNumber(mapped, '')
           } catch {}
-          // No cache: derive PN JID from LID and update mapping
-          try {
-            const normalized = jidNormalizedUser(val)
-            if (normalized && isPnUser(normalized as any)) {
-              try { await ds?.setJidMapping?.(phone, normalized as any, val) } catch {}
-              return jidToPhoneNumber(normalized, '')
-            }
-          } catch {}
+          return val
         }
         // If PN JID, convert to digits-only PN
         try {
