@@ -3,6 +3,7 @@ import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber } from './transformer'
+import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
 
@@ -78,6 +79,14 @@ export class OutgoingCloudApi implements Outgoing {
           try {
             const mapped = await ds?.getPnForLid?.(phone, val)
             if (mapped) return jidToPhoneNumber(mapped, '')
+          } catch {}
+          // No cache: derive PN JID from LID and update mapping
+          try {
+            const normalized = jidNormalizedUser(val)
+            if (normalized && isPnUser(normalized as any)) {
+              try { await ds?.setJidMapping?.(phone, normalized as any, val) } catch {}
+              return jidToPhoneNumber(normalized, '')
+            }
           } catch {}
         }
         // If PN JID, convert to digits-only PN
