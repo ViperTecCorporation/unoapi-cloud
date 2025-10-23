@@ -375,6 +375,8 @@ export const ensurePn = (value?: string): string => {
     if (/^\+?\d+$/.test(value)) return value.replace('+', '')
     // se for JID, normaliza (remove device suffix e resolve LID->PN quando possível)
     const jid = value.includes('@') ? formatJid(value) : value
+    // Não tentar converter LID -> PN aqui; somente quando já houver mapping em key.*Pn
+    try { if (isLidUser(jid as any)) return '' } catch {}
     try {
       const normalized = jidNormalizedUser(jid as any)
       if (isPnUser(normalized)) {
@@ -472,20 +474,15 @@ export const getNumberAndId = (payload: any): [string, string] => {
         }
       } catch {}
     }
-    // Then derive PN from any LID candidate
-    if (!phone) {
-      const lidCandidate = senderLid || participantLid || participant || participant2 || participantAlt || participantAlt2 || remoteJidAlt
-      try {
-        if (lidCandidate && isLidUser(lidCandidate)) {
-          phone = jidToPhoneNumber(jidNormalizedUser(lidCandidate), '')
-        }
-      } catch {}
-    }
     // Last resort: normalize the base id (may be LID) and extract PN
     if (!phone) {
       try {
-        const normalized = jidNormalizedUser(id)
-        phone = jidToPhoneNumber(normalized, '')
+        if (isPnUser(id)) {
+          phone = jidToPhoneNumber(id, '')
+        } else {
+          // keep id (may be LID JID) when PN cannot be safely inferred
+          phone = id
+        }
       } catch {
         phone = id
       }
