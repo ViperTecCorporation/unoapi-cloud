@@ -143,6 +143,16 @@ export class ListenerBaileys implements Listener {
           logger.debug(`Saved media!`)
         }
       }
+    } else if (messageType === 'update') {
+      try {
+        // Forçar exists() via getMessageMetadata quando inbound 1:1 LID em eventos de status
+        const k: any = (i as any)?.key || {}
+        const lidRemote = typeof k?.remoteJid === 'string' && k.remoteJid.endsWith('@lid')
+        const lidParticipant = typeof k?.participant === 'string' && k.participant.endsWith('@lid')
+        if (lidRemote || lidParticipant) {
+          i = await config.getMessageMetadata(i)
+        }
+      } catch {}
     }
 
     const key = i.key
