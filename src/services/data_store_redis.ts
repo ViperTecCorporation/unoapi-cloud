@@ -1,4 +1,4 @@
-import { proto, WAMessage, WAMessageKey, GroupMetadata, isLidUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import { proto, WAMessage, WAMessageKey, GroupMetadata, isLidUser, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { DataStore, MessageStatus } from './data_store'
 import { jidToPhoneNumber, phoneNumberToJid, isIndividualJid } from './transformer'
 import { getDataStore, dataStores } from './data_store'
@@ -287,9 +287,9 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     try {
       if (isLidUser(lidJid)) {
         const pn = jidNormalizedUser(lidJid)
-        if (pn) {
+        if (pn && isPnUser(pn as any)) {
           try { await redisSetJidMapping(sessionPhone, pn, lidJid); logger.debug('jidMap(redis): derived PN %s from LID %s and cached', pn, lidJid) } catch {}
-          return pn
+          return pn as any
         }
       }
     } catch {}

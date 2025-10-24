@@ -80,7 +80,8 @@ export class OutgoingCloudApi implements Outgoing {
           if (val.includes('@lid')) {
             try {
               const mapped = await ds?.getPnForLid?.(phone, val)
-              if (mapped) return jidToPhoneNumber(mapped, '')
+              // Somente converte quando o mapeamento aponta para um PN JID válido
+              if (mapped && isPnUser(mapped)) return jidToPhoneNumber(mapped, '')
             } catch {}
             return val
           }
