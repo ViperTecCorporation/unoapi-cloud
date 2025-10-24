@@ -187,10 +187,18 @@ export const connect = async ({
       if (entry.attemptIndex >= maxAttempts) return
       const delayMs = delays[entry.attemptIndex]
       if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
+      try {
+        const attemptNo = entry.attemptIndex + 1
+        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, to, delayMs)
+      } catch {}
       entry.timer = setTimeout(async () => {
         try {
           if (!pendingAckResend.has(messageId)) return
           // Assert sessions for target (include PN variant and self when applicable)
+          try {
+            const attemptNo = entry.attemptIndex + 1
+            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, to)
+          } catch {}
           const set = new Set<string>()
           set.add(to)
           try {
@@ -450,6 +458,7 @@ export const connect = async ({
                 if (kid && (st !== undefined && st !== null)) {
                   const tracked = pendingAckResend.get(kid)
                   if (tracked) {
+                    try { logger.info('ACK watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
                     try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
                     pendingAckResend.delete(kid)
                   }
