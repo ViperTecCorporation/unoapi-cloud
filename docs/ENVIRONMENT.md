@@ -94,6 +94,13 @@ Large groups (No-sessions mitigation & throttles)
 - `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` — Cooldown between asserts triggered by `message-receipt.update` retry per group. Default `15000`.
 - `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limit targets for receipt-based asserts. Default `400`.
 
+## Server ACK Retry (assert + resend)
+
+- `ACK_RETRY_DELAYS_MS` — Comma-separated delays in milliseconds for retries when no server ACK is observed. Default `8000,30000,60000` (8s, 30s, 60s).
+  - Example: `ACK_RETRY_DELAYS_MS=5000,15000,45000`
+- `ACK_RETRY_MAX_ATTEMPTS` — Hard cap on number of attempts. Default `0` (use the number of entries from `ACK_RETRY_DELAYS_MS`).
+  - Example: `ACK_RETRY_MAX_ATTEMPTS=2`
+
 Reliability note:
 - On a rare libsignal error “No sessions” during group sends, the service re‑asserts sessions (chunked) and retries once. If it still fails, it toggles addressing mode following `GROUP_SEND_FALLBACK_ORDER` and tries again.
 

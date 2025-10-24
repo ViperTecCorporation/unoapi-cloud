@@ -93,6 +93,13 @@ Exemplo (reduzir carga em grupos grandes):
 GROUP_IGNORE_INDIVIDUAL_RECEIPTS=true
 GROUP_ONLY_DELIVERED_STATUS=true
 ```
+ 
+## Retry de ACK do Servidor (assert + resend)
+
+- `ACK_RETRY_DELAYS_MS` — Lista de atrasos (ms) separada por vírgula para reenvio quando não há ACK do servidor. Padrão `8000,30000,60000` (8s, 30s, 60s).
+  - Exemplo: `ACK_RETRY_DELAYS_MS=5000,15000,45000`
+- `ACK_RETRY_MAX_ATTEMPTS` — Limite máximo de tentativas. Padrão `0` (usa a quantidade definida em `ACK_RETRY_DELAYS_MS`).
+  - Exemplo: `ACK_RETRY_MAX_ATTEMPTS=2`
 Restaurar comportamento legado (recibos completos por usuário):
 ```env
 GROUP_IGNORE_INDIVIDUAL_RECEIPTS=false

@@ -172,6 +172,57 @@ export const connect = async ({
   // Throttle heavy assert operations
   const lastGroupAssert = new Map<string, number>()
   const lastReceiptAssert = new Map<string, number>()
+  // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
+  const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
+  const scheduleAckWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
+    try { if (!messageId) return } catch { return }
+    const delaysEnv = (ACK_RETRY_DELAYS_MS || [])
+    const delays = (Array.isArray(delaysEnv) && delaysEnv.length > 0) ? delaysEnv : [8000, 30000, 60000]
+    const existing = pendingAckResend.get(messageId)
+    const maxAttempts = (ACK_RETRY_MAX_ATTEMPTS && ACK_RETRY_MAX_ATTEMPTS > 0) ? Math.min(ACK_RETRY_MAX_ATTEMPTS, delays.length) : delays.length
+    if (existing && existing.attemptIndex >= maxAttempts) return
+    const entry = existing || { to, message, options, attemptIndex: 0 }
+    const scheduleNext = () => {
+      if (entry.attemptIndex >= maxAttempts) return
+      const delayMs = delays[entry.attemptIndex]
+      if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
+      entry.timer = setTimeout(async () => {
+        try {
+          if (!pendingAckResend.has(messageId)) return
+          // Assert sessions for target (include PN variant and self when applicable)
+          const set = new Set<string>()
+          set.add(to)
+          try {
+            if (isLidUser(to)) { try { set.add(jidNormalizedUser(to)) } catch {} }
+            const self = state?.creds?.me?.id
+            if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
+          } catch {}
+          try { const targets = Array.from(set); if (targets.length) await (sock as any).assertSessions(targets, true) } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
+          // Resend with the same id
+          const opts = { ...(entry.options || {}), messageId }
+          try { await sock?.sendMessage(to, entry.message, opts) } catch (e) { logger.warn(e as any, 'Resend with same id failed') }
+        } finally {
+          // advance attempt counter and either schedule next or fail out
+          entry.attemptIndex += 1
+          if (entry.attemptIndex < maxAttempts) {
+            scheduleNext()
+          } else {
+            // Exhausted attempts: notify own number and log
+            try {
+              const selfJid = phoneNumberToJid(phone)
+              const text = `Falha ao entregar a mensagem ${messageId} para ${to} após 3 tentativas.`
+              logger.error('ACK timeout: %s', text)
+              try { await sock?.sendMessage(selfJid, { text }, {}) } catch (e) { logger.warn(e as any, 'Erro ao notificar falha no próprio número') }
+            } catch (e) { logger.warn(e as any, 'Erro ao preparar notificação de falha') }
+            try { if (entry.timer) clearTimeout(entry.timer) } catch {}
+            pendingAckResend.delete(messageId)
+          }
+        }
+      }, delayMs) as unknown as NodeJS.Timeout
+      pendingAckResend.set(messageId, entry)
+    }
+    scheduleNext()
+  }
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
       // Normalize possible LID JID to PN JID before extracting phone
@@ -391,6 +442,18 @@ export const connect = async ({
           } catch {}
           if (Array.isArray(updates)) {
             for (const u of updates) {
+              // Clear pending ack tracking once any status is observed for the message id
+              try {
+                const kid = u?.key?.id || u?.id
+                const st = u?.update?.status ?? u?.status
+                if (kid && (st !== undefined && st !== null)) {
+                  const tracked = pendingAckResend.get(kid)
+                  if (tracked) {
+                    try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
+                    pendingAckResend.delete(kid)
+                  }
+                }
+              } catch {}
               const params = u?.update?.messageStubParameters
               const key = u?.key
               if (
@@ -986,6 +1049,11 @@ export const connect = async ({
       } catch (e) {
         logger.warn(e as any, 'Ignore error tracking pending group send')
       }
+      // Schedule ack watch to perform assert+resend if server ack is not received in time
+      try {
+        const mid = (full as any)?.key?.id as string | undefined
+        if (mid) scheduleAckWatch(id, mid, message, opts)
+      } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
       try {
         if (config.readOnReply && id) {

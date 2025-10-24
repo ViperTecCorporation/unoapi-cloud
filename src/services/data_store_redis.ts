@@ -293,11 +293,52 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         }
       }
     } catch {}
+    // Fallback 2: consult contact cache (when present)
+    try {
+      // read enriched contact info keyed by the LID JID
+      const raw = await redisGetContactInfo(sessionPhone, lidJid)
+      if (raw) {
+        const info = typeof raw === 'string' ? JSON.parse(raw) : raw
+        // Prefer explicit PN JID
+        if (info?.pnJid) {
+          try { await redisSetJidMapping(sessionPhone, info.pnJid, lidJid) } catch {}
+          return info.pnJid
+        }
+        // Or digits-only PN -> convert to JID
+        if (info?.pn) {
+          try {
+            const pnJid = phoneNumberToJid(`${info.pn}`)
+            try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
+            return pnJid
+          } catch {}
+        }
+      }
+    } catch {}
     return undefined
   }
   store.getLidForPn = async (sessionPhone: string, pnJid: string) => {
     if (!JIDMAP_CACHE_ENABLED) return undefined
-    try { return (await redisGetLidForPn(sessionPhone, pnJid)) || undefined } catch { return undefined }
+    try {
+      const cached = (await redisGetLidForPn(sessionPhone, pnJid)) || undefined
+      if (cached) return cached
+    } catch {}
+    // Fallback: consult contact cache keyed by PN JID (or digits)
+    try {
+      let keyJid = pnJid
+      // If digits, convert to JID to check contact cache
+      if (!keyJid.includes('@')) {
+        try { keyJid = phoneNumberToJid(keyJid) } catch {}
+      }
+      const raw = await redisGetContactInfo(sessionPhone, keyJid)
+      if (raw) {
+        const info = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (info?.lidJid) {
+          try { await redisSetJidMapping(sessionPhone, keyJid, info.lidJid) } catch {}
+          return info.lidJid
+        }
+      }
+    } catch {}
+    return undefined
   }
   store.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
     if (!JIDMAP_CACHE_ENABLED) return

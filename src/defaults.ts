@@ -260,6 +260,23 @@ export const INBOUND_DEDUP_WINDOW_MS = parseInt(process.env.INBOUND_DEDUP_WINDOW
 export const OUTGOING_IDEMPOTENCY_ENABLED: boolean =
   process.env.OUTGOING_IDEMPOTENCY_ENABLED === _undefined ? true : process.env.OUTGOING_IDEMPOTENCY_ENABLED == 'true'
 
+// Webhook ID normalization preference
+// If true, converts LID JIDs to PN when possible before sending to webhooks.
+// Default false to preserve @lid suffixes in webhook payloads.
+export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
+  process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
+
+// Server-ACK retry (assert+resend with same id)
+// Comma-separated delays in ms (e.g., "8000,30000,60000")
+export const ACK_RETRY_DELAYS_MS: number[] = (() => {
+  try {
+    const raw = process.env.ACK_RETRY_DELAYS_MS || '8000,30000,60000'
+    return raw.split(',').map((s) => parseInt(s.trim())).filter((n) => Number.isFinite(n) && n > 0)
+  } catch { return [8000, 30000, 60000] }
+})()
+// Optional hard cap for attempts; if set lower than delays length, it limits retries
+export const ACK_RETRY_MAX_ATTEMPTS: number = parseInt(process.env.ACK_RETRY_MAX_ATTEMPTS || '0') || 0
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }
