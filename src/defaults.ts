@@ -242,6 +242,17 @@ export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RET
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
+// Self-heal: assert sessions when decrypt stub is detected in inbound messages
+export const SELFHEAL_ASSERT_ON_DECRYPT =
+  process.env.SELFHEAL_ASSERT_ON_DECRYPT === _undefined ? true : process.env.SELFHEAL_ASSERT_ON_DECRYPT == 'true'
+
+// Periodic session assert (prevent stale e2e causing "Aguardando mensagem")
+export const PERIODIC_ASSERT_ENABLED =
+  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? false : process.env.PERIODIC_ASSERT_ENABLED == 'true'
+export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '600000') // 10 min
+export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '200')
+export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
+
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
 export const RATE_LIMIT_GLOBAL_PER_MINUTE = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_MINUTE || '0')

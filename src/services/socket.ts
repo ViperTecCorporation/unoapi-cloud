@@ -35,6 +35,7 @@ import {
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
 import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS } from '../defaults'
+import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS } from '../defaults'
 import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
@@ -174,6 +175,10 @@ export const connect = async ({
   // Throttle heavy assert operations
   const lastGroupAssert = new Map<string, number>()
   const lastReceiptAssert = new Map<string, number>()
+  // Cooldown for decrypt-stub based asserts (per jid)
+  const lastDecryptAssert = new Map<string, number>()
+  // Track recent contacts seen (jid -> lastSeenMs)
+  const recentContacts = new Map<string, number>()
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
   const scheduleAckWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
@@ -430,6 +435,68 @@ export const connect = async ({
 
   const event = <T extends keyof BaileysEventMap>(event: T, callback: (arg: BaileysEventMap[T]) => void) => {
     logger.info('Subscribe %s event: %s', phone, event)
+    if (event === 'messages.upsert') {
+      // Self-heal decrypt stub: when inbound messages arrive without decryptable content, assert sessions for participants
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (upsert: any) => {
+        try {
+          const msgs: any[] = (upsert && upsert.messages) || []
+          const now = Date.now()
+          const targets = new Set<string>()
+          for (const m of msgs) {
+            try {
+              // Track recent contacts
+              const remote = m?.key?.remoteJid
+              const participant = m?.key?.participant
+              if (typeof remote === 'string') {
+                recentContacts.set(remote, now)
+                try { if (isLidUser(remote)) recentContacts.set(jidNormalizedUser(remote), now) } catch {}
+              }
+              if (typeof participant === 'string') {
+                recentContacts.set(participant, now)
+                try { if (isLidUser(participant)) recentContacts.set(jidNormalizedUser(participant), now) } catch {}
+              }
+              // Heurística de decrypt stub: mensagem vazia ou apenas senderKeyDistributionMessage (não-fromMe)
+              const fromMe = !!m?.key?.fromMe
+              const content = m?.message || {}
+              const keys = Object.keys(content || {})
+              const onlySenderKey = (keys.length === 1 && !!content.senderKeyDistributionMessage)
+              const noContent = !content || keys.length === 0
+              if (!fromMe && (onlySenderKey || noContent)) {
+                const jid = participant || remote
+                if (typeof jid === 'string' && jid) {
+                  const last = lastDecryptAssert.get(jid) || 0
+                  // cooldown 15s por jid
+                  if (now - last > 15000) {
+                    lastDecryptAssert.set(jid, now)
+                    try {
+                      const set = new Set<string>()
+                      set.add(jid)
+                      try { if (isLidUser(jid)) set.add(jidNormalizedUser(jid)) } catch {}
+                      logger.info('SELFHEAL decrypt-stub: asserting sessions for %s (msg id=%s)', jid, m?.key?.id)
+                      await (sock as any).assertSessions(Array.from(set), true)
+                    } catch (e) {
+                      logger.warn(e as any, 'Ignore error asserting sessions on decrypt-stub for %s', jid)
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error on messages.upsert self-heal wrapper')
+        }
+        return (callback as any)(upsert)
+      }
+      // Condicional por env
+      if (SELFHEAL_ASSERT_ON_DECRYPT) {
+        // @ts-ignore
+        eventsMap.set(event, wrapped)
+      } else {
+        eventsMap.set(event as any, callback as any)
+      }
+      return
+    }
     if (event === 'messages.update') {
       // Wrap to detect ack 421 and perform a single fallback retry toggling addressingMode
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -607,6 +674,35 @@ export const connect = async ({
       eventsMap.set(event, callback)
     }
   }
+
+  // Periodic assert of recent contacts (optional)
+  try {
+    if (PERIODIC_ASSERT_ENABLED && PERIODIC_ASSERT_INTERVAL_MS > 0) {
+      try { logger.info('PERIODIC_ASSERT enabled: interval=%sms maxTargets=%s window=%sms', PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS) } catch {}
+      setInterval(async () => {
+        try {
+          const now = Date.now()
+          const entries = Array.from(recentContacts.entries())
+            .filter(([_, ts]) => (now - (ts || 0)) <= PERIODIC_ASSERT_RECENT_WINDOW_MS)
+            .sort((a, b) => (b[1] - a[1]))
+            .slice(0, Math.max(10, PERIODIC_ASSERT_MAX_TARGETS))
+          if (!entries.length) return
+          const set = new Set<string>()
+          for (const [jid] of entries) {
+            set.add(jid)
+            try { if (isLidUser(jid)) set.add(jidNormalizedUser(jid)) } catch {}
+          }
+          const targets = Array.from(set)
+          if (targets.length) {
+            logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
+            try { await (sock as any).assertSessions(targets, true) } catch (e) { logger.warn(e as any, 'Ignore error on periodic assert') }
+          }
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error in periodic assert interval')
+        }
+      }, PERIODIC_ASSERT_INTERVAL_MS)
+    }
+  } catch {}
 
   const reconnect = async () => {
     logger.info(`${phone} reconnecting`, status.attempt)
