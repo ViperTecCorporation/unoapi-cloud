@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid } from './transformer'
 import { WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
@@ -78,14 +78,17 @@ export class OutgoingCloudApi implements Outgoing {
           if (val.includes('@g.us')) return val
           // If LID and we have a PN mapping, prefer PN digits; otherwise keep @lid
           if (val.includes('@lid')) {
+            // sanitize device suffix (e.g., 1134:18@lid -> 1134@lid) to maximize cache hit
+            let base = val
+            try { base = formatJid(val) } catch {}
             try {
-              const mapped = await ds?.getPnForLid?.(phone, val)
+              const mapped = (await ds?.getPnForLid?.(phone, base)) || (await ds?.getPnForLid?.(phone, val))
               // Somente converte quando o mapeamento aponta para um PN JID válido
               if (mapped && isPnUser(mapped)) return jidToPhoneNumber(mapped, '')
             } catch {}
             // Fallback: tentar normalizar o LID via Baileys
             try {
-              const norm = jidNormalizedUser(val)
+              const norm = jidNormalizedUser(base)
               if (norm && isPnUser(norm)) return jidToPhoneNumber(norm, '')
             } catch {}
             return val
