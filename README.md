@@ -43,6 +43,23 @@ ONE_TO_ONE_ADDRESSING_MODE=pn
 # ONE_TO_ONE_ADDRESSING_MODE=lid
 ```
 
+### Session Self‑Heal & Periodic Assert
+
+- `SELFHEAL_ASSERT_ON_DECRYPT` (default `true`): when inbound messages arrive without decryptable content (e.g., only `senderKeyDistributionMessage`), assert sessions for the remote participant to avoid “Waiting for message”.
+- `PERIODIC_ASSERT_ENABLED` (default `true`): periodically assert sessions for recent contacts to prevent stale E2E sessions after long idle periods or device/key changes.
+- `PERIODIC_ASSERT_INTERVAL_MS` (default `600000`): interval between periodic asserts.
+- `PERIODIC_ASSERT_MAX_TARGETS` (default `200`): max recent contacts per batch.
+- `PERIODIC_ASSERT_RECENT_WINDOW_MS` (default `3600000`): only contacts seen within this window are considered.
+
+Example:
+```env
+SELFHEAL_ASSERT_ON_DECRYPT=true
+PERIODIC_ASSERT_ENABLED=true
+PERIODIC_ASSERT_INTERVAL_MS=600000
+PERIODIC_ASSERT_MAX_TARGETS=200
+PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
+```
+
 - Edited/device‑sent messages
   - Edited messages are unwrapped to their original content (no recursion); device‑sent updates with inline content are converted to normal message payloads.
 

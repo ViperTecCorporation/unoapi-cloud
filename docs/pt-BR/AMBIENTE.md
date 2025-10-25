@@ -1,56 +1,56 @@
-# Variáveis de Ambiente — Referência e Exemplos
+# VariÃ¡veis de Ambiente â€” ReferÃªncia e Exemplos
 
-Este guia explica as principais variáveis de ambiente, quando usar e por quê. Copie `.env.example` para `.env` e ajuste conforme seu cenário.
+Este guia explica as principais variÃ¡veis de ambiente, quando usar e por quÃª. Copie `.env.example` para `.env` e ajuste conforme seu cenÃ¡rio.
 
 ## Servidor (Core)
 
-- `PORT` — Porta HTTP. Padrão `9876`.
-  - Use ao rodar múltiplos serviços ou atrás de proxy.
+- `PORT` â€” Porta HTTP. PadrÃ£o `9876`.
+  - Use ao rodar mÃºltiplos serviÃ§os ou atrÃ¡s de proxy.
   - Exemplo: `PORT=8080`
-- `BASE_URL` — URL pública base usada para montar links de mídia em respostas.
-  - Use quando o serviço está atrás de proxy/CDN e clientes baixam mídia via URL pública.
+- `BASE_URL` â€” URL pÃºblica base usada para montar links de mÃ­dia em respostas.
+  - Use quando o serviÃ§o estÃ¡ atrÃ¡s de proxy/CDN e clientes baixam mÃ­dia via URL pÃºblica.
   - Exemplo: `BASE_URL=https://api.exemplo.com`
 
-## Sessão & Conexão
+## SessÃ£o & ConexÃ£o
 
-- `CONNECTION_TYPE` — `qrcode` | `pairing_code`. Padrão `qrcode`.
+- `CONNECTION_TYPE` â€” `qrcode` | `pairing_code`. PadrÃ£o `qrcode`.
   - Use `pairing_code` para pareamento sem exibir QR (headless).
   - Exemplo: `CONNECTION_TYPE=pairing_code`
-- `QR_TIMEOUT_MS` — Tempo limite para leitura do QR. Padrão `60000`.
-  - Aumente em cenários de pareamento lento.
+- `QR_TIMEOUT_MS` â€” Tempo limite para leitura do QR. PadrÃ£o `60000`.
+  - Aumente em cenÃ¡rios de pareamento lento.
   - Exemplo: `QR_TIMEOUT_MS=120000`
-- `VALIDATE_SESSION_NUMBER` — Garante que o número configurado bate com a sessão. Padrão `false`.
-  - Use `true` para evitar inconsistência entre sessão e número.
+- `VALIDATE_SESSION_NUMBER` â€” Garante que o nÃºmero configurado bate com a sessÃ£o. PadrÃ£o `false`.
+  - Use `true` para evitar inconsistÃªncia entre sessÃ£o e nÃºmero.
   - Exemplo: `VALIDATE_SESSION_NUMBER=true`
-- `CLEAN_CONFIG_ON_DISCONNECT` — Limpa configs salvas ao desconectar. Padrão `false`.
-  - Use para forçar estado limpo no disconnect.
+- `CLEAN_CONFIG_ON_DISCONNECT` â€” Limpa configs salvas ao desconectar. PadrÃ£o `false`.
+  - Use para forÃ§ar estado limpo no disconnect.
   - Exemplo: `CLEAN_CONFIG_ON_DISCONNECT=true`
 
 ## Log
 
-- `LOG_LEVEL` — Nível de log do serviço. Padrão `warn`.
+- `LOG_LEVEL` â€” NÃ­vel de log do serviÃ§o. PadrÃ£o `warn`.
   - Use `debug` em desenvolvimento.
   - Exemplo: `LOG_LEVEL=debug`
-- `UNO_LOG_LEVEL` — Sobrescreve o logger interno (cai para LOG_LEVEL se ausente).
+- `UNO_LOG_LEVEL` â€” Sobrescreve o logger interno (cai para LOG_LEVEL se ausente).
   - Exemplo: `UNO_LOG_LEVEL=info`
 
 ## Redis & RabbitMQ
 
-- `REDIS_URL` — String de conexão do Redis.
-  - Habilita store em Redis (sessões/dados). Sem ele, usa filesystem.
+- `REDIS_URL` â€” String de conexÃ£o do Redis.
+  - Habilita store em Redis (sessÃµes/dados). Sem ele, usa filesystem.
   - Exemplo: `REDIS_URL=redis://localhost:6379`
-- `AMQP_URL` — URL do RabbitMQ para broker.
+- `AMQP_URL` â€” URL do RabbitMQ para broker.
   - Habilita filas (modelo web/worker, retries, dead letters).
   - Exemplo: `AMQP_URL=amqp://guest:guest@localhost:5672?frameMax=8192`
 
 ## Storage (S3/MinIO)
 
-- `STORAGE_ENDPOINT` — Endpoint S3-compatível.
-- `STORAGE_REGION` — Região S3 (ex.: `us-east-1`).
-- `STORAGE_BUCKET_NAME` — Bucket para mídias.
-- `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` — Credenciais.
-- `STORAGE_FORCE_PATH_STYLE` — `true` para MinIO/compatibilidade.
-  - Use para salvar mídias no S3/MinIO em vez de filesystem.
+- `STORAGE_ENDPOINT` â€” Endpoint S3-compatÃ­vel.
+- `STORAGE_REGION` â€” RegiÃ£o S3 (ex.: `us-east-1`).
+- `STORAGE_BUCKET_NAME` â€” Bucket para mÃ­dias.
+- `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` â€” Credenciais.
+- `STORAGE_FORCE_PATH_STYLE` â€” `true` para MinIO/compatibilidade.
+  - Use para salvar mÃ­dias no S3/MinIO em vez de filesystem.
   - Exemplo:
     ```env
     STORAGE_ENDPOINT=http://minio:9000
@@ -63,29 +63,29 @@ Este guia explica as principais variáveis de ambiente, quando usar e por quê. 
 
 ## Status/Broadcast
 
-- `STATUS_ALLOW_LID` — Permite JIDs LID na lista de status. Padrão `true`.
+- `STATUS_ALLOW_LID` â€” Permite JIDs LID na lista de status. PadrÃ£o `true`.
   - Coloque `false` para normalizar para PN (`@s.whatsapp.net`).
   - Exemplo: `STATUS_ALLOW_LID=false`
-- `STATUS_BROADCAST_ENABLED` — Habilita envio de Status (status@broadcast). Padrão `true`.
-  - Defina `false` para bloquear qualquer Status antes de chegar ao WhatsApp (útil para evitar risco de bloqueio de conta).
+- `STATUS_BROADCAST_ENABLED` â€” Habilita envio de Status (status@broadcast). PadrÃ£o `true`.
+  - Defina `false` para bloquear qualquer Status antes de chegar ao WhatsApp (Ãºtil para evitar risco de bloqueio de conta).
   - Exemplo: `STATUS_BROADCAST_ENABLED=false`
 
 ## Envio em Grupos
 
-- `GROUP_SEND_MEMBERSHIP_CHECK` — Avisa se não for membro do grupo. Padrão `true`.
-- `GROUP_SEND_PREASSERT_SESSIONS` — Pré-assegura sessões dos participantes. Padrão `true`.
-- `GROUP_SEND_ADDRESSING_MODE` — Prefira `pn` ou `lid`. Padrão vazio (interpreta como LID por padrão).
-- `GROUP_SEND_FALLBACK_ORDER` — Ordem de fallback no ack 421, ex.: `pn,lid`. Padrão `pn,lid`.
-  - Use para melhorar confiabilidade em cenários com variações de rede/dispositivo.
+- `GROUP_SEND_MEMBERSHIP_CHECK` â€” Avisa se nÃ£o for membro do grupo. PadrÃ£o `true`.
+- `GROUP_SEND_PREASSERT_SESSIONS` â€” PrÃ©-assegura sessÃµes dos participantes. PadrÃ£o `true`.
+- `GROUP_SEND_ADDRESSING_MODE` â€” Prefira `pn` ou `lid`. PadrÃ£o vazio (interpreta como LID por padrÃ£o).
+- `GROUP_SEND_FALLBACK_ORDER` â€” Ordem de fallback no ack 421, ex.: `pn,lid`. PadrÃ£o `pn,lid`.
+  - Use para melhorar confiabilidade em cenÃ¡rios com variaÃ§Ãµes de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
 
 ### Controles de fan-out de recibos/status em grupos
 
-Em grupos grandes, recibos por participante (lido/tocado/entregue por pessoa) podem sobrecarregar seu webhook/socket. Estes toggles reduzem o volume de eventos mantendo um único sinal de entrega no nível do grupo.
+Em grupos grandes, recibos por participante (lido/tocado/entregue por pessoa) podem sobrecarregar seu webhook/socket. Estes toggles reduzem o volume de eventos mantendo um Ãºnico sinal de entrega no nÃ­vel do grupo.
 
-- `GROUP_IGNORE_INDIVIDUAL_RECEIPTS` — Suprime `message-receipt.update` por participante para mensagens de grupo. Padrão `true`.
-  - Coloque `false` para receber recibos por usuário (lido/tocado/entregue) em grupos.
-- `GROUP_ONLY_DELIVERED_STATUS` — Em `messages.update` de grupos, encaminha apenas `DELIVERY_ACK` (entregue). Padrão `true`.
+- `GROUP_IGNORE_INDIVIDUAL_RECEIPTS` â€” Suprime `message-receipt.update` por participante para mensagens de grupo. PadrÃ£o `true`.
+  - Coloque `false` para receber recibos por usuÃ¡rio (lido/tocado/entregue) em grupos.
+- `GROUP_ONLY_DELIVERED_STATUS` â€” Em `messages.update` de grupos, encaminha apenas `DELIVERY_ACK` (entregue). PadrÃ£o `true`.
   - Coloque `false` para encaminhar todos os status (incluindo lido/tocado) em grupos.
 
 Exemplo (reduzir carga em grupos grandes):
@@ -96,136 +96,136 @@ GROUP_ONLY_DELIVERED_STATUS=true
  
 ## Retry de ACK do Servidor (assert + resend)
 
-- `ACK_RETRY_DELAYS_MS` — Lista de atrasos (ms) separada por vírgula para reenvio quando não há ACK do servidor. Padrão `8000,30000,60000` (8s, 30s, 60s).
+- `ACK_RETRY_DELAYS_MS` â€” Lista de atrasos (ms) separada por vÃ­rgula para reenvio quando nÃ£o hÃ¡ ACK do servidor. PadrÃ£o `8000,30000,60000` (8s, 30s, 60s).
   - Exemplo: `ACK_RETRY_DELAYS_MS=5000,15000,45000`
-- `ACK_RETRY_MAX_ATTEMPTS` — Limite máximo de tentativas. Padrão `0` (usa a quantidade definida em `ACK_RETRY_DELAYS_MS`).
+- `ACK_RETRY_MAX_ATTEMPTS` â€” Limite mÃ¡ximo de tentativas. PadrÃ£o `0` (usa a quantidade definida em `ACK_RETRY_DELAYS_MS`).
   - Exemplo: `ACK_RETRY_MAX_ATTEMPTS=2`
-Restaurar comportamento legado (recibos completos por usuário):
+Restaurar comportamento legado (recibos completos por usuÃ¡rio):
 ```env
 GROUP_IGNORE_INDIVIDUAL_RECEIPTS=false
 GROUP_ONLY_DELIVERED_STATUS=false
 ```
 
-Grupos grandes (mitigação de “No sessions” e controle de carga)
-- `GROUP_LARGE_THRESHOLD` — Considera o grupo “grande” quando o número de participantes ultrapassa esse valor. Padrão `800`.
-  - Em grupos grandes, o cliente pula pré‑asserts pesados para reduzir carga. O endereçamento permanece LID por padrão (a menos que configurado) e o fallback alterna conforme `GROUP_SEND_FALLBACK_ORDER` quando necessário.
+Grupos grandes (mitigaÃ§Ã£o de â€œNo sessionsâ€ e controle de carga)
+- `GROUP_LARGE_THRESHOLD` â€” Considera o grupo â€œgrandeâ€ quando o nÃºmero de participantes ultrapassa esse valor. PadrÃ£o `800`.
+  - Em grupos grandes, o cliente pula prÃ©â€‘asserts pesados para reduzir carga. O endereÃ§amento permanece LID por padrÃ£o (a menos que configurado) e o fallback alterna conforme `GROUP_SEND_FALLBACK_ORDER` quando necessÃ¡rio.
   - Exemplo: `GROUP_LARGE_THRESHOLD=1000`
-- `GROUP_ASSERT_CHUNK_SIZE` — Tamanho dos chunks para `assertSessions()` em fallbacks. Padrão `100` (mín. 20).
+- `GROUP_ASSERT_CHUNK_SIZE` â€” Tamanho dos chunks para `assertSessions()` em fallbacks. PadrÃ£o `100` (mÃ­n. 20).
   - Exemplo: `GROUP_ASSERT_CHUNK_SIZE=80`
-- `GROUP_ASSERT_FLOOD_WINDOW_MS` — Janela anti‑flood para evitar asserts pesados repetidos por grupo. Padrão `5000`.
+- `GROUP_ASSERT_FLOOD_WINDOW_MS` â€” Janela antiâ€‘flood para evitar asserts pesados repetidos por grupo. PadrÃ£o `5000`.
   - Exemplo: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
-- `NO_SESSION_RETRY_BASE_DELAY_MS` — Atraso base antes do retry após asserts. Padrão `150`.
-- `NO_SESSION_RETRY_PER_200_DELAY_MS` — Atraso extra por 200 destinos. Padrão `300`.
-- `NO_SESSION_RETRY_MAX_DELAY_MS` — Teto para o atraso adaptativo. Padrão `2000`.
+- `NO_SESSION_RETRY_BASE_DELAY_MS` â€” Atraso base antes do retry apÃ³s asserts. PadrÃ£o `150`.
+- `NO_SESSION_RETRY_PER_200_DELAY_MS` â€” Atraso extra por 200 destinos. PadrÃ£o `300`.
+- `NO_SESSION_RETRY_MAX_DELAY_MS` â€” Teto para o atraso adaptativo. PadrÃ£o `2000`.
   - Exemplo: `NO_SESSION_RETRY_BASE_DELAY_MS=250`, `NO_SESSION_RETRY_PER_200_DELAY_MS=400`, `NO_SESSION_RETRY_MAX_DELAY_MS=3000`
-- `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` — Cooldown entre asserts disparados por recibos `message-receipt.update` por grupo. Padrão `15000`.
-- `RECEIPT_RETRY_ASSERT_MAX_TARGETS` — Limite de alvos para asserts via recibos. Padrão `400`.
+- `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` â€” Cooldown entre asserts disparados por recibos `message-receipt.update` por grupo. PadrÃ£o `15000`.
+- `RECEIPT_RETRY_ASSERT_MAX_TARGETS` â€” Limite de alvos para asserts via recibos. PadrÃ£o `400`.
 
-Observação de confiabilidade:
-- Em erro raro do libsignal (“No sessions”) durante envio a grupos, o serviço reassegura sessões (em chunks) e tenta 1x. Persistindo falha, alterna o addressing seguindo `GROUP_SEND_FALLBACK_ORDER` e tenta novamente.
+ObservaÃ§Ã£o de confiabilidade:
+- Em erro raro do libsignal (â€œNo sessionsâ€) durante envio a grupos, o serviÃ§o reassegura sessÃµes (em chunks) e tenta 1x. Persistindo falha, alterna o addressing seguindo `GROUP_SEND_FALLBACK_ORDER` e tenta novamente.
 
 ## Cache de Mapeamento LID/PN
 
 ## Comportamento LID/PN
 
-- Webhooks preferem PN. Quando não for possível resolver PN com segurança, LID/JID é retornado como fallback.
-- Internamente, a API usa LID quando disponível para 1:1 e grupos. Em 1:1, o mapeamento PN→LID é aprendido em tempo de execução (assertSessions/exists e eventos).
-- Imagens de perfil são salvas e consultadas por um identificador PN canônico quando possível (também para chaves S3), para PN e LID apontarem para o mesmo arquivo.
-- `JIDMAP_CACHE_ENABLED` — Habilita cache PN↔LID. Padrão `true`.
-  - Armazena por sessão o mapeamento entre JIDs LID e PN para reduzir consultas e melhorar entrega em grupos grandes.
+- Webhooks preferem PN. Quando nÃ£o for possÃ­vel resolver PN com seguranÃ§a, LID/JID Ã© retornado como fallback.
+- Internamente, a API usa LID quando disponÃ­vel para 1:1 e grupos. Em 1:1, o mapeamento PNâ†’LID Ã© aprendido em tempo de execuÃ§Ã£o (assertSessions/exists e eventos).
+- Imagens de perfil sÃ£o salvas e consultadas por um identificador PN canÃ´nico quando possÃ­vel (tambÃ©m para chaves S3), para PN e LID apontarem para o mesmo arquivo.
+- `JIDMAP_CACHE_ENABLED` â€” Habilita cache PNâ†”LID. PadrÃ£o `true`.
+  - Armazena por sessÃ£o o mapeamento entre JIDs LID e PN para reduzir consultas e melhorar entrega em grupos grandes.
   - Exemplo: `JIDMAP_CACHE_ENABLED=true`
-- `JIDMAP_TTL_SECONDS` — TTL das entradas do cache. Padrão `604800` (7 dias).
+- `JIDMAP_TTL_SECONDS` â€” TTL das entradas do cache. PadrÃ£o `604800` (7 dias).
   - Exemplo: `JIDMAP_TTL_SECONDS=604800`
 
-## Anti‑Spam / Rate Limits
+## Antiâ€‘Spam / Rate Limits
 
-- `RATE_LIMIT_GLOBAL_PER_MINUTE` — Máximo de mensagens por minuto por sessão. Padrão `0` (desativado).
+- `RATE_LIMIT_GLOBAL_PER_MINUTE` â€” MÃ¡ximo de mensagens por minuto por sessÃ£o. PadrÃ£o `0` (desativado).
   - Exemplo: `RATE_LIMIT_GLOBAL_PER_MINUTE=60`
-- `RATE_LIMIT_PER_TO_PER_MINUTE` — Máximo de mensagens por minuto por destinatário (por sessão). Padrão `0`.
+- `RATE_LIMIT_PER_TO_PER_MINUTE` â€” MÃ¡ximo de mensagens por minuto por destinatÃ¡rio (por sessÃ£o). PadrÃ£o `0`.
   - Exemplo: `RATE_LIMIT_PER_TO_PER_MINUTE=20`
-- `RATE_LIMIT_BLOCK_SECONDS` — Atraso sugerido (em segundos) quando o limite é excedido. Padrão `60`.
+- `RATE_LIMIT_BLOCK_SECONDS` â€” Atraso sugerido (em segundos) quando o limite Ã© excedido. PadrÃ£o `60`.
   - Ao atingir o limite, a API agenda o envio via RabbitMQ com esse atraso em vez de responder HTTP 429.
   - Exemplo: `RATE_LIMIT_BLOCK_SECONDS=60`
 
 ## Webhooks / Filas / Retentativas
 
-- `UNOAPI_MESSAGE_RETRY_LIMIT` — Máximo de tentativas em consumidores AMQP antes de ir para a dead‑letter. Padrão `5`.
+- `UNOAPI_MESSAGE_RETRY_LIMIT` â€” MÃ¡ximo de tentativas em consumidores AMQP antes de ir para a deadâ€‘letter. PadrÃ£o `5`.
   - Exemplo: `UNOAPI_MESSAGE_RETRY_LIMIT=7`
-- `UNOAPI_MESSAGE_RETRY_DELAY` — Atraso padrão (ms) usado por utilitários ao publicar mensagens com delay. Padrão `10000`.
-  - Observação: o caminho de retry do consumidor usa um reenvio fixo de 60s.
+- `UNOAPI_MESSAGE_RETRY_DELAY` â€” Atraso padrÃ£o (ms) usado por utilitÃ¡rios ao publicar mensagens com delay. PadrÃ£o `10000`.
+  - ObservaÃ§Ã£o: o caminho de retry do consumidor usa um reenvio fixo de 60s.
   - Exemplo: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
-- `CONSUMER_TIMEOUT_MS` — Tempo máximo (ms) para um consumidor processar a mensagem antes de forçar retry. Padrão `360000`.
+- `CONSUMER_TIMEOUT_MS` â€” Tempo mÃ¡ximo (ms) para um consumidor processar a mensagem antes de forÃ§ar retry. PadrÃ£o `360000`.
   - Exemplo: `CONSUMER_TIMEOUT_MS=180000`
-- `NOTIFY_FAILED_MESSAGES` — Envia um texto de diagnóstico para o número da sessão quando as tentativas se esgotam. Padrão `true`.
+- `NOTIFY_FAILED_MESSAGES` â€” Envia um texto de diagnÃ³stico para o nÃºmero da sessÃ£o quando as tentativas se esgotam. PadrÃ£o `true`.
   - Exemplo: `NOTIFY_FAILED_MESSAGES=false`
 
-## Mídia & Timeouts
+## MÃ­dia & Timeouts
 
-### Deduplicação de entrada
+### DeduplicaÃ§Ã£o de entrada
 
-Alguns provedores/dispositivos podem emitir a mesma mensagem do WA mais de uma vez durante reconexões ou importação de histórico. Use a janela abaixo para suprimir duplicatas que chegam em sequência.
+Alguns provedores/dispositivos podem emitir a mesma mensagem do WA mais de uma vez durante reconexÃµes ou importaÃ§Ã£o de histÃ³rico. Use a janela abaixo para suprimir duplicatas que chegam em sequÃªncia.
 
-- `INBOUND_DEDUP_WINDOW_MS` — Ignora o processamento se outra mensagem com o mesmo `remoteJid` e `id` chegar dentro desta janela (ms). Padrão `7000`.
+- `INBOUND_DEDUP_WINDOW_MS` â€” Ignora o processamento se outra mensagem com o mesmo `remoteJid` e `id` chegar dentro desta janela (ms). PadrÃ£o `7000`.
   - Exemplo: `INBOUND_DEDUP_WINDOW_MS=5000`
 
-### Idempotência de saída
+### IdempotÃªncia de saÃ­da
 
-Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem‑sucedido.
+Evita reenviar a mesma mensagem quando um retry do job ocorre apÃ³s um envio bemâ€‘sucedido.
 
-- `OUTGOING_IDEMPOTENCY_ENABLED` — Quando `true` (padrão), o job de entrada checa no store (key/status) para o id UNO antes de enviar; se já parecer processado, ignora o envio.
+- `OUTGOING_IDEMPOTENCY_ENABLED` â€” Quando `true` (padrÃ£o), o job de entrada checa no store (key/status) para o id UNO antes de enviar; se jÃ¡ parecer processado, ignora o envio.
   - Exemplo: `OUTGOING_IDEMPOTENCY_ENABLED=false` (para desabilitar)
 
 ### Fotos de Perfil
 
-- Nome canônico do arquivo: sempre pelo número (PN). Se a entrada for LID, mapeie para PN e salve `<pn>.jpg`.
-- Refresh forçado: `PROFILE_PICTURE_FORCE_REFRESH=true` (padrão) busca no WhatsApp e atualiza o cache antes de retornar a URL local/storage.
-- Prefetch no envio: o cliente faz prefetch da foto do destino em mensagens de saída (1:1 e grupos) para manter o cache atualizado.
-- Busca robusta em 1:1: tenta JID PN primeiro e depois LID mapeado, no modo `image` e, se necessário, `preview`.
-- Segurança no S3: valida a existência do objeto (HeadObject) antes de gerar URL pré‑assinada.
+- Nome canÃ´nico do arquivo: sempre pelo nÃºmero (PN). Se a entrada for LID, mapeie para PN e salve `<pn>.jpg`.
+- Refresh forÃ§ado: `PROFILE_PICTURE_FORCE_REFRESH=true` (padrÃ£o) busca no WhatsApp e atualiza o cache antes de retornar a URL local/storage.
+- Prefetch no envio: o cliente faz prefetch da foto do destino em mensagens de saÃ­da (1:1 e grupos) para manter o cache atualizado.
+- Busca robusta em 1:1: tenta JID PN primeiro e depois LID mapeado, no modo `image` e, se necessÃ¡rio, `preview`.
+- SeguranÃ§a no S3: valida a existÃªncia do objeto (HeadObject) antes de gerar URL prÃ©â€‘assinada.
 
 ### Status/Webhook
 
-- Normalização em 1:1: `recipient_id` sempre PN (somente dígitos), mesmo quando o evento chega com @lid.
-- Timestamps: os statuses (delivered/read) incluem `timestamp` (quando disponível) — ou caem em `payload.messageTimestamp`.
-- Normalização de id: mapeia id do provedor para id UNO antes de enviar ao webhook.
-- Anti‑regressão/duplicata: ignora regressões (ex.: “sent” após “delivered”) e repetidos para o mesmo id.
+- NormalizaÃ§Ã£o em 1:1: `recipient_id` sempre PN (somente dÃ­gitos), mesmo quando o evento chega com @lid.
+- Timestamps: os statuses (delivered/read) incluem `timestamp` (quando disponÃ­vel) â€” ou caem em `payload.messageTimestamp`.
+- NormalizaÃ§Ã£o de id: mapeia id do provedor para id UNO antes de enviar ao webhook.
+- Antiâ€‘regressÃ£o/duplicata: ignora regressÃµes (ex.: â€œsentâ€ apÃ³s â€œdeliveredâ€) e repetidos para o mesmo id.
 
 ## Fotos de Perfil
 
-- Visão geral: o serviço enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens são salvas no S3 (recomendado em produção) ou no filesystem local e expostas como URLs no payload.
+- VisÃ£o geral: o serviÃ§o enriquece os eventos enviados ao webhook com fotos de perfil de contatos e de grupos. Quando habilitado, as imagens sÃ£o salvas no S3 (recomendado em produÃ§Ã£o) ou no filesystem local e expostas como URLs no payload.
 
 - Habilitar/desabilitar
-  - `SEND_PROFILE_PICTURE` — Incluir fotos de perfil no webhook. Padrão `true`.
+  - `SEND_PROFILE_PICTURE` â€” Incluir fotos de perfil no webhook. PadrÃ£o `true`.
 
 - Backends de armazenamento
-  - S3 (preferencial): habilitado quando existe `STORAGE_ENDPOINT`. Usa `@aws-sdk/client-s3` com credenciais de `STORAGE_*`. Os arquivos são gravados em `<phone>/profile-pictures/<canonico>.jpg`, onde `<canonico>` é o número (somente dígitos) para usuários, ou o JID do grupo para grupos.
-  - Filesystem: padrão quando não há S3 configurado. Arquivos ficam em `<baseStore>/medias/<phone>/profile-pictures/<canonico>.jpg`.
+  - S3 (preferencial): habilitado quando existe `STORAGE_ENDPOINT`. Usa `@aws-sdk/client-s3` com credenciais de `STORAGE_*`. Os arquivos sÃ£o gravados em `<phone>/profile-pictures/<canonico>.jpg`, onde `<canonico>` Ã© o nÃºmero (somente dÃ­gitos) para usuÃ¡rios, ou o JID do grupo para grupos.
+  - Filesystem: padrÃ£o quando nÃ£o hÃ¡ S3 configurado. Arquivos ficam em `<baseStore>/medias/<phone>/profile-pictures/<canonico>.jpg`.
 
 - URLs retornadas ao webhook
-  - S3: é gerada uma URL pré‑assinada por requisição usando `DATA_URL_TTL` (segundos). O link expira após o TTL.
-  - Filesystem: a URL pública é baseada em `BASE_URL`, via rota de download: `BASE_URL/v15.0/download/<phone>/profile-pictures/<canonico>.jpg`.
-  - Primeira busca: na primeira vez, o serviço pode retornar a URL do CDN do WhatsApp enquanto baixa e persiste a imagem; nas próximas, a URL será do seu storage (S3 ou filesystem).
+  - S3: Ã© gerada uma URL prÃ©â€‘assinada por requisiÃ§Ã£o usando `DATA_URL_TTL` (segundos). O link expira apÃ³s o TTL.
+  - Filesystem: a URL pÃºblica Ã© baseada em `BASE_URL`, via rota de download: `BASE_URL/v15.0/download/<phone>/profile-pictures/<canonico>.jpg`.
+  - Primeira busca: na primeira vez, o serviÃ§o pode retornar a URL do CDN do WhatsApp enquanto baixa e persiste a imagem; nas prÃ³ximas, a URL serÃ¡ do seu storage (S3 ou filesystem).
 
-- Retenção e limpeza
-  - `DATA_TTL` — Retenção padrão (em segundos) para mídias (incluindo fotos de perfil). Padrão 30 dias.
-  - Com S3 e AMQP, o serviço agenda um job para remover o objeto após `DATA_TTL`.
-  - No filesystem, a remoção é feita diretamente no diretório local de mídias.
+- RetenÃ§Ã£o e limpeza
+  - `DATA_TTL` â€” RetenÃ§Ã£o padrÃ£o (em segundos) para mÃ­dias (incluindo fotos de perfil). PadrÃ£o 30 dias.
+  - Com S3 e AMQP, o serviÃ§o agenda um job para remover o objeto apÃ³s `DATA_TTL`.
+  - No filesystem, a remoÃ§Ã£o Ã© feita diretamente no diretÃ³rio local de mÃ­dias.
 
-- Pontos de integração (alto nível)
+- Pontos de integraÃ§Ã£o (alto nÃ­vel)
   - O cliente enriquece o payload com:
     - Contato: `contacts[0].profile.picture`
     - Grupo: `group_picture`
-  - O data store resolve uma URL cacheada quando houver; caso contrário, consulta o WhatsApp (`profilePictureUrl`), persiste no storage e retorna uma URL.
+  - O data store resolve uma URL cacheada quando houver; caso contrÃ¡rio, consulta o WhatsApp (`profilePictureUrl`), persiste no storage e retorna uma URL.
 
-- Configuração necessária
+- ConfiguraÃ§Ã£o necessÃ¡ria
   - Para S3: `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET_NAME`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` e opcionalmente `STORAGE_FORCE_PATH_STYLE`.
-  - Para filesystem: garanta que `BASE_URL` aponte para um domínio público (para que `/v15.0/download/...` funcione para os consumidores do webhook).
+  - Para filesystem: garanta que `BASE_URL` aponte para um domÃ­nio pÃºblico (para que `/v15.0/download/...` funcione para os consumidores do webhook).
 
-- `FETCH_TIMEOUT_MS` — Timeout para checagens HEAD/download de mídia.
-  - Aumente ao enviar mídias grandes hospedadas em servidores lentos.
+- `FETCH_TIMEOUT_MS` â€” Timeout para checagens HEAD/download de mÃ­dia.
+  - Aumente ao enviar mÃ­dias grandes hospedadas em servidores lentos.
   - Exemplo: `FETCH_TIMEOUT_MS=15000`
-- `SEND_AUDIO_MESSAGE_AS_PTT` — Marca áudio como PTT (voice note). Padrão `false`.
-- `CONVERT_AUDIO_TO_PTT` — Converte forçadamente para OGG/Opus. Padrão `false`.
+- `SEND_AUDIO_MESSAGE_AS_PTT` â€” Marca Ã¡udio como PTT (voice note). PadrÃ£o `false`.
+- `CONVERT_AUDIO_TO_PTT` â€” Converte forÃ§adamente para OGG/Opus. PadrÃ£o `false`.
   - Use quando os clientes esperam voice notes com waveform.
   - Exemplo:
     ```env
@@ -235,23 +235,23 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem
 
 ## Proxy
 
-- `PROXY_URL` — Proxy SOCKS/HTTP para Baileys.
-  - Use quando saídas precisam passar por proxy.
+- `PROXY_URL` â€” Proxy SOCKS/HTTP para Baileys.
+  - Use quando saÃ­das precisam passar por proxy.
   - Exemplo: `PROXY_URL=socks5://user:pass@proxy.local:1080`
 
-## Webhooks & Notificações
+## Webhooks & NotificaÃ§Ãµes
 
-- `WEBHOOK_SESSION` — Recebe notificações de sessão (QR, status) via HTTP.
+- `WEBHOOK_SESSION` â€” Recebe notificaÃ§Ãµes de sessÃ£o (QR, status) via HTTP.
   - Integre com sistemas externos (ex.: exibir QR em outra UI).
   - Exemplo: `WEBHOOK_SESSION=https://hooks.exemplo.com/uno/session`
 
 ## Chamadas de Voz
 
-- `WAVOIP_TOKEN` — Habilita voice-calls-baileys.
-  - Use para recursos relacionados a chamadas quando aplicável.
+- `WAVOIP_TOKEN` â€” Habilita voice-calls-baileys.
+  - Use para recursos relacionados a chamadas quando aplicÃ¡vel.
   - Exemplo: `WAVOIP_TOKEN=seu-token`
 
-## Exemplos por Cenário
+## Exemplos por CenÃ¡rio
 
 - Dev local (filesystem):
   ```env
@@ -269,7 +269,7 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem
   STORAGE_SECRET_ACCESS_KEY=minioadmin
   STORAGE_FORCE_PATH_STYLE=true
   ```
-- Pareamento headless e validação mais rígida:
+- Pareamento headless e validaÃ§Ã£o mais rÃ­gida:
   ```env
   CONNECTION_TYPE=pairing_code
   QR_TIMEOUT_MS=120000
@@ -278,5 +278,22 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre após um envio bem
 
 ## Exemplos prontos
 
-- Inglês: /docs/examples/.env.example.en
-- Português (Brasil): /docs/pt-BR/exemplos/.env.exemplo
+- InglÃªs: /docs/examples/.env.example.en
+- PortuguÃªs (Brasil): /docs/pt-BR/exemplos/.env.exemplo
+
+## Auto‑recuperação (Self‑Heal) & Asserção Periódica de Sessões
+
+- `SELFHEAL_ASSERT_ON_DECRYPT` — Quando `true` (padrão), assegura sessões para o participante remoto quando chegam mensagens sem conteúdo decriptável (ex.: apenas `senderKeyDistributionMessage`).
+- `PERIODIC_ASSERT_ENABLED` — Periodicamente assegura sessões para contatos recentes (padrão `true`).
+- `PERIODIC_ASSERT_INTERVAL_MS` — Intervalo entre as asserções periódicas (padrão `600000`).
+- `PERIODIC_ASSERT_MAX_TARGETS` — Máximo de contatos recentes por rodada (padrão `200`).
+- `PERIODIC_ASSERT_RECENT_WINDOW_MS` — Apenas contatos vistos nesta janela são considerados (padrão `3600000`).
+
+Exemplo:
+```env
+SELFHEAL_ASSERT_ON_DECRYPT=true
+PERIODIC_ASSERT_ENABLED=true
+PERIODIC_ASSERT_INTERVAL_MS=600000
+PERIODIC_ASSERT_MAX_TARGETS=200
+PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
+```
