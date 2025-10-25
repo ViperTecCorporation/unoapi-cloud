@@ -219,6 +219,32 @@ export class ListenerBaileys implements Listener {
         const pn = (senderPhone || '').replace(/\D/g, '')
         if (pn) { await dataStore.setJidIfNotFound(pn, senderId) }
       } catch {}
+      // Se inbound veio de LID e já temos PN, grava mapeamento PN<->LID para aquecer cache (Redis/File)
+      try {
+        const pnDigits = (senderPhone || '').replace(/\D/g, '')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const kid: any = (i as any)?.key || {}
+        const lidJid = (typeof kid?.participant === 'string' && kid.participant.includes('@lid')) ? kid.participant
+                      : (typeof kid?.remoteJid === 'string' && kid.remoteJid.includes('@lid')) ? kid.remoteJid
+                      : (typeof senderId === 'string' && senderId.includes('@lid')) ? senderId
+                      : undefined
+        if (pnDigits && lidJid) {
+          try {
+            const pnJid = `${pnDigits}@s.whatsapp.net`
+            await dataStore.setJidMapping?.(this.phone, pnJid, lidJid)
+            // Also persist contact info and names to enrich future webhooks/mentions
+            try {
+              const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
+              if (rawName) {
+                try { await dataStore.setContactName?.(pnJid, rawName) } catch {}
+                try { await dataStore.setContactName?.(lidJid, rawName) } catch {}
+                try { await dataStore.setContactInfo?.(pnJid, { name: rawName, pnJid, lidJid, pn: pnDigits }) } catch {}
+                try { await dataStore.setContactInfo?.(lidJid, { name: rawName, pnJid, lidJid, pn: pnDigits }) } catch {}
+              }
+            } catch {}
+          } catch {}
+        }
+      } catch {}
     } catch (error) {
       if (error instanceof BindTemplateError) {
         const template = new Template(this.getConfig)
