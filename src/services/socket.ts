@@ -1107,6 +1107,12 @@ export const connect = async ({
       }
       return full
     }
+    // Se id resolvido já é um JID (@s.whatsapp.net ou @lid), não classificar como telefone inválido
+    try {
+      if (typeof id === 'string' && (id.includes('@s.whatsapp.net') || id.includes('@lid'))) {
+        throw new SendError(2, t('without_whatsapp', to))
+      }
+    } catch {}
     if (!isValidPhoneNumber(to)) {
       throw new SendError(7, t('invalid_phone_number', to))
     }

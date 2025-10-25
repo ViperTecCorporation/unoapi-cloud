@@ -314,6 +314,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     }
     let jid = await dataStore.getJid(phoneOrJid)
     let lid
+    // Tratar entrada LID: se input já for LID, preservar como fallback
+    try { if (isLidUser(phoneOrJid)) { lid = phoneOrJid } } catch {}
     if (isLidUser(jid)) {
       lid = jid
     }
@@ -377,7 +379,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         } catch {}
       } else {
         if (lid) {
-          logger.warn(`${phoneOrJid} not retrieve jid on WhatsApp baileys return lid ${lid}`)
+          // Entrada é LID e sem PN mapeado: retornar LID para permitir envio via addressingMode=LID
+          logger.warn(`${phoneOrJid} not retrieve jid on WhatsApp; using LID fallback ${lid}`)
           return lid
         } else {
           logger.warn(`${phoneOrJid} not exists on WhatsApp baileys onWhatsApp return results ${results ? JSON.stringify(results) : null}`)

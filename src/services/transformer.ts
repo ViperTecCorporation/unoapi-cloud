@@ -497,6 +497,15 @@ export const formatJid = (jid: string) => {
 }
 
 export const isValidPhoneNumber = (value: string, nine = false): boolean => {
+  try {
+    if (typeof value === 'string' && value.includes('@')) {
+      // Tratar JIDs como válidos para rotas que aceitam @s.whatsapp.net e @lid
+      const v = value.toLowerCase()
+      if (v.endsWith('@s.whatsapp.net') || v.endsWith('@lid') || v.endsWith('@g.us') || v.endsWith('@newsletter')) {
+        return true
+      }
+    }
+  } catch {}
   const number = `+${(value || '').split('@')[0].split(':')[0].replace('+', '')}`
   const country = number.replace('+', '').substring(0, 2)
   const parsed = parsePhoneNumber(number)
