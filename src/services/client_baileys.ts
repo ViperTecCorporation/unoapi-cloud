@@ -200,6 +200,13 @@ export class ClientBaileys implements Client {
 
   private onQrCode: OnQrCode = async (qrCode: string, time, limit) => {
     logger.debug('Received qrcode %s %s', this.phone, qrCode)
+    try {
+      const { sessionStore } = this.store!
+      if (sessionStore && await sessionStore.isStatusOnline(this.phone)) {
+        logger.debug('Skip sending QR: session already online %s', this.phone)
+        return
+      }
+    } catch {}
     const id = uuid()
     const qrCodeUrl = await QRCode.toDataURL(qrCode)
     const remoteJid = phoneNumberToJid(this.phone)

@@ -153,6 +153,16 @@ export class ListenerBaileys implements Listener {
           i = await config.getMessageMetadata(i)
         }
       } catch {}
+      // Normaliza lastIncoming para usar sempre o id do provedor (Baileys)
+      try {
+        if (i?.key?.remoteJid && i?.key?.id && !i?.key?.fromMe) {
+          const original = await (await config.getStore(phone, config))?.dataStore?.loadKey?.(i.key.id)
+          if (original && (original as any).id && (original as any).remoteJid) {
+            await (await config.getStore(phone, config))?.dataStore?.setLastIncomingKey?.((original as any).remoteJid, original as any)
+            try { logger.debug('READ_ON_REPLY: normalized lastIncoming %s -> %s (provider id)', (original as any).remoteJid, (original as any).id) } catch {}
+          }
+        }
+      } catch {}
     }
 
     const key = i.key

@@ -271,16 +271,24 @@ export const connect = async ({
 
   const onConnectionUpdate = async (event: Partial<ConnectionState>) => {
     logger.debug('onConnectionUpdate connectionType %s ==> %s %s', config.connectionType, phone, JSON.stringify(event))
-    if (event.qr && config.connectionType == 'qrcode' && !sock?.authState?.creds?.registered) {
-      if (status.attempt > attempts) {
-        const message =  t('attempts_exceeded', attempts)
-        logger.debug(message)
-        await onNotification(message, true)
-        status.attempt = 1
-        return logout()
+    // Evita emitir QR code quando a sessão já está efetivamente online/aberta
+    if (event.qr && config.connectionType == 'qrcode') {
+      const registered = !!sock?.authState?.creds?.registered || !!state?.creds?.me?.id
+      const alreadyOnline = await sessionStore.isStatusOnline(phone)
+      const isOpen = event.connection === 'open' || event.isOnline === true
+      if (!registered && !alreadyOnline && !isOpen) {
+        if (status.attempt > attempts) {
+          const message =  t('attempts_exceeded', attempts)
+          logger.debug(message)
+          await onNotification(message, true)
+          status.attempt = 1
+          return logout()
+        } else {
+          logger.debug('QRCode generate... %s of %s', status.attempt, attempts)
+          return onQrCode(event.qr, status.attempt++, attempts)
+        }
       } else {
-        logger.debug('QRCode generate... %s of %s', status.attempt, attempts)
-        return onQrCode(event.qr, status.attempt++, attempts)
+        logger.debug('Skip QR emission (registered=%s online=%s open=%s)', registered, alreadyOnline, isOpen)
       }
     }
 
@@ -1192,8 +1200,16 @@ export const connect = async ({
           logger.debug('READ_ON_REPLY: enabled for %s (normalized=%s)', id, target)
           const lastKey = await dataStore.getLastIncomingKey?.(target) || await dataStore.getLastIncomingKey?.(id)
           if (lastKey && lastKey.remoteJid && lastKey.id && !lastKey.fromMe) {
-            logger.info('READ_ON_REPLY: reading last incoming id=%s jid=%s', lastKey.id, lastKey.remoteJid)
-            await read([lastKey])
+            // Normaliza para o id do provedor (Baileys), caso lastKey contenha UNO id
+            let keyForRead = lastKey as any
+            try {
+              const original = await dataStore.loadKey?.(lastKey.id as any)
+              if (original && (original as any).id && (original as any).remoteJid) {
+                keyForRead = original
+              }
+            } catch {}
+            logger.info('READ_ON_REPLY: reading last incoming id=%s jid=%s', (keyForRead as any).id, (keyForRead as any).remoteJid)
+            await read([keyForRead])
           } else {
             logger.debug('READ_ON_REPLY: no last incoming pointer for %s', target)
           }
