@@ -26,6 +26,23 @@ The media files are saved in file system at folder data with the session or in s
   - Default addressingMode is LID. You can force via `GROUP_SEND_ADDRESSING_MODE=lid|pn`.
   - The API pre‑asserts sessions for group participants prioritizing LIDs, with fallbacks and a final addressingMode toggle on failures such as ack 421.
 
+### One‑to‑One (Direct) Sending
+
+- Control addressing for direct chats (1:1) using `ONE_TO_ONE_ADDRESSING_MODE`.
+  - `lid` (default): prefer sending via LID when available (reduces initial “no sessions/decrypt” issues).
+  - `pn`: force sending via PN.
+- Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved.
+  - You can control webhook normalization with `WEBHOOK_PREFER_PN_OVER_LID` (default `true`).
+
+Example:
+```env
+# Prefer LID for 1:1 (default)
+ONE_TO_ONE_ADDRESSING_MODE=lid
+
+# Or force PN for 1:1
+# ONE_TO_ONE_ADDRESSING_MODE=pn
+```
+
 - Edited/device‑sent messages
   - Edited messages are unwrapped to their original content (no recursion); device‑sent updates with inline content are converted to normal message payloads.
 

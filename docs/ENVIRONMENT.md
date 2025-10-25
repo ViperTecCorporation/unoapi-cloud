@@ -124,7 +124,22 @@ GROUP_IGNORE_INDIVIDUAL_RECEIPTS=false
 GROUP_ONLY_DELIVERED_STATUS=false
 ```
 
-## LID/PN Mapping Cache
+
+## One-to-One (Direct) Sending
+
+- ONE_TO_ONE_ADDRESSING_MODE � Prefer addressing mode for direct chats (1:1). Default lid.
+  - lid: prefer sending via LID when available (reduces initial Signal session/decrypt errors before the first exchange).
+  - pn: force sending via PN.
+  - Example:
+    `env
+    # default (LID preferred)
+    ONE_TO_ONE_ADDRESSING_MODE=lid
+    # or force PN
+    # ONE_TO_ONE_ADDRESSING_MODE=pn
+    `
+
+Webhook normalization
+- WEBHOOK_PREFER_PN_OVER_LID � If 	rue (default), webhook payloads prefer PN in wa_id, rom and ecipient_id when safely resolvable; otherwise a LID/JID may be returned.## LID/PN Mapping Cache
 
 - `JIDMAP_CACHE_ENABLED` — Enable PN↔LID cache. Default `true`.
   - Stores per‑session mapping between LID JIDs and PN JIDs to reduce runtime lookups and improve delivery in large groups.
@@ -281,3 +296,4 @@ Skip sending the same message again when a job retry happens after a successful 
 
 - English: /docs/examples/.env.example.en
 - Português (Brasil): /docs/pt-BR/exemplos/.env.exemplo
+
