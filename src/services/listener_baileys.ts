@@ -231,7 +231,7 @@ export class ListenerBaileys implements Listener {
         if (pnDigits && lidJid) {
           try {
             const pnJid = `${pnDigits}@s.whatsapp.net`
-            await dataStore.setJidMapping?.(this.phone, pnJid, lidJid)
+            await dataStore.setJidMapping?.(phone, pnJid, lidJid)
             // Also persist contact info and names to enrich future webhooks/mentions
             try {
               const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
