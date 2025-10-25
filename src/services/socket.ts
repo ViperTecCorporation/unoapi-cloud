@@ -1239,6 +1239,22 @@ export const connect = async ({
       socketConfig.browser = browser
     }
 
+    // Self-heal: clear potentially stale app-state sync versions to avoid
+    // "failed to find key to decode mutation" on snapshot decode.
+    try {
+      await (state as any)?.keys?.set?.({
+        'app-state-sync-version': {
+          // clearing known collections causes Baileys to fetch fresh snapshot
+          'regular_high': undefined,
+          'regular_low': undefined,
+          'critical_unblock_low': undefined,
+        }
+      })
+      logger.debug('Cleared app-state-sync-version entries (regular_high/regular_low/critical_unblock_low) before connect')
+    } catch (e) {
+      logger.debug('Ignore error clearing app-state-sync-version before connect: %s', (e as any)?.message || e)
+    }
+
     try {
       const proxy = makeWASocket(socketConfig)
       const handler = {
