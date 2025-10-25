@@ -134,6 +134,7 @@ export class TranscriberJob {
           let val = `${x || ''}`
           if (!val) return val
           if (val.includes('@g.us')) return val
+          // 1) JID LID explícito -> tentar PN via cache/normalização
           if (val.includes('@lid')) {
             try {
               const mapped = await ds?.getPnForLid?.(phone, val)
@@ -147,6 +148,20 @@ export class TranscriberJob {
               }
             } catch {}
           }
+          // 2) Digitos puros podem ser LID-nu (sem sufixo). Tentar tratar como LID.
+          try {
+            if (/^\d+$/.test(val)) {
+              const lidJid = `${val}@lid`
+              try {
+                const mapped2 = await ds?.getPnForLid?.(phone, lidJid)
+                if (mapped2) return jidToPhoneNumber(mapped2, '')
+              } catch {}
+              try {
+                const normalized2 = jidNormalizedUser(lidJid)
+                if (normalized2 && isPnUser(normalized2 as any)) return jidToPhoneNumber(normalized2, '')
+              } catch {}
+            }
+          } catch {}
           try {
             if (val.includes('@s.whatsapp.net')) return jidToPhoneNumber(val, '')
           } catch {}
