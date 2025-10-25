@@ -35,6 +35,7 @@ import {
   VALIDATE_SESSION_NUMBER,
 } from '../defaults'
 import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS } from '../defaults'
+import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
@@ -721,23 +722,40 @@ export const connect = async ({
     options: any = { composing: false },
   ) => {
     await validateStatus()
-    // Prefer LID for 1:1 when a mapping exists; keep groups unchanged
+    // Prefer LID for 1:1 when possível; manter grupos inalterados
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    let preferAddressingMode: WAMessageAddressingMode | undefined = undefined
     try {
-      // Prefer PN for 1:1 when mapping exists; convert LID -> PN
       if (id && isIndividualJid(id)) {
-        if (isLidUser(id)) {
-          try {
-            const pnJid = jidNormalizedUser(id)
-            if (pnJid && isIndividualJid(pnJid)) {
-              logger.debug('1:1 send: switching target to PN %s (from LID %s)', pnJid, id)
-              try { await (dataStore as any).setJidMapping?.(phone, pnJid, id) } catch {}
-              id = pnJid
-            }
-          } catch {}
+        if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
+          // Força PN: se for LID, normaliza para PN e envia como PN
+          if (isLidUser(id)) {
+            try {
+              const pnJid = jidNormalizedUser(id)
+              if (pnJid && isIndividualJid(pnJid)) {
+                logger.debug('1:1 send: forçando PN %s (de LID %s)', pnJid, id)
+                id = pnJid
+                preferAddressingMode = WAMessageAddressingMode.PN
+              }
+            } catch {}
+          } else {
+            preferAddressingMode = WAMessageAddressingMode.PN
+          }
         } else {
-          logger.debug('1:1 send: PN target %s preferred (skip LID)', id)
+          // Padrão LID: manter LID; ou, se PN, usar LID se mapeado
+          if (isLidUser(id)) {
+            preferAddressingMode = WAMessageAddressingMode.LID
+          } else {
+            try {
+              const lid = await (dataStore as any).getLidForPn?.(phone, id)
+              if (lid && typeof lid === 'string') {
+                logger.debug('1:1 send: trocando alvo para LID %s (a partir do PN %s)', lid, id)
+                id = lid
+                preferAddressingMode = WAMessageAddressingMode.LID
+              }
+            } catch {}
+          }
         }
       }
     } catch {}
@@ -866,6 +884,12 @@ export const connect = async ({
       const msgKind = (message && typeof message === 'object') ? Object.keys(message)[0] : typeof message
       logger.debug('%s is sending message ==> %s kind=%s', phone, id, msgKind)
       const opts = { ...restOptions }
+      // Aplicar addressingMode preferido para 1:1 quando não houver override explícito
+      try {
+        if (preferAddressingMode && typeof (opts as any).addressingMode === 'undefined' && isIndividualJid(id)) {
+          (opts as any).addressingMode = preferAddressingMode
+        }
+      } catch {}
       try {
         const keys = (message && typeof message === 'object') ? Object.keys(message) : []
         logger.debug('Send baileys from %s to %s keys=%s', phone, id, JSON.stringify(keys))

@@ -266,6 +266,13 @@ export const OUTGOING_IDEMPOTENCY_ENABLED: boolean =
 export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
+// Endereçamento para conversas 1:1 (envio)
+// 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
+export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
+  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'lid').toString().toLowerCase()
+  return (v === 'pn' ? 'pn' : 'lid')
+})()
+
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")
 export const ACK_RETRY_DELAYS_MS: number[] = (() => {

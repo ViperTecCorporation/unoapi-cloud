@@ -41,6 +41,7 @@ const logout = new LogoutBaileys(getClientBaileys, getConfigLocal, listenerAmqp,
 const logoutJob = new LogoutJob(logout)
 
 import * as Sentry from '@sentry/node'
+import { isTransientBaileysError } from './services/error_utils'
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
@@ -101,7 +102,11 @@ process.on('uncaughtException', (reason: any) => {
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(reason)
   }
-  logger.error('uncaughtException bridge: %s %s', reason, reason.stack)
+  if (isTransientBaileysError(reason)) {
+    logger.warn('uncaughtException bridge (ignored transient): %s', (reason && (reason.message || reason)))
+    return
+  }
+  logger.error('uncaughtException bridge: %s %s', reason, (reason && reason.stack))
   process.exit(1)
 })
 
@@ -109,7 +114,11 @@ process.on('unhandledRejection', (reason: any, promise) => {
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(reason)
   }
-  logger.error('unhandledRejection: %s', reason.stack)
+  if (isTransientBaileysError(reason)) {
+    logger.warn('unhandledRejection bridge (ignored transient): %s', (reason && (reason.message || reason)))
+    return
+  }
+  logger.error('unhandledRejection: %s', (reason && reason.stack))
   logger.error('promise: %s', promise)
   process.exit(1)
 })
