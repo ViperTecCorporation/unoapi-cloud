@@ -1186,6 +1186,33 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                 }
               }
             }
+            // Fallback: se não houver mentionedJid ou houver @<digits> soltos no texto,
+            // tentar substituir por alias usando o nameMap conhecido (participantes do grupo/contatos)
+            try {
+              if (body && typeof body === 'string' && /@\d{6,}/.test(body)) {
+                // Coletar todos @<digits> e @<digits>@lid
+                const seen = new Set<string>()
+                const reAll = /@(\d{6,})(?:@lid)?\b/g
+                let m: RegExpExecArray | null
+                while ((m = reAll.exec(body)) !== null) {
+                  const digits = m[1]
+                  if (!digits || seen.has(digits)) continue
+                  seen.add(digits)
+                  // Procurar nome no nameMap via várias chaves
+                  let alias: string | undefined = undefined
+                  try { alias = alias || (nameMap && (nameMap[`${digits}@s.whatsapp.net`] || nameMap[digits])) } catch {}
+                  try { alias = alias || (nameMap && nameMap[`${digits}@lid`]) } catch {}
+                  if (alias && alias.trim()) {
+                    const safe = alias.trim()
+                    // Substituir todas aparições dessa menção solta
+                    const re1 = new RegExp(`@${digits}\\b`, 'g')
+                    const re2 = new RegExp(`@${digits}@lid\\b`, 'g')
+                    body = body.replace(re1, `@${safe}`)
+                    body = body.replace(re2, `@${safe}`)
+                  }
+                }
+              }
+            } catch {}
           } catch {}
           try { logger.debug('MENTION normalized: "%s" -> "%s"', raw || '', body || '') } catch {}
           message.text = { body }
