@@ -269,8 +269,8 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
 // Endereçamento para conversas 1:1 (envio)
 // 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
-  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'lid').toString().toLowerCase()
-  return (v === 'pn' ? 'pn' : 'lid')
+  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'pn').toString().toLowerCase()
+  return (v === 'lid' ? 'lid' : 'pn')
 })()
 
 // Server-ACK retry (assert+resend with same id)

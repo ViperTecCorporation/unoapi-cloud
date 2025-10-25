@@ -29,18 +29,18 @@ The media files are saved in file system at folder data with the session or in s
 ### One‑to‑One (Direct) Sending
 
 - Control addressing for direct chats (1:1) using `ONE_TO_ONE_ADDRESSING_MODE`.
-  - `lid` (default): prefer sending via LID when available (reduces initial “no sessions/decrypt” issues).
-  - `pn`: force sending via PN.
+  - `pn` (default): send via PN. Recommended — avoids cases where `@lid` opens a separate thread or hides the message on some devices.
+  - `lid`: prefer sending via LID when available (may reduce first-contact session issues, but can cause split threads in some clients).
 - Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved.
   - You can control webhook normalization with `WEBHOOK_PREFER_PN_OVER_LID` (default `true`).
 
 Example:
 ```env
-# Prefer LID for 1:1 (default)
-ONE_TO_ONE_ADDRESSING_MODE=lid
+# Default (PN)
+ONE_TO_ONE_ADDRESSING_MODE=pn
 
-# Or force PN for 1:1
-# ONE_TO_ONE_ADDRESSING_MODE=pn
+# Or prefer LID for 1:1
+# ONE_TO_ONE_ADDRESSING_MODE=lid
 ```
 
 - Edited/device‑sent messages
