@@ -1191,9 +1191,14 @@ export const connect = async ({
         logger.warn(e as any, 'Ignore error tracking pending group send')
       }
       // Schedule ack watch to perform assert+resend if server ack is not received in time
+      // Skip for groups (@g.us): não reenvia para grupos em caso de falha de ACK
       try {
         const mid = (full as any)?.key?.id as string | undefined
-        if (mid) scheduleAckWatch(id, mid, message, opts)
+        if (mid && !(typeof id === 'string' && id.endsWith('@g.us'))) {
+          scheduleAckWatch(id, mid, message, opts)
+        } else {
+          try { logger.debug('ACK watch skipped for group destination %s', id) } catch {}
+        }
       } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
       try {
