@@ -124,7 +124,7 @@ export class OutgoingCloudApi implements Outgoing {
             // TambÃ©m tentar via contact-info (pn jÃ¡ resolvido anteriormente)
             try {
               const info = await ds?.getContactInfo?.(base)
-              const pnDigits = ${info?.pn || ''}.replace(/\\D/g, '')
+              const pnDigits = `${info?.pn || ''}`.replace(/\D/g, '')
               if (pnDigits) return pnDigits
             } catch {}
             // Sem mapping nem contact-info confiÃ¡vel: preserva @lid (nÃ£o gerar dÃ­gitos nus)
