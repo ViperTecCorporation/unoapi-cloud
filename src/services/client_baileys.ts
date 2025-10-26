@@ -367,17 +367,7 @@ export class ClientBaileys implements Client {
                           info.pnJid = mapped
                           try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                         }
-                        // Se ainda não houver mapeamento, derive PN via normalização e grave no jidmap
-                        if (!info.pnJid) {
-                          try {
-                            const norm = jidNormalizedUser(j)
-                            if (norm && isPnUser(norm)) {
-                              await store.dataStore.setJidMapping?.(this.phone, norm as any, j)
-                              info.pnJid = norm as any
-                              try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
-                            }
-                          } catch {}
-                        }
+                        // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                       } catch {}
                     } else {
                       info.pnJid = j
@@ -493,16 +483,7 @@ export class ClientBaileys implements Client {
                     info.pnJid = mapped
                     try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
-                  if (!info.pnJid) {
-                    try {
-                      const norm = jidNormalizedUser(jid)
-                      if (norm && isPnUser(norm)) {
-                        await store.dataStore.setJidMapping?.(this.phone, norm as any, jid)
-                        info.pnJid = norm as any
-                        try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
-                      }
-                    } catch {}
-                  }
+                  // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid
@@ -540,16 +521,7 @@ export class ClientBaileys implements Client {
                     info.pnJid = mapped
                     try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
-                  if (!info.pnJid) {
-                    try {
-                      const norm = jidNormalizedUser(jid)
-                      if (norm && isPnUser(norm)) {
-                        await store.dataStore.setJidMapping?.(this.phone, norm as any, jid)
-                        info.pnJid = norm as any
-                        try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
-                      }
-                    } catch {}
-                  }
+                  // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid

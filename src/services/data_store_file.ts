@@ -460,28 +460,13 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     try { contactInfo.set(jid, JSON.stringify(info || {})) } catch {}
   }
   // --- PN <-> LID mapping helpers (optional) ---
-  dataStore.getPnForLid = async (sessionPhone: string, lidJid: string) => {
+  dataStore.getPnForLid = async (_sessionPhone: string, lidJid: string) => {
     if (!JMAP_ENABLED) return undefined
     try {
       if (typeof lidJid !== 'string') return undefined
       const key = `PN_FOR:${lidJid}`
       const cached = jidMapGet(key)
-      if (cached) return cached
-      // Fallback: derive PN from LID via Baileys normalization
-      try {
-        if (isLidUser(lidJid)) {
-          const normalized = jidNormalizedUser(lidJid)
-          if (normalized && isPnUser(normalized as any)) {
-            // Persist mapping both ways somente se for PN vÃ¡lido (@s.whatsapp.net)
-            logger.debug('jidMap: derived PN %s from LID %s (file-store)', normalized, lidJid)
-            await dataStore.setJidMapping?.(sessionPhone, normalized as any, lidJid)
-            return normalized as any
-          } else {
-            logger.debug('jidMap: skip deriving PN from LID %s (normalized=%s not PN)', lidJid, normalized)
-          }
-        }
-      } catch {}
-      return undefined
+      if (cached) return cached\r\n      // Não tentar derivar PN a partir do LID por normalização — requer mapeamento real\r\n      return undefined
     } catch { return undefined }
   }
   dataStore.getLidForPn = async (_sessionPhone: string, pnJid: string) => {
@@ -554,3 +539,4 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
   return dataStore
 }
+
