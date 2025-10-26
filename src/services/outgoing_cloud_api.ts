@@ -65,6 +65,41 @@ export class OutgoingCloudApi implements Outgoing {
     }
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
     try { normalizeWebhookValueIds((message as any)?.entry?.[0]?.changes?.[0]?.value) } catch {}
+    // Repair: if 'from'/wa_id/recipient_id are bare digits but we already have a LID mapping in cache,
+    // prefer the mapped @lid to avoid inconsistencies (naked LID-digits without suffix)
+    try {
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const ds: any = store?.dataStore
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const toLidIfMapped = async (x?: string): Promise<string> => {
+        const val = `${x || ''}`
+        if (!val) return val
+        if (val.includes('@')) return val
+        // digits-only -> try PN JID mapping to LID
+        const pnJid = `${val.replace(/\D/g, '')}@s.whatsapp.net`
+        try {
+          const lid = await ds?.getLidForPn?.(phone, pnJid)
+          if (typeof lid === 'string' && lid.endsWith('@lid')) return lid
+        } catch {}
+        return val
+      }
+      if (Array.isArray(v.contacts)) {
+        for (const c of v.contacts) {
+          if (c && typeof c.wa_id === 'string') c.wa_id = await toLidIfMapped(c.wa_id)
+        }
+      }
+      if (Array.isArray(v.messages)) {
+        for (const m of v.messages) {
+          if (m && typeof m.from === 'string') m.from = await toLidIfMapped(m.from)
+        }
+      }
+      if (Array.isArray(v.statuses)) {
+        for (const s of v.statuses) {
+          if (s && typeof s.recipient_id === 'string') s.recipient_id = await toLidIfMapped(s.recipient_id)
+        }
+      }
+    } catch {}
     // Optionally convert @lid to PN when explicitly enabled
     if (WEBHOOK_PREFER_PN_OVER_LID) {
       try {
