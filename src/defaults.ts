@@ -275,7 +275,7 @@ export const OUTGOING_IDEMPOTENCY_ENABLED: boolean =
 // If true, converts LID JIDs to PN when possible before sending to webhooks.
 // Default is false to preserve @lid in payloads (evita "ID nu").
 export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
-  process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? false : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
+  process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
 // Endereçamento para conversas 1:1 (envio)
 // 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
