@@ -367,10 +367,29 @@ export class ClientBaileys implements Client {
                           info.pnJid = mapped
                           try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                         }
+                        // Se ainda não houver mapeamento, derive PN via normalização e grave no jidmap
+                        if (!info.pnJid) {
+                          try {
+                            const norm = jidNormalizedUser(j)
+                            if (norm && isPnUser(norm)) {
+                              await store.dataStore.setJidMapping?.(this.phone, norm as any, j)
+                              info.pnJid = norm as any
+                              try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
+                            }
+                          } catch {}
+                        }
                       } catch {}
                     } else {
                       info.pnJid = j
                       try { info.pn = jidToPhoneNumber(j, '').replace('+','') } catch {}
+                      // Se houver LID mapeado para este PN, persiste também
+                      try {
+                        const lid = await store.dataStore.getLidForPn?.(this.phone, j)
+                        if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                          await store.dataStore.setJidMapping?.(this.phone, j, lid)
+                          if (!info.lidJid) info.lidJid = lid
+                        }
+                      } catch {}
                     }
                     await store.dataStore.setContactInfo?.(j, info)
                     await store.dataStore.setContactName?.(j, name)
@@ -474,10 +493,27 @@ export class ClientBaileys implements Client {
                     info.pnJid = mapped
                     try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
+                  if (!info.pnJid) {
+                    try {
+                      const norm = jidNormalizedUser(jid)
+                      if (norm && isPnUser(norm)) {
+                        await store.dataStore.setJidMapping?.(this.phone, norm as any, jid)
+                        info.pnJid = norm as any
+                        try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
+                      }
+                    } catch {}
+                  }
                 } catch {}
               } else {
                 info.pnJid = jid
                 try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try {
+                  const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
+                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
+                    if (!info.lidJid) info.lidJid = lid
+                  }
+                } catch {}
               }
               try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
               try { await store.dataStore.setContactName?.(jid, name) } catch {}
@@ -504,10 +540,27 @@ export class ClientBaileys implements Client {
                     info.pnJid = mapped
                     try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
+                  if (!info.pnJid) {
+                    try {
+                      const norm = jidNormalizedUser(jid)
+                      if (norm && isPnUser(norm)) {
+                        await store.dataStore.setJidMapping?.(this.phone, norm as any, jid)
+                        info.pnJid = norm as any
+                        try { info.pn = jidToPhoneNumber(norm as any, '').replace('+','') } catch {}
+                      }
+                    } catch {}
+                  }
                 } catch {}
               } else {
                 info.pnJid = jid
                 try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try {
+                  const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
+                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
+                    if (!info.lidJid) info.lidJid = lid
+                  }
+                } catch {}
               }
               try { await store.dataStore.setContactInfo?.(jid, info) } catch {}
               try { await store.dataStore.setContactName?.(jid, name) } catch {}

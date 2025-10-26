@@ -253,6 +253,25 @@ export class ListenerBaileys implements Listener {
               }
             } catch {}
           } catch {}
+        } else if (lidJid) {
+          // Fallback 1:1 — derive PN JID via normalização do LID e popula mapping/contact-info
+          try {
+            const norm = jidNormalizedUser(lidJid)
+            if (norm && isPnUser(norm as any)) {
+              const pnJid = norm as any
+              const pn = (() => { try { return jidToPhoneNumber(pnJid, '').replace('+','') } catch { return '' } })()
+              await dataStore.setJidMapping?.(phone, pnJid, lidJid)
+              try {
+                const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
+                if (rawName) {
+                  try { await dataStore.setContactName?.(pnJid, rawName) } catch {}
+                  try { await dataStore.setContactName?.(lidJid, rawName) } catch {}
+                  try { await dataStore.setContactInfo?.(pnJid, { name: rawName, pnJid, lidJid, pn }) } catch {}
+                  try { await dataStore.setContactInfo?.(lidJid, { name: rawName, pnJid, lidJid, pn }) } catch {}
+                }
+              } catch {}
+            }
+          } catch {}
         }
       } catch {}
     } catch (error) {
