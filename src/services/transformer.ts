@@ -4,6 +4,7 @@ import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
+import { SendError } from './send_error'
 import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
 import { t } from '../i18n'
 
@@ -272,7 +273,9 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const media: any = (payload && payload[type]) || {}
       const link: string = (media?.link || '').toString()
       if (!link || !link.trim()) {
-        throw new Error(`invalid_${type}_payload: missing link`)
+        // Tratar como erro de envio "recuperável" para que o chamador
+        // converta em status failed ao invés de lançar e reencaminhar a fila
+        throw new SendError(11, `invalid_${type}_payload: missing link`)
       }
       let mimetype: string = getMimetype(payload)
       if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {

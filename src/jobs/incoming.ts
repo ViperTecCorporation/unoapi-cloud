@@ -75,21 +75,25 @@ export class IncomingJob {
       if (TYPE_MESSAGES_MEDIA.includes(payload.type)) {
         const { mediaStore } = await config.getStore(phone, config)
         const mediaKey = `${phone}/${idUno}`
-        const link = payload[payload.type].link
+        const link = (payload?.[payload.type]?.link || '').toString()
         const mimetype = getMimetype(payload)
         const extension = mime.extension(mimetype)
         const fileName = `${mediaKey}.${extension}`
-        const response: Response = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
-        const buffer = toBuffer(await response.arrayBuffer())
-        await mediaStore.saveMediaBuffer(fileName, buffer)
-        messagePayload = {
-          filename: payload[payload.type].filename,
-          caption: payload[payload.type].caption,
-          id: mediaKey,
-          mime_type: mimetype,
+        if (link && link.trim()) {
+          const response: Response = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
+          const buffer = toBuffer(await response.arrayBuffer())
+          await mediaStore.saveMediaBuffer(fileName, buffer)
+          messagePayload = {
+            filename: payload[payload.type].filename,
+            caption: payload[payload.type].caption,
+            id: mediaKey,
+            mime_type: mimetype,
+          }
+          delete messagePayload['link']
+          await dataStore.setMediaPayload(idUno, messagePayload)
+        } else {
+          logger.warn('Incoming media without link for %s type=%s; skipping media download/cache', idUno, payload.type)
         }
-        delete messagePayload['link']
-        await dataStore.setMediaPayload(idUno, messagePayload)
       }
       const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
       const webhookMessage = {
