@@ -466,7 +466,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       if (typeof lidJid !== 'string') return undefined
       const key = `PN_FOR:${lidJid}`
       const cached = jidMapGet(key)
-      if (cached) return cached\r\n      // Não tentar derivar PN a partir do LID por normalização — requer mapeamento real\r\n      return undefined
+      if (cached) return cached
+      // Nï¿½o tentar derivar PN a partir do LID por normalizaï¿½ï¿½o ï¿½ requer mapeamento real
+      return undefined
     } catch { return undefined }
   }
   dataStore.getLidForPn = async (_sessionPhone: string, pnJid: string) => {
