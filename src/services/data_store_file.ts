@@ -373,14 +373,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         logger.debug(`${phoneOrJid} exists on WhatsApp, as jid: ${result.jid}`)
         jid = result.jid
         await dataStore.setJid(phoneOrJid, jid!)
-        try {
-          if (isLidUser(jid)) {
-            const pn = jidNormalizedUser(jid)
-            if (pn) {
-              await dataStore.setJidMapping?.(phone, pn, jid as string)
-            }
-          }
-        } catch {}
+        // Não gravar mapping PN<-LID com base apenas na normalização; requer mapeamento real (lid-mapping.update/participants/cache)
+        try { /* no-op */ } catch {}
       } else {
         if (lid) {
           // Entrada é LID e sem PN mapeado: retornar LID para permitir envio via addressingMode=LID
@@ -404,7 +398,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           if (ok) {
             jid = res[0].jid
             await dataStore.setJid(phoneOrJid, jid!)
-            try { if (isLidUser(jid)) await dataStore.setJidMapping?.(phone, jidNormalizedUser(jid), jid as string) } catch {}
+            // Não gravar mapping PN<-LID com base apenas na normalização; evitar PN incorreto
+            try { /* no-op */ } catch {}
             logger.info('Repaired JID mapping for %s => %s', phoneOrJid, jid)
           }
         } catch (e) {

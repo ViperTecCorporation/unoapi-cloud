@@ -231,22 +231,57 @@ export const groupKey = (phone: string, jid: string) => {
 }
 
 // JID mapping PN <-> LID keys
-const jidMapPnKey = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:pn:${pnJid}`
-const jidMapLidKey = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:lid:${lidJid}`
+// New, clearer schema (human-friendly):
+//  - pn_for_lid:<lidJid> => value = pnJid (@s.whatsapp.net)
+//  - lid_for_pn:<pnJid>  => value = lidJid (@lid)
+// Keep backward compatibility with old keys:
+//  - pn:<lidJid>  => value = pnJid
+//  - lid:<pnJid>  => value = lidJid
+const jidMapPnKeyNew  = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn_for_lid:${lidJid}`
+const jidMapLidKeyNew = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
+const jidMapPnKeyOld  = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn:${lidJid}`
+const jidMapLidKeyOld = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
-  return redisGet(jidMapPnKey(session, lidJid))
+  // Try new key first, then fallback to old
+  const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
+  if (vNew) return vNew
+  return redisGet(jidMapPnKeyOld(session, lidJid))
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
-  return redisGet(jidMapLidKey(session, pnJid))
+  // Try new key first, then fallback to old
+  const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
+  if (vNew) return vNew
+  return redisGet(jidMapLidKeyOld(session, pnJid))
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
   if (!pnJid || !lidJid) return
+  // Sanity check: ensure correct roles (pnJid is @s.whatsapp.net, lidJid is @lid)
   try {
-    await redisSetAndExpire(jidMapPnKey(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+    const pnIsPn = typeof pnJid === 'string' && pnJid.endsWith('@s.whatsapp.net')
+    const lidIsLid = typeof lidJid === 'string' && lidJid.endsWith('@lid')
+    const pnIsLid = typeof pnJid === 'string' && pnJid.endsWith('@lid')
+    const lidIsPn = typeof lidJid === 'string' && lidJid.endsWith('@s.whatsapp.net')
+    if (!pnIsPn || !lidIsLid) {
+      if (pnIsLid && lidIsPn) {
+        const tmp = pnJid; pnJid = lidJid; lidJid = tmp
+      } else {
+        return
+      }
+    }
+  } catch { return }
+  try {
+    // Write both new and old schemas for compatibility
+    await redisSetAndExpire(jidMapPnKeyNew(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapLidKey(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+    await redisSetAndExpire(jidMapLidKeyNew(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+  } catch {}
+  try {
+    await redisSetAndExpire(jidMapPnKeyOld(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+  } catch {}
+  try {
+    await redisSetAndExpire(jidMapLidKeyOld(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
   } catch {}
 }
 

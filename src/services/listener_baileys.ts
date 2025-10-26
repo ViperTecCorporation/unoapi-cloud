@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
@@ -274,7 +274,8 @@ export class ListenerBaileys implements Listener {
                       : (typeof kid?.remoteJid === 'string' && kid.remoteJid.includes('@lid')) ? kid.remoteJid
                       : (typeof senderId === 'string' && senderId.includes('@lid')) ? senderId
                       : undefined
-        if (pnDigits && lidJid) {
+        // só considere pnDigits quando for um telefone válido (evita usar dígitos do LID)
+        if (pnDigits && lidJid && isValidPhoneNumber(pnDigits, true)) {
           try {
             const pnJid = `${pnDigits}@s.whatsapp.net`
             await dataStore.setJidMapping?.(phone, pnJid, lidJid)
