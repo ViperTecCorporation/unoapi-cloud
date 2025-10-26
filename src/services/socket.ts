@@ -456,11 +456,11 @@ export const connect = async ({
               // Track recent contacts
               const remote = m?.key?.remoteJid
               const participant = m?.key?.participant
-              if (typeof remote === 'string') {
+              if (typeof remote === 'string' && !!remote) {
                 recentContacts.set(remote, now)
                 try { if (isLidUser(remote)) recentContacts.set(jidNormalizedUser(remote), now) } catch {}
               }
-              if (typeof participant === 'string') {
+              if (typeof participant === 'string' && !!participant) {
                 recentContacts.set(participant, now)
                 try { if (isLidUser(participant)) recentContacts.set(jidNormalizedUser(participant), now) } catch {}
               }
@@ -697,10 +697,13 @@ export const connect = async ({
           if (!entries.length) return
           const set = new Set<string>()
           for (const [jid] of entries) {
-            set.add(jid)
-            try { if (isLidUser(jid)) set.add(jidNormalizedUser(jid)) } catch {}
+            if (typeof jid === 'string' && !!jid) {
+              set.add(jid)
+              try { if (isLidUser(jid)) set.add(jidNormalizedUser(jid)) } catch {}
+            }
           }
-          const targets = Array.from(set)
+          // Filtra JIDs inválidos (vazios ou sem sufixo de domínio)
+          const targets = Array.from(set).filter((j) => typeof j === 'string' && j.includes('@'))
           if (targets.length) {
             logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
             try { await (sock as any).assertSessions(targets, true) } catch (e) { logger.warn(e as any, 'Ignore error on periodic assert') }
