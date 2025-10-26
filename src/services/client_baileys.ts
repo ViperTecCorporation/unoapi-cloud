@@ -1166,10 +1166,7 @@ export class ClientBaileys implements Client {
               }
             } catch {}
           }
-          if (!pnJid) {
-            const normalized = jidNormalizedUser(k.remoteJid)
-            if (isPnUser(normalized)) pnJid = normalized as any
-          }
+          // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.senderPn = pnJid
             try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
@@ -1204,10 +1201,7 @@ export class ClientBaileys implements Client {
               }
             } catch {}
           }
-          if (!pnJid) {
-            const normalized = jidNormalizedUser(k.participant)
-            if (isPnUser(normalized)) pnJid = normalized as any
-          }
+          // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.participantPn = pnJid
             try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
