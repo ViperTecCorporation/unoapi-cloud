@@ -224,6 +224,42 @@ export class ListenerBaileys implements Listener {
           logger.debug('READ_ON_REPLY: set lastIncoming %s -> %s', i.key.remoteJid, i.key.id)
         }
       } catch {}
+      // Reparar IDs "nus" (apenas dígitos) no payload já montado quando houver mapeamento PN->LID no cache
+      try {
+        if (data) {
+          const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
+          const digitsOnly = (s?: string) => typeof s === 'string' && /^\d+$/.test(s)
+          const toPnJid = (d: string) => `${d.replace(/\D/g,'')}@s.whatsapp.net`
+          // contacts[].wa_id
+          if (Array.isArray(v.contacts)) {
+            for (const c of v.contacts) {
+              const id = c?.wa_id
+              if (digitsOnly(id)) {
+                try {
+                  const lid = await dataStore.getLidForPn?.(phone, toPnJid(id))
+                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                    c.wa_id = lid
+                  }
+                } catch {}
+              }
+            }
+          }
+          // messages[].from
+          if (Array.isArray(v.messages)) {
+            for (const m of v.messages) {
+              const from = m?.from
+              if (digitsOnly(from)) {
+                try {
+                  const lid = await dataStore.getLidForPn?.(phone, toPnJid(from))
+                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                    m.from = lid
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+      } catch {}
       // Mapeia PN (apenas dígitos) -> JID reportado pelo evento, sem heurística BR
       try {
         const pn = (senderPhone || '').replace(/\D/g, '')
