@@ -121,6 +121,14 @@ export class OutgoingCloudApi implements Outgoing {
               // Somente converte quando o mapeamento aponta para um PN JID válido
               if (mapped && isPnUser(mapped)) return jidToPhoneNumber(mapped, '')
             } catch {}
+            // Também tentar via contact-info (pn já resolvido anteriormente)
+            try {
+              const info = await ds?.getContactInfo?.(base)
+              const pnDigits = ${info?.pn || ''}.replace(/\\D/g, '')
+              if (pnDigits) return pnDigits
+            } catch {}
+            // Sem mapping nem contact-info confiável: preserva @lid (não gerar dígitos nus)
+            return val
             // Fallback: tentar normalizar o LID via Baileys
             try {
               const norm = jidNormalizedUser(base)
