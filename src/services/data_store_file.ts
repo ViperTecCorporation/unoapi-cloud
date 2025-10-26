@@ -349,9 +349,13 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           
         }
       }
-      const result = results && results[0]
-      let test = result && result?.exists && result?.jid
-      logger.debug(`${phoneOrJid} found onWhatsApp exists: ${result?.exists} jid: ${result?.jid} test: ${test}`)
+      const result = Array.isArray(results) ? results[0] : undefined
+      const test = !!(result && result.exists && result.jid)
+      if (result) {
+        logger.debug('%s onWhatsApp: exists=%s jid=%s', `${phoneOrJid}`, `${result.exists}`, `${result.jid}`)
+      } else {
+        logger.debug('%s onWhatsApp: no result', `${phoneOrJid}`)
+      }
       if (!test) {
         // Fallback: if checking the connection phone itself, return its JID
         try {

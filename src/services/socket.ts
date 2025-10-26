@@ -1355,7 +1355,8 @@ export const connect = async ({
       if (!config.ignoreHistoryMessages) {
         browser = Browsers.ubuntu('Desktop')
       }
-      socketConfig.printQRInTerminal = true
+      // Evita aviso deprecatado; QR é tratado via connection.update
+      socketConfig.printQRInTerminal = false
       socketConfig.browser = browser
     }
 
