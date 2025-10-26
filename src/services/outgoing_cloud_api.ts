@@ -118,16 +118,16 @@ export class OutgoingCloudApi implements Outgoing {
             try { base = formatJid(val) } catch {}
             try {
               const mapped = (await ds?.getPnForLid?.(phone, base)) || (await ds?.getPnForLid?.(phone, val))
-              // Somente converte quando o mapeamento aponta para um PN JID válido
+              // Somente converte quando o mapeamento aponta para um PN JID vÃ¡lido
               if (mapped && isPnUser(mapped)) return jidToPhoneNumber(mapped, '')
             } catch {}
-            // Também tentar via contact-info (pn já resolvido anteriormente)
+            // TambÃ©m tentar via contact-info (pn jÃ¡ resolvido anteriormente)
             try {
               const info = await ds?.getContactInfo?.(base)
               const pnDigits = ${info?.pn || ''}.replace(/\\D/g, '')
               if (pnDigits) return pnDigits
             } catch {}
-            // Sem mapping nem contact-info confiável: preserva @lid (não gerar dígitos nus)
+            // Sem mapping nem contact-info confiÃ¡vel: preserva @lid (nÃ£o gerar dÃ­gitos nus)
             return val
             // Fallback: tentar normalizar o LID via Baileys
             try {
@@ -201,7 +201,7 @@ export class OutgoingCloudApi implements Outgoing {
         if (name && typeof name === 'string' && name.trim()) info.name = name
         try { if (pnJid) await ds?.setContactInfo?.(pnJid, info) } catch {}
         try { if (lidJid) await ds?.setContactInfo?.(lidJid, info) } catch {}
-        // Refletir também no mapa PN<->LID quando ambos existirem
+        // Refletir tambÃ©m no mapa PN<->LID quando ambos existirem
         if (pnJid && lidJid) { try { await ds?.setJidMapping?.(phone, pnJid, lidJid) } catch {} }
       }
       if (Array.isArray(v.contacts)) {
@@ -216,7 +216,7 @@ export class OutgoingCloudApi implements Outgoing {
         }
       }
     } catch {}
-    // Heurísticas finais: se ainda restar dígitos "nus" em wa_id/from, tentar extrair @lid do próprio payload
+    // HeurÃ­sticas finais: se ainda restar dÃ­gitos "nus" em wa_id/from, tentar extrair @lid do prÃ³prio payload
     try {
       const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
       const isDigits = (s?: string) => !!s && /^\d+$/.test(s)
@@ -244,7 +244,7 @@ export class OutgoingCloudApi implements Outgoing {
           try {
             if (c && typeof c.wa_id === 'string' && isDigits(c.wa_id)) {
               let lid = undefined as string | undefined
-              // 1) nome do perfil já vem com @lid em alguns casos
+              // 1) nome do perfil jÃ¡ vem com @lid em alguns casos
               try {
                 const nm = `${c?.profile?.name || ''}`
                 if (nm.includes('@lid')) lid = clean(nm)
@@ -274,7 +274,7 @@ export class OutgoingCloudApi implements Outgoing {
     if (webhook.header && webhook.token) {
       headers[webhook.header] = webhook.token
     }
-    // Garantir que o endpoint do Chatwoot use o mesmo phone da sessão (metadata.phone_number_id)
+    // Garantir que o endpoint do Chatwoot use o mesmo phone da sessÃ£o (metadata.phone_number_id)
     let url = webhook.urlAbsolute || `${webhook.url}/${phone}`
     try {
       const m = url.match(/\/webhooks\/whatsapp\/(\d+)$/)
