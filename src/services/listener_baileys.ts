@@ -265,7 +265,7 @@ export class ListenerBaileys implements Listener {
         const pn = (senderPhone || '').replace(/\D/g, '')
         if (pn) { await dataStore.setJidIfNotFound(pn, senderId) }
       } catch {}
-      // Se inbound veio de LID e já temos PN, grava mapeamento PN<->LID para aquecer cache (Redis/File)
+      // Se inbound veio de LID, grava/atualiza mapeamento PN<->LID para aquecer cache (também em 1:1)
       try {
         const pnDigits = (senderPhone || '').replace(/\D/g, '')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -274,12 +274,11 @@ export class ListenerBaileys implements Listener {
                       : (typeof kid?.remoteJid === 'string' && kid.remoteJid.includes('@lid')) ? kid.remoteJid
                       : (typeof senderId === 'string' && senderId.includes('@lid')) ? senderId
                       : undefined
-        // só considere pnDigits quando for um telefone válido (evita usar dígitos do LID)
+        // 1) Se já temos PN válido (E.164), usa-o
         if (pnDigits && lidJid && isValidPhoneNumber(pnDigits, true)) {
           try {
             const pnJid = `${pnDigits}@s.whatsapp.net`
             await dataStore.setJidMapping?.(phone, pnJid, lidJid)
-            // Also persist contact info and names to enrich future webhooks/mentions
             try {
               const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
               if (rawName) {
@@ -289,6 +288,14 @@ export class ListenerBaileys implements Listener {
                 try { await dataStore.setContactInfo?.(lidJid, { name: rawName, pnJid, lidJid, pn: pnDigits }) } catch {}
               }
             } catch {}
+          } catch {}
+        // 2) Caso contrário, em 1:1 LID, tenta derivar PN via cache/normalização (getPnForLid)
+        } else if (lidJid) {
+          try {
+            const pnJid = await dataStore.getPnForLid?.(phone, lidJid)
+            if (pnJid && typeof pnJid === 'string' && pnJid.endsWith('@s.whatsapp.net')) {
+              await dataStore.setJidMapping?.(phone, pnJid, lidJid)
+            }
           } catch {}
         }
       } catch {}

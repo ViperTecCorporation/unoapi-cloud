@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.useVoiceCallsBaileys = void 0;
 const socket_io_client_1 = require("socket.io-client");
+const baileys = require("@whiskeysockets/baileys");
 let baileys_connection_state = "close";
 const useVoiceCallsBaileys = async (wavoip_token, baileys_sock, status, logger) => {
     baileys_connection_state = status !== null && status !== void 0 ? status : "close";
@@ -30,7 +31,17 @@ const useVoiceCallsBaileys = async (wavoip_token, baileys_sock, status, logger) 
     });
     socket.on("onWhatsApp", async (jid, callback) => {
         try {
-            const response = await baileys_sock.onWhatsApp(jid);
+            // Baileys v7: onWhatsApp não suporta @lid; normaliza para PN JID
+            let query = jid;
+            try {
+                if (typeof query === 'string' && query.includes('@lid')) {
+                    if (logger)
+                        console.log("[*] - LIDs are not supported with onWhatsApp; normalizing with jidNormalizedUser");
+                    query = baileys.jidNormalizedUser(query);
+                }
+            }
+            catch (_a) { }
+            const response = await baileys_sock.onWhatsApp(query);
             callback(response);
             if (logger)
                 console.log("[*] Success on call onWhatsApp function", response, jid);

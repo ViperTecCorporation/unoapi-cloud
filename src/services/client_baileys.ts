@@ -1137,6 +1137,65 @@ export class ClientBaileys implements Client {
     } else {
       remoteJid = key.remoteJid
     }
+    // Enriquecer com contactNames também para 1:1 (ajuda substituir @<digits> no body)
+    try {
+      const store = this.store
+      if (store) {
+        const names: Record<string, string> = {}
+        const ids: string[] = []
+        try { if (typeof key?.remoteJid === 'string') ids.push(key.remoteJid) } catch {}
+        try { if (typeof key?.participant === 'string') ids.push(key.participant) } catch {}
+        // tentar variantes mapeadas PN<->LID
+        for (const j of Array.from(new Set(ids))) {
+          try {
+            let n = await store.dataStore.getContactName?.(j)
+            if (!n) { try { n = (await store.dataStore.getContactInfo?.(j))?.name } catch {} }
+            if (n) {
+              names[j] = n
+              try {
+                // alias por PN digits
+                if (!j.includes('@g.us')) {
+                  const pnDigits = jidToPhoneNumber(j, '').replace('+','')
+                  if (pnDigits) names[pnDigits] = n
+                }
+              } catch {}
+              try {
+                // alias por LID digits quando aplicável
+                if (typeof j === 'string' && j.includes('@lid')) {
+                  const lidDigits = j.split('@')[0]
+                  if (lidDigits) names[lidDigits] = n
+                }
+              } catch {}
+            }
+            // também refletir mapeamento inverso quando existir
+            try {
+              if (j.includes('@lid')) {
+                const pnJid = await store.dataStore.getPnForLid?.(this.phone, j)
+                if (pnJid) {
+                  const n2 = await store.dataStore.getContactName?.(pnJid) || n
+                  if (n2) {
+                    names[pnJid] = n2
+                    try { const d = jidToPhoneNumber(pnJid, '').replace('+',''); if (d) names[d] = n2 } catch {}
+                  }
+                }
+              } else if (j.includes('@s.whatsapp.net')) {
+                const lid = await store.dataStore.getLidForPn?.(this.phone, j)
+                if (lid) {
+                  const n3 = await store.dataStore.getContactName?.(lid) || n
+                  if (n3) {
+                    names[lid] = n3
+                    try { const d = lid.split('@')[0]; if (d) names[d] = n3 } catch {}
+                  }
+                }
+              }
+            } catch {}
+          } catch {}
+        }
+        if (Object.keys(names).length) {
+          try { (message as any)['contactNames'] = names } catch {}
+        }
+      }
+    } catch {}
     // Primeiro tenta anexar foto diretamente com o JID conhecido (evita depender de onWhatsApp)
     try {
       if (remoteJid && this.config.sendProfilePicture) {

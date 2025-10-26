@@ -333,8 +333,16 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     } catch {}
       try {
         logger.debug(`Verifing if ${phoneOrJid} exist on WhatsApp`)
+        // Baileys v7: onWhatsApp não suporta @lid. Quando for LID, normalizar para PN JID.
+        let query = phoneOrJid
+        try {
+          if (isLidUser(query as any)) {
+            logger.warn('LIDs are not supported with onWhatsApp')
+            query = jidNormalizedUser(query as any)
+          }
+        } catch {}
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        results = await sock?.onWhatsApp!(phoneOrJid)
+        results = await sock?.onWhatsApp!(query)
       } catch (e) {
         logger.error(e, `Error on check if ${phoneOrJid} has whatsapp`)
         try {
@@ -373,8 +381,12 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         logger.debug(`${phoneOrJid} exists on WhatsApp, as jid: ${result.jid}`)
         jid = result.jid
         await dataStore.setJid(phoneOrJid, jid!)
-        // Não gravar mapping PN<-LID com base apenas na normalização; requer mapeamento real (lid-mapping.update/participants/cache)
-        try { /* no-op */ } catch {}
+        // Se a consulta partiu de um LID conhecido, refletir mapeamento PN<->LID no cache
+        try {
+          if (lid && typeof lid === 'string' && lid.includes('@lid') && typeof jid === 'string' && jid.includes('@s.whatsapp.net')) {
+            try { await dataStore.setJidMapping?.(phone, jid, lid) } catch {}
+          }
+        } catch {}
       } else {
         if (lid) {
           // Entrada é LID e sem PN mapeado: retornar LID para permitir envio via addressingMode=LID
