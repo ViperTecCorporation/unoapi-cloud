@@ -208,6 +208,57 @@ export class OutgoingCloudApi implements Outgoing {
         }
       }
     } catch {}
+    // Heurísticas finais: se ainda restar dígitos "nus" em wa_id/from, tentar extrair @lid do próprio payload
+    try {
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const isDigits = (s?: string) => !!s && /^\d+$/.test(s)
+      const clean = (j?: string) => {
+        const val = `${j || ''}`
+        if (!val) return val
+        try { return formatJid(val) } catch { return val }
+      }
+      const parseLidFromPicture = (url?: string): string | undefined => {
+        try {
+          const u = `${url || ''}`
+          const idx = u.indexOf('/profile-pictures/')
+          if (idx >= 0) {
+            const rest = u.substring(idx + '/profile-pictures/'.length)
+            const name = rest.split('?')[0].split('#')[0]
+            const base = decodeURIComponent(name)
+            const jid = base.split('.')[0] // e.g., 94047..@lid.jpg
+            if (jid && jid.includes('@lid')) return clean(jid)
+          }
+        } catch {}
+        return undefined
+      }
+      if (Array.isArray(v.contacts)) {
+        for (const c of v.contacts) {
+          try {
+            if (c && typeof c.wa_id === 'string' && isDigits(c.wa_id)) {
+              let lid = undefined as string | undefined
+              // 1) nome do perfil já vem com @lid em alguns casos
+              try {
+                const nm = `${c?.profile?.name || ''}`
+                if (nm.includes('@lid')) lid = clean(nm)
+              } catch {}
+              // 2) extrair do link da foto de perfil
+              if (!lid) lid = parseLidFromPicture(c?.profile?.picture)
+              if (lid && lid.endsWith('@lid')) {
+                c.wa_id = lid
+              }
+            }
+          } catch {}
+        }
+      }
+      if (Array.isArray(v.messages) && v.messages.length === 1 && isDigits(v.messages[0]?.from)) {
+        try {
+          const c = Array.isArray(v.contacts) ? v.contacts[0] : undefined
+          if (c && typeof c?.wa_id === 'string' && c.wa_id.includes('@lid')) {
+            v.messages[0].from = clean(c.wa_id)
+          }
+        } catch {}
+      }
+    } catch {}
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
