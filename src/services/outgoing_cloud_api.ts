@@ -151,6 +151,63 @@ export class OutgoingCloudApi implements Outgoing {
         }
       } catch {}
     }
+    // Enriquecimento do cache de contatos: para cada contato/from, tente preencher pnJid, lidJid e pn
+    try {
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const ds: any = store?.dataStore
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const cleanJid = (j?: string) => {
+        if (!j) return ''
+        try { return formatJid(j) } catch { return j }
+      }
+      const ensurePnDigits = (pnJid?: string) => {
+        try { return pnJid ? jidToPhoneNumber(pnJid, '').replace('+','') : '' } catch { return '' }
+      }
+      const enrichOne = async (id?: string, name?: string) => {
+        const raw = `${id || ''}`
+        if (!raw) return
+        let pnJid = ''
+        let lidJid = ''
+        if (raw.includes('@')) {
+          const jid = cleanJid(raw)
+          if (jid.toLowerCase().endsWith('@lid')) {
+            lidJid = jid
+            try { const mapped = await ds?.getPnForLid?.(phone, jid); if (mapped) pnJid = cleanJid(mapped) } catch {}
+          } else {
+            pnJid = jid
+            try { const mapped = await ds?.getLidForPn?.(phone, jid); if (mapped) lidJid = cleanJid(mapped) } catch {}
+          }
+        } else {
+          // digits-only -> assumir PN JID para lookup
+          pnJid = `${raw.replace(/\D/g,'')}@s.whatsapp.net`
+          try { const mapped = await ds?.getLidForPn?.(phone, pnJid); if (mapped) lidJid = cleanJid(mapped) } catch {}
+        }
+        if (!pnJid && lidJid) {
+          // tentar derivar PN JID a partir de LID normalizado
+          try { const mapped = await ds?.getPnForLid?.(phone, lidJid); if (mapped) pnJid = cleanJid(mapped) } catch {}
+        }
+        if (!pnJid && !lidJid) return
+        const pn = ensurePnDigits(pnJid)
+        const info: any = { pnJid: pnJid || undefined, lidJid: lidJid || undefined, pn: pn || undefined }
+        if (name && typeof name === 'string' && name.trim()) info.name = name
+        try { if (pnJid) await ds?.setContactInfo?.(pnJid, info) } catch {}
+        try { if (lidJid) await ds?.setContactInfo?.(lidJid, info) } catch {}
+        // Refletir também no mapa PN<->LID quando ambos existirem
+        if (pnJid && lidJid) { try { await ds?.setJidMapping?.(phone, pnJid, lidJid) } catch {} }
+      }
+      if (Array.isArray(v.contacts)) {
+        for (const c of v.contacts) {
+          const name = (c?.profile?.name || '').toString()
+          await enrichOne(c?.wa_id, name)
+        }
+      }
+      if (Array.isArray(v.messages)) {
+        for (const m of v.messages) {
+          await enrichOne(m?.from, undefined)
+        }
+      }
+    } catch {}
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
