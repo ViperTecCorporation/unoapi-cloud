@@ -14,7 +14,7 @@
   "scripts": {
     "lint": "eslint",
     "test": "node_modules/jest/bin/jest.js --coverage",
-    "build": "./node_modules/typescript/bin/tsc -p .",
+    "build": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p .",
     "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
     "dev": "./node_modules/nodemon/bin/nodemon.js src/index.ts --trace-deprecation",
     "web-dev": "./node_modules/nodemon/bin/nodemon.js src/web.ts",
