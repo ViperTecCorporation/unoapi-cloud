@@ -127,6 +127,14 @@ export class OutgoingCloudApi implements Outgoing {
               const pnDigits = `${info?.pn || ''}`.replace(/\D/g, '')
               if (pnDigits) return pnDigits
             } catch {}
+            // Fallback: normalizar via jidNormalizedUser quando não houver mapping/contact-info
+            try {
+              const norm = jidNormalizedUser(base)
+              if (norm && isPnUser(norm)) {
+                const digits = jidToPhoneNumber(norm, '').replace('+','')
+                if (isValidPhoneNumber(digits, true)) return digits
+              }
+            } catch {}
             // Sem mapping nem contact-info confiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡vel: preserva @lid (nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o gerar dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­gitos nus)
             return val
             // Fallback: tentar normalizar o LID via Baileys
