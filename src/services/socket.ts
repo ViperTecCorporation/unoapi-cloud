@@ -15,6 +15,7 @@ import makeWASocket, {
   fetchLatestWaWebVersion,
   jidNormalizedUser,
   isLidUser,
+  isPnUser,
   WAMessageAddressingMode,
 } from '@whiskeysockets/baileys'
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
