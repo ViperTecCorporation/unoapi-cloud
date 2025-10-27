@@ -836,14 +836,18 @@ export const connect = async ({
     try {
       if (id && isIndividualJid(id)) {
         if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
-          // Força PN: se for LID, normaliza para PN e envia como PN
+          // Força PN: se for LID, tenta normalizar para PN e só troca se PN válido
           if (isLidUser(id)) {
             try {
               const pnJid = jidNormalizedUser(id)
-              if (pnJid && isIndividualJid(pnJid)) {
+              if (pnJid && isPnUser(pnJid as any)) {
                 logger.debug('1:1 send: forçando PN %s (de LID %s)', pnJid, id)
                 id = pnJid
                 preferAddressingMode = WAMessageAddressingMode.PN
+              } else {
+                // Sem mapeamento PN: manter LID (evita log confuso)
+                preferAddressingMode = WAMessageAddressingMode.LID
+                logger.debug('1:1 send: preferência PN sem mapeamento para %s; mantendo LID', id)
               }
             } catch {}
           } else {
