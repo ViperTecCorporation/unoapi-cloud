@@ -1120,6 +1120,40 @@ export class ClientBaileys implements Client {
             }
           }
         }
+        // Also scan message text for @<digits> that may reference non-participants and enrich from contact-info
+        try {
+          const rawText: string = (() => {
+            try { return ((message as any)?.message?.extendedTextMessage?.text || (message as any)?.message?.conversation || '').toString() } catch { return '' }
+          })()
+          if (rawText && /@\d{6,}/.test(rawText)) {
+            const seen = new Set<string>()
+            const re = /@(\d{6,})\b/g
+            let m: RegExpExecArray | null
+            while ((m = re.exec(rawText)) !== null) {
+              const digits = (m[1] || '').toString()
+              if (!digits || seen.has(digits)) continue
+              seen.add(digits)
+              try {
+                const pnJid = `${digits}@s.whatsapp.net`
+                const lidJid = `${digits}@lid`
+                let nm = await store.dataStore.getContactName?.(pnJid)
+                if (!nm) { try { nm = await store.dataStore.getContactName?.(lidJid) } catch {} }
+                if (!nm) {
+                  try { nm = (await store.dataStore.getContactInfo?.(pnJid))?.name } catch {}
+                }
+                if (!nm) {
+                  try { nm = (await store.dataStore.getContactInfo?.(lidJid))?.name } catch {}
+                }
+                if (nm && nm.toString().trim()) {
+                  const alias = nm.toString().trim()
+                  names[digits] = alias
+                  try { names[pnJid] = alias } catch {}
+                  try { names[lidJid] = alias } catch {}
+                }
+              } catch {}
+            }
+          }
+        } catch {}
         if (Object.keys(names).length) (gm as any)['names'] = names
       } catch {}
       message['groupMetadata'] = gm
@@ -1191,6 +1225,36 @@ export class ClientBaileys implements Client {
             } catch {}
           } catch {}
         }
+        // Também escanear o texto por @<digits> e enriquecer a partir do contact-info
+        try {
+          const rawText: string = (() => {
+            try { return ((message as any)?.message?.extendedTextMessage?.text || (message as any)?.message?.conversation || '').toString() } catch { return '' }
+          })()
+          if (rawText && /@\d{6,}/.test(rawText)) {
+            const seen = new Set<string>()
+            const re = /@(\d{6,})\b/g
+            let m: RegExpExecArray | null
+            while ((m = re.exec(rawText)) !== null) {
+              const digits = (m[1] || '').toString()
+              if (!digits || seen.has(digits)) continue
+              seen.add(digits)
+              try {
+                const pnJid = `${digits}@s.whatsapp.net`
+                const lidJid = `${digits}@lid`
+                let nm = await store.dataStore.getContactName?.(pnJid)
+                if (!nm) { try { nm = await store.dataStore.getContactName?.(lidJid) } catch {} }
+                if (!nm) { try { nm = (await store.dataStore.getContactInfo?.(pnJid))?.name } catch {} }
+                if (!nm) { try { nm = (await store.dataStore.getContactInfo?.(lidJid))?.name } catch {} }
+                if (nm && nm.toString().trim()) {
+                  const alias = nm.toString().trim()
+                  names[digits] = alias
+                  try { names[pnJid] = alias } catch {}
+                  try { names[lidJid] = alias } catch {}
+                }
+              } catch {}
+            }
+          }
+        } catch {}
         if (Object.keys(names).length) {
           try { (message as any)['contactNames'] = names } catch {}
         }
