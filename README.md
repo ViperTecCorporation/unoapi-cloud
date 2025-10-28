@@ -15,18 +15,33 @@ RESTful API service with multi device support with a Whatsapp Cloud API format
 The media files are saved in file system at folder data with the session or in s3 or compatible and redis.
 
 
-## Addressing, Webhooks and Pictures
+## Addressing, Webhooks, Pictures and JIDMAP
 
 - LID/PN handling
   - Webhooks prefer PN (digits) in `wa_id`, `from` and `recipient_id`; when PN cannot be inferred safely, a LID/JID is returned as fallback.
   - Internally, the API uses LID whenever possible (1:1 and groups) to reduce “no sessions” and decryption issues, while keeping webhooks PN‑first for compatibility.
-  - A PN↔LID cache is maintained per session (file/redis) and is updated from Baileys events and observations.
+  - A PN?LID cache is maintained per session (file/redis) and is updated from Baileys events and observations.
 
 - Group sends
   - Default addressingMode is LID. You can force via `GROUP_SEND_ADDRESSING_MODE=lid|pn`.
   - The API pre‑asserts sessions for group participants prioritizing LIDs, with fallbacks and a final addressingMode toggle on failures such as ack 421.
 
-### One‑to‑One (Direct) Sending
+
+### JIDMAP endpoints (inspect PN?LID per session)
+
+- List mappings with optional filters/pagination:
+
+`
+GET /:version/:phone/jidmap?side=pn_for_lid|lid_for_pn|all&q=<substring>&limit=<n>&offset=<m>
+`
+
+- Lookup a specific contact (digits/@s.whatsapp.net or @lid):
+
+`
+GET /:version/:phone/jidmap/:contact
+`
+
+See more details in docs/pt-BR/JIDMAP.md.### One‑to‑One (Direct) Sending
 
 - Control addressing for direct chats (1:1) using `ONE_TO_ONE_ADDRESSING_MODE`.
   - `pn` (default): send via PN. Recommended — avoids cases where `@lid` opens a separate thread or hides the message on some devices.

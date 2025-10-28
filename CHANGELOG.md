@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 
 ## [Unreleased]
 
+- Feat(JIDMAP API): adicionar endpoints para inspecionar mapeamentos PN↔LID por sessão
+  - GET `/:version/:phone/jidmap` — lista pares `pn_for_lid` e `lid_for_pn` (inclui chaves antigas `pn:`/`lid:`)
+    - Suporta filtros/paginação: `side=pn_for_lid|lid_for_pn|all`, `q=<substring>`, `limit`, `offset`
+  - GET `/:version/:phone/jidmap/:contact` — lookup direto por contato `@lid` ou PN (dígitos ou `@s.whatsapp.net`)
+  - Útil para auditar duplicidades PN vs LID (Chatwoot) e depurar aquecimento de cache
+- Feat(JIDMAP 1:1): enriquecer PN↔LID fora de grupos
+  - listener_baileys: inbound @lid em 1:1 tenta `getPnForLid` quando não há PN válido e persiste mapping
+  - data_store_file.loadJid: normaliza @lid → PN para `onWhatsApp` (Baileys v7) e reflete PN↔LID quando resolver
+  - socket: handler de `lid-mapping.update` mais robusto (classificação via `isPnUser/isLidUser` + fallback `jidNormalizedUser`)
+  - data_store_file.getPnForLid: deriva PN via `jidNormalizedUser` quando o cache local estiver vazio
+- Feat(Webhook PN-first): quando preferir PN e não houver cache/contact-info, normaliza @lid → PN via `jidNormalizedUser` (valida E.164) antes de enviar
+- Feat(Mentions): substitui `@<digits>` por `@<nome>` mesmo sem `mentionedJid`, consultando `contact-name/contact-info` (grupos e 1:1)
+- Fix(Logs 1:1): log “forçando PN …” só aparece quando há PN JID válido; caso contrário mantém LID e registra preferência sem mapping
+- Build: elevar heap do Node no build TypeScript (`--max-old-space-size=4096`) para evitar OOM
+
 - Status/Webhook (1:1)
   - recipient_id sempre em número (PN), mesmo quando o evento chega com @lid
   - inclui timestamp em statuses (delivered/read) e normaliza id do status (provider → UNO)
