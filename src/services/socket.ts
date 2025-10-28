@@ -651,25 +651,58 @@ export const connect = async ({
       }
       // @ts-ignore
       eventsMap.set(event, wrapped)
-    } else if (event === 'lid-mapping.update') {
-      // Cache PN <-> LID mapping updates to aid future asserts and normalization
+  } else if (event === 'lid-mapping.update') {
+      // Cache PN <-> LID mapping updates para ajudar asserts e normalização
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = async (updates: any) => {
         try {
           const arr: any[] = Array.isArray(updates) ? updates : [updates]
           for (const u of arr) {
-            const values: string[] = []
             try {
-              const flat = JSON.stringify(u)
-              const re = /\b[0-9]+@[a-zA-Z\.]+/g
-              let m
-              while ((m = re.exec(flat)) !== null) { values.push(m[0]) }
-            } catch {}
-            const lid = values.find((s) => (s || '').includes('@lid'))
-            const pn = values.find((s) => (s || '').includes('@s.whatsapp.net'))
-            if (lid && pn) {
-              try { await (dataStore as any).setJidMapping?.(phone, pn, lid) } catch {}
-              logger.debug('Updated PN<->LID mapping: %s <=> %s', pn, lid)
+              // Detectar pares PN/LID de forma robusta sem regex frágil
+              const collectJids = (obj: any): string[] => {
+                const out: string[] = []
+                const walk = (x: any) => {
+                  if (!x) return
+                  if (typeof x === 'string') {
+                    if (x.includes('@')) out.push(x)
+                    return
+                  }
+                  if (Array.isArray(x)) {
+                    for (const it of x) walk(it)
+                    return
+                  }
+                  if (typeof x === 'object') {
+                    for (const k of Object.keys(x)) walk((x as any)[k])
+                  }
+                }
+                walk(obj)
+                return out
+              }
+              const all = collectJids(u).map((j) => {
+                try { return jidNormalizedUser(j) } catch { return j }
+              })
+              let pn: string | undefined
+              let lid: string | undefined
+              for (const j of all) {
+                try {
+                  if (!pn && isPnUser(j as any)) pn = j
+                  if (!lid && isLidUser(j as any)) lid = j
+                } catch {}
+              }
+              // Fallback: se só houver LID, derivar PN via jidNormalizedUser
+              if (!pn && lid) {
+                try {
+                  const cand = jidNormalizedUser(lid)
+                  if (cand && isPnUser(cand as any)) pn = cand as any
+                } catch {}
+              }
+              if (pn && lid) {
+                try { await (dataStore as any).setJidMapping?.(phone, pn, lid) } catch {}
+                logger.debug('Updated PN<->LID mapping: %s <=> %s', pn, lid)
+              }
+            } catch (ie) {
+              logger.warn(ie as any, 'Ignore error parsing lid-mapping.update item')
             }
           }
         } catch (e) {
