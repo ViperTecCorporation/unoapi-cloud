@@ -1,5 +1,7 @@
 import { MessageFilter } from './message_filter'
 import { getConfig, defaultConfig, Config, configs, connectionType } from './config'
+import { getStoreRedis } from './store_redis'
+import { getStoreFile } from './store_file'
 import { RATE_LIMIT_BLOCK_SECONDS, RATE_LIMIT_GLOBAL_PER_MINUTE, RATE_LIMIT_PER_TO_PER_MINUTE, OUTGOING_IDEMPOTENCY_ENABLED } from '../defaults'
 import { GROUP_IGNORE_INDIVIDUAL_RECEIPTS, GROUP_ONLY_DELIVERED_STATUS } from '../defaults'
 import logger from './logger'
@@ -148,6 +150,9 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
         return message.replace(' ', ` ${getRandomChar()}`)
       }
     }
+
+    // Choose backing store based on flags (ensure Redis path actually uses Redis-backed store)
+    config.getStore = config.useRedis ? getStoreRedis : getStoreFile
 
     const filter: MessageFilter = new MessageFilter(phone, config)
     config.shouldIgnoreJid = filter.isIgnoreJid.bind(filter)
