@@ -98,6 +98,13 @@ export const router = (
   // https://developers.facebook.com/docs/whatsapp/business-management-api/manage-phone-numbers/
   router.get('/:version/:phone/phone_numbers', middleware, phoneNumberController.list.bind(phoneNumberController))
   router.get('/:version/:phone/message_templates', middleware, templatesController.index.bind(templatesController))
+  // JIDMAP endpoints (must come before '/:version/:phone/:media_id')
+  try {
+    const { JidMapController } = require('./controllers/jidmap_controller')
+    const jidmap = new JidMapController()
+    router.get('/:version/:phone/jidmap', middleware, jidmap.list.bind(jidmap))
+    router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
+  } catch {}
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
   router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
