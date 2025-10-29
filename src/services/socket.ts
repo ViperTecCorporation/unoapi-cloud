@@ -41,6 +41,7 @@ import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
+import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -182,6 +183,90 @@ export const connect = async ({
   const recentContacts = new Map<string, number>()
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
+  // Background LID->PN resolver (per session)
+  const lidResolveQueue: Map<string, { next: number; attempts: number; lastSeen: number }> = new Map()
+  let lidResolverTimer: NodeJS.Timeout | undefined
+  const scheduleLidResolve = (jid?: string) => {
+    try {
+      const v = `${jid || ''}`
+      if (!v || !isLidUser(v)) return
+      const now = Date.now()
+      if (!lidResolveQueue.has(v)) {
+        if (lidResolveQueue.size >= Math.max(100, LID_RESOLVER_MAX_PENDING || 0)) {
+          try {
+            let oldestKey: string | null = null
+            let oldestSeen = Infinity
+            for (const [k, st] of lidResolveQueue.entries()) {
+              if (st.lastSeen < oldestSeen) { oldestSeen = st.lastSeen; oldestKey = k }
+            }
+            if (oldestKey) lidResolveQueue.delete(oldestKey)
+          } catch {}
+        }
+        lidResolveQueue.set(v, { next: now, attempts: 0, lastSeen: now })
+      } else {
+        const st = lidResolveQueue.get(v)!
+        st.lastSeen = now
+        if (st.attempts === 0) st.next = now
+      }
+    } catch {}
+  }
+  const attemptResolveOne = async (lidJid: string) => {
+    try {
+      // 1) Already cached?
+      try {
+        const mapped = await (dataStore as any).getPnForLid?.(phone, lidJid)
+        if (mapped && isPnUser(mapped)) {
+          try { await (dataStore as any).setJidMapping?.(phone, mapped, lidJid) } catch {}
+          return true
+        }
+      } catch {}
+      // 2) Derive PN candidate via normalization and confirm with onWhatsApp when possible
+      let pnCandidate: string | null = null
+      try {
+        const norm = jidNormalizedUser(lidJid as any)
+        if (isPnUser(norm)) pnCandidate = norm as any
+      } catch {}
+      if (!pnCandidate) return false
+      try {
+        const digits = jidToPhoneNumber(pnCandidate, '')
+        if (digits) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const res: any = await (sock as any)?.onWhatsApp?.(digits)
+          const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
+          if (ok && isPnUser(res[0].jid)) pnCandidate = res[0].jid
+        }
+      } catch {}
+      if (pnCandidate && isPnUser(pnCandidate)) {
+        try { await (dataStore as any).setJidMapping?.(phone, pnCandidate, lidJid) } catch {}
+        return true
+      }
+    } catch {}
+    return false
+  }
+  const sweepLidResolver = async () => {
+    if (!LID_RESOLVER_ENABLED) return
+    const now = Date.now()
+    const delays = (Array.isArray(LID_RESOLVER_BACKOFF_MS) && LID_RESOLVER_BACKOFF_MS.length) ? LID_RESOLVER_BACKOFF_MS : [15000, 60000, 300000]
+    for (const [lid, st] of Array.from(lidResolveQueue.entries())) {
+      if (st.next > now) continue
+      const done = await attemptResolveOne(lid)
+      if (done) {
+        lidResolveQueue.delete(lid)
+        continue
+      }
+      const idx = Math.min(st.attempts, delays.length - 1)
+      const delayMs = delays[idx]
+      st.attempts += 1
+      st.next = now + delayMs
+      if (st.attempts > delays.length) st.attempts = delays.length
+      lidResolveQueue.set(lid, st)
+    }
+  }
+  const ensureLidResolverTimer = () => {
+    if (!LID_RESOLVER_ENABLED || lidResolverTimer) return
+    const every = Math.max(2000, LID_RESOLVER_SWEEP_INTERVAL_MS || 10000)
+    lidResolverTimer = setInterval(() => { sweepLidResolver().catch(() => undefined) }, every) as unknown as NodeJS.Timeout
+  }
   const scheduleAckWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
     try { if (!messageId) return } catch { return }
     const delaysEnv = (ACK_RETRY_DELAYS_MS || [])
@@ -460,10 +545,12 @@ export const connect = async ({
               if (typeof remote === 'string' && !!remote) {
                 recentContacts.set(remote, now)
                 try { if (isLidUser(remote)) recentContacts.set(jidNormalizedUser(remote), now) } catch {}
+                try { if (isLidUser(remote)) scheduleLidResolve(remote) } catch {}
               }
               if (typeof participant === 'string' && !!participant) {
                 recentContacts.set(participant, now)
                 try { if (isLidUser(participant)) recentContacts.set(jidNormalizedUser(participant), now) } catch {}
+                try { if (isLidUser(participant)) scheduleLidResolve(participant) } catch {}
               }
               // Heurística de decrypt stub: mensagem vazia ou apenas senderKeyDistributionMessage (não-fromMe)
               const fromMe = !!m?.key?.fromMe
@@ -541,6 +628,13 @@ export const connect = async ({
                   }
                 }
               } catch {}
+              // Also observe potential LIDs in update keys to schedule resolver
+              try {
+                const r = u?.key?.remoteJid
+                const p = u?.key?.participant
+                if (typeof r === 'string' && isLidUser(r)) scheduleLidResolve(r)
+                if (typeof p === 'string' && isLidUser(p)) scheduleLidResolve(p)
+              } catch {}
               const params = u?.update?.messageStubParameters
               const key = u?.key
               if (
@@ -617,6 +711,9 @@ export const connect = async ({
                   targets.add(remoteJid)
                 }
               }
+              // Observe LIDs to schedule resolver attempts
+              try { if (typeof remoteJid === 'string' && isLidUser(remoteJid)) scheduleLidResolve(remoteJid) } catch {}
+              try { if (typeof participant === 'string' && isLidUser(participant)) scheduleLidResolve(participant) } catch {}
             }
           }
           if (isStatus) {
@@ -766,6 +863,7 @@ export const connect = async ({
 
   const close = async () => {
     logger.info(`${phone} close`)
+    try { if (lidResolverTimer) { clearInterval(lidResolverTimer); lidResolverTimer = undefined } } catch {}
     EVENTS.forEach((e: any) => {
       try {
         sock?.ev?.removeAllListeners(e)
@@ -891,6 +989,7 @@ export const connect = async ({
           // Padrão LID: manter LID; ou, se PN, usar LID se mapeado
           if (isLidUser(id)) {
             preferAddressingMode = WAMessageAddressingMode.LID
+            try { scheduleLidResolve(id) } catch {}
           } else {
             try {
               const lid = await (dataStore as any).getLidForPn?.(phone, id)
@@ -898,6 +997,7 @@ export const connect = async ({
                 logger.debug('1:1 send: trocando alvo para LID %s (a partir do PN %s)', lid, id)
                 id = lid
                 preferAddressingMode = WAMessageAddressingMode.LID
+                try { scheduleLidResolve(id) } catch {}
               }
             } catch {}
           }
@@ -1478,6 +1578,8 @@ export const connect = async ({
           logger.warn(e, 'Ignore voice-calls-baileys error')
         }
       }
+      // Start background LID->PN resolver loop
+      try { ensureLidResolverTimer() } catch {}
       return true
     }
     return false

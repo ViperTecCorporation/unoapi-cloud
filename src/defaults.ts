@@ -280,9 +280,22 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
 // Endereçamento para conversas 1:1 (envio)
 // 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
-  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'pn').toString().toLowerCase()
+  // Default to 'lid' as documented; allow override via env
+  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'lid').toString().toLowerCase()
   return (v === 'lid' ? 'lid' : 'pn')
 })()
+
+// Background resolver: try to map LIDs seen to PN asynchronously (accelerates JIDMAP population)
+export const LID_RESOLVER_ENABLED: boolean =
+  process.env.LID_RESOLVER_ENABLED === _undefined ? true : process.env.LID_RESOLVER_ENABLED == 'true'
+export const LID_RESOLVER_BACKOFF_MS: number[] = (() => {
+  try {
+    const raw = (process.env.LID_RESOLVER_BACKOFF_MS || '15000,60000,300000').toString()
+    return raw.split(',').map((s) => parseInt(s.trim())).filter((n) => Number.isFinite(n) && n > 0)
+  } catch { return [15000, 60000, 300000] }
+})()
+export const LID_RESOLVER_SWEEP_INTERVAL_MS = parseInt(process.env.LID_RESOLVER_SWEEP_INTERVAL_MS || '10000')
+export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PENDING || '2000')
 
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")

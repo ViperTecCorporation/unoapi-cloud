@@ -68,6 +68,13 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const jidMap: NodeCache = new NodeCache()
   const JMAP_ENABLED = JIDMAP_CACHE_ENABLED
   const JMAP_TTL = JIDMAP_TTL_SECONDS
+  // Guarded accessors for NodeCache (TTL in seconds)
+  const jidMapGet = (key: string): string | undefined => {
+    try { return (jidMap.get<string>(key) as string) || undefined } catch { return undefined }
+  }
+  const jidMapSet = (key: string, value: string, ttlSec: number) => {
+    try { jidMap.set(key, value, Math.max(0, Number(ttlSec) || 0)) } catch {}
+  }
   const store = await useMultiFileAuthState(SESSION_DIR)
   const dataStore = store as DataStore
   dataStore.type = 'file'
@@ -475,7 +482,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     if (!JMAP_ENABLED) return undefined
     try {
       if (typeof lidJid !== 'string') return undefined
-      const key = `PN_FOR:${lidJid}`
+      const key = `PN_FOR:${_sessionPhone}:${lidJid}`
       const cached = jidMapGet(key)
       if (cached) return cached
       // N�o tentar derivar PN a partir do LID por normaliza��o � requer mapeamento real
@@ -486,7 +493,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     if (!JMAP_ENABLED) return undefined
     try {
       if (typeof pnJid !== 'string') return undefined
-      const key = `LID_FOR:${pnJid}`
+      const key = `LID_FOR:${_sessionPhone}:${pnJid}`
       return jidMapGet(key)
     } catch { return undefined }
   }
@@ -494,8 +501,8 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     if (!JMAP_ENABLED) return
     try {
       if (typeof pnJid !== 'string' || typeof lidJid !== 'string') return
-      jidMapSet(`PN_FOR:${lidJid}`, pnJid, JMAP_TTL)
-      jidMapSet(`LID_FOR:${pnJid}`, lidJid, JMAP_TTL)
+      jidMapSet(`PN_FOR:${_sessionPhone}:${lidJid}`, pnJid, JMAP_TTL)
+      jidMapSet(`LID_FOR:${_sessionPhone}:${pnJid}`, lidJid, JMAP_TTL)
       // also reflect mapping in generic JID cache to speed up loadJid()
       try { jids.set(pnJid, pnJid); jids.set(lidJid, pnJid) } catch {}
     } catch {}
