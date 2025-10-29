@@ -155,18 +155,42 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     try { const raw = await redisGetContactInfo(phone, jid); return raw ? JSON.parse(raw) : undefined } catch { return undefined }
   }
   store.setContactInfo = async (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => {
+    const normalize = (j?: string) => `${(j || '').toString().trim()}`.replace(/@+/g, '@')
+    const cleanPnJid = (j: string) => {
+      try { const norm = jidNormalizedUser(j as any) as any; if (isPnUser(norm)) return norm } catch {}
+      const d = `${j || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
+      return d ? `${d}@s.whatsapp.net` : ''
+    }
+    const cleanLidJid = (j: string) => `${(j || '').split('@')[0].split(':')[0]}@lid`
     try {
-      await redisSetContactInfo(phone, jid, info)
-    } catch {}
-    // Always try to reflect PN<->LID mapping when both are present in contact-info (helps 1:1 flows)
-    try {
-      if (JIDMAP_CACHE_ENABLED) {
-        const pnJid = (info as any)?.pnJid
-        const lidJid = (info as any)?.lidJid
-        if (typeof pnJid === 'string' && pnJid.endsWith('@s.whatsapp.net') && typeof lidJid === 'string' && lidJid.endsWith('@lid')) {
-          try { await redisSetJidMapping(phone, pnJid, lidJid) } catch {}
+      const raw = normalize(jid)
+      let pnJid = ''
+      let lidJid = ''
+      if (raw.includes('@lid')) {
+        lidJid = cleanLidJid(raw)
+        pnJid = (info as any)?.pnJid || (await redisGetPnForLid(phone, lidJid)) || ''
+        if (!pnJid) {
+          try { const cand = jidNormalizedUser(lidJid as any) as any; if (isPnUser(cand)) pnJid = cand } catch {}
         }
+      } else if (raw.includes('@s.whatsapp.net')) {
+        pnJid = cleanPnJid(raw)
+        lidJid = (info as any)?.lidJid || (await redisGetLidForPn(phone, pnJid)) || ''
+      } else if (/^\+?\d+$/.test(raw)) {
+        pnJid = cleanPnJid(raw)
+        lidJid = (info as any)?.lidJid || (await redisGetLidForPn(phone, pnJid)) || ''
       }
+      let pnDigits = ''
+      try { pnDigits = pnJid ? jidToPhoneNumber(pnJid, '').replace('+','') : '' } catch {}
+      const merged: any = { ...(info || {}) }
+      if (pnJid) merged.pnJid = pnJid
+      if (lidJid) merged.lidJid = lidJid
+      if (pnDigits) merged.pn = pnDigits
+      // Persist under both keys when available
+      if (pnJid) { try { await redisSetContactInfo(phone, pnJid, merged) } catch {} }
+      if (lidJid) { try { await redisSetContactInfo(phone, lidJid, merged) } catch {} }
+      if (!pnJid && !lidJid) { try { await redisSetContactInfo(phone, raw, merged) } catch {} }
+      // Reflect PN<->LID mapping when both present
+      try { if (JIDMAP_CACHE_ENABLED && pnJid && lidJid) { await redisSetJidMapping(phone, pnJid, lidJid) } } catch {}
     } catch {}
     return
   }
