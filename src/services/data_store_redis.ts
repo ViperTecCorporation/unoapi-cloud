@@ -155,7 +155,20 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     try { const raw = await redisGetContactInfo(phone, jid); return raw ? JSON.parse(raw) : undefined } catch { return undefined }
   }
   store.setContactInfo = async (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => {
-    return redisSetContactInfo(phone, jid, info)
+    try {
+      await redisSetContactInfo(phone, jid, info)
+    } catch {}
+    // Always try to reflect PN<->LID mapping when both are present in contact-info (helps 1:1 flows)
+    try {
+      if (JIDMAP_CACHE_ENABLED) {
+        const pnJid = (info as any)?.pnJid
+        const lidJid = (info as any)?.lidJid
+        if (typeof pnJid === 'string' && pnJid.endsWith('@s.whatsapp.net') && typeof lidJid === 'string' && lidJid.endsWith('@lid')) {
+          try { await redisSetJidMapping(phone, pnJid, lidJid) } catch {}
+        }
+      }
+    } catch {}
+    return
   }
   store.cleanSession = async (removeConfig = CLEAN_CONFIG_ON_DISCONNECT) => {
     if (removeConfig) {
