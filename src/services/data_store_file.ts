@@ -140,11 +140,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       contactInfo.set(key, value)
     })
   }
-  // JID map helpers
-  const jidMapGet = (key: string) => jidMap.get<string>(key)
-  const jidMapSet = (key: string, val: string, ttlSec: number) => {
-    try { jidMap.set(key, val, ttlSec) } catch {}
-  }
+  
 	dataStore.writeToFile = (path: string) => {
     const { writeFileSync } = require('fs')
     // for(const a in Object.keys(dataStore.toJSON())) {
