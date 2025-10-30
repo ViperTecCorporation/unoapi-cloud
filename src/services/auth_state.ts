@@ -16,7 +16,13 @@ export const authState = async (session: session, phone: string) => {
           const key = getKey(type, id)
           const value = await readData(key)
           if (type === 'app-state-sync-key' && value) {
-            data[id] = proto.Message.AppStateSyncKeyData.create(value)
+            try {
+              // Normalize to the expected protobuf type to avoid decrypt issues
+              data[id] = proto.Message.AppStateSyncKeyData.fromObject(value as any)
+            } catch {
+              // Fallback to raw value if conversion fails
+              data[id] = value
+            }
           } else {
             data[id] = value
           }

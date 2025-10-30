@@ -75,7 +75,11 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const jidMapSet = (key: string, value: string, ttlSec: number) => {
     try { jidMap.set(key, value, Math.max(0, Number(ttlSec) || 0)) } catch {}
   }
-  const store = await useMultiFileAuthState(SESSION_DIR)
+  // Use a per-session directory for Baileys auth state to avoid collisions
+  // with other sessions and prevent stale root-level creds.json.
+  const sessionDir = `${SESSION_DIR}/${phone}`
+  try { if (!existsSync(sessionDir)) mkdirSync(sessionDir, { recursive: true }) } catch {}
+  const store = await useMultiFileAuthState(sessionDir)
   const dataStore = store as DataStore
   dataStore.type = 'file'
 
