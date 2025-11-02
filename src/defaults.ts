@@ -208,7 +208,8 @@ export const GROUP_SEND_MEMBERSHIP_CHECK =
   process.env.GROUP_SEND_MEMBERSHIP_CHECK == _undefined ? true : process.env.GROUP_SEND_MEMBERSHIP_CHECK == 'true'
 // Optional: prefer addressing mode when sending to groups. Allowed values: 'pn' | 'lid'.
 // Leave unset to let Baileys decide.
-export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || '').toLowerCase() as 'pn' | 'lid' | ''
+// Prefer LID for group sends by default; can be overridden via env.
+export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || 'lid').toLowerCase() as 'pn' | 'lid' | ''
 // Pre-assert sessions for all group participants before sending to reduce ack 421
 export const GROUP_SEND_PREASSERT_SESSIONS =
   process.env.GROUP_SEND_PREASSERT_SESSIONS == _undefined ? true : process.env.GROUP_SEND_PREASSERT_SESSIONS == 'true'
