@@ -291,14 +291,50 @@ export const connect = async ({
             const attemptNo = entry.attemptIndex + 1
             logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, to)
           } catch {}
-          const set = new Set<string>()
-          set.add(to)
           try {
-            if (isLidUser(to)) { try { set.add(jidNormalizedUser(to)) } catch {} }
-            const self = state?.creds?.me?.id
-            if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
-          } catch {}
-          try { const targets = Array.from(set); if (targets.length) await (sock as any).assertSessions(targets, true) } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
+            const assertOneToOne = async () => {
+              const set = new Set<string>()
+              set.add(to)
+              try {
+                if (isLidUser(to)) { try { set.add(jidNormalizedUser(to)) } catch {} }
+                const self = state?.creds?.me?.id
+                if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
+              } catch {}
+              const targets = Array.from(set)
+              if (targets.length) await (sock as any).assertSessions(targets, true)
+            }
+            const assertGroup = async () => {
+              const gm = await dataStore.loadGroupMetada(to, sock!)
+              const raw: string[] = (gm?.participants || [])
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
+                .filter((v) => !!v)
+              const lids: string[] = []
+              const pns: string[] = []
+              for (const j of raw) {
+                if (!j) continue
+                try {
+                  if (isLidUser(j)) { lids.push(j); try { const pn = jidNormalizedUser(j); if (pn) pns.push(pn as any) } catch {} }
+                  else { pns.push(j) }
+                } catch {}
+              }
+              try { const self = state?.creds?.me?.id; if (self) { if (isLidUser(self)) lids.push(self); else pns.push(self) } } catch {}
+              const unique = (arr: string[]) => Array.from(new Set(arr))
+              const lidsU = unique(lids)
+              const pnsU = unique(pns)
+              const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
+              const assertChunked = async (arr: string[]) => {
+                for (let i = 0; i < arr.length; i += chunkSize) {
+                  const chunk = arr.slice(i, i + chunkSize)
+                  try { if (chunk.length) await (sock as any).assertSessions(chunk, true) } catch (ce) { logger.warn(ce as any, 'Ignore error asserting group chunk %s-%s', i, i + chunk.length) }
+                }
+              }
+              if (lidsU.length) await assertChunked(lidsU)
+              if (pnsU.length) await assertChunked(pnsU)
+            }
+            if (typeof to === 'string' && to.endsWith('@g.us')) await assertGroup()
+            else await assertOneToOne()
+          } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
           // Resend with the same id
           const opts = { ...(entry.options || {}), messageId }
           try { await sock?.sendMessage(to, entry.message, opts) } catch (e) { logger.warn(e as any, 'Resend with same id failed') }
@@ -1332,10 +1368,8 @@ export const connect = async ({
       // Skip for groups (@g.us): não reenvia para grupos em caso de falha de ACK
       try {
         const mid = (full as any)?.key?.id as string | undefined
-        if (mid && !(typeof id === 'string' && id.endsWith('@g.us'))) {
+        if (mid) {
           scheduleAckWatch(id, mid, message, opts)
-        } else {
-          try { logger.debug('ACK watch skipped for group destination %s', id) } catch {}
         }
       } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
