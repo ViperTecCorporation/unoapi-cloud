@@ -21,7 +21,7 @@ import makeWASocket, {
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'
-import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid } from './transformer'
+import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -423,8 +423,44 @@ export const connect = async ({
               try { logger.debug('DELIVERY watch: asserted %s targets before resend id=%s', targets.length, messageId) } catch {}
             }
           } catch {}
+          // BR alternate addressing: try toggling 12 <-> 13 digits for PN JIDs
+          let targetTo = to
+          try {
+            if (typeof to === 'string' && to.endsWith('@s.whatsapp.net')) {
+              const digits = ensurePn(to)
+              if (digits && digits.startsWith('55')) {
+                const ddd = digits.slice(2, 4)
+                let altDigits: string | null = null
+                if (digits.length === 12) {
+                  // build 13 candidate by inserting '9' after DDD when local starts with [6-9]
+                  const local = digits.slice(4)
+                  const cand13 = /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : ''
+                  if (cand13) altDigits = cand13
+                } else if (digits.length === 13) {
+                  // build 12 candidate by removing '9' after DDD
+                  const local9 = digits.slice(4)
+                  altDigits = `55${ddd}${local9.slice(1)}`
+                }
+                if (altDigits) {
+                  try {
+                    const res: any = await (sock as any)?.onWhatsApp?.(altDigits)
+                    const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
+                    try { logger.info('BR_SEND_ORDER(WD): tested %s => exists=%s jid=%s', altDigits, `${ok}`, ok ? res[0]?.jid : '<none>') } catch {}
+                    if (ok) {
+                      targetTo = res[0].jid
+                      try { logger.warn('BR_SEND_ORDER(WD): choosing alternate candidate %s', targetTo) } catch {}
+                    } else {
+                      try { logger.warn('BR_SEND_ORDER(WD): keep original %s (alternate not valid)', to) } catch {}
+                    }
+                  } catch (oe) {
+                    logger.warn(oe as any, 'BR_SEND_ORDER(WD): onWhatsApp check failed for %s', altDigits)
+                  }
+                }
+              }
+            }
+          } catch {}
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
-          try { await sock?.sendMessage(to, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, to) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
+          try { await sock?.sendMessage(targetTo, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, targetTo) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
         } finally {
           entry.attempt += 1
           if (entry.attempt < maxAttempts) scheduleNext()
@@ -1093,6 +1129,44 @@ export const connect = async ({
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    // BR send-order: tentar 12 dígitos primeiro; se não existir, tentar 13. Webhooks permanecem 13.
+    try {
+      const raw = ensurePn(idCandidate)
+      if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
+        const to12 = (() => {
+          if (raw.length === 12) return raw
+          const ddd = raw.slice(2, 4)
+          const local9 = raw.slice(4)
+          return `55${ddd}${local9.slice(1)}`
+        })()
+        const to13 = (() => {
+          if (raw.length === 13) return raw
+          const ddd = raw.slice(2, 4)
+          const local = raw.slice(4)
+          return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : raw
+        })()
+        let chosen: string | undefined
+        try {
+          const r12: any = await (sock as any)?.onWhatsApp?.(to12)
+          if (Array.isArray(r12) && r12[0]?.exists && r12[0]?.jid) {
+            chosen = r12[0].jid
+            logger.warn('BR_SEND_ORDER: using 12-digit candidate %s -> %s', to12, chosen)
+          }
+        } catch {}
+        if (!chosen) {
+          try {
+            const r13: any = await (sock as any)?.onWhatsApp?.(to13)
+            if (Array.isArray(r13) && r13[0]?.exists && r13[0]?.jid) {
+              chosen = r13[0].jid
+              logger.warn('BR_SEND_ORDER: fallback to 13-digit candidate %s -> %s', to13, chosen)
+            }
+          } catch {}
+        }
+        if (chosen) {
+          id = chosen
+        }
+      }
+    } catch {}
     // preferAddressingMode declared above
     // BR 9th-digit guard at send-time: if caller provided 13-digit PN but cache resolved 12-digit,
     // prefer LID addressing when possible; otherwise, keep WA-resolved PN for send to avoid duplicate chats on devices.

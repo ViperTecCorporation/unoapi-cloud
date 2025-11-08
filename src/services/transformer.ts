@@ -5,7 +5,7 @@ import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
 import { SendError } from './send_error'
-import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT } from '../defaults'
+import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT, WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -1437,6 +1437,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         state.errors = [error]
       }
       change.value.statuses.push(state)
+      // Normalize webhook IDs to preferred scheme (PN with BR 9th digit) when configured
+      try { if (WEBHOOK_PREFER_PN_OVER_LID) normalizeWebhookValueIds(change.value) } catch {}
       try {
         logger.info('STATUS map: id=%s to recipient_id=%s status=%s', messageId || '<none>', state.recipient_id || '<none>', cloudApiStatus || '<none>')
       } catch {}
@@ -1477,6 +1479,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
       }
       change.value.messages.push(message)
+      // Normalize webhook IDs (contacts/messages/statuses) if preference is set
+      try { if (WEBHOOK_PREFER_PN_OVER_LID) normalizeWebhookValueIds(change.value) } catch {}
     }
     // Log resumido de identificação (evita serializar WAProto inteiro)
     try {
