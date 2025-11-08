@@ -1568,8 +1568,37 @@ export const connect = async ({
 
   const rejectCall: rejectCall = async (callId: string, callFrom: string) => {
     await validateStatus()
-
-    return sock?.rejectCall(callId, callFrom)
+    // Avoid creating duplicate threads on devices: do NOT force BR 13-digit PN here.
+    // Prefer LID if mapped; otherwise, use the WA-resolved JID (even if 12-digit for BR).
+    let target = callFrom
+    try {
+      // If a plain number was provided, resolve via exists() (WA mapping) instead of forcing PN->JID
+      if (typeof target === 'string' && target.indexOf('@') < 0) {
+        try {
+          const waJid = await exists(target)
+          if (waJid) target = waJid as any
+        } catch {}
+      }
+      // BR mismatch guard (13 input vs 12 resolved): prefer LID, else keep resolved PN
+      try {
+        const inDigits = `${callFrom}`.replace(/\D/g, '')
+        const outDigits = `${target || ''}`.split('@')[0].replace(/\D/g, '')
+        const isBr13in = inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9'
+        const isBr12out = outDigits.startsWith('55') && outDigits.length === 12
+        if (isBr13in && isBr12out) {
+          try {
+            const lid = await (dataStore as any).getLidForPn?.(phone, target as any)
+            if (lid && typeof lid === 'string') {
+              logger.warn('BR_GUARD(rejectCall): prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
+              target = lid
+            } else {
+              logger.warn('BR_GUARD(rejectCall): keeping WA JID %s (input=%s); no LID mapping', target, inDigits)
+            }
+          } catch {}
+        }
+      } catch {}
+    } catch {}
+    return sock?.rejectCall(callId, target)
   }
 
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
