@@ -1093,6 +1093,7 @@ export const connect = async ({
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    // preferAddressingMode declared above
     // BR 9th-digit guard at send-time: if caller provided 13-digit PN but cache resolved 12-digit,
     // prefer LID addressing when possible; otherwise, keep WA-resolved PN for send to avoid duplicate chats on devices.
     try {
@@ -1104,15 +1105,14 @@ export const connect = async ({
       ) {
         try {
           const lid = await (dataStore as any).getLidForPn?.(phone, (id as string))
-          if (lid && typeof lid === 'string') {
-            logger.warn('BR_GUARD: prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
-            id = lid
-            preferAddressingMode = WAMessageAddressingMode.LID
-          } else {
-            // Keep the WA-resolved PN for sending to avoid creating a new thread on devices,
-            // and rely on webhook normalization to expose 13-digit PN outward.
-            logger.warn('BR_GUARD: keeping WA JID %s for send (input=%s); webhook will normalize to 13-digit', id, inDigits)
-          }
+            if (lid && typeof lid === 'string') {
+              logger.warn('BR_GUARD: prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
+              id = lid
+            } else {
+              // Keep the WA-resolved PN for sending to avoid creating a new thread on devices,
+              // and rely on webhook normalization to expose 13-digit PN outward.
+              logger.warn('BR_GUARD: keeping WA JID %s for send (input=%s); webhook will normalize to 13-digit', id, inDigits)
+            }
         } catch {
           // ignore
         }
