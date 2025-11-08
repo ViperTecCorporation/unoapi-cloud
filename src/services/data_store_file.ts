@@ -349,7 +349,27 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           }
         } catch {}
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        results = await sock?.onWhatsApp!(query)
+        // Tratativa BR: tentar variante com nono dígito (55 + DDD + 9 + local) antes do lookup padrão
+        try {
+          const qDigits = `${query}`.replace(/\D/g, '')
+          if (qDigits.startsWith('55') && qDigits.length === 12) {
+            const ddd = qDigits.slice(2, 4)
+            const local = qDigits.slice(4)
+            const firstLocal = local.charAt(0)
+            if (['6', '7', '8', '9'].includes(firstLocal)) {
+              const withNine = `55${ddd}9${local}`
+              logger.debug('BR_NINTH_DIGIT: trying with 9 => %s (from %s)', withNine, qDigits)
+              const res9: any = await (sock as any)?.onWhatsApp?.(withNine)
+              if (Array.isArray(res9) && res9[0]?.exists && res9[0]?.jid) {
+                logger.info('BR_NINTH_DIGIT: prefer with 9 match %s for input %s', res9[0]?.jid, qDigits)
+                results = res9
+              }
+            }
+          }
+        } catch {}
+        if (!results) {
+          results = await sock?.onWhatsApp!(query)
+        }
       } catch (e) {
         logger.error(e, `Error on check if ${phoneOrJid} has whatsapp`)
         try {
@@ -411,8 +431,27 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       if (inputPn && cachedPn && inputPn !== cachedPn) {
         try {
           logger.debug('JID cache mismatch %s (cached PN %s). Re-validating via onWhatsApp', phoneOrJid, cachedPn)
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          const res: any = await sock?.onWhatsApp!(inputPn)
+          let res: any
+          try {
+            if (inputPn.startsWith('55') && inputPn.length === 12) {
+              const ddd = inputPn.slice(2, 4)
+              const local = inputPn.slice(4)
+              const firstLocal = local.charAt(0)
+              if (['6', '7', '8', '9'].includes(firstLocal)) {
+                const withNine = `55${ddd}9${local}`
+                logger.debug('BR_NINTH_DIGIT: repair trying with 9 => %s (from %s)', withNine, inputPn)
+                const res9: any = await (sock as any)?.onWhatsApp?.(withNine)
+                if (Array.isArray(res9) && res9[0]?.exists && res9[0]?.jid) {
+                  logger.info('BR_NINTH_DIGIT: repair prefer with 9 match %s for input %s', res9[0]?.jid, inputPn)
+                  res = res9
+                }
+              }
+            }
+          } catch {}
+          if (!res) {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            res = await sock?.onWhatsApp!(inputPn)
+          }
           const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
           if (ok) {
             jid = res[0].jid
