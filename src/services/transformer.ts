@@ -518,7 +518,7 @@ export const isValidPhoneNumber = (value: string, nine = false): boolean => {
   const numbers = parsed?.number?.significant || ''
   const isInValid = !parsed.valid || !parsed.possible || (nine && country == '55' && numbers.length < 11 && ['6', '7', '8', '9'].includes(numbers[2]))
   if (isInValid) {
-    logger.warn('phone number %s is invalid %s', value, isInValid)
+    logger.debug('phone number %s is invalid %s', value, isInValid)
   }
   return !isInValid
 }

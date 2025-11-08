@@ -444,10 +444,16 @@ export const connect = async ({
                 if (altDigits) {
                   try {
                     const res: any = await (sock as any)?.onWhatsApp?.(altDigits)
-                    const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
-                    try { logger.info('BR_SEND_ORDER(WD): tested %s => exists=%s jid=%s', altDigits, `${ok}`, ok ? res[0]?.jid : '<none>') } catch {}
-                    if (ok) {
-                      targetTo = res[0].jid
+                    const existsOk = Array.isArray(res) && !!res[0]?.exists && !!res[0]?.jid
+                    const altJid = Array.isArray(res) ? res[0]?.jid : undefined
+                    try { logger.info('BR_SEND_ORDER(WD): tested %s => exists=%s jid=%s', altDigits, `${existsOk}`, altJid || '<none>') } catch {}
+                    if (existsOk && altJid) {
+                      // Antes de alternar, afirma sessão do candidato alternativo para forçar renovação de chaves
+                      try {
+                        await (sock as any).assertSessions([altJid], true)
+                        try { logger.debug('BR_SEND_ORDER(WD): asserted alternate session %s', altJid) } catch {}
+                      } catch (ae) { logger.warn(ae as any, 'BR_SEND_ORDER(WD): assertSessions failed for alternate %s', altJid) }
+                      targetTo = altJid
                       try { logger.warn('BR_SEND_ORDER(WD): choosing alternate candidate %s', targetTo) } catch {}
                     } else {
                       try { logger.warn('BR_SEND_ORDER(WD): keep original %s (alternate not valid)', to) } catch {}
@@ -459,6 +465,21 @@ export const connect = async ({
               }
             }
           } catch {}
+          // Reassert final targets (original + escolhido) para garantir chaves antes do reenvio
+          try {
+            const finalSet = new Set<string>()
+            finalSet.add(to)
+            finalSet.add(targetTo)
+            try { if (isLidUser(to)) finalSet.add(jidNormalizedUser(to)) } catch {}
+            try { if (isLidUser(targetTo)) finalSet.add(jidNormalizedUser(targetTo)) } catch {}
+            const self = state?.creds?.me?.id
+            if (self) { finalSet.add(self); try { finalSet.add(jidNormalizedUser(self)) } catch {} }
+            const finalTargets = Array.from(finalSet)
+            if (finalTargets.length) {
+              await (sock as any).assertSessions(finalTargets, true)
+              try { logger.debug('DELIVERY watch: asserted final targets %s for resend id=%s', finalTargets.length, messageId) } catch {}
+            }
+          } catch (fae) { logger.warn(fae as any, 'DELIVERY watch: final assert failed before resend') }
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
           try { await sock?.sendMessage(targetTo, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, targetTo) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
         } finally {
@@ -1242,6 +1263,35 @@ export const connect = async ({
             const pn = jidNormalizedUser(id)
             set.add(pn)
             try { await (dataStore as any).setJidMapping?.(phone, pn, id) } catch {}
+          } else if (isPnUser(id)) {
+            // BR: ao enviar via PN, incluir o candidato alternativo (12↔13) na afirmação de sessão
+            try {
+              const digits = ensurePn(id)
+              if (digits && digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+                const to12 = (() => {
+                  if (digits.length === 12) return digits
+                  const ddd = digits.slice(2, 4)
+                  const local9 = digits.slice(4)
+                  return `55${ddd}${local9.slice(1)}`
+                })()
+                const to13 = (() => {
+                  if (digits.length === 13) return digits
+                  const ddd = digits.slice(2, 4)
+                  const local = digits.slice(4)
+                  return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : digits
+                })()
+                const cands = Array.from(new Set([to12, to13])).filter((v) => v && v !== digits)
+                for (const cand of cands) {
+                  try {
+                    const res: any = await (sock as any)?.onWhatsApp?.(cand)
+                    if (Array.isArray(res) && res[0]?.exists && res[0]?.jid) {
+                      set.add(res[0].jid)
+                      try { logger.debug('Preassert BR: added alternate candidate %s -> %s', cand, res[0].jid) } catch {}
+                    }
+                  } catch {}
+                }
+              }
+            } catch {}
           }
         } catch {}
         try {
@@ -1644,13 +1694,71 @@ export const connect = async ({
     await validateStatus()
     // Avoid creating duplicate threads on devices: do NOT force BR 13-digit PN here.
     // Prefer LID if mapped; otherwise, use the WA-resolved JID (even if 12-digit for BR).
+    // Apply BR send-order for call rejection: try 12-digit first (onWhatsApp), then fallback to 13-digit.
     let target = callFrom
     try {
-      // If a plain number was provided, resolve via exists() (WA mapping) instead of forcing PN->JID
+      // If a plain number was provided, resolve via onWhatsApp with BR 12→13 preference before falling back
       if (typeof target === 'string' && target.indexOf('@') < 0) {
         try {
-          const waJid = await exists(target)
-          if (waJid) target = waJid as any
+          const raw = ensurePn(target)
+          if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
+            const to12 = (() => {
+              if (raw.length === 12) return raw
+              const ddd = raw.slice(2, 4)
+              const local9 = raw.slice(4)
+              return `55${ddd}${local9.slice(1)}`
+            })()
+            const to13 = (() => {
+              if (raw.length === 13) return raw
+              const ddd = raw.slice(2, 4)
+              const local = raw.slice(4)
+              return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : raw
+            })()
+            let chosen: string | undefined
+            try {
+              const r12: any = await (sock as any)?.onWhatsApp?.(to12)
+              if (Array.isArray(r12) && r12[0]?.exists && r12[0]?.jid) {
+                chosen = r12[0].jid
+                logger.warn('BR_SEND_ORDER(rejectCall): using 12-digit candidate %s -> %s', to12, chosen)
+              }
+            } catch {}
+            if (!chosen) {
+              try {
+                const r13: any = await (sock as any)?.onWhatsApp?.(to13)
+                if (Array.isArray(r13) && r13[0]?.exists && r13[0]?.jid) {
+                  chosen = r13[0].jid
+                  logger.warn('BR_SEND_ORDER(rejectCall): fallback to 13-digit candidate %s -> %s', to13, chosen)
+                }
+              } catch {}
+            }
+            if (chosen) {
+              target = chosen
+            }
+          }
+        } catch {}
+        // Fallback: WA mapping cache if still plain number
+        if (typeof target === 'string' && target.indexOf('@') < 0) {
+          try {
+            const waJid = await exists(target)
+            if (waJid) target = waJid as any
+          } catch {}
+        }
+      } else if (typeof target === 'string' && target.endsWith('@s.whatsapp.net')) {
+        // If the input already is a PN JID with 13 digits, try the 12-digit mapping first
+        try {
+          const digits = ensurePn(target)
+          if (digits && digits.startsWith('55') && digits.length === 13) {
+            const ddd = digits.slice(2, 4)
+            const local9 = digits.slice(4)
+            const to12 = `55${ddd}${local9.slice(1)}`
+            try {
+              const r12: any = await (sock as any)?.onWhatsApp?.(to12)
+              if (Array.isArray(r12) && r12[0]?.exists && r12[0]?.jid) {
+                logger.warn('BR_SEND_ORDER(rejectCall): switching to 12-digit candidate %s -> %s', to12, r12[0].jid)
+                target = r12[0].jid
+              }
+            } catch {}
+          }
         } catch {}
       }
       // BR mismatch guard (13 input vs 12 resolved): prefer LID, else keep resolved PN
@@ -1672,6 +1780,53 @@ export const connect = async ({
         }
       } catch {}
     } catch {}
+    // Preassert de sessões para rejeitar chamada com chaves atualizadas
+    try {
+      const set = new Set<string>()
+      if (typeof target === 'string' && target) set.add(target)
+      try { if (isLidUser(target)) set.add(jidNormalizedUser(target)) } catch {}
+      // BR: incluir candidato alternativo (12↔13) quando alvo for PN JID
+      try {
+        if (typeof target === 'string' && target.endsWith('@s.whatsapp.net')) {
+          const digits = ensurePn(target)
+          if (digits && digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+            const to12 = (() => {
+              if (digits.length === 12) return digits
+              const ddd = digits.slice(2, 4)
+              const local9 = digits.slice(4)
+              return `55${ddd}${local9.slice(1)}`
+            })()
+            const to13 = (() => {
+              if (digits.length === 13) return digits
+              const ddd = digits.slice(2, 4)
+              const local = digits.slice(4)
+              return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : digits
+            })()
+            const cands = Array.from(new Set([to12, to13])).filter((v) => v && v !== digits)
+            for (const cand of cands) {
+              try {
+                const res: any = await (sock as any)?.onWhatsApp?.(cand)
+                if (Array.isArray(res) && res[0]?.exists && res[0]?.jid) {
+                  set.add(res[0].jid)
+                  try { logger.debug('Preassert BR(rejectCall): added alternate candidate %s -> %s', cand, res[0].jid) } catch {}
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+      try {
+        const self = state?.creds?.me?.id
+        if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
+      } catch {}
+      const targets = Array.from(set)
+      if (targets.length) {
+        await (sock as any).assertSessions(targets, true)
+        try { logger.debug('Preasserted %s sessions for rejectCall %s', targets.length, JSON.stringify(targets)) } catch {}
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error on preassert sessions for rejectCall')
+    }
     return sock?.rejectCall(callId, target)
   }
 
