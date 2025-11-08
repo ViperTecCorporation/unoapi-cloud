@@ -278,6 +278,12 @@ export const OUTGOING_IDEMPOTENCY_ENABLED: boolean =
 export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
+// Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
+export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
+export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '45000')
+export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '1')
+export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
+
 // Endereçamento para conversas 1:1 (envio)
 // 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {

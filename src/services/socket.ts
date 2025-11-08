@@ -40,6 +40,10 @@ import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_IN
 import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
+import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
+import { SESSION_DIR } from './session_store_file'
+import { delSignalSessionsForJids } from './redis'
+import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
@@ -183,6 +187,8 @@ export const connect = async ({
   const recentContacts = new Map<string, number>()
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
+  // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
+  const pendingDeliveryWatch: Map<string, { to: string; message: AnyMessageContent; options: any; attempt: number; timer?: NodeJS.Timeout }> = new Map()
   // Background LID->PN resolver (per session)
   const lidResolveQueue: Map<string, { next: number; attempts: number; lastSeen: number }> = new Map()
   let lidResolverTimer: NodeJS.Timeout | undefined
@@ -357,6 +363,75 @@ export const connect = async ({
         }
       }, delayMs) as unknown as NodeJS.Timeout
       pendingAckResend.set(messageId, entry)
+    }
+    scheduleNext()
+  }
+
+  const purgeSignalSessionsFor = async (toJid: string) => {
+    try {
+      const ids: string[] = []
+      const pn = (() => { try { return jidNormalizedUser(toJid) } catch { return undefined } })()
+      if (typeof toJid === 'string' && toJid) ids.push(toJid)
+      if (pn && typeof pn === 'string') ids.push(pn)
+      // Redis-backed sessions
+      if ((config as any)?.useRedis) {
+        try { await delSignalSessionsForJids(phone, ids) } catch {}
+      } else {
+        // File-backed sessions: remove session-<addr>* files
+        try {
+          const dir = `${SESSION_DIR}/${phone}`
+          const files = readdirSync(dir)
+          for (const id of ids) {
+            const prefix = `session-${id}`
+            for (const f of files) {
+              try { if (f.startsWith(prefix)) rmSync(`${dir}/${f}`) } catch {}
+            }
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  const scheduleDeliveryWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
+    try { if (!DELIVERY_WATCHDOG_ENABLED) return } catch { return }
+    try { if (!messageId) return } catch { return }
+    // Skip groups unless explicitly enabled
+    try { if (typeof to === 'string' && to.endsWith('@g.us') && !DELIVERY_WATCHDOG_GROUPS) return } catch {}
+    const maxAttempts = Math.max(0, DELIVERY_WATCHDOG_MAX_ATTEMPTS || 0)
+    const existing = pendingDeliveryWatch.get(messageId)
+    const entry = existing || { to, message, options, attempt: 0 }
+    const scheduleNext = () => {
+      if (entry.attempt >= maxAttempts) return
+      const delayMs = Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)
+      if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
+      entry.timer = setTimeout(async () => {
+        try {
+          if (!pendingDeliveryWatch.has(messageId)) return
+          // Force: purge current signal sessions for target and assert again
+          try { await purgeSignalSessionsFor(to) } catch {}
+          // Re-assert (cover PN/LID + self) and resend same id without userDevices cache
+          try {
+            const set = new Set<string>()
+            set.add(to)
+            try { if (isLidUser(to)) set.add(jidNormalizedUser(to)) } catch {}
+            const self = state?.creds?.me?.id
+            if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
+            const targets = Array.from(set)
+            if (targets.length) await (sock as any).assertSessions(targets, true)
+          } catch {}
+          const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
+          try { await sock?.sendMessage(to, entry.message, opts) } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
+        } finally {
+          entry.attempt += 1
+          if (entry.attempt < maxAttempts) scheduleNext()
+          else {
+            try { if (entry.timer) clearTimeout(entry.timer) } catch {}
+            pendingDeliveryWatch.delete(messageId)
+          }
+        }
+      }, delayMs) as unknown as NodeJS.Timeout
+      pendingDeliveryWatch.set(messageId, entry)
+      try { logger.info('DELIVERY watch: scheduled attempt %s/%s for id=%s to=%s in %sms', entry.attempt + 1, maxAttempts, messageId, to, Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)) } catch {}
     }
     scheduleNext()
   }
@@ -1364,12 +1439,12 @@ export const connect = async ({
       } catch (e) {
         logger.warn(e as any, 'Ignore error tracking pending group send')
       }
-      // Schedule ack watch to perform assert+resend if server ack is not received in time
-      // Skip for groups (@g.us): não reenvia para grupos em caso de falha de ACK
+      // Schedule ack/delivery watchers (1:1 e grupos)
       try {
         const mid = (full as any)?.key?.id as string | undefined
         if (mid) {
           scheduleAckWatch(id, mid, message, opts)
+          scheduleDeliveryWatch(id, mid, message, opts)
         }
       } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
@@ -1626,3 +1701,5 @@ export const connect = async ({
 
   return { event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
 }
+
+
