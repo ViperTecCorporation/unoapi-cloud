@@ -743,7 +743,7 @@ export const connect = async ({
                   }
                   // Clear delivery watchdog only on delivered/read
                   const delivered = (() => {
-                    if (typeof st === 'number') return st >= 2
+                    if (typeof st === 'number') return st >= 3 // 3: DELIVERY_ACK, 4/5: READ/PLAYED
                     const s = `${st}`.toUpperCase()
                     return s === 'DELIVERY_ACK' || s === 'READ' || s === 'PLAYED'
                   })()
@@ -1093,6 +1093,20 @@ export const connect = async ({
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    // BR 9th-digit guard at send-time: if caller provided 13-digit PN but cache resolved 12-digit, prefer 13
+    try {
+      const inDigits = `${idCandidate}`.replace(/\D/g, '')
+      const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
+      if (
+        inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9' &&
+        outDigits.startsWith('55') && outDigits.length === 12
+      ) {
+        const forced = phoneNumberToJid(inDigits)
+        logger.warn('BR_GUARD: forcing 13-digit PN %s over cached %s for send', forced, id)
+        id = forced
+        try { await (dataStore as any).setJid?.(idCandidate, id) } catch {}
+      }
+    } catch {}
     let preferAddressingMode: WAMessageAddressingMode | undefined = undefined
     try {
       if (id && isIndividualJid(id)) {
