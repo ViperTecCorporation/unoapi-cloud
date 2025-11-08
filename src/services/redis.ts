@@ -289,20 +289,36 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
 // This forces Baileys to fetch sessions again on next assert.
 export const delSignalSessionsForJids = async (session: string, jids: string[]) => {
   try {
-    const base = `${BASE_KEY}auth:${session}:session-`
+    const base = `${BASE_KEY}auth:${session}:`
+    let totalDeleted = 0
     for (const raw of (jids || [])) {
       const v = `${raw || ''}`
       if (!v) continue
-      // Delete both exact and normalized variants
-      const patterns = [ `${base}${v}*` ]
+      // Known Signal state key families to purge for target address
+      const patterns = [
+        `${base}session-${v}*`,           // peer sessions
+        `${base}sender-key-${v}*`,        // group sender keys (if v is group/participant)
+      ]
       for (const p of patterns) {
         try {
           const keys = await redisKeys(p)
-          for (const k of keys || []) { try { await redisDel(k) } catch {} }
+          let deleted = 0
+          for (const k of keys || []) {
+            try { await redisDel(k); deleted += 1 } catch {}
+          }
+          if (deleted > 0) {
+            totalDeleted += deleted
+            try { logger.debug('DELIVERY_WATCH purge: %s deleted for pattern %s', deleted, p) } catch {}
+          } else {
+            try { logger.debug('DELIVERY_WATCH purge: no keys for pattern %s', p) } catch {}
+          }
         } catch {}
       }
     }
-  } catch {}
+    try { logger.info('DELIVERY_WATCH purge: total deleted=%s for %s target(s)', totalDeleted, (jids || []).length) } catch {}
+  } catch (e) {
+    try { logger.warn(e as any, 'Ignore error during session purge for %s', session) } catch {}
+  }
 }
 
 export const blacklist = (from: string, webhookId: string, to: string) => {

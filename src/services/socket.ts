@@ -407,6 +407,7 @@ export const connect = async ({
       entry.timer = setTimeout(async () => {
         try {
           if (!pendingDeliveryWatch.has(messageId)) return
+          try { logger.info('DELIVERY watch: firing attempt %s/%s for id=%s to=%s', entry.attempt + 1, maxAttempts, messageId, to) } catch {}
           // Force: purge current signal sessions for target and assert again
           try { await purgeSignalSessionsFor(to) } catch {}
           // Re-assert (cover PN/LID + self) and resend same id without userDevices cache
@@ -417,10 +418,13 @@ export const connect = async ({
             const self = state?.creds?.me?.id
             if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
             const targets = Array.from(set)
-            if (targets.length) await (sock as any).assertSessions(targets, true)
+            if (targets.length) {
+              await (sock as any).assertSessions(targets, true)
+              try { logger.debug('DELIVERY watch: asserted %s targets before resend id=%s', targets.length, messageId) } catch {}
+            }
           } catch {}
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
-          try { await sock?.sendMessage(to, entry.message, opts) } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
+          try { await sock?.sendMessage(to, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, to) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
         } finally {
           entry.attempt += 1
           if (entry.attempt < maxAttempts) scheduleNext()
@@ -736,6 +740,20 @@ export const connect = async ({
                     try { logger.info('ACK watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
                     try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
                     pendingAckResend.delete(kid)
+                  }
+                  // Clear delivery watchdog only on delivered/read
+                  const delivered = (() => {
+                    if (typeof st === 'number') return st >= 2
+                    const s = `${st}`.toUpperCase()
+                    return s === 'DELIVERY_ACK' || s === 'READ' || s === 'PLAYED'
+                  })()
+                  if (delivered) {
+                    const dw = pendingDeliveryWatch.get(kid)
+                    if (dw) {
+                      try { logger.info('DELIVERY watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
+                      try { if (dw.timer) clearTimeout(dw.timer) } catch {}
+                      pendingDeliveryWatch.delete(kid)
+                    }
                   }
                 }
               } catch {}
