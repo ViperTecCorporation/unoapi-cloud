@@ -328,6 +328,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     }
     if (!jid || lid) {
     let results: unknown
+    let preferWithoutNine = false
     // quick mapping: if input is a LID JID and a PN is cached, return it
     try {
       if (isIndividualJid(phoneOrJid) && (phoneOrJid || '').includes('@lid')) {
@@ -349,9 +350,10 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           }
         } catch {}
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        // Tratativa BR: tentar variante com nono dígito (55 + DDD + 9 + local) antes do lookup padrão
+        // Tratativa BR: tentar variantes 12<->13 dígitos (inserir/remover '9' após DDD)
+        const qDigits = `${query}`.replace(/\D/g, '')
         try {
-          const qDigits = `${query}`.replace(/\D/g, '')
+          // 12 -> 13 primeiro (preferir com 9)
           if (qDigits.startsWith('55') && qDigits.length === 12) {
             const ddd = qDigits.slice(2, 4)
             const local = qDigits.slice(4)
@@ -368,8 +370,25 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           }
         } catch {}
         if (!results) {
-          results = await sock?.onWhatsApp!(query)
+          // lookup padrão com os dígitos originais
+          results = await sock?.onWhatsApp!(qDigits)
         }
+        try {
+          // 13 -> 12 como fallback somente se lookup padrão não trouxe exists
+          const ok = Array.isArray(results) && results[0]?.exists
+          if (!ok && qDigits.startsWith('55') && qDigits.length === 13 && qDigits.charAt(4) === '9') {
+            const ddd = qDigits.slice(2, 4)
+            const local9 = qDigits.slice(4)
+            const withoutNine = `55${ddd}${local9.slice(1)}`
+            logger.debug('BR_NINTH_DIGIT: trying without 9 => %s (from %s)', withoutNine, qDigits)
+            const res12: any = await (sock as any)?.onWhatsApp?.(withoutNine)
+            if (Array.isArray(res12) && res12[0]?.exists && res12[0]?.jid) {
+              logger.info('BR_NINTH_DIGIT: prefer without 9 match %s for input %s', res12[0]?.jid, qDigits)
+              results = res12
+              preferWithoutNine = true
+            }
+          }
+        } catch {}
       } catch (e) {
         logger.error(e, `Error on check if ${phoneOrJid} has whatsapp`)
         try {
@@ -406,7 +425,15 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       }
       if (test) {
         logger.debug(`${phoneOrJid} exists on WhatsApp, as jid: ${result.jid}`)
-        jid = result.jid
+        // Guard: se entrada for BR com 13 dígitos e resultado vier com 12, só aceitar se veio do fallback "sem 9"
+        try {
+          const inDigits = `${phoneOrJid}`.replace(/\D/g, '')
+          const outDigits = jidToPhoneNumber(result.jid, '').replace(/\D/g, '')
+          const prefer13 = inDigits.startsWith('55') && inDigits.length === 13 && outDigits.startsWith('55') && outDigits.length === 12 && !preferWithoutNine
+          jid = prefer13 ? `${inDigits}@s.whatsapp.net` : result.jid
+        } catch {
+          jid = result.jid
+        }
         await dataStore.setJid(phoneOrJid, jid!)
         // Se a consulta partiu de um LID conhecido, refletir mapeamento PN<->LID no cache
         try {
@@ -433,28 +460,52 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
           logger.debug('JID cache mismatch %s (cached PN %s). Re-validating via onWhatsApp', phoneOrJid, cachedPn)
           let res: any
           try {
-            if (inputPn.startsWith('55') && inputPn.length === 12) {
-              const ddd = inputPn.slice(2, 4)
-              const local = inputPn.slice(4)
-              const firstLocal = local.charAt(0)
-              if (['6', '7', '8', '9'].includes(firstLocal)) {
-                const withNine = `55${ddd}9${local}`
-                logger.debug('BR_NINTH_DIGIT: repair trying with 9 => %s (from %s)', withNine, inputPn)
-                const res9: any = await (sock as any)?.onWhatsApp?.(withNine)
-                if (Array.isArray(res9) && res9[0]?.exists && res9[0]?.jid) {
-                  logger.info('BR_NINTH_DIGIT: repair prefer with 9 match %s for input %s', res9[0]?.jid, inputPn)
-                  res = res9
+            if (inputPn.startsWith('55')) {
+              if (inputPn.length === 12) {
+                const ddd = inputPn.slice(2, 4)
+                const local = inputPn.slice(4)
+                const firstLocal = local.charAt(0)
+                if (['6', '7', '8', '9'].includes(firstLocal)) {
+                  const withNine = `55${ddd}9${local}`
+                  logger.debug('BR_NINTH_DIGIT: repair trying with 9 => %s (from %s)', withNine, inputPn)
+                  const res9: any = await (sock as any)?.onWhatsApp?.(withNine)
+                  if (Array.isArray(res9) && res9[0]?.exists && res9[0]?.jid) {
+                    logger.info('BR_NINTH_DIGIT: repair prefer with 9 match %s for input %s', res9[0]?.jid, inputPn)
+                    res = res9
+                  }
                 }
               }
             }
           } catch {}
           if (!res) {
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            // lookup padrão
             res = await sock?.onWhatsApp!(inputPn)
           }
+          try {
+            // 13 -> 12 fallback quando padrão não existir
+            const ok = Array.isArray(res) && res[0]?.exists
+            if (!ok && inputPn.startsWith('55') && inputPn.length === 13 && inputPn.charAt(4) === '9') {
+              const ddd = inputPn.slice(2, 4)
+              const local9 = inputPn.slice(4)
+              const withoutNine = `55${ddd}${local9.slice(1)}`
+              logger.debug('BR_NINTH_DIGIT: repair trying without 9 => %s (from %s)', withoutNine, inputPn)
+              const res12: any = await (sock as any)?.onWhatsApp?.(withoutNine)
+              if (Array.isArray(res12) && res12[0]?.exists && res12[0]?.jid) {
+                logger.info('BR_NINTH_DIGIT: repair prefer without 9 match %s for input %s', res12[0]?.jid, inputPn)
+                res = res12
+              }
+            }
+          } catch {}
           const ok = Array.isArray(res) && res[0]?.exists && res[0]?.jid
           if (ok) {
-            jid = res[0].jid
+            // Guard: preferir 13 dígitos quando a entrada for BR 13 e o retorno vier com 12
+            try {
+              const outDigits = jidToPhoneNumber(res[0].jid, '').replace(/\D/g, '')
+              const prefer13 = inputPn.startsWith('55') && inputPn.length === 13 && outDigits.startsWith('55') && outDigits.length === 12
+              jid = prefer13 ? `${inputPn}@s.whatsapp.net` : res[0].jid
+            } catch {
+              jid = res[0].jid
+            }
             await dataStore.setJid(phoneOrJid, jid!)
             // Não gravar mapping PN<-LID com base apenas na normalização; evitar PN incorreto
             try { /* no-op */ } catch {}
