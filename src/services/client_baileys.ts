@@ -557,10 +557,40 @@ export class ClientBaileys implements Client {
       } catch {}
     })
     // Track LID<->PN mapping updates from Baileys to feed DataStore cache
-    this.event('lid-mapping.update' as any, (updates: any) => {
+    this.event('lid-mapping.update' as any, async (updates: any) => {
       try {
         const sample = updates.slice(0, 2).map((u: any) => ({ from: u?.from, to: u?.to }))
         logger.debug('lid-mapping.update %s count=%s sample=%s', this.phone, updates.length, JSON.stringify(sample))
+      } catch {}
+      // Persistir PN<->LID quando vierem pares válidos
+      try {
+        const store = this.store
+        if (store && Array.isArray(updates)) {
+          for (const u of updates as any[]) {
+            try {
+              const a = `${u?.from || ''}`
+              const b = `${u?.to || ''}`
+              if (!a || !b) continue
+              // Normalize para remover sufixos :device
+              let j1 = a; let j2 = b
+              try { j1 = jidNormalizedUser(a as any) } catch {}
+              try { j2 = jidNormalizedUser(b as any) } catch {}
+              // Identificar papéis PN/LID
+              let pnJid: string | undefined
+              let lidJid: string | undefined
+              try {
+                if (isPnUser(j1) && isLidUser(j2)) { pnJid = j1; lidJid = j2 }
+                else if (isLidUser(j1) && isPnUser(j2)) { pnJid = j2; lidJid = j1 }
+              } catch {}
+              if (pnJid && lidJid) {
+                try {
+                  await store.dataStore.setJidMapping?.(this.phone, pnJid, lidJid)
+                  try { logger.info('lid-mapping.persist %s: %s <-> %s', this.phone, pnJid, lidJid) } catch {}
+                } catch (e) { logger.debug(e as any, 'lid-mapping.persist failed for %s: %s <-> %s', this.phone, pnJid, lidJid) }
+              }
+            } catch {}
+          }
+        }
       } catch {}
     })
     this.event('message-receipt.update', (updates: object[]) => {

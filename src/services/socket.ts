@@ -42,10 +42,11 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { delSignalSessionsForJids } from './redis'
+import { delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromContactInfo } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
+import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -267,6 +268,12 @@ export const connect = async ({
       if (st.attempts > delays.length) st.attempts = delays.length
       lidResolveQueue.set(lid, st)
     }
+    // No mesmo timer do LID resolver: enriquecer JIDMAP a partir do contact-info (leve, com limite por varredura)
+    try {
+      if ((config as any)?.useRedis && JIDMAP_ENRICH_ENABLED) {
+        await enrichJidMapFromContactInfo(phone, Math.max(50, JIDMAP_ENRICH_PER_SWEEP || 200))
+      }
+    } catch {}
   }
   const ensureLidResolverTimer = () => {
     if (!LID_RESOLVER_ENABLED || lidResolverTimer) return
@@ -302,7 +309,14 @@ export const connect = async ({
               const set = new Set<string>()
               set.add(to)
               try {
-                if (isLidUser(to)) { try { set.add(jidNormalizedUser(to)) } catch {} }
+                if (isLidUser(to)) {
+                  try { set.add(jidNormalizedUser(to)) } catch {}
+                } else if (isPnUser(to)) {
+                  try {
+                    const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                    if (lid && typeof lid === 'string') set.add(lid)
+                  } catch {}
+                }
                 const self = state?.creds?.me?.id
                 if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
               } catch {}
@@ -373,6 +387,32 @@ export const connect = async ({
       const pn = (() => { try { return jidNormalizedUser(toJid) } catch { return undefined } })()
       if (typeof toJid === 'string' && toJid) ids.push(toJid)
       if (pn && typeof pn === 'string') ids.push(pn)
+      // Incluir variante mapeada (PN<->LID) quando disponível
+      try {
+        if (isPnUser(toJid)) {
+          const lid = await (dataStore as any).getLidForPn?.(phone, toJid)
+          if (lid && typeof lid === 'string') ids.push(lid)
+        } else if (isLidUser(toJid)) {
+          const mappedPn = await (dataStore as any).getPnForLid?.(phone, toJid)
+          if (mappedPn && typeof mappedPn === 'string') ids.push(mappedPn)
+        }
+      } catch {}
+      // BR: incluir candidatos alternativos 12<->13 para PN JIDs
+      try {
+        if (typeof toJid === 'string' && toJid.endsWith('@s.whatsapp.net')) {
+          const digits = ensurePn(toJid)
+          if (digits && digits.startsWith('55')) {
+            const ddd = digits.slice(2, 4)
+            if (digits.length === 12) {
+              const local = digits.slice(4)
+              if (/[6-9]/.test(local[0])) ids.push(`55${ddd}9${local}@s.whatsapp.net`)
+            } else if (digits.length === 13) {
+              const local9 = digits.slice(4)
+              ids.push(`55${ddd}${local9.slice(1)}@s.whatsapp.net`)
+            }
+          }
+        }
+      } catch {}
       // Redis-backed sessions
       if ((config as any)?.useRedis) {
         try { await delSignalSessionsForJids(phone, ids) } catch {}
@@ -421,6 +461,7 @@ export const connect = async ({
             if (targets.length) {
               await (sock as any).assertSessions(targets, true)
               try { logger.debug('DELIVERY watch: asserted %s targets before resend id=%s', targets.length, messageId) } catch {}
+              try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
             }
           } catch {}
           // BR alternate addressing: try toggling 12 <-> 13 digits for PN JIDs
@@ -478,6 +519,7 @@ export const connect = async ({
             if (finalTargets.length) {
               await (sock as any).assertSessions(finalTargets, true)
               try { logger.debug('DELIVERY watch: asserted final targets %s for resend id=%s', finalTargets.length, messageId) } catch {}
+              try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, finalTargets) } catch {}
             }
           } catch (fae) { logger.warn(fae as any, 'DELIVERY watch: final assert failed before resend') }
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
@@ -1305,6 +1347,7 @@ export const connect = async ({
         if (targets.length) {
           await (sock as any).assertSessions(targets, true)
           logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
+          try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
         }
       }
     } catch (e) {
@@ -1823,6 +1866,7 @@ export const connect = async ({
       if (targets.length) {
         await (sock as any).assertSessions(targets, true)
         try { logger.debug('Preasserted %s sessions for rejectCall %s', targets.length, JSON.stringify(targets)) } catch {}
+        try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
       }
     } catch (e) {
       logger.warn(e as any, 'Ignore error on preassert sessions for rejectCall')
@@ -1990,6 +2034,8 @@ export const connect = async ({
       }
       // Start background LID->PN resolver loop
       try { ensureLidResolverTimer() } catch {}
+      // Enriquecer JIDMAP a partir de contact-info (quando Redis habilitado)
+      try { if ((config as any)?.useRedis) setTimeout(() => { enrichJidMapFromContactInfo(phone).catch(() => undefined) }, 0) } catch {}
       return true
     }
     return false

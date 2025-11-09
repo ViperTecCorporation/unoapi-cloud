@@ -2,7 +2,7 @@ import { createClient } from '@redis/client'
 import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS } from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
-import { Webhook, configs } from './config'
+import { Webhook, configs } from './config' 
 
 export const BASE_KEY = 'unoapi-'
 
@@ -321,6 +321,33 @@ export const delSignalSessionsForJids = async (session: string, jids: string[]) 
   }
 }
 
+// Light probe to count Signal session keys for target JIDs (debug/observability)
+export const countSignalSessionsForJids = async (session: string, jids: string[]) => {
+  try {
+    const base = `${BASE_KEY}auth:${session}:`
+    let total = 0
+    for (const raw of (jids || [])) {
+      const v = `${raw || ''}`
+      if (!v) continue
+      const patterns = [
+        `${base}session-${v}*`,
+        `${base}sender-key-${v}*`,
+      ]
+      for (const p of patterns) {
+        try {
+          const keys = await redisKeys(p)
+          const count = (keys || []).length
+          total += count
+          try { logger.debug('ASSERT probe: %s keys for pattern %s', count, p) } catch {}
+        } catch {}
+      }
+    }
+    try { logger.info('ASSERT probe: total keys=%s for %s target(s)', total, (jids || []).length) } catch {}
+  } catch (e) {
+    try { logger.warn(e as any, 'Ignore error during assert probe for %s', session) } catch {}
+  }
+}
+
 export const blacklist = (from: string, webhookId: string, to: string) => {
   return `${BASE_KEY}blacklist:${from}:${webhookId}:${to}`
 }
@@ -567,6 +594,48 @@ export const getContactInfo = async (phone: string, jid: string) => {
 export const setContactInfo = async (phone: string, jid: string, info: any) => {
   const key = contactInfoKey(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(info || {}), SESSION_TTL)
+}
+
+// Varre contact-info da sessão e enriquece o JIDMAP PN<->LID
+export const enrichJidMapFromContactInfo = async (session: string, limit = 2000) => {
+  try {
+    const base = `${BASE_KEY}contact-info:${session}:`
+    const keys = await redisKeys(`${base}*`)
+    let updated = 0
+    let scanned = 0
+    for (const k of keys) {
+      if (scanned >= limit) break
+      scanned += 1
+      try {
+        const jid = k.substring(base.length)
+        const raw = await redisGet(k)
+        if (!raw) continue
+        const info = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (!info) continue
+        // Se a chave é LID e houver PN (jid ou dígitos), gravar mapping
+        if (typeof jid === 'string' && jid.endsWith('@lid')) {
+          let pnJid: string | undefined = info?.pnJid
+          if (!pnJid && info?.pn) {
+            const digits = `${info.pn}`.replace(/\D/g, '')
+            if (digits) pnJid = `${digits}@s.whatsapp.net`
+          }
+          if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
+            try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
+          }
+        }
+        // Se a chave é PN e houver LID, gravar mapping
+        if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
+          const lidJid: string | undefined = info?.lidJid
+          if (lidJid && lidJid.endsWith('@lid')) {
+            try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
+          }
+        }
+      } catch {}
+    }
+    try { logger.info('JIDMAP enrich: scanned=%s updated=%s (limit=%s) for session=%s', scanned, updated, limit, session) } catch {}
+  } catch (e) {
+    try { logger.warn(e as any, 'JIDMAP enrich failed for session=%s', session) } catch {}
+  }
 }
 
 export const getConnectCount = async(phone: string) => {

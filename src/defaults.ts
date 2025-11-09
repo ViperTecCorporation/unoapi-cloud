@@ -305,6 +305,10 @@ export const LID_RESOLVER_BACKOFF_MS: number[] = (() => {
 export const LID_RESOLVER_SWEEP_INTERVAL_MS = parseInt(process.env.LID_RESOLVER_SWEEP_INTERVAL_MS || '10000')
 export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PENDING || '2000')
 
+// Enriquecimento do JIDMAP (PN<->LID) a partir do contact-info
+export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_ENABLED == 'true'
+export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '200')
+
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")
 export const ACK_RETRY_DELAYS_MS: number[] = (() => {
