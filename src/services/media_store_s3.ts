@@ -5,6 +5,7 @@ import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { amqpPublish } from '../amqp'
 import type { Readable } from 'stream'
@@ -31,10 +32,36 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
   const profilePictureFileName = (phone) => `${phone}.jpg`
   const s3Config = STORAGE_OPTIONS((config as any).storage)
   const bucket = s3Config.bucket
-  const s3Client = new S3Client(s3Config)
+  const s3Client = new S3Client({
+    ...s3Config,
+    requestHandler: new NodeHttpHandler({
+      connectionTimeout: s3Config.timeoutMs,
+      socketTimeout: s3Config.timeoutMs,
+    }),
+    maxAttempts: s3Config.maxAttempts || 3,
+  })
 
   const mediaStore = mediaStoreFile(phone, config, getDataStore)
   mediaStore.type = 's3'
+
+  // helper: send with single retry on AbortError
+  const sendWithRetry = async <T>(command: any, abortMs: number): Promise<T> => {
+    const attempt = async () => {
+      const abortSignal = AbortSignal.timeout(abortMs)
+      // @ts-ignore
+      return s3Client.send(command, { abortSignal }) as Promise<T>
+    }
+    try {
+      return await attempt()
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        try { logger.warn(e as any, 'S3 send aborted; retrying once') } catch {}
+        await new Promise((r) => setTimeout(r, 800))
+        return await attempt()
+      }
+      throw e
+    }
+  }
 
   mediaStore.saveMediaBuffer = async (fileName: string, content: Buffer) => {
     logger.debug(`Uploading file ${fileName} to bucket ${bucket}....`)
@@ -55,8 +82,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Key: fileName,
       Body: content,
     }
-    const abortSignal = AbortSignal.timeout(s3Config.timeoutMs)
-    await s3Client.send(new PutObjectCommand(putParams), { abortSignal })
+    await sendWithRetry(new PutObjectCommand(putParams), s3Config.timeoutMs)
     logger.debug(`Uploaded file ${fileName} to bucket ${bucket}!`)
     await amqpPublish(
       UNOAPI_EXCHANGE_BROKER_NAME,
@@ -90,7 +116,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Bucket: bucket,
       Key: fileName,
     }
-    await s3Client.send(new DeleteObjectCommand(putParams))
+    await sendWithRetry(new DeleteObjectCommand(putParams), s3Config.timeoutMs)
   }
 
   mediaStore.downloadMediaStream = async (file: string) => {
@@ -99,7 +125,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Key: file,
     }
     logger.debug(`Downloading media ${file}...`)
-    const response = await s3Client.send(new GetObjectCommand(params))
+    const response = await sendWithRetry(new GetObjectCommand(params), s3Config.timeoutMs)
     logger.debug(`Downloaded media ${file}!`)
     return response.Body as Readable
   }
@@ -129,7 +155,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
     // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
     try {
-      await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: fileName }))
+      await sendWithRetry(new HeadObjectCommand({ Bucket: bucket, Key: fileName }), s3Config.timeoutMs)
     } catch (error: any) {
       if ((error?.$metadata?.httpStatusCode === 404) || error?.name === 'NotFound' || error?.code === 'NotFound' || error?.Code === 'NotFound') {
         logger.debug('PROFILE_PICTURE S3 not found: %s', fileName)

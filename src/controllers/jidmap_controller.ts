@@ -8,12 +8,13 @@ export class JidMapController {
   async list(req: Request, res: Response) {
     try {
       const session = req.params.phone
-      const base = `${BASE_KEY}jidmap:${session}:`
+      const scope = `${(req.query.scope || 'session')}`.toLowerCase() // session | global
+      const base = scope === 'global' ? `${BASE_KEY}jidmap:global:` : `${BASE_KEY}jidmap:${session}:`
       const out: { pn_for_lid: { lid: string; pn: string }[]; lid_for_pn: { pn: string; lid: string }[] } = {
         pn_for_lid: [],
         lid_for_pn: [],
       }
-      // Query params: side=pn_for_lid|lid_for_pn|all, q=substring, limit, offset
+      // Query params: side=pn_for_lid|lid_for_pn|all, scope=session|global, q=substring, limit, offset
       const side = `${(req.query.side || 'all')}`.toLowerCase()
       const q = `${req.query.q || ''}`
       const limit = Math.max(0, Math.min(parseInt(`${req.query.limit || '200'}`) || 200, 1000))
@@ -64,7 +65,7 @@ export class JidMapController {
       const slice = <T>(arr: T[]): T[] => arr.slice(offset, offset + limit)
       const pfPage = slice(pf)
       const lpPage = slice(lp)
-      return res.json({ session, side: side || 'all', q, page: { limit, offset, total }, mappings: { pn_for_lid: pfPage, lid_for_pn: lpPage } })
+      return res.json({ session, scope, side: side || 'all', q, page: { limit, offset, total }, mappings: { pn_for_lid: pfPage, lid_for_pn: lpPage } })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
     }

@@ -231,28 +231,40 @@ export const groupKey = (phone: string, jid: string) => {
 }
 
 // JID mapping PN <-> LID keys
-// New, clearer schema (human-friendly):
-//  - pn_for_lid:<lidJid> => value = pnJid (@s.whatsapp.net)
-//  - lid_for_pn:<pnJid>  => value = lidJid (@lid)
-// Keep backward compatibility with old keys:
-//  - pn:<lidJid>  => value = pnJid
-//  - lid:<pnJid>  => value = lidJid
-const jidMapPnKeyNew  = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn_for_lid:${lidJid}`
-const jidMapLidKeyNew = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
-const jidMapPnKeyOld  = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn:${lidJid}`
-const jidMapLidKeyOld = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid:${pnJid}`
+// New, clearer schema (human-friendly) — session scope e global scope:
+//  Session scope:
+//   - jidmap:<session>:pn_for_lid:<lidJid> => value = pnJid (@s.whatsapp.net)
+//   - jidmap:<session>:lid_for_pn:<pnJid>  => value = lidJid (@lid)
+//  Global scope (compartilhado entre sessões):
+//   - jidmap:global:pn_for_lid:<lidJid> => value = pnJid
+//   - jidmap:global:lid_for_pn:<pnJid>  => value = lidJid
+// Backward-compat com chaves antigas por sessão:
+//   - jidmap:<session>:pn:<lidJid>  => value = pnJid
+//   - jidmap:<session>:lid:<pnJid>  => value = lidJid
+const jidMapPnKeyNew   = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn_for_lid:${lidJid}`
+const jidMapLidKeyNew  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
+const jidMapPnKeyOld   = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn:${lidJid}`
+const jidMapLidKeyOld  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid:${pnJid}`
+const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_lid:${lidJid}`
+const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
   // Try new key first, then fallback to old
   const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
   if (vNew) return vNew
-  return redisGet(jidMapPnKeyOld(session, lidJid))
+  const vOld = await redisGet(jidMapPnKeyOld(session, lidJid))
+  if (vOld) return vOld
+  // Fallback: global scope
+  return redisGet(jidMapPnKeyGlob(lidJid))
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
   // Try new key first, then fallback to old
   const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
   if (vNew) return vNew
-  return redisGet(jidMapLidKeyOld(session, pnJid))
+  const vOld = await redisGet(jidMapLidKeyOld(session, pnJid))
+  if (vOld) return vOld
+  // Fallback: global scope
+  return redisGet(jidMapLidKeyGlob(pnJid))
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
   if (!pnJid || !lidJid) return
@@ -283,6 +295,9 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   try {
     await redisSetAndExpire(jidMapLidKeyOld(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
   } catch {}
+  // Also persist to global scope to compartilhar entre sessões
+  try { await redisSetAndExpire(jidMapPnKeyGlob(lidJid), pnJid, JIDMAP_TTL_SECONDS) } catch {}
+  try { await redisSetAndExpire(jidMapLidKeyGlob(pnJid), lidJid, JIDMAP_TTL_SECONDS) } catch {}
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
@@ -656,6 +671,56 @@ export const clearConnectCount = async(phone: string) => {
 export const setConnectCount = async (phone: string, count: number, ttl: number) => {
   const key = connectCountKey(phone, count)
   await redisSetAndExpire(key, 1, ttl)
+}
+
+// One-time bootstrap: migrate all per-session JIDMAP pairs into the global JIDMAP namespace
+export const bootstrapJidMapGlobalOnce = async (): Promise<void> => {
+  try {
+    const marker = `${BASE_KEY}jidmap:global:bootstrapped`
+    const already = await redisGet(marker)
+    if (already) return
+    let total = 0
+    // Collect all per-session pn_for_lid / lid_for_pn (new + old schema)
+    const patterns = [
+      `${BASE_KEY}jidmap:*:pn_for_lid:*`,
+      `${BASE_KEY}jidmap:*:lid_for_pn:*`,
+      `${BASE_KEY}jidmap:*:pn:*`,
+      `${BASE_KEY}jidmap:*:lid:*`,
+    ]
+    for (const p of patterns) {
+      try {
+        const keys = await redisKeys(p)
+        for (const k of keys || []) {
+          try {
+            const v = await redisGet(k)
+            if (!v) continue
+            // Determine kind and extract ids
+            if (k.includes(':pn_for_lid:')) {
+              const lid = k.substring(k.indexOf(':pn_for_lid:') + 12)
+              await redisSetAndExpire(jidMapPnKeyGlob(lid), v, JIDMAP_TTL_SECONDS)
+              total += 1
+            } else if (k.includes(':lid_for_pn:')) {
+              const pn = k.substring(k.indexOf(':lid_for_pn:') + 12)
+              await redisSetAndExpire(jidMapLidKeyGlob(pn), v, JIDMAP_TTL_SECONDS)
+              total += 1
+            } else if (k.includes(':pn:')) {
+              const lid = k.substring(k.indexOf(':pn:') + 4)
+              await redisSetAndExpire(jidMapPnKeyGlob(lid), v, JIDMAP_TTL_SECONDS)
+              total += 1
+            } else if (k.includes(':lid:')) {
+              const pn = k.substring(k.indexOf(':lid:') + 5)
+              await redisSetAndExpire(jidMapLidKeyGlob(pn), v, JIDMAP_TTL_SECONDS)
+              total += 1
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+    try { logger.info('JIDMAP bootstrap: migrated %s mappings to global', total) } catch {}
+    await redisSetAndExpire(marker, '1', 365 * 24 * 60 * 60) // mark for ~1y
+  } catch (e) {
+    try { logger.warn(e as any, 'JIDMAP bootstrap failed') } catch {}
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

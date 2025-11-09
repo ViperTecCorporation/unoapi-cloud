@@ -169,6 +169,8 @@ export const STORAGE_TIMEOUT_MS = parseInt(process.env.STORAGE_TIMEOUT_MS || '36
 export const STORAGE_ENDPOINT = process.env.STORAGE_ENDPOINT || 'http://localhost:9000'
 export const STORAGE_FORCE_PATH_STYLE: boolean =
   process.env.STORAGE_FORCE_PATH_STYLE === _undefined ? false : process.env.STORAGE_FORCE_PATH_STYLE == 'true'
+// S3 client retry attempts
+export const STORAGE_MAX_ATTEMPTS = parseInt(process.env.STORAGE_MAX_ATTEMPTS || '3')
 export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE === _undefined ? true : process.env.SEND_PROFILE_PICTURE != 'false'
 // Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
 export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
@@ -335,6 +337,7 @@ export const STORAGE_OPTIONS = (storage: any) => {
     bucket: storage?.bucket || STORAGE_BUCKET_NAME,
     signatureVersion: 's3v4',
     timeoutMs: STORAGE_TIMEOUT_MS,
+    maxAttempts: parseInt(storage?.maxAttempts || STORAGE_MAX_ATTEMPTS as any),
   }
   if (forcePathStyle) {
     options.forcePathStyle = forcePathStyle
