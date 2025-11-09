@@ -339,7 +339,18 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         }
       }
     } catch {}
+      // Evitar chamadas onWhatsApp com @lid sem mapeamento PN
       try {
+        if (lid && typeof lid === 'string') {
+          try {
+            const mapped = await dataStore.getPnForLid?.(phone, phoneOrJid)
+            if (!mapped) {
+              logger.warn('%s is a LID and has no PN mapping; skipping onWhatsApp and using LID fallback', `${phoneOrJid}`)
+              await dataStore.setJid(phoneOrJid, lid)
+              return lid
+            }
+          } catch {}
+        }
         logger.debug(`Verifing if ${phoneOrJid} exist on WhatsApp`)
         // Baileys v7: onWhatsApp não suporta @lid. Quando for LID, normalizar para PN JID.
         let query = phoneOrJid

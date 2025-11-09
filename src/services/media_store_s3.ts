@@ -4,7 +4,7 @@ import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EX
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client, GetObjectCommandOutput } from '@aws-sdk/client-s3'
 import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { amqpPublish } from '../amqp'
@@ -125,7 +125,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Key: file,
     }
     logger.debug(`Downloading media ${file}...`)
-    const response = await sendWithRetry(new GetObjectCommand(params), s3Config.timeoutMs)
+    const response = await sendWithRetry<GetObjectCommandOutput>(new GetObjectCommand(params), s3Config.timeoutMs)
     logger.debug(`Downloaded media ${file}!`)
     return response.Body as Readable
   }
