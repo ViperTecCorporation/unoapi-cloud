@@ -260,6 +260,16 @@ export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_
 export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '200')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
 
+// Preassert 1:1 (assertSessions antes do envio)
+// Permite reduzir a frequência para diminuir latência/CPU em alto volume
+export const ONE_TO_ONE_PREASSERT_ENABLED =
+  process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
+// Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
+export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
+// Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
+export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
+  process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'true'
+
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
 export const RATE_LIMIT_GLOBAL_PER_MINUTE = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_MINUTE || '0')

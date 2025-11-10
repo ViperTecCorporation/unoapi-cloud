@@ -79,6 +79,28 @@ Este guia explica as principais variÃ¡veis de ambiente, quando usar e por quÃ
   - Use para melhorar confiabilidade em cenÃ¡rios com variaÃ§Ãµes de rede/dispositivo.
   - Exemplo: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+## Envio 1:1 (Direto)
+
+- `ONE_TO_ONE_ADDRESSING_MODE` — Preferência de endereçamento para conversas diretas. `pn` | `lid`. Padrão `pn`.
+  - `pn`: envia usando JID de número (`@s.whatsapp.net`). Evita conversas duplicadas em alguns clientes (iPhone).
+  - `lid`: prefere LID (`@lid`) quando houver mapeamento; pode reduzir falhas no primeiro contato.
+- `ONE_TO_ONE_PREASSERT_ENABLED` — Pré‑assertar sessões Signal do destinatário antes do envio. Padrão `true`.
+  - Melhora confiabilidade após longos períodos inativos ou troca de dispositivos.
+- `ONE_TO_ONE_PREASSERT_COOLDOWN_MS` — Cooldown por destinatário para o pré‑assert (ms). Padrão `7200000` (120 minutos).
+  - Reduz CPU/Redis evitando pré‑assert a cada mensagem para o mesmo contato.
+- `ONE_TO_ONE_ASSERT_PROBE_ENABLED` — Quando `true`, registra uma “sonda” de contagem de chaves no Redis após o pré‑assert (apenas observabilidade). Padrão `false`.
+  - Mantenha `false` em produção para evitar SCANs extras no Redis.
+
+Exemplo:
+```env
+# Preferir PN em 1:1 e pré‑assertar no máximo a cada 2 horas por contato
+ONE_TO_ONE_ADDRESSING_MODE=pn
+ONE_TO_ONE_PREASSERT_ENABLED=true
+ONE_TO_ONE_PREASSERT_COOLDOWN_MS=7200000
+# Desativar a sonda para economizar Redis
+ONE_TO_ONE_ASSERT_PROBE_ENABLED=false
+```
+
 ### Controles de fan-out de recibos/status em grupos
 
 Em grupos grandes, recibos por participante (lido/tocado/entregue por pessoa) podem sobrecarregar seu webhook/socket. Estes toggles reduzem o volume de eventos mantendo um Ãºnico sinal de entrega no nÃ­vel do grupo.

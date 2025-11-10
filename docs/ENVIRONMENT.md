@@ -79,6 +79,28 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+## One‑to‑One (Direct) Sending
+
+- `ONE_TO_ONE_ADDRESSING_MODE` — Prefer addressing for direct chats. `pn` | `lid`. Default `pn`.
+  - `pn`: send using phone‑number JID (`@s.whatsapp.net`). Avoids split threads in some clients (iPhone).
+  - `lid`: prefer LID (`@lid`) when mapping exists; may reduce first‑contact session issues.
+- `ONE_TO_ONE_PREASSERT_ENABLED` — Pre‑assert Signal sessions for the peer before sending. Default `true`.
+  - Improves reliability in the first message after long idle periods or device changes.
+- `ONE_TO_ONE_PREASSERT_COOLDOWN_MS` — Per‑recipient cooldown for pre‑assert (milliseconds). Default `7200000` (120 minutes).
+  - Reduces CPU/Redis usage by not pre‑asserting on every message to the same contact.
+- `ONE_TO_ONE_ASSERT_PROBE_ENABLED` — When `true`, log a Redis key count probe after pre‑assert (observability only). Default `false`.
+  - Leave `false` to avoid extra Redis scans in production.
+
+Example:
+```env
+# Prefer PN for 1:1 and pre‑assert at most once every 2 hours per recipient
+ONE_TO_ONE_ADDRESSING_MODE=pn
+ONE_TO_ONE_PREASSERT_ENABLED=true
+ONE_TO_ONE_PREASSERT_COOLDOWN_MS=7200000
+# Keep probe disabled to save Redis
+ONE_TO_ONE_ASSERT_PROBE_ENABLED=false
+```
+
 Large groups (No-sessions mitigation & throttles)
 - `GROUP_LARGE_THRESHOLD` Ã¢â‚¬â€ Consider a group as Ã¢â‚¬Å“largeÃ¢â‚¬Â when participant count exceeds this threshold. Default `800`.
   - When large, the client skips heavy preÃ¢â‚¬â€˜asserts to reduce load. Addressing remains LID by default (unless configured), and fallback toggles addressing according to `GROUP_SEND_FALLBACK_ORDER` if needed.

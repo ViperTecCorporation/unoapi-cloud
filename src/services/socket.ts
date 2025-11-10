@@ -48,6 +48,7 @@ import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
 import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP, JIDMAP_ENRICH_AUTH_ENABLED } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
+import { ONE_TO_ONE_PREASSERT_ENABLED, ONE_TO_ONE_PREASSERT_COOLDOWN_MS, ONE_TO_ONE_ASSERT_PROBE_ENABLED } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -184,6 +185,8 @@ export const connect = async ({
   const lastReceiptAssert = new Map<string, number>()
   // Cooldown for decrypt-stub based asserts (per jid)
   const lastDecryptAssert = new Map<string, number>()
+  // Cooldown por destinatário para preassert 1:1
+  const lastOneToOneAssertAt = new Map<string, number>()
   // Track recent contacts seen (jid -> lastSeenMs)
   const recentContacts = new Map<string, number>()
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
@@ -1336,6 +1339,12 @@ export const connect = async ({
     // For 1:1 sends, proactively assert sessions to reduce decrypt failures and improve ack reliability
     try {
       if (id && isIndividualJid(id)) {
+        // Respeita flag e cooldown por destinatário
+        let cdKey = id
+        try { if (isLidUser(id)) cdKey = jidNormalizedUser(id) } catch {}
+        const now = Date.now()
+        const last = lastOneToOneAssertAt.get(cdKey) || 0
+        const doPreassert = ONE_TO_ONE_PREASSERT_ENABLED && (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()
         set.add(id)
         try {
@@ -1382,10 +1391,13 @@ export const connect = async ({
           }
         } catch {}
         const targets = Array.from(set)
-        if (targets.length) {
+        if (doPreassert && targets.length) {
           await (sock as any).assertSessions(targets, true)
+          lastOneToOneAssertAt.set(cdKey, now)
           logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
-          try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
+          try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
+        } else {
+          logger.debug('Skip preassert 1:1 (enabled=%s, sinceLast=%sms, cooldown=%sms) for %s', ONE_TO_ONE_PREASSERT_ENABLED, (now - last), ONE_TO_ONE_PREASSERT_COOLDOWN_MS, id)
         }
       }
     } catch (e) {
