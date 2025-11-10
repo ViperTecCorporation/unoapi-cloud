@@ -42,11 +42,11 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromContactInfo } from './redis'
+import { delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromContactInfo, enrichJidMapFromAuthLidCache } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
-import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP } from '../defaults'
+import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP, JIDMAP_ENRICH_AUTH_ENABLED } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -272,6 +272,12 @@ export const connect = async ({
     try {
       if ((config as any)?.useRedis && JIDMAP_ENRICH_ENABLED) {
         await enrichJidMapFromContactInfo(phone, Math.max(50, JIDMAP_ENRICH_PER_SWEEP || 200))
+      }
+    } catch {}
+    // Também espelhar o cache interno do Baileys (unoapi-auth:*:lid-mapping-*) para o JIDMAP
+    try {
+      if ((config as any)?.useRedis && JIDMAP_ENRICH_AUTH_ENABLED) {
+        await enrichJidMapFromAuthLidCache(phone)
       }
     } catch {}
   }

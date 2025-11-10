@@ -171,6 +171,10 @@ export const STORAGE_FORCE_PATH_STYLE: boolean =
   process.env.STORAGE_FORCE_PATH_STYLE === _undefined ? false : process.env.STORAGE_FORCE_PATH_STYLE == 'true'
 // S3 client retry attempts
 export const STORAGE_MAX_ATTEMPTS = parseInt(process.env.STORAGE_MAX_ATTEMPTS || '3')
+
+// Purga opcional de device-list no watchdog (para forçar reenumeração de devices)
+export const SIGNAL_PURGE_DEVICE_LIST_ENABLED =
+  process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED === _undefined ? true : process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED == 'true'
 export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE === _undefined ? true : process.env.SEND_PROFILE_PICTURE != 'false'
 // Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
 export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
@@ -310,6 +314,8 @@ export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PE
 // Enriquecimento do JIDMAP (PN<->LID) a partir do contact-info
 export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_ENABLED == 'true'
 export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '200')
+// Espelhar periodicamente o cache interno (unoapi-auth:*:lid-mapping-*) no JIDMAP
+export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'
 
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")

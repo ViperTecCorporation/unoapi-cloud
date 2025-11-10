@@ -4,7 +4,7 @@ import { authState } from './auth_state'
 import { store, Store } from './store'
 import { DataStore } from './data_store'
 import { getDataStoreRedis } from './data_store_redis'
-import { bootstrapJidMapGlobalOnce } from './redis'
+import { bootstrapJidMapGlobalOnce, enrichJidMapFromAuthLidCache } from './redis'
 import { getStore, stores } from './store'
 import { getMediaStoreS3 } from './media_store_s3'
 import { MediaStore } from './media_store'
@@ -18,6 +18,8 @@ export const getStoreRedis: getStore = async (phone: string, config: Config): Pr
     logger.debug('Creating redis store %s', phone)
     // Bootstrap JIDMAP global (executa uma única vez por container)
     try { await bootstrapJidMapGlobalOnce() } catch {}
+    // Espelhar cache interno lid-mapping da sessão no JIDMAP
+    try { await enrichJidMapFromAuthLidCache(phone) } catch {}
     const fstore: Store = await storeRedis(phone, config)
     stores.set(phone, fstore)
   } else {

@@ -1,5 +1,5 @@
 import { createClient } from '@redis/client'
-import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS } from '../defaults'
+import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS, SIGNAL_PURGE_DEVICE_LIST_ENABLED } from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
@@ -314,6 +314,9 @@ export const delSignalSessionsForJids = async (session: string, jids: string[]) 
         `${base}session-${v}*`,           // peer sessions
         `${base}sender-key-${v}*`,        // group sender keys (if v is group/participant)
       ]
+      if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) {
+        patterns.push(`${base}device-list-${v}*`) // force re-fetch of device list
+      }
       for (const p of patterns) {
         try {
           const keys = await redisKeys(p)
@@ -615,38 +618,55 @@ export const setContactInfo = async (phone: string, jid: string, info: any) => {
 export const enrichJidMapFromContactInfo = async (session: string, limit = 2000) => {
   try {
     const base = `${BASE_KEY}contact-info:${session}:`
-    const keys = await redisKeys(`${base}*`)
+    const pattern = `${BASE_KEY}contact-info:${session}:*`
+    const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:contact-info`
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c: any = await getRedis()
+    let cursor: string = (await redisGet(cursorKey)) || '0'
     let updated = 0
     let scanned = 0
-    for (const k of keys) {
-      if (scanned >= limit) break
-      scanned += 1
-      try {
-        const jid = k.substring(base.length)
-        const raw = await redisGet(k)
-        if (!raw) continue
-        const info = typeof raw === 'string' ? JSON.parse(raw) : raw
-        if (!info) continue
-        // Se a chave é LID e houver PN (jid ou dígitos), gravar mapping
-        if (typeof jid === 'string' && jid.endsWith('@lid')) {
-          let pnJid: string | undefined = info?.pnJid
-          if (!pnJid && info?.pn) {
-            const digits = `${info.pn}`.replace(/\D/g, '')
-            if (digits) pnJid = `${digits}@s.whatsapp.net`
+    while (scanned < limit) {
+      let res: any
+      try { res = await c.scan(cursor, { MATCH: pattern, COUNT: Math.max(50, limit) }) } catch { break }
+      if (!res) break
+      cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
+      const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
+      if (!Array.isArray(keys) || keys.length === 0) {
+        if (cursor === '0') break
+        continue
+      }
+      for (const k of keys) {
+        if (scanned >= limit) break
+        scanned += 1
+        try {
+          const jid = k.substring(base.length)
+          const raw = await redisGet(k)
+          if (!raw) continue
+          const info = typeof raw === 'string' ? JSON.parse(raw) : raw
+          if (!info) continue
+          // LID -> PN
+          if (typeof jid === 'string' && jid.endsWith('@lid')) {
+            let pnJid: string | undefined = info?.pnJid
+            if (!pnJid && info?.pn) {
+              const digits = `${info.pn}`.replace(/\D/g, '')
+              if (digits) pnJid = `${digits}@s.whatsapp.net`
+            }
+            if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
+              try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
+            }
           }
-          if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
-            try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
+          // PN -> LID
+          if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
+            const lidJid: string | undefined = info?.lidJid
+            if (lidJid && lidJid.endsWith('@lid')) {
+              try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
+            }
           }
-        }
-        // Se a chave é PN e houver LID, gravar mapping
-        if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
-          const lidJid: string | undefined = info?.lidJid
-          if (lidJid && lidJid.endsWith('@lid')) {
-            try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
-          }
-        }
-      } catch {}
+        } catch {}
+      }
+      if (cursor === '0') break
     }
+    try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
     try { logger.info('JIDMAP enrich: scanned=%s updated=%s (limit=%s) for session=%s', scanned, updated, limit, session) } catch {}
   } catch (e) {
     try { logger.warn(e as any, 'JIDMAP enrich failed for session=%s', session) } catch {}
@@ -721,6 +741,53 @@ export const bootstrapJidMapGlobalOnce = async (): Promise<void> => {
   } catch (e) {
     try { logger.warn(e as any, 'JIDMAP bootstrap failed') } catch {}
   }
+}
+
+// Mirror Baileys internal per-session lid-mapping cache into our JIDMAP
+export const enrichJidMapFromAuthLidCache = async (session: string): Promise<void> => {
+  try {
+    const base = `${BASE_KEY}auth:${session}:`
+    const pattern = `${base}lid-mapping-*`
+    const keys = await redisKeys(pattern)
+    let updated = 0
+    for (const k of keys || []) {
+      try {
+        const v = await redisGet(k)
+        if (!v) continue
+        // key suffix after 'lid-mapping-'
+        const sufIdx = k.indexOf('lid-mapping-')
+        if (sufIdx < 0) continue
+        const suffix = k.substring(sufIdx + 'lid-mapping-'.length)
+        const rawVal = `${v}`
+        // Two patterns observed:
+        //  - lid-mapping-<pnDigits> => value = <lidJid>
+        //  - lid-mapping-<lidDigits>_reverse => value = <pnJid>
+        const isReverse = suffix.endsWith('_reverse')
+        if (isReverse) {
+          const lidDigits = suffix.replace('_reverse', '').replace(/\D/g, '')
+          const lidJid = lidDigits ? `${lidDigits}@lid` : undefined
+          let pnJid: string | undefined
+          if (rawVal.endsWith('@s.whatsapp.net')) pnJid = rawVal
+          else {
+            const pnDigits = rawVal.replace(/\D/g, '')
+            if (pnDigits) pnJid = `${pnDigits}@s.whatsapp.net`
+          }
+          if (pnJid && lidJid) {
+            try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
+          }
+        } else {
+          // normal direction: suffix holds PN digits; value is LID JID
+          const pnDigits = suffix.replace(/\D/g, '')
+          const pnJid = pnDigits ? `${pnDigits}@s.whatsapp.net` : undefined
+          const lidJid = rawVal
+          if (pnJid && typeof lidJid === 'string' && lidJid.endsWith('@lid')) {
+            try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
+          }
+        }
+      } catch {}
+    }
+    try { logger.info('JIDMAP enrich(auth): session=%s mirrored=%s', session, updated) } catch {}
+  } catch (e) { try { logger.warn(e as any, 'JIDMAP enrich(auth) failed for session=%s', session) } catch {} }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
