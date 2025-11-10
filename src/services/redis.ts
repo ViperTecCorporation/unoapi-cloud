@@ -309,13 +309,26 @@ export const delSignalSessionsForJids = async (session: string, jids: string[]) 
     for (const raw of (jids || [])) {
       const v = `${raw || ''}`
       if (!v) continue
-      // Known Signal state key families to purge for target address
-      const patterns = [
-        `${base}session-${v}*`,           // peer sessions
-        `${base}sender-key-${v}*`,        // group sender keys (if v is group/participant)
-      ]
-      if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) {
-        patterns.push(`${base}device-list-${v}*`) // force re-fetch of device list
+      // Build variants: full JID, base without domain/suffix, and digits-only PN when available
+      const variants = new Set<string>()
+      variants.add(v)
+      try {
+        const baseId = v.split('@')[0] // remove domain
+        if (baseId) variants.add(baseId)
+        const noDevice = baseId.split(':')[0] // remove :device
+        if (noDevice) variants.add(noDevice)
+      } catch {}
+      try {
+        // digits PN variant (if possible)
+        const digits = v.replace(/\D/g, '')
+        if (digits) variants.add(digits)
+      } catch {}
+      // Known Signal state key families to purge for target address (try with all variants)
+      const patterns: string[] = []
+      for (const id of Array.from(variants)) {
+        patterns.push(`${base}session-${id}*`)
+        patterns.push(`${base}sender-key-${id}*`)
+        if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) patterns.push(`${base}device-list-${id}*`)
       }
       for (const p of patterns) {
         try {
@@ -347,17 +360,32 @@ export const countSignalSessionsForJids = async (session: string, jids: string[]
     for (const raw of (jids || [])) {
       const v = `${raw || ''}`
       if (!v) continue
-      const patterns = [
-        `${base}session-${v}*`,
-        `${base}sender-key-${v}*`,
-      ]
-      for (const p of patterns) {
-        try {
-          const keys = await redisKeys(p)
-          const count = (keys || []).length
-          total += count
-          try { logger.debug('ASSERT probe: %s keys for pattern %s', count, p) } catch {}
-        } catch {}
+      const variants = new Set<string>()
+      variants.add(v)
+      try {
+        const baseId = v.split('@')[0]
+        if (baseId) variants.add(baseId)
+        const noDevice = baseId.split(':')[0]
+        if (noDevice) variants.add(noDevice)
+      } catch {}
+      try {
+        const digits = v.replace(/\D/g, '')
+        if (digits) variants.add(digits)
+      } catch {}
+      for (const id of Array.from(variants)) {
+        const patterns = [
+          `${base}session-${id}*`,
+          `${base}sender-key-${id}*`,
+          `${base}device-list-${id}*`,
+        ]
+        for (const p of patterns) {
+          try {
+            const keys = await redisKeys(p)
+            const count = (keys || []).length
+            total += count
+            try { logger.debug('ASSERT probe: %s keys for pattern %s', count, p) } catch {}
+          } catch {}
+        }
       }
     }
     try { logger.info('ASSERT probe: total keys=%s for %s target(s)', total, (jids || []).length) } catch {}
