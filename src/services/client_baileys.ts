@@ -19,13 +19,13 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -654,7 +654,36 @@ export class ClientBaileys implements Client {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
             await this.rejectCall(id, from)
-            await this.sendMessage(from, { text: this.config.rejectCalls }, {});
+            // Enviar mensagem de rejeição respeitando o modo 1:1:
+            // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
+            // - Em LID: manter origem
+            let toMsg = from
+            try {
+              if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
+                let pnJid: string | undefined
+                if (isLidUser(from)) {
+                  try { pnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from) } catch {}
+                  if (!pnJid) { try { const cand = jidNormalizedUser(from); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {} }
+                } else if (isPnUser(from)) {
+                  pnJid = from
+                }
+                const digits = ensurePn(pnJid || from)
+                if (digits && digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+                  const ddd = digits.slice(2, 4)
+                  const to12 = digits.length === 12 ? digits : `55${ddd}${digits.slice(5)}`
+                  const to13 = digits.length === 13 ? digits : (/[6-9]/.test(digits.slice(4)[0]) ? `55${ddd}9${digits.slice(4)}` : digits)
+                  let chosen: string | undefined
+                  try { const r12 = await this.exists(to12); if (r12 && isPnUser(r12 as any)) chosen = r12 } catch {}
+                  if (!chosen) { try { const r13 = await this.exists(to13); if (r13 && isPnUser(r13 as any)) chosen = r13 } catch {} }
+                  toMsg = chosen || pnJid || from
+                } else {
+                  toMsg = pnJid || from
+                }
+              } else {
+                toMsg = from
+              }
+            } catch { toMsg = from }
+            await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {});
             logger.info('Rejecting calls %s %s', this.phone, this.config.rejectCalls)
           }
           
