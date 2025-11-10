@@ -1741,10 +1741,27 @@ export const connect = async ({
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
       try {
         if (config.readOnReply && id) {
-          let target = id
-          try { if (isLidUser(target)) target = jidNormalizedUser(target) } catch {}
-          logger.debug('READ_ON_REPLY: enabled for %s (normalized=%s)', id, target)
-          const lastKey = await dataStore.getLastIncomingKey?.(target) || await dataStore.getLastIncomingKey?.(id)
+          // Normaliza PN e cobre variantes PN<->LID para localizar o ponteiro correto, independente do modo de endereçamento
+          let pnTarget = id
+          try { if (isLidUser(pnTarget)) pnTarget = jidNormalizedUser(pnTarget) } catch {}
+          const candidates = new Set<string>()
+          // PN normalizado
+          try { if (typeof pnTarget === 'string') candidates.add(pnTarget) } catch {}
+          // JID original (pode ser LID)
+          try { if (typeof id === 'string') candidates.add(id) } catch {}
+          // Se estamos com PN, tente o LID mapeado para garantir ponteiro de aparelho que usa LID
+          try {
+            if (typeof pnTarget === 'string' && isPnUser(pnTarget)) {
+              const lid = await (dataStore as any).getLidForPn?.(phone, pnTarget)
+              if (lid && typeof lid === 'string') candidates.add(lid)
+            }
+          } catch {}
+          const order = Array.from(candidates)
+          logger.debug('READ_ON_REPLY: enabled for %s (candidates=%s)', id, JSON.stringify(order))
+          let lastKey: any | undefined
+          for (const j of order) {
+            try { lastKey = await dataStore.getLastIncomingKey?.(j); if (lastKey) break } catch {}
+          }
           if (lastKey && lastKey.remoteJid && lastKey.id && !lastKey.fromMe) {
             // Normaliza para o id do provedor (Baileys), caso lastKey contenha UNO id
             let keyForRead = lastKey as any
@@ -1757,7 +1774,7 @@ export const connect = async ({
             logger.info('READ_ON_REPLY: reading last incoming id=%s jid=%s', (keyForRead as any).id, (keyForRead as any).remoteJid)
             await read([keyForRead])
           } else {
-            logger.debug('READ_ON_REPLY: no last incoming pointer for %s', target)
+            logger.debug('READ_ON_REPLY: no last incoming pointer for any of %s', JSON.stringify(order))
           }
         }
       } catch (e) {
