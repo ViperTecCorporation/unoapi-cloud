@@ -1255,28 +1255,26 @@ export const connect = async ({
         }
       }
     } catch {}
-    // preferAddressingMode declared above
-    // BR 9th-digit guard at send-time: if caller provided 13-digit PN but cache resolved 12-digit,
-    // prefer LID addressing when possible; otherwise, keep WA-resolved PN for send to avoid duplicate chats on devices.
+    // preferAddressingMode declarado acima
+    // BR 9º dígito: só preferir LID quando o modo 1:1 NÃO for 'pn'.
+    // Em modo 'pn', mantemos PN para evitar enviar via LID.
     try {
-      const inDigits = `${idCandidate}`.replace(/\D/g, '')
-      const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
-      if (
-        inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9' &&
-        outDigits.startsWith('55') && outDigits.length === 12
-      ) {
-        try {
-          const lid = await (dataStore as any).getLidForPn?.(phone, (id as string))
+      if (ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+        const inDigits = `${idCandidate}`.replace(/\D/g, '')
+        const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
+        if (
+          inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9' &&
+          outDigits.startsWith('55') && outDigits.length === 12
+        ) {
+          try {
+            const lid = await (dataStore as any).getLidForPn?.(phone, (id as string))
             if (lid && typeof lid === 'string') {
               logger.warn('BR_GUARD: prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
               id = lid
             } else {
-              // Keep the WA-resolved PN for sending to avoid creating a new thread on devices,
-              // and rely on webhook normalization to expose 13-digit PN outward.
               logger.warn('BR_GUARD: keeping WA JID %s for send (input=%s); webhook will normalize to 13-digit', id, inDigits)
             }
-        } catch {
-          // ignore
+          } catch {}
         }
       }
     } catch {}
@@ -1284,20 +1282,35 @@ export const connect = async ({
     try {
       if (id && isIndividualJid(id)) {
         if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
-          // Força PN: se for LID, tenta normalizar para PN e só troca se PN válido
+          // Força PN: se for LID, tentar obter PN pelo cache/mapeamento e, se necessário, por exists()
           if (isLidUser(id)) {
             try {
-              const pnJid = jidNormalizedUser(id)
+              let pnJid: string | undefined
+              try { pnJid = await (dataStore as any).getPnForLid?.(phone, id) } catch {}
+              if (!pnJid) {
+                try { const cand = jidNormalizedUser(id); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {}
+              }
+              if (!pnJid) {
+                try {
+                  const digits = (() => { try { return jidToPhoneNumber(id, '') } catch { return '' } })() || ensurePn(idCandidate)
+                  if (digits) {
+                    const waJid = await exists(digits)
+                    if (waJid && isPnUser(waJid as any)) pnJid = waJid as any
+                  }
+                } catch {}
+              }
               if (pnJid && isPnUser(pnJid as any)) {
                 logger.debug('1:1 send: forçando PN %s (de LID %s)', pnJid, id)
                 id = pnJid
                 preferAddressingMode = WAMessageAddressingMode.PN
               } else {
-                // Sem mapeamento PN: manter LID (evita log confuso)
-                preferAddressingMode = WAMessageAddressingMode.LID
-                logger.debug('1:1 send: preferência PN sem mapeamento para %s; mantendo LID', id)
+                // Manter preferência PN para options; id pode seguir LID se PN não for resolvível com segurança
+                preferAddressingMode = WAMessageAddressingMode.PN
+                logger.debug('1:1 send: preferência PN, mas sem PN resolvido para %s; mantendo destino atual', id)
               }
-            } catch {}
+            } catch {
+              preferAddressingMode = WAMessageAddressingMode.PN
+            }
           } else {
             preferAddressingMode = WAMessageAddressingMode.PN
           }
@@ -1557,14 +1570,34 @@ export const connect = async ({
       // general path: send, with fallback when libsignal reports missing sessions
       let full
       try {
-        // Final guard: se modo 1:1 preferir LID e houver mapeamento PN->LID recém disponível,
-        // troque o destino imediatamente antes do envio para evitar abrir nova conversa.
+        // Guarda final: respeitar o modo 1:1 imediatamente antes do envio
         try {
-          if (ONE_TO_ONE_ADDRESSING_MODE === 'lid' && typeof id === 'string' && isIndividualJid(id) && isPnUser(id)) {
-            const lid = await (dataStore as any).getLidForPn?.(phone, id)
-            if (lid && typeof lid === 'string') {
-              id = lid
-              ;(opts as any).addressingMode = WAMessageAddressingMode.LID
+          if (typeof id === 'string' && isIndividualJid(id)) {
+            if (ONE_TO_ONE_ADDRESSING_MODE === 'lid' && isPnUser(id)) {
+              const lid = await (dataStore as any).getLidForPn?.(phone, id)
+              if (lid && typeof lid === 'string') {
+                id = lid
+                ;(opts as any).addressingMode = WAMessageAddressingMode.LID
+              }
+            } else if (ONE_TO_ONE_ADDRESSING_MODE === 'pn' && isLidUser(id)) {
+              let pnJid: string | undefined
+              try { pnJid = await (dataStore as any).getPnForLid?.(phone, id) } catch {}
+              if (!pnJid) {
+                try { const cand = jidNormalizedUser(id); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {}
+              }
+              if (!pnJid) {
+                try {
+                  const digits = (() => { try { return jidToPhoneNumber(id, '') } catch { return '' } })() || ensurePn(idCandidate)
+                  if (digits) {
+                    const waJid = await exists(digits)
+                    if (waJid && isPnUser(waJid as any)) pnJid = waJid as any
+                  }
+                } catch {}
+              }
+              if (pnJid && isPnUser(pnJid as any)) {
+                id = pnJid
+                ;(opts as any).addressingMode = WAMessageAddressingMode.PN
+              }
             }
           }
         } catch {}
