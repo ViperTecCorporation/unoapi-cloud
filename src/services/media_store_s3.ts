@@ -103,7 +103,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     try {
       const link = await getSignedUrl(s3Client, command, { expiresIn })
       return link
-    } catch (error) {
+    } catch (error: any) {
       logger.error(
         `Error on generate s3 signed url for bucket: ${bucket} file name: ${fileName} expires in: ${expiresIn} -> ${error.message}`
       )
@@ -125,7 +125,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Key: file,
     }
     logger.debug(`Downloading media ${file}...`)
-    const response = await sendWithRetry<GetObjectCommandOutput>(new GetObjectCommand(params), s3Config.timeoutMs)
+    const response: GetObjectCommandOutput = await sendWithRetry<GetObjectCommandOutput>(new GetObjectCommand(params), s3Config.timeoutMs)
     logger.debug(`Downloaded media ${file}!`)
     return response.Body as Readable
   }
@@ -167,7 +167,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
       logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
       return url
-    } catch (error) {
+    } catch (error: any) {
       logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
       return ''
     }

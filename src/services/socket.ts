@@ -361,9 +361,28 @@ export const connect = async ({
             if (typeof to === 'string' && to.endsWith('@g.us')) await assertGroup()
             else await assertOneToOne()
           } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
-          // Resend with the same id
+          // Resend with the same id (prefer LID when configured and mapping exists)
           const opts = { ...(entry.options || {}), messageId }
-          try { await sock?.sendMessage(to, entry.message, opts) } catch (e) { logger.warn(e as any, 'Resend with same id failed') }
+          let resendTo = to
+          try {
+            if (typeof to === 'string' && isIndividualJid(to) && ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+              if (isPnUser(to)) {
+                try {
+                  const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                  if (lid && typeof lid === 'string') {
+                    resendTo = lid
+                    ;(opts as any).addressingMode = WAMessageAddressingMode.LID
+                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', to, resendTo) } catch {}
+                  } else {
+                    ;(opts as any).addressingMode = WAMessageAddressingMode.PN
+                  }
+                } catch {}
+              } else if (isLidUser(to)) {
+                ;(opts as any).addressingMode = WAMessageAddressingMode.LID
+              }
+            }
+          } catch {}
+          try { await sock?.sendMessage(resendTo, entry.message, opts) } catch (e) { logger.warn(e as any, 'Resend with same id failed') }
         } finally {
           // advance attempt counter and either schedule next or fail out
           entry.attemptIndex += 1
@@ -1538,6 +1557,17 @@ export const connect = async ({
       // general path: send, with fallback when libsignal reports missing sessions
       let full
       try {
+        // Final guard: se modo 1:1 preferir LID e houver mapeamento PN->LID recém disponível,
+        // troque o destino imediatamente antes do envio para evitar abrir nova conversa.
+        try {
+          if (ONE_TO_ONE_ADDRESSING_MODE === 'lid' && typeof id === 'string' && isIndividualJid(id) && isPnUser(id)) {
+            const lid = await (dataStore as any).getLidForPn?.(phone, id)
+            if (lid && typeof lid === 'string') {
+              id = lid
+              ;(opts as any).addressingMode = WAMessageAddressingMode.LID
+            }
+          }
+        } catch {}
         full = await sock?.sendMessage(id, message, opts)
       } catch (err: any) {
         const msg = (err?.message || `${err || ''}`).toString().toLowerCase()
