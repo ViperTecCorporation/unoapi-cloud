@@ -8,14 +8,34 @@ export default async function (url: string, token: string, timeoutMs: number) {
     'Content-Type': 'application/json; charset=utf-8',
     'Authorization': `Bearer ${token}`
   }
-  const options: RequestInit = { method: 'GET', headers }
-  if (timeoutMs > 0) {
-    options.signal = AbortSignal.timeout(timeoutMs)
+  const baseOpts: RequestInit = { method: 'GET', headers }
+  const withSignal = (opts: RequestInit) => {
+    if (timeoutMs > 0) return { ...opts, signal: AbortSignal.timeout(timeoutMs) }
+    return opts
+  }
+  const fetchWithRetry = async (u: string, init: RequestInit, attempts = 2): Promise<Response> => {
+    let lastErr: any
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fetch(u, withSignal(init))
+      } catch (e: any) {
+        lastErr = e
+        const name = (e?.name || '').toString()
+        const code = (e?.cause?.code || e?.code || '').toString()
+        const transient = name === 'AbortError' || ['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ENOTFOUND'].includes(code)
+        if (i + 1 < attempts && transient) {
+          await new Promise((r) => setTimeout(r, 500))
+          continue
+        }
+        break
+      }
+    }
+    throw lastErr
   }
   let response: Response
   try {
     logger.debug('Requesting media url %s...', url)
-    response = await fetch(url, options)
+    response = await fetchWithRetry(url, baseOpts)
     logger.debug('Requested media url %s!', url)
   } catch (error) {
     logger.error(`Error on Request media url ${url}`)
@@ -35,7 +55,10 @@ export default async function (url: string, token: string, timeoutMs: number) {
     throw message
   }
   logger.debug('Downloading media url %s...', link)
-  response = await fetch(link, options)
+  // Para links externos (ex.: CDN/S3 presign), evitar enviar Authorization herdado
+  const isExternal = !link.startsWith('http://localhost') && !link.startsWith('https://localhost') && !link.includes('/v15.0/download/')
+  const dlOpts: RequestInit = isExternal ? { method: 'GET' } : baseOpts
+  response = await fetchWithRetry(link, dlOpts)
   logger.debug('Downloaded media url %s!', link)
   if (!response?.ok) {
     logger.error(`Error on download media url ${link}`)

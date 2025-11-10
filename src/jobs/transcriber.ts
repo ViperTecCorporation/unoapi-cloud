@@ -50,49 +50,126 @@ export class TranscriberJob {
       const extension = config.connectionType == 'forward' ? `.${mime.extension(mimeType)}` : ''
       let transcriptionText = ''
       if (config.groqApiKey) {
-        logger.debug('Transcriber audio with Groq for session %s to %s', phone, destinyPhone)
-        const splitedLink = link.split('/')
-        const originalName = `${splitedLink[splitedLink.length - 1]}${extension}`
-        const allowed = new Set(['flac','mp3','mp4','mpeg','mpga','m4a','ogg','opus','wav','webm'])
-        const nameParts = originalName.split('.')
-        const rawExt = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '').toLowerCase()
-        let normExt = rawExt
-        if (normExt === 'oga') {
-          normExt = 'ogg'
+        try {
+          logger.debug('Transcriber audio with Groq for session %s to %s', phone, destinyPhone)
+          const splitedLink = link.split('/')
+          const originalName = `${splitedLink[splitedLink.length - 1]}${extension}`
+          const allowed = new Set(['flac','mp3','mp4','mpeg','mpga','m4a','ogg','opus','wav','webm'])
+          const nameParts = originalName.split('.')
+          const rawExt = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '').toLowerCase()
+          let normExt = rawExt
+          if (normExt === 'oga') {
+            normExt = 'ogg'
+          }
+          if (!allowed.has(normExt) || !normExt) {
+            normExt = 'ogg'
+          }
+          const baseName = nameParts.length > 1 ? nameParts.slice(0, -1).join('.') : (originalName || 'audio')
+          const uploadName = `${baseName}.${normExt}`
+          const file = await toFile(buffer, uploadName)
+          const form = new FormData()
+          form.append('file', file as unknown as Blob)
+          form.append('model', config.groqApiTranscribeModel || 'whisper-large-v3')
+          const baseUrl = (config.groqApiBaseUrl || 'https://api.groq.com/openai/v1').replace(/\/$/, '')
+          // Timeout e retry leves para melhorar robustez de rede
+          const abortMs = (() => { try { return (webhooks?.[0]?.timeoutMs as number) || 60000 } catch { return 60000 } })()
+          const fetchWithRetry = async (input: string, init: any, attempts = 2): Promise<Response> => {
+            let lastErr: any
+            for (let i = 0; i < attempts; i++) {
+              try {
+                const controller = AbortSignal.timeout(abortMs)
+                const merged = { ...(init || {}), signal: controller }
+                // @ts-ignore
+                return await fetch(input, merged)
+              } catch (e: any) {
+                lastErr = e
+                const name = (e?.name || '').toString()
+                const code = (e?.cause?.code || e?.code || '').toString()
+                const transient = name === 'AbortError' || ['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ENOTFOUND'].includes(code)
+                if (i + 1 < attempts && transient) {
+                  await new Promise((r) => setTimeout(r, 800))
+                  continue
+                }
+                break
+              }
+            }
+            throw lastErr
+          }
+          const res = await fetchWithRetry(`${baseUrl}/audio/transcriptions`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${config.groqApiKey}`,
+            },
+            body: form as unknown as BodyInit,
+          })
+          if (!res.ok) {
+            const errText = await res.text().catch(() => '')
+            throw new Error(`Groq transcription failed: ${res.status} ${res.statusText} ${errText}`)
+          }
+          const json = await res.json() as { text?: string }
+          transcriptionText = json.text || ''
+        } catch (ge) {
+          logger.warn(ge as any, 'Groq transcription failed; trying fallback')
+          if (config.openaiApiKey) {
+            // fallback para OpenAI
+            const openai = new OpenAI({ apiKey: config.openaiApiKey })
+            const splitedLink = link.split('/')
+            const fileName = `${splitedLink[splitedLink.length - 1]}${extension}`
+            const transcription = await openai.audio.transcriptions.create({
+              file: await toFile(buffer, fileName),
+              model: config.openaiApiTranscribeModel || 'gpt-4o-mini-transcribe',
+            })
+            transcriptionText = transcription.text
+          } else {
+            // fallback local
+            const converter = new Audio2TextJS({
+              threads: 4,
+              processors: 1,
+              outputJson: true,
+            })
+            if (!existsSync(SESSION_DIR)) {
+              mkdirSync(SESSION_DIR)
+            }
+            if (!existsSync(`${SESSION_DIR}/${mediaKey.split('/')[0]}`)) {
+              mkdirSync(`${SESSION_DIR}/${mediaKey.split('/')[0]}`)
+            }
+            const tempFile = `${SESSION_DIR}/${mediaKey}`
+            writeFileSync(tempFile, buffer)
+            const result = await converter.runWhisper(tempFile, 'tiny', 'auto')
+            transcriptionText = result.output
+            rmSync(tempFile)
+          }
         }
-        if (!allowed.has(normExt) || !normExt) {
-          normExt = 'ogg'
-        }
-        const baseName = nameParts.length > 1 ? nameParts.slice(0, -1).join('.') : (originalName || 'audio')
-        const uploadName = `${baseName}.${normExt}`
-        const file = await toFile(buffer, uploadName)
-        const form = new FormData()
-        form.append('file', file as unknown as Blob)
-        form.append('model', config.groqApiTranscribeModel || 'whisper-large-v3')
-        const baseUrl = (config.groqApiBaseUrl || 'https://api.groq.com/openai/v1').replace(/\/$/, '')
-        const res = await fetch(`${baseUrl}/audio/transcriptions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${config.groqApiKey}`,
-          },
-          body: form as unknown as BodyInit,
-        })
-        if (!res.ok) {
-          const errText = await res.text().catch(() => '')
-          throw new Error(`Groq transcription failed: ${res.status} ${res.statusText} ${errText}`)
-        }
-        const json = await res.json() as { text?: string }
-        transcriptionText = json.text || ''
       } else if (config.openaiApiKey) {
         logger.debug('Transcriber audio with OpenAI for session %s to %s', phone, destinyPhone)
         const openai = new OpenAI({ apiKey: config.openaiApiKey })
         const splitedLink = link.split('/')
         const fileName = `${splitedLink[splitedLink.length - 1]}${extension}`
-        const transcription = await openai.audio.transcriptions.create({
-          file: await toFile(buffer, fileName),
-          model: config.openaiApiTranscribeModel || 'gpt-4o-mini-transcribe',
-        })
-        transcriptionText = transcription.text
+        try {
+          const transcription = await openai.audio.transcriptions.create({
+            file: await toFile(buffer, fileName),
+            model: config.openaiApiTranscribeModel || 'gpt-4o-mini-transcribe',
+          })
+          transcriptionText = transcription.text
+        } catch (oe) {
+          logger.warn(oe as any, 'OpenAI transcription failed; trying local fallback')
+          const converter = new Audio2TextJS({
+            threads: 4,
+            processors: 1,
+            outputJson: true,
+          })
+          if (!existsSync(SESSION_DIR)) {
+            mkdirSync(SESSION_DIR)
+          }
+          if (!existsSync(`${SESSION_DIR}/${mediaKey.split('/')[0]}`)) {
+            mkdirSync(`${SESSION_DIR}/${mediaKey.split('/')[0]}`)
+          }
+          const tempFile = `${SESSION_DIR}/${mediaKey}`
+          writeFileSync(tempFile, buffer)
+          const result = await converter.runWhisper(tempFile, 'tiny', 'auto')
+          transcriptionText = result.output
+          rmSync(tempFile)
+        }
       } else {
         logger.debug('Transcriber audio with Audio2TextJS for session %s to %s', phone, destinyPhone)
         const converter = new Audio2TextJS({

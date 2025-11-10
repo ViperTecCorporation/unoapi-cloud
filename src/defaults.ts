@@ -20,7 +20,7 @@ export const UNO_LOG_LEVEL = process.env.UNO_LOG_LEVEL || LOG_LEVEL
 export const DEFAULT_LOCALE = process.env.DEFAULT_LOCALE || 'en'
 
 export const VALIDATE_MEDIA_LINK_BEFORE_SEND = 
-  process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == _undefined ? false : process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == 'true'
+  process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == _undefined ? false : process.env.VALIDATE_MEDIA_LINK_BEFORE_SEND == 'false'
 export const SEND_AUDIO_MESSAGE_AS_PTT = 
   process.env.SEND_AUDIO_MESSAGE_AS_PTT == _undefined ? true : process.env.SEND_AUDIO_MESSAGE_AS_PTT == 'true'
 // Whether to actually convert audio media to OGG/Opus when sending as PTT.
@@ -255,7 +255,7 @@ export const SELFHEAL_ASSERT_ON_DECRYPT =
 
 // Periodic session assert (prevent stale e2e causing "Aguardando mensagem")
 export const PERIODIC_ASSERT_ENABLED =
-  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'true'
+  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'false'
 export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '600000') // 10 min
 export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '200')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
@@ -268,7 +268,7 @@ export const ONE_TO_ONE_PREASSERT_ENABLED =
 export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
 export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
-  process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'true'
+  process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
 
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
@@ -295,7 +295,7 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
 // Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
-export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
+export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? false : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
 export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '45000')
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
@@ -305,13 +305,13 @@ export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS ===
 // 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
   // Default to 'lid' as documented; allow override via env
-  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'lid').toString().toLowerCase()
+  const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'pn').toString().toLowerCase()
   return (v === 'lid' ? 'lid' : 'pn')
 })()
 
 // Background resolver: try to map LIDs seen to PN asynchronously (accelerates JIDMAP population)
 export const LID_RESOLVER_ENABLED: boolean =
-  process.env.LID_RESOLVER_ENABLED === _undefined ? true : process.env.LID_RESOLVER_ENABLED == 'true'
+  process.env.LID_RESOLVER_ENABLED === _undefined ? true : process.env.LID_RESOLVER_ENABLED == 'false'
 export const LID_RESOLVER_BACKOFF_MS: number[] = (() => {
   try {
     const raw = (process.env.LID_RESOLVER_BACKOFF_MS || '15000,60000,300000').toString()
