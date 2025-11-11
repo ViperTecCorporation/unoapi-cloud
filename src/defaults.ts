@@ -255,15 +255,15 @@ export const SELFHEAL_ASSERT_ON_DECRYPT =
 
 // Periodic session assert (prevent stale e2e causing "Aguardando mensagem")
 export const PERIODIC_ASSERT_ENABLED =
-  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'false'
-export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '600000') // 10 min
-export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '200')
+  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'true'
+export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '7200000') // 10 min
+export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '75')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
 
 // Preassert 1:1 (assertSessions antes do envio)
 // Permite reduzir a frequência para diminuir latência/CPU em alto volume
 export const ONE_TO_ONE_PREASSERT_ENABLED =
-  process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
+  process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'false'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
 export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)

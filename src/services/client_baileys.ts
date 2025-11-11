@@ -810,9 +810,32 @@ export class ClientBaileys implements Client {
             if (VALIDATE_MEDIA_LINK_BEFORE_SEND && TYPE_MESSAGES_MEDIA.includes(type)) {
               const link = payload[type] && payload[type].link
               if (link) {
-                const response: FetchResponse = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'HEAD'})
-                if (!response.ok) {
-                  throw new SendError(11, t('invalid_link', response.status, link))
+                // Algumas URLs presignadas (S3/CDN) são específicas de método (GET) e podem retornar 403 no HEAD.
+                // Estratégia: tentar HEAD; se não ok e for erro plausível de método/permissão, tentar GET com Range: bytes=0-0.
+                const tryHead = async () => {
+                  try { return await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'HEAD' }) } catch (e) { return undefined as any }
+                }
+                const tryRangeGet = async () => {
+                  try {
+                    return await fetch(link, {
+                      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+                      method: 'GET',
+                      headers: { Range: 'bytes=0-0' },
+                    })
+                  } catch (e) { return undefined as any }
+                }
+                let ok = false
+                let status = 0
+                let resp = await tryHead()
+                if (resp && resp.ok) { ok = true; status = resp.status }
+                if (!ok) {
+                  status = resp ? resp.status : 0
+                  // Tentar GET com range mínimo para validar disponibilidade
+                  resp = await tryRangeGet()
+                  if (resp && resp.ok) { ok = true; status = resp.status }
+                }
+                if (!ok) {
+                  throw new SendError(11, t('invalid_link', status || 'fetch_error', link))
                 }
               }
             }
@@ -1020,10 +1043,19 @@ export class ClientBaileys implements Client {
       if (ee.message == 'Media upload failed on all hosts') {
         const link = payload[type] && payload[type].link
         if (link) {
-          const response: FetchResponse = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'HEAD'})
-          if (!response.ok) {
-            e = new SendError(11, t('invalid_link', response.status, link))
+          // HEAD pode retornar 403 em URLs presignadas GET-only; tentar GET com Range como fallback
+          const tryHead = async () => {
+            try { return await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'HEAD' }) } catch (e) { return undefined as any }
           }
+          const tryRangeGet = async () => {
+            try {
+              return await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET', headers: { Range: 'bytes=0-0' } })
+            } catch (e) { return undefined as any }
+          }
+          let ok = false; let status = 0; let resp = await tryHead()
+          if (resp && resp.ok) { ok = true; status = resp.status }
+          if (!ok) { status = resp ? resp.status : 0; resp = await tryRangeGet(); if (resp && resp.ok) { ok = true; status = resp.status } }
+          if (!ok) { e = new SendError(11, t('invalid_link', status || 'fetch_error', link)) }
         } else {
           e = new SendError(11, ee.message)
         }

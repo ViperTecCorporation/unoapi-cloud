@@ -1092,8 +1092,17 @@ export const connect = async ({
           // Filtra JIDs inválidos (vazios ou sem sufixo de domínio)
           const targets = Array.from(set).filter((j) => typeof j === 'string' && j.includes('@'))
           if (targets.length) {
-            logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
-            try { await (sock as any).assertSessions(targets, true) } catch (e) { logger.warn(e as any, 'Ignore error on periodic assert') }
+            // Evita erro quando o socket está offline/indefinido entre desconexões
+            try {
+              if (!sock) return
+              try { if (!(await sessionStore.isStatusOnline(phone))) return } catch {}
+              const fn = (sock as any)?.assertSessions
+              if (typeof fn !== 'function') return
+              logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
+              await fn.call(sock, targets, true)
+            } catch (e) {
+              logger.debug('Ignore periodic assert (socket offline): %s', (e as any)?.message || e)
+            }
           }
         } catch (e) {
           logger.warn(e as any, 'Ignore error in periodic assert interval')
