@@ -259,6 +259,12 @@ export const PERIODIC_ASSERT_ENABLED =
 export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '7200000') // 10 min
 export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '75')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
+// Se verdadeiro, força criação/renovação de sessões no assert periódico; recomenda-se false
+export const PERIODIC_ASSERT_FORCE =
+  process.env.PERIODIC_ASSERT_FORCE === _undefined ? false : process.env.PERIODIC_ASSERT_FORCE == 'true'
+// Incluir grupos no assert periódico (custo maior). Recomenda-se false
+export const PERIODIC_ASSERT_INCLUDE_GROUPS =
+  process.env.PERIODIC_ASSERT_INCLUDE_GROUPS === _undefined ? false : process.env.PERIODIC_ASSERT_INCLUDE_GROUPS == 'false'
 
 // Preassert 1:1 (assertSessions antes do envio)
 // Permite reduzir a frequência para diminuir latência/CPU em alto volume
@@ -295,7 +301,7 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
 // Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
-export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? false : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
+export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
 export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '45000')
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
@@ -337,6 +343,8 @@ export const ACK_RETRY_DELAYS_MS: number[] = (() => {
 })()
 // Optional hard cap for attempts; if set lower than delays length, it limits retries
 export const ACK_RETRY_MAX_ATTEMPTS: number = parseInt(process.env.ACK_RETRY_MAX_ATTEMPTS || '0') || 0
+// Enable/disable ACK-retry scheduling entirely (default true)
+export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? true : process.env.ACK_RETRY_ENABLED == 'false'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {

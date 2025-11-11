@@ -189,6 +189,8 @@ export const connect = async ({
   const lastOneToOneAssertAt = new Map<string, number>()
   // Track recent contacts seen (jid -> lastSeenMs)
   const recentContacts = new Map<string, number>()
+  // Handle do timer do assert periódico
+  let periodicAssertTimer: NodeJS.Timeout | undefined
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
@@ -290,6 +292,7 @@ export const connect = async ({
     lidResolverTimer = setInterval(() => { sweepLidResolver().catch(() => undefined) }, every) as unknown as NodeJS.Timeout
   }
   const scheduleAckWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
+    try { if (!(ACK_RETRY_ENABLED)) return } catch { /* ignore */ return }
     try { if (!messageId) return } catch { return }
     const delaysEnv = (ACK_RETRY_DELAYS_MS || [])
     const delays = (Array.isArray(delaysEnv) && delaysEnv.length > 0) ? delaysEnv : [8000, 30000, 60000]
@@ -685,10 +688,54 @@ export const connect = async ({
     const { version } = await fetchLatestBaileysVersion()
     const message = t('connected', phone, whatsappVersion ? whatsappVersion.join('.') : 'auto', version.join('.'), new Date().toUTCString())
     await onNotification(message, false)
+    // (Re)iniciar timer do assert periódico ao ficar online
+    try {
+      if (PERIODIC_ASSERT_ENABLED && PERIODIC_ASSERT_INTERVAL_MS > 0 && !periodicAssertTimer) {
+        periodicAssertTimer = setInterval(async () => {
+          try {
+            const now = Date.now()
+            const entries = Array.from(recentContacts.entries())
+              .filter(([_, ts]) => (now - (ts || 0)) <= PERIODIC_ASSERT_RECENT_WINDOW_MS)
+              .sort((a, b) => (b[1] - a[1]))
+              .slice(0, Math.max(10, PERIODIC_ASSERT_MAX_TARGETS))
+            if (!entries.length) return
+            const set = new Set<string>()
+            for (const [jid] of entries) {
+              if (typeof jid === 'string' && !!jid) {
+                set.add(jid)
+                try { if (isLidUser(jid)) set.add(jidNormalizedUser(jid)) } catch {}
+              }
+            }
+            const rawTargets = Array.from(set).filter((j) => typeof j === 'string' && j.includes('@'))
+            const me = (() => { try { return jidNormalizedUser(state?.creds?.me?.id || '') } catch { return '' } })()
+            const targets = rawTargets.filter((j) => {
+              try {
+                if (!j || typeof j !== 'string') return false
+                if (j === 'status@broadcast') return false
+                if (!PERIODIC_ASSERT_INCLUDE_GROUPS && j.endsWith('@g.us')) return false
+                const jn = (() => { try { return jidNormalizedUser(j) } catch { return j } })()
+                if (me && (jn === me)) return false
+                return true
+              } catch { return true }
+            })
+            if (targets.length) {
+              const fn = (sock as any)?.assertSessions
+              if (typeof fn !== 'function') return
+              logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
+              await fn.call(sock, targets, PERIODIC_ASSERT_FORCE)
+            }
+          } catch (e) {
+            logger.debug('Ignore periodic assert (interval): %s', (e as any)?.message || e)
+          }
+        }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
+      }
+    } catch {}
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onClose = async (payload: any) => {
+    // Limpar timer do assert periódico ao desconectar
+    try { if (periodicAssertTimer) { clearInterval(periodicAssertTimer); periodicAssertTimer = undefined; logger.debug('PERIODIC_ASSERT: timer cleared on close') } } catch {}
     if (await sessionStore.isStatusOffline(phone)) {
       logger.warn('Already Offline %s', phone)
       sock = undefined
@@ -1074,7 +1121,7 @@ export const connect = async ({
   try {
     if (PERIODIC_ASSERT_ENABLED && PERIODIC_ASSERT_INTERVAL_MS > 0) {
       try { logger.info('PERIODIC_ASSERT enabled: interval=%sms maxTargets=%s window=%sms', PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS) } catch {}
-      setInterval(async () => {
+      if (!periodicAssertTimer) periodicAssertTimer = setInterval(async () => {
         try {
           const now = Date.now()
           const entries = Array.from(recentContacts.entries())
@@ -1090,7 +1137,19 @@ export const connect = async ({
             }
           }
           // Filtra JIDs inválidos (vazios ou sem sufixo de domínio)
-          const targets = Array.from(set).filter((j) => typeof j === 'string' && j.includes('@'))
+          // Monta alvos válidos e filtra self/status/grupos quando desabilitado
+          const rawTargets = Array.from(set).filter((j) => typeof j === 'string' && j.includes('@'))
+          const me = (() => { try { return jidNormalizedUser(state?.creds?.me?.id || '') } catch { return '' } })()
+          const targets = rawTargets.filter((j) => {
+            try {
+              if (!j || typeof j !== 'string') return false
+              if (j === 'status@broadcast') return false
+              if (!PERIODIC_ASSERT_INCLUDE_GROUPS && j.endsWith('@g.us')) return false
+              const jn = (() => { try { return jidNormalizedUser(j) } catch { return j } })()
+              if (me && (jn === me)) return false
+              return true
+            } catch { return true }
+          })
           if (targets.length) {
             // Evita erro quando o socket está offline/indefinido entre desconexões
             try {
@@ -1099,7 +1158,7 @@ export const connect = async ({
               const fn = (sock as any)?.assertSessions
               if (typeof fn !== 'function') return
               logger.debug('PERIODIC_ASSERT: asserting %s recent targets', targets.length)
-              await fn.call(sock, targets, true)
+              await fn.call(sock, targets, PERIODIC_ASSERT_FORCE)
             } catch (e) {
               logger.debug('Ignore periodic assert (socket offline): %s', (e as any)?.message || e)
             }
@@ -1107,7 +1166,7 @@ export const connect = async ({
         } catch (e) {
           logger.warn(e as any, 'Ignore error in periodic assert interval')
         }
-      }, PERIODIC_ASSERT_INTERVAL_MS)
+      }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
     }
   } catch {}
 

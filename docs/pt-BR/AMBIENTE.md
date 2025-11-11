@@ -101,6 +101,20 @@ ONE_TO_ONE_PREASSERT_COOLDOWN_MS=7200000
 ONE_TO_ONE_ASSERT_PROBE_ENABLED=false
 ```
 
+## ACK-retry (reenvio por server-ack)
+
+- `ACK_RETRY_ENABLED` — Habilita/desabilita o agendamento do ACK-retry. Padrão `true`.
+  - Coloque `false` para desativar as tentativas de reenvio quando apenas “sent” (server-ack) for recebido.
+- `ACK_RETRY_DELAYS_MS` — Atrasos (ms) separados por vírgula entre tentativas. Padrão `8000,30000,60000`.
+- `ACK_RETRY_MAX_ATTEMPTS` — Limite opcional de tentativas. Se > 0, limita o número de retries.
+
+Exemplo:
+```env
+ACK_RETRY_ENABLED=false
+# Ou manter habilitado com menos tentativas
+# ACK_RETRY_MAX_ATTEMPTS=1
+```
+
 ### Controles de fan-out de recibos/status em grupos
 
 Em grupos grandes, recibos por participante (lido/tocado/entregue por pessoa) podem sobrecarregar seu webhook/socket. Estes toggles reduzem o volume de eventos mantendo um Ãºnico sinal de entrega no nÃ­vel do grupo.

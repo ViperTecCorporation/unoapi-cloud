@@ -79,6 +79,20 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Use to improve reliability in groups under network/device quirks.
   - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
 
+## ACK-retry (server-ack resend)
+
+- `ACK_RETRY_ENABLED` — Enable/disable scheduling of ACK-retry. Default `true`.
+  - Set `false` to disable the resend attempts triggered by server-ack only.
+- `ACK_RETRY_DELAYS_MS` — Comma-separated delays (ms) between retries. Default `8000,30000,60000`.
+- `ACK_RETRY_MAX_ATTEMPTS` — Optional hard cap for attempts. If > 0, limits retries to this number.
+
+Example:
+```
+ACK_RETRY_ENABLED=false
+# Or keep enabled and reduce attempts
+# ACK_RETRY_MAX_ATTEMPTS=1
+```
+
 ## One‑to‑One (Direct) Sending
 
 - `ONE_TO_ONE_ADDRESSING_MODE` — Prefer addressing for direct chats. `pn` | `lid`. Default `pn`.
