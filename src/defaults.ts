@@ -353,7 +353,7 @@ export const ACK_RETRY_DELAYS_MS: number[] = (() => {
 // Optional hard cap for attempts; if set lower than delays length, it limits retries
 export const ACK_RETRY_MAX_ATTEMPTS: number = parseInt(process.env.ACK_RETRY_MAX_ATTEMPTS || '0') || 0
 // Enable/disable ACK-retry scheduling entirely (default true)
-export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? true : process.env.ACK_RETRY_ENABLED == 'false'
+export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? false : process.env.ACK_RETRY_ENABLED == 'false'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {

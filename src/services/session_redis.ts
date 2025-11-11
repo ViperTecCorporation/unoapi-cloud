@@ -10,7 +10,12 @@ export const sessionRedis: session = async (phone: string) => {
   const writeData: writeData = async (key: string, data: object) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setAuth(getBase(key), data, (value: any) => JSON.stringify(value, BufferJSON.replacer))
+      await setAuth(
+        getBase(key),
+        data,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (value: any) => JSON.stringify(value, BufferJSON.replacer)
+      )
     } catch (error) {
       logger.error(error, 'Error on write auth')
       throw error

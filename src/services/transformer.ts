@@ -113,9 +113,10 @@ export const getMimetype = (payload: any) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getMessageType = (payload: any) => {
-  if (payload.update) {
+  // Trate qualquer messages.update com status como 'update' (inclui fromMe)
+  if (payload?.update && typeof payload.update.status !== 'undefined') {
     return 'update'
-  } else if (payload.status && ![2, '2', 'SERVER_ACK'].includes(payload.status) && !payload.key.fromMe) {
+  } else if (typeof payload?.status !== 'undefined') {
     return 'update'
   } else if (payload.receipt) {
     return 'receipt'

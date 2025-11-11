@@ -588,6 +588,12 @@ export const connect = async ({
         currentSaveCreds = async () => logger.error(message)
       } else {
         logger.info(`Correct save creds with number is ${phoneCreds} and configured number ${phone}`)
+        // Persistir imediatamente o primeiro snapshot de credenciais
+        try {
+          await saveCreds()
+        } catch (e) {
+          logger.warn(e as any, 'Failed to persist initial creds; will retry on next creds.update')
+        }
         currentSaveCreds = saveCreds
       }
     }
