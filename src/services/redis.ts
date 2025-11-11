@@ -1,5 +1,5 @@
 import { createClient } from '@redis/client'
-import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS, SIGNAL_PURGE_DEVICE_LIST_ENABLED, JIDMAP_ENRICH_PER_SWEEP } from '../defaults'
+import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS, SIGNAL_PURGE_DEVICE_LIST_ENABLED, SIGNAL_PURGE_SESSION_ENABLED, SIGNAL_PURGE_SENDER_KEY_ENABLED, JIDMAP_ENRICH_PER_SWEEP, WATCHDOG_PURGE_SCAN_COUNT } from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
@@ -128,6 +128,30 @@ const redisSetAndExpire = async function (key: string, value: any, ttl: number) 
     } else {
       throw error
     }
+  }
+}
+
+// Helper: SCAN keys with pattern, returning up to `limit` keys (non-blocking vs KEYS)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const redisScanSome = async (pattern: string, limit: number): Promise<string[]> => {
+  try {
+    const c: any = await getRedis()
+    let cursor = '0'
+    const out: string[] = []
+    const count = Math.max(10, limit || 100)
+    do {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await c.scan(cursor, { MATCH: pattern, COUNT: count })
+      cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
+      const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
+      for (const k of keys || []) {
+        out.push(k)
+        if (out.length >= limit) return out
+      }
+    } while (cursor !== '0')
+    return out
+  } catch {
+    try { const keys = await redisKeys(pattern); return (keys || []).slice(0, limit) } catch { return [] }
   }
 }
 
@@ -326,13 +350,13 @@ export const delSignalSessionsForJids = async (session: string, jids: string[]) 
       // Known Signal state key families to purge for target address (try with all variants)
       const patterns: string[] = []
       for (const id of Array.from(variants)) {
-        patterns.push(`${base}session-${id}*`)
-        patterns.push(`${base}sender-key-${id}*`)
+        if (SIGNAL_PURGE_SESSION_ENABLED) patterns.push(`${base}session-${id}*`)
+        if (SIGNAL_PURGE_SENDER_KEY_ENABLED) patterns.push(`${base}sender-key-${id}*`)
         if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) patterns.push(`${base}device-list-${id}*`)
       }
       for (const p of patterns) {
         try {
-          const keys = await redisKeys(p)
+          const keys = await redisScanSome(p, Math.max(50, WATCHDOG_PURGE_SCAN_COUNT || 200))
           let deleted = 0
           for (const k of keys || []) {
             try { await redisDel(k); deleted += 1 } catch {}
@@ -380,10 +404,10 @@ export const countSignalSessionsForJids = async (session: string, jids: string[]
         ]
         for (const p of patterns) {
           try {
-            const keys = await redisKeys(p)
+            const keys = await redisScanSome(p, Math.max(50, WATCHDOG_PURGE_SCAN_COUNT || 200))
             const count = (keys || []).length
             total += count
-            try { logger.debug('ASSERT probe: %s keys for pattern %s', count, p) } catch {}
+            try { logger.debug('ASSERT probe: %s keys (sample) for pattern %s', count, p) } catch {}
           } catch {}
         }
       }

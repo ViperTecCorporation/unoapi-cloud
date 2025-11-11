@@ -492,7 +492,7 @@ export const connect = async ({
             if (targets.length) {
               await (sock as any).assertSessions(targets, true)
               try { logger.debug('DELIVERY watch: asserted %s targets before resend id=%s', targets.length, messageId) } catch {}
-              try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
+              try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
             }
           } catch {}
           // BR alternate addressing: try toggling 12 <-> 13 digits for PN JIDs
@@ -550,7 +550,7 @@ export const connect = async ({
             if (finalTargets.length) {
               await (sock as any).assertSessions(finalTargets, true)
               try { logger.debug('DELIVERY watch: asserted final targets %s for resend id=%s', finalTargets.length, messageId) } catch {}
-              try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, finalTargets) } catch {}
+              try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, finalTargets) } catch {}
             }
           } catch (fae) { logger.warn(fae as any, 'DELIVERY watch: final assert failed before resend') }
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
