@@ -113,13 +113,19 @@ export const getMimetype = (payload: any) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getMessageType = (payload: any) => {
-  // Priorizar conteúdo de mensagem real antes de heurísticas de status
-  if (payload?.update) {
-    return 'update'
+  // 1) update tem prioridade máxima
+  if (payload?.update) return 'update'
+  // 2) status sem wrapper update: considerar update, exceto SERVER_ACK (2) de terceiros
+  if (typeof payload?.status !== 'undefined') {
+    const st = payload.status
+    const isServerAck = st === 2 || st === '2' || `${st}`.toUpperCase() === 'SERVER_ACK'
+    const fromMe = !!(payload?.key?.fromMe)
+    if (!isServerAck || fromMe) return 'update'
+    // SERVER_ACK de terceiros: deixa seguir como mensagem
   }
-  if (payload?.receipt) {
-    return 'receipt'
-  }
+  // 3) receipts explícitos
+  if (payload?.receipt) return 'receipt'
+  // 4) mensagens reais
   if (payload?.message) {
     const { message } = payload
     return (
@@ -128,13 +134,8 @@ export const getMessageType = (payload: any) => {
       Object.keys(payload.message)[0]
     )
   }
-  // Sem message/update, mas com status -> tratar como update
-  if (typeof payload?.status !== 'undefined') {
-    return 'update'
-  }
-  if (payload?.messageStubType) {
-    return 'messageStubType'
-  }
+  // 5) stubs
+  if (payload?.messageStubType) return 'messageStubType'
 }
 
 export const isSaveMedia = (message: WAMessage) => {
