@@ -16,7 +16,14 @@ COPY ./scripts ./scripts
 RUN corepack enable \
     && corepack use yarn@1.22.22 \
     && yarn --version \
-    && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress
+    && yarn config set network-timeout 600000 \
+    && yarn config set npmRegistryServer https://registry.npmjs.org \
+    && i=0; \
+       until [ "$i" -ge 3 ]; do \
+         YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --no-progress --network-timeout 600000 && break; \
+         i=$((i+1)); echo "yarn install failed ($i/3), retrying in 5s..."; \
+         sleep 5; \
+       done
 
 # Garante a compilação do Baileys instalado via Git antes do build
 RUN node scripts/prepare-baileys.mjs || true
