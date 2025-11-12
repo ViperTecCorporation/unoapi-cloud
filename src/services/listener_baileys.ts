@@ -76,6 +76,8 @@ export class ListenerBaileys implements Listener {
         type,
         messages[0]['message']['conversation']
       )
+      // Não propagar notificações internas como mensagens para webhooks
+      return
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filteredMessages = messages.filter((m: any) => {

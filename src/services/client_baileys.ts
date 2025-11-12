@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -980,7 +980,15 @@ export class ClientBaileys implements Client {
               messageOptions,
             )
           } else {
-            response = await this.sendMessage(to, content, messageOptions)
+            // Envio com retry para mídia: em caso de erro de link (11), aguardamos e tentamos de novo
+            const trySendOnce = async () => this.sendMessage(to, content, messageOptions)
+            try {
+              response = await trySendOnce()
+            } catch (firstErr) {
+              // Só retry para falha de link (403/invalid_link) — codificamos em SendError(11) no catch inferior
+              // Aqui apenas guardamos; a lógica de retry acontecerá no catch de SendError logo abaixo
+              throw firstErr
+            }
           }
 
           if (response) {
@@ -1063,7 +1071,82 @@ export class ClientBaileys implements Client {
       if (e instanceof SendError) {
         const code = e.code
         const title = e.title
-        await this.onNotification(title, true)
+        // Retry de mídia quando o presigned ainda não está disponível (erro de link)
+        try {
+          const asStr = `${code}`
+          const link = payload?.[type]?.link
+          const mayRetry = MEDIA_RETRY_ENABLED && asStr === '11' && link && ['image','audio','video','document','sticker'].includes(type)
+          if (mayRetry && !(options && options.__mediaRetried)) {
+            const delays = (MEDIA_RETRY_DELAYS_MS || []).slice(0, 5)
+            for (const waitMs of delays) {
+              try {
+                await delay(waitMs)
+                const retryContent = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+                const toJid = (typeof to === 'string' && to.includes('@')) ? to : phoneNumberToJid(to)
+                const messageOptions: any = { ...(options || {}), __mediaRetried: true }
+                const resp = await this.sendMessage(toJid, retryContent as any, messageOptions)
+                if (resp) {
+                  const key = resp.key
+                  await this.store?.dataStore?.setKey(key.id, key)
+                  await this.store?.dataStore?.setMessage(key.remoteJid, resp)
+                  const ok = {
+                    messaging_product: 'whatsapp',
+                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
+                    messages: [{ id: key.id }],
+                  }
+                  const r: Response = { ok }
+                  return r
+                }
+              } catch (re2) {
+                // Se não for mais erro de link, interrompe o retry e repassa o erro para o fluxo padrão
+                if (!(re2 instanceof SendError) || `${(re2 as SendError).code}` !== '11') { throw re2 }
+              }
+            }
+          }
+        } catch {}
+        // Fallback: se falhou com erro de link (403/invalid link), tente baixar nós mesmos e enviar como Buffer
+        try {
+          const asStr = `${code}`
+          const link = payload?.[type]?.link
+          const mayRetryAsBuffer = asStr === '11' && link && ['image','audio','video','document','sticker'].includes(type)
+          if (mayRetryAsBuffer && !(options && options.__mediaBufferRetried)) {
+            try {
+              const resp: FetchResponse = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET' })
+              if (resp && resp.ok) {
+                const buf = Buffer.from(await resp.arrayBuffer())
+                // Recria conteúdo e troca URL por Buffer
+                const content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+                ;(content as any)[type] = buf
+                // Garante mimetype coerente se disponível no payload
+                try {
+                  const mt = (payload?.[type]?.mime_type || (content as any)?.mimetype) as string | undefined
+                  if (mt) (content as any).mimetype = mt
+                } catch {}
+                // Reenvia com opções mínimas para evitar loop
+                const toJid = (typeof to === 'string' && to.includes('@')) ? to : phoneNumberToJid(to)
+                const messageOptions: any = { ...(options || {}), __mediaBufferRetried: true }
+                const response = await this.sendMessage(toJid, content as any, messageOptions)
+                if (response) {
+                  const key = response.key
+                  await this.store?.dataStore?.setKey(key.id, key)
+                  await this.store?.dataStore?.setMessage(key.remoteJid, response)
+                  const ok = {
+                    messaging_product: 'whatsapp',
+                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
+                    messages: [{ id: key.id }],
+                  }
+                  const r: Response = { ok }
+                  return r
+                }
+              }
+            } catch (re) {
+              try { logger.warn(re as any, 'Buffer fallback failed; keeping status failed') } catch {}
+            }
+          }
+        } catch {}
+        // Evitar poluir a conversa com erros de payload/link inválido (código 11).
+        // Para esses casos, emitimos apenas o status "failed" via webhook.
+        try { await this.onNotification(title, true) } catch {}
         // Retry path for session/crypto errors (No session / Bad MAC)
         if ([3, '3', 12, '12'].includes(code)) {
           try {

@@ -113,19 +113,27 @@ export const getMimetype = (payload: any) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getMessageType = (payload: any) => {
-  // Trate qualquer messages.update com status como 'update' (inclui fromMe)
-  if (payload?.update && typeof payload.update.status !== 'undefined') {
+  // Qualquer presença de 'update' representa evento de status (inclui deletado/starred)
+  if (payload?.update) {
     return 'update'
-  } else if (typeof payload?.status !== 'undefined') {
+  } else if (
+    // Mensagens com 'status' no payload (sem wrapper update)
+    // tratar como 'update' apenas quando não for SERVER_ACK (2) e não for do próprio remetente
+    payload?.status !== undefined &&
+    ![2, '2', 'SERVER_ACK'].includes(payload.status) &&
+    !(payload?.key?.fromMe)
+  ) {
     return 'update'
-  } else if (payload.receipt) {
+  } else if (payload?.receipt) {
     return 'receipt'
-  } else if (payload.message) {
+  } else if (payload?.message) {
     const { message } = payload
-    return TYPE_MESSAGES_TO_READ.find((t) => message[t]) || 
-            OTHER_MESSAGES_TO_PROCESS.find((t) => message[t]) || 
-            Object.keys(payload.message)[0]
-  } else if (payload.messageStubType) {
+    return (
+      TYPE_MESSAGES_TO_READ.find((t) => message[t]) ||
+      OTHER_MESSAGES_TO_PROCESS.find((t) => message[t]) ||
+      Object.keys(payload.message)[0]
+    )
+  } else if (payload?.messageStubType) {
     return 'messageStubType'
   }
 }

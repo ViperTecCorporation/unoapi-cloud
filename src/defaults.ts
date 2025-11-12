@@ -355,6 +355,16 @@ export const ACK_RETRY_MAX_ATTEMPTS: number = parseInt(process.env.ACK_RETRY_MAX
 // Enable/disable ACK-retry scheduling entirely (default true)
 export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? false : process.env.ACK_RETRY_ENABLED == 'false'
 
+// Media send retry (ex.: presigned URL 403 enquanto objeto não ficou disponível)
+export const MEDIA_RETRY_ENABLED: boolean =
+  process.env.MEDIA_RETRY_ENABLED === _undefined ? true : process.env.MEDIA_RETRY_ENABLED == 'true'
+export const MEDIA_RETRY_DELAYS_MS: number[] = (() => {
+  try {
+    const raw = process.env.MEDIA_RETRY_DELAYS_MS || '1200,3000,7000'
+    return raw.split(',').map((s) => parseInt(s.trim())).filter((n) => Number.isFinite(n) && n > 0)
+  } catch { return [1200, 3000, 7000] }
+})()
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STORAGE_OPTIONS = (storage: any) => {
   storage = storage || { credentials: {} }
