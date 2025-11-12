@@ -99,7 +99,7 @@ export class ListenerBaileys implements Listener {
       logger.debug('Listener receive message')
     }
     let i: WAMessage = message as WAMessage
-    const messageType = getMessageType(message)
+    let messageType = getMessageType(message)
     logger.debug(`messageType %s...`, messageType)
     // Deduplicação leve para mensagens (não afeta 'update'/'receipt')
     try {
@@ -129,6 +129,18 @@ export class ListenerBaileys implements Listener {
     } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
+    // Se o evento vier como 'update' mas contiver conteúdo de mensagem (caso comum em upsert/notify),
+    // preferimos tratar como mensagem real para não suprimir o webhook.
+    try {
+      const hasMessage = !!(i as any)?.message && Object.keys((i as any)?.message || {}).length > 0
+      if (hasMessage && messageType === 'update') {
+        const clone: any = { ...(i as any) }
+        try { delete clone.status } catch {}
+        try { delete clone.update } catch {}
+        i = clone as WAMessage
+        messageType = getMessageType(i)
+      }
+    } catch {}
     if (messageType && !['update', 'receipt'].includes(messageType)) {
       i = await config.getMessageMetadata(i)
       if (i.key && i.key) {
