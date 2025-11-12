@@ -113,27 +113,26 @@ export const getMimetype = (payload: any) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getMessageType = (payload: any) => {
-  // Qualquer presença de 'update' representa evento de status (inclui deletado/starred)
+  // Priorizar conteúdo de mensagem real antes de heurísticas de status
   if (payload?.update) {
     return 'update'
-  } else if (
-    // Mensagens com 'status' no payload (sem wrapper update)
-    // tratar como 'update' apenas quando não for SERVER_ACK (2) e não for do próprio remetente
-    payload?.status !== undefined &&
-    ![2, '2', 'SERVER_ACK'].includes(payload.status) &&
-    !(payload?.key?.fromMe)
-  ) {
-    return 'update'
-  } else if (payload?.receipt) {
+  }
+  if (payload?.receipt) {
     return 'receipt'
-  } else if (payload?.message) {
+  }
+  if (payload?.message) {
     const { message } = payload
     return (
       TYPE_MESSAGES_TO_READ.find((t) => message[t]) ||
       OTHER_MESSAGES_TO_PROCESS.find((t) => message[t]) ||
       Object.keys(payload.message)[0]
     )
-  } else if (payload?.messageStubType) {
+  }
+  // Sem message/update, mas com status -> tratar como update
+  if (typeof payload?.status !== 'undefined') {
+    return 'update'
+  }
+  if (payload?.messageStubType) {
     return 'messageStubType'
   }
 }
