@@ -1298,8 +1298,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
 
       case 'update':
-        const baileysStatus = payload.status || payload.update.status
-        if (!baileysStatus && payload.update.status != 0 && !payload?.update?.messageStubType && !payload?.update?.starred) {
+        // Suporta formatos com payload.status OU payload.update.status
+        // Evita acessar update quando inexistente
+        const u: any = (payload && (payload as any).update) || {}
+        const baileysStatus = (payload as any)?.status ?? u?.status
+        if (
+          typeof baileysStatus === 'undefined' &&
+          typeof u?.status === 'undefined' &&
+          !u?.messageStubType &&
+          !u?.starred
+        ) {
           return [null, senderPhone, senderId]
         }
         switch (baileysStatus) {
@@ -1341,9 +1349,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             break
 
           default:
-            if (payload.update && payload.update.messageStubType && payload.update.messageStubType == 1) {
+            if (u && u.messageStubType && u.messageStubType == 1) {
               cloudApiStatus = 'deleted'
-            } else if (payload?.update?.starred) {
+            } else if (u?.starred) {
               // starred in unknown, but if is starred the userd read the message
               cloudApiStatus = 'read'
             } else {
