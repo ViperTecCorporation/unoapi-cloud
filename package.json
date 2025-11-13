@@ -1,6 +1,6 @@
 {
   "name": "unoapi-cloud",
-  "version": "3.0.0-beta-158",
+  "version": "3.0.0-beta-159",
   "description": "Unoapi Cloud Fork Viper Tec baileys 7",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",

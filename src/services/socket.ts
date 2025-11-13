@@ -1295,8 +1295,14 @@ export const connect = async ({
     let idCandidate = to
     let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
     // BR send-order: tentar 12 dígitos primeiro; se não existir, tentar 13. Webhooks permanecem 13.
+    // Quando o input vier como LID, e o modo 1:1 for 'pn', usar o PN resolvido via exists() para aplicar a regra.
     try {
-      const raw = ensurePn(idCandidate)
+      let raw = ensurePn(idCandidate)
+      try {
+        if ((!raw || raw.length === 0) && ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
+          raw = ensurePn(`${id || ''}`)
+        }
+      } catch {}
       if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
         const to12 = (() => {
           if (raw.length === 12) return raw
