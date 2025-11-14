@@ -65,9 +65,10 @@ export class OutgoingCloudApi implements Outgoing {
     }
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
     try { normalizeWebhookValueIds((message as any)?.entry?.[0]?.changes?.[0]?.value) } catch {}
-    // Repair: if 'from'/wa_id/recipient_id are bare digits but we already have a LID mapping in cache,
+    // Mapping preferences are applied below; digits->LID repair and heuristics are gated to LID preference
+    // Repair (when not preferring PN): if 'from'/wa_id/recipient_id are bare digits but we already have a LID mapping in cache,
     // prefer the mapped @lid to avoid inconsistencies (naked LID-digits without suffix)
-    try {
+    if (!WEBHOOK_PREFER_PN_OVER_LID) try {
       const config = await this.getConfig(phone)
       const store = await config.getStore(phone, config)
       const ds: any = store?.dataStore
@@ -99,7 +100,7 @@ export class OutgoingCloudApi implements Outgoing {
           if (s && typeof s.recipient_id === 'string') s.recipient_id = await toLidIfMapped(s.recipient_id)
         }
       }
-    } catch {}
+    } catch {} 
     // Optionally convert @lid to PN when explicitly enabled
     if (WEBHOOK_PREFER_PN_OVER_LID) {
       try {
@@ -224,8 +225,8 @@ export class OutgoingCloudApi implements Outgoing {
         }
       }
     } catch {}
-    // HeurÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas finais: se ainda restar dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­gitos "nus" em wa_id/from, tentar extrair @lid do prÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³prio payload
-    try {
+    // HeurÃ­sticas finais: somente quando preferimos LID nos webhooks
+    if (!WEBHOOK_PREFER_PN_OVER_LID) try {
       const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
       const isDigits = (s?: string) => !!s && /^\d+$/.test(s)
       const clean = (j?: string) => {

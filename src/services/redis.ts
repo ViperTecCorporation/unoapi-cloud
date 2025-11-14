@@ -725,6 +725,36 @@ export const enrichJidMapFromContactInfo = async (session: string, limit = 2000)
   }
 }
 
+// Fast-path lookups into Baileys internal auth lid-mapping cache (per-session)
+// Attempts to resolve PN JID from LID JID without a full sweep
+export const getPnForLidFromAuthCache = async (session: string, lidJid: string): Promise<string | undefined> => {
+  try {
+    const digits = `${lidJid || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
+    if (!digits) return undefined
+    const key = `${BASE_KEY}auth:${session}:lid-mapping-${digits}_reverse`
+    const raw = await redisGet(key)
+    if (!raw) return undefined
+    const val = `${raw}`
+    if (val.endsWith('@s.whatsapp.net')) return val
+    const pnDigits = val.replace(/\D/g, '')
+    return pnDigits ? `${pnDigits}@s.whatsapp.net` : undefined
+  } catch { return undefined }
+}
+
+export const getLidForPnFromAuthCache = async (session: string, pnJid: string): Promise<string | undefined> => {
+  try {
+    const digits = `${pnJid || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
+    if (!digits) return undefined
+    const key = `${BASE_KEY}auth:${session}:lid-mapping-${digits}`
+    const raw = await redisGet(key)
+    if (!raw) return undefined
+    const val = `${raw}`
+    if (val.endsWith('@lid')) return val
+    const lidDigits = val.replace(/\D/g, '')
+    return lidDigits ? `${lidDigits}@lid` : undefined
+  } catch { return undefined }
+}
+
 export const getConnectCount = async(phone: string) => {
   const keyPattern = connectCountKey(phone, '*')
   const keys = await redisKeys(keyPattern)

@@ -275,7 +275,7 @@ export const PERIODIC_ASSERT_INCLUDE_GROUPS =
 // Preassert 1:1 (assertSessions antes do envio)
 // Permite reduzir a frequência para diminuir latência/CPU em alto volume
 export const ONE_TO_ONE_PREASSERT_ENABLED =
-  process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'false'
+  process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
 export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
@@ -314,7 +314,7 @@ export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATC
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
 
 // Endereçamento para conversas 1:1 (envio)
-// 'lid' (padrão): quando possível, envia usando LID; 'pn': força envio usando PN.
+// 'pn' (padrão): quando possível, envia usando PN; 'lid': força envio usando lid.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
   // Default to 'lid' as documented; allow override via env
   const v = (process.env.ONE_TO_ONE_ADDRESSING_MODE || 'pn').toString().toLowerCase()

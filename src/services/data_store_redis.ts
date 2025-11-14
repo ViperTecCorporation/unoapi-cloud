@@ -30,7 +30,7 @@ import logger from './logger'
 import { getDataStoreFile } from './data_store_file'
 import { defaultConfig } from './config'
 import { CLEAN_CONFIG_ON_DISCONNECT, JIDMAP_CACHE_ENABLED } from '../defaults'
-import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey, getContactName as redisGetContactName, setContactName as redisSetContactName, getContactInfo as redisGetContactInfo, setContactInfo as redisSetContactInfo } from './redis'
+import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey, getContactName as redisGetContactName, setContactName as redisSetContactName, getContactInfo as redisGetContactInfo, setContactInfo as redisSetContactInfo, getPnForLidFromAuthCache as redisGetPnForLidFromAuthCache, getLidForPnFromAuthCache as redisGetLidForPnFromAuthCache } from './redis'
 
 export const getDataStoreRedis: getDataStore = async (phone: string, config: Config): Promise<DataStore> => {
   if (!dataStores.has(phone)) {
@@ -320,6 +320,14 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       const cached = (await redisGetPnForLid(sessionPhone, lidJid)) || undefined
       if (cached) return cached
     } catch {}
+    // Fast-path: consult Baileys auth lid-mapping cache for this session
+    try {
+      const fast = await redisGetPnForLidFromAuthCache(sessionPhone, lidJid)
+      if (fast && isPnUser(fast as any)) {
+        try { await redisSetJidMapping(sessionPhone, fast, lidJid) } catch {}
+        return fast
+      }
+    } catch {}
     // Fallback: derive PN from LID using Baileys normalization and persist
     try {
       if (isLidUser(lidJid)) {
@@ -358,6 +366,14 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     try {
       const cached = (await redisGetLidForPn(sessionPhone, pnJid)) || undefined
       if (cached) return cached
+    } catch {}
+    // Fast-path: consult Baileys auth lid-mapping cache for this session
+    try {
+      const fast = await redisGetLidForPnFromAuthCache(sessionPhone, pnJid)
+      if (fast && typeof fast === 'string' && fast.endsWith('@lid')) {
+        try { await redisSetJidMapping(sessionPhone, pnJid.includes('@') ? pnJid : `${pnJid.replace(/\D/g,'')}@s.whatsapp.net`, fast) } catch {}
+        return fast
+      }
     } catch {}
     // Fallback: consult contact cache keyed by PN JID (or digits)
     try {

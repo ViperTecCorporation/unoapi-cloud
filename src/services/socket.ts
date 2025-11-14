@@ -222,6 +222,23 @@ export const connect = async ({
       }
     } catch {}
   }
+  // Fast-path: consult Baileys internal lidMapping cache (if available) to resolve LID -> PN and persist mapping
+  const resolveViaSignalRepo = async (lidJid: string): Promise<string | undefined> => {
+    try {
+      if (!lidJid || !isLidUser(lidJid)) return undefined
+      // @ts-ignore
+      const repo = (sock as any)?.signalRepository?.lidMapping
+      const fn = (repo && typeof repo.getPNForLID === 'function') ? repo.getPNForLID.bind(repo) : undefined
+      if (!fn) return undefined
+      const res = await fn(lidJid)
+      const pn = `${res || ''}`
+      if (pn && isPnUser(pn)) {
+        try { await (dataStore as any).setJidMapping?.(phone, pn, lidJid) } catch {}
+        return pn
+      }
+    } catch {}
+    return undefined
+  }
   const attemptResolveOne = async (lidJid: string) => {
     try {
       // 1) Already cached?
@@ -231,6 +248,11 @@ export const connect = async ({
           try { await (dataStore as any).setJidMapping?.(phone, mapped, lidJid) } catch {}
           return true
         }
+      } catch {}
+      // 1b) Baileys internal lidMapping (fast-path)
+      try {
+        const pn = await resolveViaSignalRepo(lidJid)
+        if (pn && isPnUser(pn)) return true
       } catch {}
       // 2) Derive PN candidate via normalization and confirm with onWhatsApp when possible
       let pnCandidate: string | null = null
@@ -840,12 +862,23 @@ export const connect = async ({
               if (typeof remote === 'string' && !!remote) {
                 recentContacts.set(remote, now)
                 try { if (isLidUser(remote)) recentContacts.set(jidNormalizedUser(remote), now) } catch {}
-                try { if (isLidUser(remote)) scheduleLidResolve(remote) } catch {}
+                try {
+                  if (isLidUser(remote)) {
+                    scheduleLidResolve(remote)
+                    // Opportunistic fast resolve without blocking the event flow
+                    resolveViaSignalRepo(remote).catch(() => undefined)
+                  }
+                } catch {}
               }
               if (typeof participant === 'string' && !!participant) {
                 recentContacts.set(participant, now)
                 try { if (isLidUser(participant)) recentContacts.set(jidNormalizedUser(participant), now) } catch {}
-                try { if (isLidUser(participant)) scheduleLidResolve(participant) } catch {}
+                try {
+                  if (isLidUser(participant)) {
+                    scheduleLidResolve(participant)
+                    resolveViaSignalRepo(participant).catch(() => undefined)
+                  }
+                } catch {}
               }
               // Heurística de decrypt stub: mensagem vazia ou apenas senderKeyDistributionMessage (não-fromMe)
               const fromMe = !!m?.key?.fromMe
