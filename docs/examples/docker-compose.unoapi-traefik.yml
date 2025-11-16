@@ -1,0 +1,125 @@
+version: "3.9"
+
+# Unoapi Cloud atrás de Traefik (HTTP + TLS)
+# Assumindo que você já tenha um serviço Traefik rodando na mesma network "proxy".
+
+services:
+  unoapi:
+    image: ghcr.io/viperteccorporation/unoapi-cloud:3.0.0-beta-160
+    container_name: unoapi
+    depends_on:
+      - unoapi-redis
+      - unoapi-rabbitmq
+    environment:
+      HTTP_PROTOCOL: "https"
+      BASE_URL: "https://unoapi.seu-dominio.com"
+      UNOAPI_AUTH_TOKEN: "seu_token_aleatorio"
+
+      WEBHOOK_URL: "https://seu-chatwoot.exemplo.com/webhooks/whatsapp"
+      WEBHOOK_TOKEN: "seu_webhook_token"
+      WEBHOOK_HEADER: "Authorization"
+
+      AMQP_URL: "amqp://seu_usuario_rabbit:seu_password_rabbit@unoapi-rabbitmq:5672"
+      REDIS_URL: "redis://:sua_senha_redis@unoapi-redis:6379"
+
+      STORAGE_BUCKET_NAME: "seu_bucket_unoapi"
+      STORAGE_ACCESS_KEY_ID: "seu_usuario_s3"
+      STORAGE_SECRET_ACCESS_KEY: "sua_senha_s3"
+      STORAGE_REGION: "us-east-1"
+      STORAGE_ENDPOINT: "http://minio:9000"
+      STORAGE_FORCE_PATH_STYLE: "true"
+
+      LOG_LEVEL: "info"
+      UNO_LOG_LEVEL: "info"
+
+      IGNORE_GROUP_MESSAGES: "true"
+      IGNORE_BROADCAST_STATUSES: "true"
+      IGNORE_OWN_MESSAGES: "false"
+      IGNORE_STATUS_MESSAGE: "true"
+      IGNORE_YOURSELF_MESSAGES: "false"
+      IGNORE_HISTORY_MESSAGES: "true"
+      IGNORE_BROADCAST_MESSAGES: "true"
+
+      REJECT_CALLS: "Oi, não consigo atender ligações..."
+      REJECT_CALLS_WEBHOOK: "Eu estava te ligando no WhatsApp..."
+      SEND_CONNECTION_STATUS: "true"
+      AUTO_CONNECT: "true"
+      CLEAN_CONFIG_ON_DISCONNECT: "true"
+
+      HISTORY_MAX_AGE_DAYS: "1"
+      DOWNLOAD_AUDIO_CONVERT_TO_MP3: "true"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.unoapi.rule=Host(`unoapi.seu-dominio.com`)"
+      - "traefik.http.routers.unoapi.entrypoints=websecure"
+      - "traefik.http.routers.unoapi.tls=true"
+      # Se usar resolver ACME no Traefik, ajuste o nome abaixo
+      # - "traefik.http.routers.unoapi.tls.certresolver=myresolver"
+      - "traefik.http.services.unoapi.loadbalancer.server.port=9876"
+
+    networks:
+      - unoapi
+      - proxy   # network externa onde o Traefik está
+
+  unoapi-rabbitmq:
+    image: rabbitmq:4.0.9-management-alpine
+    container_name: unoapi-rabbitmq
+    hostname: unoapi-rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: "seu_usuario_rabbit"
+      RABBITMQ_DEFAULT_PASS: "seu_password_rabbit"
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    networks:
+      - unoapi
+
+  unoapi-redis:
+    image: redis:7-alpine
+    container_name: unoapi-redis
+    restart: always
+    command: ["redis-server", "--requirepass", "sua_senha_redis"]
+    volumes:
+      - redis:/data
+    networks:
+      - unoapi
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: unoapi-minio
+    command: server /data --address ":9000" --console-address ":9001"
+    volumes:
+      - minio:/data
+    restart: always
+    environment:
+      MINIO_ROOT_USER: "seu_usuario_s3"
+      MINIO_ROOT_PASSWORD: "sua_senha_s3"
+    networks:
+      - unoapi
+
+  minio-mc:
+    image: quay.io/minio/mc:latest
+    container_name: unoapi-minio-mc
+    restart: "no"
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 seu_usuario_s3 sua_senha_s3;
+      /usr/bin/mc mb local/seu_bucket_unoapi || true;
+      "
+    networks:
+      - unoapi
+
+volumes:
+  rabbitmq:
+  redis:
+  minio:
+
+networks:
+  unoapi:
+    driver: bridge
+  proxy:
+    external: true
+

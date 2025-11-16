@@ -167,16 +167,21 @@ export const connect = async ({
   const whatsappVersion = config.whatsappVersion
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
-  // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid")
+  // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid").
+  // Se vazio, desabilita fallback (mantém sempre o modo preferido configurado).
   const groupFallbackOrder: ('pn' | 'lid')[] = (() => {
     try {
-      const raw = (GROUP_SEND_FALLBACK_ORDER || 'pn,lid').toString()
-      const parts = raw.split(',').map((s) => s.trim().toLowerCase()).filter((s) => s === 'pn' || s === 'lid') as ('pn' | 'lid')[]
+      const raw = (GROUP_SEND_FALLBACK_ORDER || '').toString()
+      if (!raw.trim()) return []
+      const parts = raw
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s === 'pn' || s === 'lid') as ('pn' | 'lid')[]
       const uniq = Array.from(new Set(parts)) as ('pn' | 'lid')[]
-      if (uniq.length === 2) return uniq
+      if (uniq.length >= 2) return uniq.slice(0, 2)
       if (uniq.length === 1) return uniq[0] === 'lid' ? ['lid', 'pn'] : ['pn', 'lid']
-      return ['pn', 'lid']
-    } catch { return ['pn', 'lid'] }
+      return []
+    } catch { return [] }
   })()
   // Track recent group sends to enable a single fallback retry on ack 421
   const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
@@ -984,7 +989,8 @@ export const connect = async ({
                 params.includes('421') &&
                 key?.fromMe &&
                 typeof key?.remoteJid === 'string' &&
-                key.remoteJid.endsWith('@g.us')
+                key.remoteJid.endsWith('@g.us') &&
+                groupFallbackOrder.length >= 2
               ) {
                 const pending = pendingGroupSends.get(key.id)
                 if (pending && pending.retries < 1) {

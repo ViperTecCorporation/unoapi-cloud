@@ -36,7 +36,7 @@ export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
 )
 export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
-export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '85')
+export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '97')
 
 // Convert downloaded audio (e.g., OGG/OGA/OPUS) to MP3 before storing/sending (iOS Safari compatibility)
 export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 = process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? false : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'
@@ -224,11 +224,13 @@ export const GROUP_SEND_MEMBERSHIP_CHECK =
 export const GROUP_SEND_ADDRESSING_MODE = (process.env.GROUP_SEND_ADDRESSING_MODE || 'lid').toLowerCase() as 'pn' | 'lid' | ''
 // Pre-assert sessions for all group participants before sending to reduce ack 421
 export const GROUP_SEND_PREASSERT_SESSIONS =
-  process.env.GROUP_SEND_PREASSERT_SESSIONS == _undefined ? true : process.env.GROUP_SEND_PREASSERT_SESSIONS == 'true'
-// Auto-retry once on 421 toggling addressing mode order (comma-separated: e.g., "pn,lid")
+  process.env.GROUP_SEND_PREASSERT_SESSIONS == _undefined ? false : process.env.GROUP_SEND_PREASSERT_SESSIONS == 'true'
+// Auto-retry once on 421 toggling addressing mode order (comma-separated: e.g., "pn,lid").
+// Por padrão desabilitado (fallback order vazio) para manter sempre LID em grupos,
+// a menos que explicitamente configurado via env.
 export const GROUP_SEND_RETRY_ON_421 =
   process.env.GROUP_SEND_RETRY_ON_421 == _undefined ? true : process.env.GROUP_SEND_RETRY_ON_421 == 'true'
-export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER || 'pn,lid')
+export const GROUP_SEND_FALLBACK_ORDER = (process.env.GROUP_SEND_FALLBACK_ORDER || '')
 // Consider a group as "large" when participant count exceeds this threshold
 export const GROUP_LARGE_THRESHOLD = parseInt(process.env.GROUP_LARGE_THRESHOLD || '800')
 
