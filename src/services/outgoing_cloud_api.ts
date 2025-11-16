@@ -63,9 +63,33 @@ export class OutgoingCloudApi implements Outgoing {
       logger.info(`Session phone %s webhook %s configured to not send incoming message for this webhook`, phone, webhook.id)
       return
     }
+    const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+    // Garantir que contacts[*].wa_id nunca venha vazio: usar recipient_id ou from como fallback
+    try {
+      if (Array.isArray(v.contacts) && v.contacts.length > 0) {
+        const c = v.contacts[0] || {}
+        const raw = (c.wa_id || '').toString().trim()
+        if (!raw) {
+          let fallback: string | undefined
+          try {
+            if (Array.isArray(v.statuses) && v.statuses[0]?.recipient_id) {
+              fallback = `${v.statuses[0].recipient_id}`
+            }
+          } catch {}
+          try {
+            if (!fallback && Array.isArray(v.messages) && v.messages[0]?.from) {
+              fallback = `${v.messages[0].from}`
+            }
+          } catch {}
+          if (fallback && fallback.toString().trim()) {
+            c.wa_id = fallback.toString().trim()
+          }
+        }
+      }
+    } catch {}
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
-    try { normalizeWebhookValueIds((message as any)?.entry?.[0]?.changes?.[0]?.value) } catch {}
-    // Mapping preferences are applied below; digits->LID repair and heuristics are gated to LID preference
+    try { normalizeWebhookValueIds(v) } catch {}
+    // Mapping preferences são aplicadas abaixo; digits->LID repair e heurísticas são condicionadas à preferência de LID/PN
     // Repair (when not preferring PN): if 'from'/wa_id/recipient_id are bare digits but we already have a LID mapping in cache,
     // prefer the mapped @lid to avoid inconsistencies (naked LID-digits without suffix)
     if (!WEBHOOK_PREFER_PN_OVER_LID) try {
