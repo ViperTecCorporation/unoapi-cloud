@@ -263,7 +263,6 @@ export class TranscriberJob {
       )
     } catch (error) {
       logger.error(error)
-      throw error
     }
   }
 }

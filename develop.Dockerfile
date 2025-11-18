@@ -1,8 +1,8 @@
 FROM node:24-bookworm-slim
 
-# Install dependencies including CA certificates and curl, then fetch wait-for
+# Install dependencies including CA certificates, curl and wget, then fetch wait-for
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ffmpeg curl ca-certificates \
+    && apt-get install -y --no-install-recommends git ffmpeg curl wget ca-certificates \
     && update-ca-certificates \
     && curl -fsSL -o /usr/local/bin/wait-for https://raw.githubusercontent.com/eficode/wait-for/v2.2.3/wait-for \
     && chmod +x /usr/local/bin/wait-for \

@@ -61,7 +61,7 @@ COPY --from=builder /app/vendor ./vendor
 COPY --from=builder /app/node_modules ./node_modules
 
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg wget \
     && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["node", "dist/src/index.js"]
