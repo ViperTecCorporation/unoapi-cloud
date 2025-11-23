@@ -28,6 +28,14 @@
   - Demais campos do Web permanecem iguais.
 - Todas as configs são persistidas na sessão específica (Redis), não é global.
 
+### Embedded Signup (opcional, para preencher Cloud automaticamente)
+- No app Meta: cadastre um `redirect_uri` HTTPS e obtenha o `appId` (produto WhatsApp).
+- Exponha o `appId` e o `redirect_uri` no front (ex.: `window.EMBEDDED_SIGNUP_APP_ID` e `window.EMBEDDED_SIGNUP_REDIRECT_URI` no HTML do manager).
+- Após concluir o Embedded Signup, a página é carregada com `wa_phone_id`, `wa_waba_id`, `wa_token` (e opcional `wa_version`). O manager:
+  - Armazena o payload e, ao abrir a sessão, preenche `webhookForward.*`, habilita coexistência e sugere janela 24h.
+  - Mantém a modal aberta e exibe um alerta de “Dados de Cloud atualizados. Revise e salve.”
+- Clique em “Importar retorno do Embedded” (ou apenas abra a sessão) para aplicar os valores e depois salve a sessão para persistir.
+
 ### Webhook Meta (entrada)
 - Configure no BM/WA Cloud: `https://<host>/webhooks/whatsapp/<phone>`
 - Use o verify token de `UNOAPI_AUTH_TOKEN`.
