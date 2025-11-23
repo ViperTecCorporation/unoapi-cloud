@@ -1,4 +1,4 @@
-import { isJidGroup, jidNormalizedUser, jidToPhoneNumber } from '@whiskeysockets/baileys'
+import { isJidGroup, jidNormalizedUser } from '@whiskeysockets/baileys'
 import { Client, Contact } from './client'
 import { Listener } from './listener'
 import { getConfig } from './config'
@@ -7,6 +7,7 @@ import { ClientBaileys } from './client_baileys'
 import { ClientForward } from './client_forward'
 import logger from './logger'
 import { isWindowOpen, openWindow } from './coexistence_window'
+import { jidToPhoneNumber } from './transformer'
 
 const normalizeContact = (to?: string) => {
   const raw = `${to || ''}`.trim()
