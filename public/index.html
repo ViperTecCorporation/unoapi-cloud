@@ -354,7 +354,10 @@
           forwardTokenLabel: 'Cloud API Token',
           forwardTokenPh: 'Bearer ...',
           forwardBusinessIdLabel: 'Business Account ID (optional)',
-          forwardBusinessIdPh: 'business_account_id'
+          forwardBusinessIdPh: 'business_account_id',
+          forwardHelper: 'Use WhatsApp Cloud Embedded Signup to fetch token and phone_number_id.',
+          forwardImport: 'Import Embedded return',
+          forwardUpdated: 'Cloud data updated. Review and save.'
         },
         'pt-BR': {
           langLabel: 'Idioma:',
@@ -413,7 +416,10 @@
           forwardTokenLabel: 'Token Cloud API',
           forwardTokenPh: 'Bearer ...',
           forwardBusinessIdLabel: 'Business Account ID (opcional)',
-          forwardBusinessIdPh: 'business_account_id'
+          forwardBusinessIdPh: 'business_account_id',
+          forwardHelper: 'Use o Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.',
+          forwardImport: 'Importar retorno do Embedded',
+          forwardUpdated: 'Dados de Cloud atualizados. Revise e salve.'
         }
       };
       function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
@@ -422,10 +428,60 @@
         document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){ el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))) })
         document.querySelectorAll('[data-i18n-title]').forEach(function(el){ el.setAttribute('title', t(el.getAttribute('data-i18n-title'))) })
       }
+      // Embedded signup helpers: expect appId from window.EMBEDDED_SIGNUP_APP_ID or data attribute on body
+      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || '';
+      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+      function parseEmbeddedFromUrl() {
+        try {
+          const params = new URLSearchParams(window.location.search || '');
+          const phoneId = params.get('wa_phone_id');
+          const wabaId = params.get('wa_waba_id');
+          const token = params.get('wa_token');
+          const version = params.get('wa_version') || 'v17.0';
+          if (phoneId || token) {
+            return { phoneId, wabaId, token, version };
+          }
+        } catch {}
+        return undefined;
+      }
+      function storeEmbeddedPayload() {
+        const payload = parseEmbeddedFromUrl();
+        if (payload) {
+          localStorage.setItem('embeddedSignupPayload', JSON.stringify(payload));
+        }
+        return payload;
+      }
+      function consumeEmbeddedPayload() {
+        try {
+          const raw = localStorage.getItem('embeddedSignupPayload');
+          if (!raw) return undefined;
+          const data = JSON.parse(raw);
+          return data;
+        } catch { return undefined; }
+      }
+      function applyEmbeddedToForm(showAlert) {
+        const payload = consumeEmbeddedPayload();
+        if (!payload) return;
+        if (payload.phoneId) { $('#webhookForwardPhoneNumberId').val(payload.phoneId); }
+        if (payload.token) { $('#webhookForwardToken').val(payload.token); }
+        if (payload.wabaId) { $('#webhookForwardBusinessAccountId').val(payload.wabaId); }
+        if (payload.version) { $('#webhookForwardVersion').val(payload.version); }
+        // Ao importar, já marca coexistência ativa e janela padrão
+        try { $('#coexistenceEnabled').prop('checked', true); } catch {}
+        try {
+          const curr = Number($('#coexistenceWindowSeconds').val() || 0);
+          if (!curr) $('#coexistenceWindowSeconds').val(86400);
+        } catch {}
+        if (showAlert) {
+          $('#embeddedSuccess').removeClass('d-none');
+        }
+      }
       (function() {
         const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase();
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        // Armazena retorno do Embedded se vier via querystring
+        storeEmbeddedPayload();
         window.addEventListener('DOMContentLoaded', function() {
           function reinitDataTableLang() {
             if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
@@ -611,6 +667,17 @@
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="proxyUrl" class="form-label" data-i18n="proxyUrlLabel">Proxy URL (Restart Unoapi after change)</label>
                                 <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@host:port" data-i18n-placeholder="proxyUrlPh">
+                            </div>
+                            <div class="col-12">
+                              <div class="alert alert-secondary py-2">
+                                <div><strong>Cloud / Embedded Signup</strong></div>
+                                <div style="font-size: 13px;">
+                                  <span data-i18n="forwardHelper">Use Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.</span>
+                                  <span id="embeddedAppIdDisplay"></span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-primary mt-2" id="importEmbeddedBtn" data-i18n="forwardImport">Importar retorno do Embedded</button>
+                                <div class="alert alert-success mt-2 d-none" id="embeddedSuccess" role="alert" data-i18n="forwardUpdated">Dados de Cloud atualizados. Confira antes de salvar.</div>
+                              </div>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                                 <label for="webhookForwardUrl" class="form-label" data-i18n="forwardUrlLabel">Cloud API Base URL</label>
@@ -1261,6 +1328,8 @@
                 try { $('#webhookForwardToken').val(session.webhookForward?.token || ''); } catch {}
                 try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || ''); } catch {}
                 $('#server').val(session.server);
+                // Se houver payload do Embedded guardado, aplica e mantém alerta visível
+                applyEmbeddedToForm(true);
                 // Rate limits (anti-spam)
                 try {
                   $('#rateLimitGlobalPerMinute').val(session.rateLimitGlobalPerMinute ?? 0);
@@ -1396,9 +1465,11 @@
                             sendTranscribeAudio: $(this).find('.webhook-sendTranscribeAudio').is(':checked'),
                             addToBlackListOnOutgoingMessageWithTtl: $(this).find('.webhook-addToBlackListOnOutgoingMessageWithTtl').val(),
                         };
-                        sessionData.webhooks.push(webhook);
+                    sessionData.webhooks.push(webhook);
                     });
                     sessionData.overrideWebhooks = true
+                    // Se usou Embedded, limpamos o payload para não reaplicar na próxima sessão
+                    localStorage.removeItem('embeddedSignupPayload');
                     fetch(`${apiUrl}/v15.0/${number}/register`, {
                         method: 'POST',
                         headers: {
