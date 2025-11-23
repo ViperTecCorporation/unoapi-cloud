@@ -483,6 +483,26 @@
         // Armazena retorno do Embedded se vier via querystring
         storeEmbeddedPayload();
         window.addEventListener('DOMContentLoaded', function() {
+          // Embedded helpers: mostrar appId e bind do botão de importação
+          try {
+            if (EMBEDDED_APP_ID) {
+              const el = document.getElementById('embeddedAppIdDisplay');
+              if (el) { el.textContent = `appId: ${EMBEDDED_APP_ID}`; }
+            }
+          } catch {}
+          try {
+            const btn = document.getElementById('importEmbeddedBtn');
+            if (btn) {
+              btn.addEventListener('click', function() {
+                const payload = consumeEmbeddedPayload();
+                if (!payload) {
+                  alert('Nenhum retorno do Embedded encontrado nesta aba. Conclua o fluxo ou abra pelo link de retorno.');
+                  return;
+                }
+                applyEmbeddedToForm(true);
+              });
+            }
+          } catch {}
           function reinitDataTableLang() {
             if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
               try { $('#sessionsTable').DataTable().destroy(); } catch {}
