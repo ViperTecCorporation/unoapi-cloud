@@ -29,6 +29,7 @@ import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAG
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
+import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
 
 const attempts = 3
@@ -54,7 +55,10 @@ export const getClientBaileys: getClient = async ({
     logger.info('Creating client baileys %s', phone)
     const config = await getConfig(phone)
     let client
-    if (config.connectionType == 'forward') {
+    if (config.coexistenceEnabled) {
+      logger.info('Connecting client coexistence (web+meta) %s', phone)
+      client = new ClientCoexistence(phone, listener, getConfig, onNewLogin)
+    } else if (config.connectionType == 'forward') {
       logger.info('Connecting client forward %s', phone)
       client = new ClientForward(phone, getConfig, listener)
     } else {
@@ -120,11 +124,11 @@ export class ClientBaileys implements Client {
     const sessionStore = this?.phone && await (await this?.config?.getStore(this.phone, this.config)).sessionStore
     if (sessionStore) {
       if (!await sessionStore.isStatusConnecting(this.phone)) {
-        clients.delete(this.phone)
+        this.clientRegistry.delete(this.phone)
       }
       if (await sessionStore.isStatusOnline(this.phone)) {
         await sessionStore.setStatus(this.phone, 'offline')
-        clients.delete(this.phone)
+        this.clientRegistry.delete(this.phone)
       }
     }
     throw sendError
@@ -146,6 +150,7 @@ export class ClientBaileys implements Client {
   private calls = new Map<string, boolean>()
   private getConfig: getConfig
   private onNewLogin
+  private clientRegistry: Map<string, Client>
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onWebhookError = async (error: any) => {
@@ -258,11 +263,12 @@ export class ClientBaileys implements Client {
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   private continueAfterSecondMessage: Delay = async (_phone, _to) => {}
 
-  constructor(phone: string, listener: Listener, getConfig: getConfig, onNewLogin: OnNewLogin) {
+  constructor(phone: string, listener: Listener, getConfig: getConfig, onNewLogin: OnNewLogin, clientRegistry: Map<string, Client> = clients) {
     this.phone = phone
     this.listener = listener
     this.getConfig = getConfig
     this.onNewLogin = onNewLogin
+    this.clientRegistry = clientRegistry
   }
 
   async connect(time: number) {
@@ -324,7 +330,7 @@ export class ClientBaileys implements Client {
     this.store = undefined
 
     await this.close()
-    clients.delete(this?.phone)
+    this.clientRegistry.delete(this?.phone)
     configs.delete(this?.phone)
     this.sendMessage = this.sendMessageDefault
     this.readMessages = readMessagesDefault

@@ -141,6 +141,8 @@ export const AUTO_RESTART_MS = parseInt(process.env.AUTO_RESTART_MS || '0')
 export const BASE_STORE = process.env.UNOAPI_BASE_STORE || process.env.BASE_STORE || './data'
 export const AUTO_CONNECT: boolean = process.env.AUTO_CONNECT === _undefined ? true : process.env.AUTO_CONNECT == 'true'
 export const COMPOSING_MESSAGE: boolean = process.env.COMPOSING_MESSAGE === _undefined ? false : process.env.COMPOSING_MESSAGE == 'true'
+export const COEXISTENCE_ENABLED: boolean = process.env.COEXISTENCE_ENABLED === _undefined ? false : process.env.COEXISTENCE_ENABLED == 'true'
+export const COEXISTENCE_WINDOW_SECONDS: number = parseInt(process.env.COEXISTENCE_WINDOW_SECONDS || `${60 * 60 * 24}`)
 export const IGNORE_GROUP_MESSAGES: boolean = process.env.IGNORE_GROUP_MESSAGES == _undefined ? true : process.env.IGNORE_GROUP_MESSAGES == 'true'
 export const IGNORE_NEWSLETTER_MESSAGES: boolean = process.env.IGNORE_NEWSLETTER_MESSAGES == _undefined ? true : process.env.IGNORE_NEWSLETTER_MESSAGES == 'true'
 export const IGNORE_BROADCAST_STATUSES: boolean =

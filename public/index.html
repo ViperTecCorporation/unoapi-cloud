@@ -341,7 +341,20 @@
           groqApiTranscribeModelLabel: 'Groq Transcribe Model',
           groqApiTranscribeModelPh: 'e.g. whisper-large-v3',
           groqApiBaseUrlLabel: 'Groq API Base URL',
-          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1',
+          coexistenceEnabled: 'Enable Web + Meta coexistence',
+          coexistenceWindow: 'Coexistence window (seconds)',
+          coexistenceWindowPh: '86400 = 24h',
+          forwardUrlLabel: 'Cloud API Base URL',
+          forwardUrlPh: 'https://graph.facebook.com',
+          forwardVersionLabel: 'Cloud API Version',
+          forwardVersionPh: 'v17.0',
+          forwardPhoneIdLabel: 'Cloud phone_number_id',
+          forwardPhoneIdPh: 'phone_number_id',
+          forwardTokenLabel: 'Cloud API Token',
+          forwardTokenPh: 'Bearer ...',
+          forwardBusinessIdLabel: 'Business Account ID (optional)',
+          forwardBusinessIdPh: 'business_account_id'
         },
         'pt-BR': {
           langLabel: 'Idioma:',
@@ -387,7 +400,20 @@
           groqApiTranscribeModelLabel: 'Modelo de Transcrição (Groq)',
           groqApiTranscribeModelPh: 'ex.: whisper-large-v3',
           groqApiBaseUrlLabel: 'URL Base da API Groq',
-          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1',
+          coexistenceEnabled: 'Ativar coexistência Web + Meta',
+          coexistenceWindow: 'Janela de coexistência (segundos)',
+          coexistenceWindowPh: '86400 = 24h',
+          forwardUrlLabel: 'URL Base Cloud API',
+          forwardUrlPh: 'https://graph.facebook.com',
+          forwardVersionLabel: 'Versão Cloud API',
+          forwardVersionPh: 'v17.0',
+          forwardPhoneIdLabel: 'Cloud phone_number_id',
+          forwardPhoneIdPh: 'phone_number_id',
+          forwardTokenLabel: 'Token Cloud API',
+          forwardTokenPh: 'Bearer ...',
+          forwardBusinessIdLabel: 'Business Account ID (opcional)',
+          forwardBusinessIdPh: 'business_account_id'
         }
       };
       function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
@@ -587,6 +613,26 @@
                                 <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@host:port" data-i18n-placeholder="proxyUrlPh">
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
+                                <label for="webhookForwardUrl" class="form-label" data-i18n="forwardUrlLabel">Cloud API Base URL</label>
+                                <input type="text" class="form-control" id="webhookForwardUrl" name="webhookForwardUrl" placeholder="https://graph.facebook.com" data-i18n-placeholder="forwardUrlPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardVersion" class="form-label" data-i18n="forwardVersionLabel">Cloud API Version</label>
+                                <input type="text" class="form-control" id="webhookForwardVersion" name="webhookForwardVersion" placeholder="v17.0" data-i18n-placeholder="forwardVersionPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardPhoneNumberId" class="form-label" data-i18n="forwardPhoneIdLabel">Cloud phone_number_id</label>
+                                <input type="text" class="form-control" id="webhookForwardPhoneNumberId" name="webhookForwardPhoneNumberId" placeholder="phone_number_id" data-i18n-placeholder="forwardPhoneIdPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardToken" class="form-label" data-i18n="forwardTokenLabel">Cloud API Token</label>
+                                <input type="text" class="form-control" id="webhookForwardToken" name="webhookForwardToken" placeholder="Bearer ..." data-i18n-placeholder="forwardTokenPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardBusinessAccountId" class="form-label" data-i18n="forwardBusinessIdLabel">Business Account ID (optional)</label>
+                                <input type="text" class="form-control" id="webhookForwardBusinessAccountId" name="webhookForwardBusinessAccountId" placeholder="business_account_id" data-i18n-placeholder="forwardBusinessIdPh">
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
                               <label for="rejectCalls" class="form-label" data-i18n="rejectCallsLabel">Message when rejecting calls</label>
                               <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
                             </div>
@@ -688,17 +734,28 @@
                                 <label for="ignoreYourselfMessages" class="form-label" data-i18n="ignoreYourselfMessages">Ignore Yourself Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
-                                <label class="switch">
-                                    <input type="checkbox" id="autoConnect" name="autoConnect" checked>
-                                    <span class="slider round"></span>
-                                </label>
-                                <label for="autoConnect" class="form-label" data-i18n="autoConnect">Auto Connect</label>
+                              <label class="switch">
+                                  <input type="checkbox" id="autoConnect" name="autoConnect" checked>
+                                  <span class="slider round"></span>
+                              </label>
+                              <label for="autoConnect" class="form-label" data-i18n="autoConnect">Auto Connect</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
-                                <label class="switch">
-                                    <input type="checkbox" id="ignoreBroadcastMessages" name="ignoreBroadcastMessages" checked>
-                                    <span class="slider round"></span>
-                                </label>
+                              <label class="switch">
+                                  <input type="checkbox" id="coexistenceEnabled" name="coexistenceEnabled">
+                                  <span class="slider round"></span>
+                              </label>
+                              <label for="coexistenceEnabled" class="form-label" data-i18n="coexistenceEnabled">Enable Web + Meta coexistence</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="coexistenceWindowSeconds" class="form-label" data-i18n="coexistenceWindow">Coexistence window (seconds)</label>
+                                <input type="number" min="0" class="form-control" id="coexistenceWindowSeconds" placeholder="86400" data-i18n-placeholder="coexistenceWindowPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                              <label class="switch">
+                                  <input type="checkbox" id="ignoreBroadcastMessages" name="ignoreBroadcastMessages" checked>
+                                  <span class="slider round"></span>
+                              </label>
                                 <label for="ignoreBroadcastMessages" class="form-label" data-i18n="ignoreBroadcastMessages">Ignore Broadcast Lists</label>
                             </div>
                             <!-- Anti-spam / Rate Limits -->
@@ -1193,9 +1250,16 @@
                 $('#composingMessage').prop('checked', session.composingMessage);
                 $('#sendReactionAsReply').prop('checked', session.sendReactionAsReply);
                 $('#autoConnect').prop('checked', session.autoConnect);
+                try { $('#coexistenceEnabled').prop('checked', !!session.coexistenceEnabled); } catch {}
+                try { $('#coexistenceWindowSeconds').val(session.coexistenceWindowSeconds ?? 86400); } catch {}
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
                 $('#connectionType').val(session.connectionType);
                 $('#proxyUrl').val(session.proxyUrl);
+                try { $('#webhookForwardUrl').val(session.webhookForward?.url || ''); } catch {}
+                try { $('#webhookForwardVersion').val(session.webhookForward?.version || ''); } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || ''); } catch {}
+                try { $('#webhookForwardToken').val(session.webhookForward?.token || ''); } catch {}
+                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || ''); } catch {}
                 $('#server').val(session.server);
                 // Rate limits (anti-spam)
                 try {
@@ -1297,9 +1361,18 @@
                         composingMessage: $('#composingMessage').is(':checked'),
                         sendReactionAsReply: $('#sendReactionAsReply').is(':checked'),
                         autoConnect: $('#autoConnect').is(':checked'),
+                        coexistenceEnabled: $('#coexistenceEnabled').is(':checked'),
+                        coexistenceWindowSeconds: Number($('#coexistenceWindowSeconds').val() || 86400),
                         ignoreBroadcastMessages: $('#ignoreBroadcastMessages').is(':checked'),
                         connectionType: $('#connectionType').val(),
                         proxyUrl: $('#proxyUrl').val(),
+                        webhookForward: {
+                          url: $('#webhookForwardUrl').val(),
+                          version: $('#webhookForwardVersion').val(),
+                          phoneNumberId: $('#webhookForwardPhoneNumberId').val(),
+                          token: $('#webhookForwardToken').val(),
+                          businessAccountId: $('#webhookForwardBusinessAccountId').val(),
+                        },
                         server: $('#server').val(),
                         // rate limits
                         rateLimitGlobalPerMinute: Number($('#rateLimitGlobalPerMinute').val() || 0),

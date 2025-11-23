@@ -85,6 +85,9 @@ export type Config = {
   wavoipToken:  string | undefined
   useRedis: boolean
   useS3: boolean
+  // Coexistência Web + Meta
+  coexistenceEnabled: boolean
+  coexistenceWindowSeconds: number
   qrTimeoutMs: number
   label: string
   overrideWebhooks: boolean
@@ -167,6 +170,8 @@ export const defaultConfig: Config = {
   wavoipToken: '',
   useRedis: false,
   useS3: false,
+  coexistenceEnabled: false,
+  coexistenceWindowSeconds: 24 * 60 * 60,
   qrTimeoutMs: 60000,
   label: '',
   overrideWebhooks: false,

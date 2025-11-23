@@ -3,6 +3,7 @@ import { Outgoing } from '../services/outgoing'
 import logger from '../services/logger'
 import { UNOAPI_AUTH_TOKEN } from '../defaults'
 import { getConfig } from '../services/config'
+import { registerMetaWebhookWindow } from '../services/coexistence_window'
 
 export class WebhookController {
   private service: Outgoing
@@ -19,6 +20,14 @@ export class WebhookController {
     logger.debug('webhook whatsapp params %s', JSON.stringify(req.params))
     logger.debug('webhook whatsapp body %s', JSON.stringify(req.body))
     const { phone } = req.params
+    try {
+      const config = await this.getConfig(phone.replace('+', ''))
+      if (config?.coexistenceEnabled) {
+        await registerMetaWebhookWindow(phone, req.body, config.coexistenceWindowSeconds)
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error registering coexistence window for %s', phone)
+    }
     await this.service.send(phone, req.body)
     res.status(200).send(`{"success": true}`)
   }

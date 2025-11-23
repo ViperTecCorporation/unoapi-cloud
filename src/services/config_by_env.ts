@@ -11,6 +11,8 @@ import {
   AUTO_RESTART_MS,
   AUTO_CONNECT,
   COMPOSING_MESSAGE,
+  COEXISTENCE_ENABLED,
+  COEXISTENCE_WINDOW_SECONDS,
   BASE_STORE,
   UNOAPI_RETRY_REQUEST_DELAY_MS,
   IGNORE_CALLS,
@@ -86,6 +88,8 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.ignoreOwnMessages = IGNORE_OWN_MESSAGES
     config.sendConnectionStatus = SEND_CONNECTION_STATUS
     config.autoConnect = AUTO_CONNECT
+    config.coexistenceEnabled = COEXISTENCE_ENABLED
+    config.coexistenceWindowSeconds = COEXISTENCE_WINDOW_SECONDS
     config.autoRestartMs = AUTO_RESTART_MS
     config.qrTimeoutMs = QR_TIMEOUT_MS
     config.composingMessage = COMPOSING_MESSAGE
