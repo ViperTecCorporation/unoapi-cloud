@@ -70,6 +70,8 @@ export const router = (
   // Webhook for forward connection
   router.post('/webhooks/whatsapp/:phone', webhookController.whatsapp.bind(webhookController))
   router.get('/webhooks/whatsapp/:phone', middleware, webhookController.whatsappVerify.bind(webhookController))
+  // Unified webhook (Cloud API) routed by phone_number_id
+  router.post('/webhooks/whatsapp', webhookController.whatsappNoParam.bind(webhookController))
 
   // for default webhook
   const webhookFakeController = new WebhookFakeController()

@@ -4,6 +4,7 @@ import logger from '../services/logger'
 import { UNOAPI_AUTH_TOKEN } from '../defaults'
 import { getConfig } from '../services/config'
 import { registerMetaWebhookWindow } from '../services/coexistence_window'
+import { getPhoneByPhoneNumberId } from '../services/redis'
 
 export class WebhookController {
   private service: Outgoing
@@ -30,6 +31,43 @@ export class WebhookController {
     }
     await this.service.send(phone, req.body)
     res.status(200).send(`{"success": true}`)
+  }
+
+  public async whatsappNoParam(req: Request, res: Response) {
+    logger.debug('webhook whatsapp (no phone) method %s', req.method)
+    const body = req.body || {}
+    const phoneNumberId = (() => {
+      try { return body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id } catch { return undefined }
+    })()
+    const displayPhone = (() => {
+      try { return body.entry?.[0]?.changes?.[0]?.value?.metadata?.display_phone_number } catch { return undefined }
+    })()
+    let phone = ''
+    if (phoneNumberId) {
+      phone = (await getPhoneByPhoneNumberId(phoneNumberId)) || ''
+    }
+    if (!phone && displayPhone) {
+      phone = `${displayPhone}`.replace(/\D/g, '')
+    }
+    if (!phone) {
+      logger.warn('Cannot resolve session phone for webhook (phone_number_id=%s display=%s)', phoneNumberId, displayPhone)
+      return res.status(400).json({ error: 'unknown_phone_number_id' })
+    }
+    try {
+      const config = await this.getConfig(phone.replace('+', ''))
+      if (config?.coexistenceEnabled) {
+        await registerMetaWebhookWindow(phone, body, config.coexistenceWindowSeconds)
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error registering coexistence window for %s', phone)
+    }
+    try {
+      await this.service.send(phone, body)
+      res.status(200).send(`{"success": true}`)
+    } catch (e) {
+      logger.error(e as any, 'error on webhook (no param)')
+      res.status(500).send(`{"success": false}`)
+    }
   }
 
   public async whatsappVerify(req: Request, res: Response) {

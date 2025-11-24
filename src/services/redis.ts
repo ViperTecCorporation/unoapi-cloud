@@ -536,6 +536,12 @@ export const setConfig = async (phone: string, value: any) => {
   try { (config as any).useS3 = true } catch {}
   delete config.overrideWebhooks
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
+  try {
+    const phoneNumberId = (config as any)?.webhookForward?.phoneNumberId
+    if (phoneNumberId) {
+      await setPhoneNumberIdMapping(phone, phoneNumberId)
+    }
+  } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
   configs.delete(phone)
   return config
 }
@@ -974,6 +980,26 @@ export const getUnoId = async (phone: string, idBaileys: string) => {
 export const setUnoId = async (phone: string, idBaileys: string, idUno: string) => {
   const key = unoIdKey(phone, idBaileys)
   return redisSetAndExpire(key, idUno, DATA_TTL)
+}
+
+// Embedded/Meta Cloud mapping: phone_number_id -> phone session
+const phoneNumberIdKey = (id: string) => `${BASE_KEY}meta:phone_number_id:${id}`
+export const setPhoneNumberIdMapping = async (phone: string, phoneNumberId: string) => {
+  if (!phoneNumberId) return
+  try {
+    await redisSetAndExpire(phoneNumberIdKey(phoneNumberId), phone, SESSION_TTL >= 0 ? SESSION_TTL : DATA_TTL)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to set phoneNumberId mapping')
+  }
+}
+export const getPhoneByPhoneNumberId = async (phoneNumberId: string) => {
+  if (!phoneNumberId) return undefined
+  try {
+    return await redisGet(phoneNumberIdKey(phoneNumberId))
+  } catch (e) {
+    logger.warn(e as any, 'Failed to get phone by phoneNumberId')
+    return undefined
+  }
 }
 
 // Rate limit keys
