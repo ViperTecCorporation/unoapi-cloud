@@ -91,6 +91,9 @@ export const router = (
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)
   router.get('/docs/*', indexController.docsFile)
   router.get('/logos/*', indexController.logos)
+  // Embedded Signup helpers (precisa ficar antes das rotas parametrizadas)
+  router.get('/embedded/config.js', embeddedController.configJs.bind(embeddedController))
+  router.post('/embedded/exchange', express.json(), embeddedController.exchange.bind(embeddedController))
   router.get('/connect/:phone', connectController.index.bind(connectController))
   router.get('/ping', indexController.ping)
   router.get('/:version/debug_token', indexController.debugToken)
@@ -125,10 +128,6 @@ export const router = (
   router.post('/timer/:phone/:to', middleware, timerController.start.bind(timerController))
   // when client reply, stop timer
   router.delete('/timer/:phone/:to', middleware, timerController.stop.bind(timerController))
-
-  // Embedded Signup helpers
-  router.get('/embedded/config.js', embeddedController.configJs.bind(embeddedController))
-  router.post('/embedded/exchange', express.json(), embeddedController.exchange.bind(embeddedController))
 
   injectRoute(router)
 
