@@ -12,6 +12,11 @@ export default class Security {
   }
 
   public async run(req: Request, res: Response, next: NextFunction) {
+    // Allow embedded signup endpoints without auth (public)
+    try {
+      const path = req.path || ''
+      if (path.startsWith('/embedded')) return next()
+    } catch {}
     const phone = req.params.phone || '*'
     logger.debug('Verifing client authentication...')
     if (UNOAPI_AUTH_TOKEN) {
