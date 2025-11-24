@@ -1,4 +1,5 @@
 import express, { Router } from 'express'
+import path from 'path'
 import { Incoming } from './services/incoming'
 import { Outgoing } from './services/outgoing'
 import { getConfig } from './services/config'
@@ -94,6 +95,7 @@ export const router = (
   // Embedded Signup helpers (precisa ficar antes das rotas parametrizadas)
   router.get('/embedded/config.js', embeddedController.configJs.bind(embeddedController))
   router.post('/embedded/exchange', express.json(), embeddedController.exchange.bind(embeddedController))
+  router.get('/embedded-callback.html', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'embedded-callback.html')))
   // Alias para evitar rota errada (config.js)
   router.get('/config.js', embeddedController.configJs.bind(embeddedController))
   router.get('/:version/config.js', embeddedController.configJs.bind(embeddedController))
