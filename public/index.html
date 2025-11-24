@@ -519,10 +519,16 @@
           if (launch) {
             launch.addEventListener('click', function() {
               console.log('Embedded launch clicked');
-              const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION or 'v24.0'
-scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management')
-const fallback = https://www.facebook.com//dialog/oauth?client_id=&redirect_uri=&state=embedded_signup&scope=;
-window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
+              const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+              const appId = window.EMBEDDED_SIGNUP_APP_ID || '';
+              if (!appId || !redirect) {
+                alert('Configure EMBEDDED_SIGNUP_APP_ID e EMBEDDED_SIGNUP_REDIRECT_URI.');
+                return;
+              }
+              const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0';
+              const scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management');
+              const fallback = `https://www.facebook.com/${version}/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&state=embedded_signup&scope=${scope}`;
+              window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
             });
           }
         } catch {}
