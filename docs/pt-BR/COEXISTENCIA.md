@@ -40,7 +40,7 @@
 - Página de callback `public/embedded-callback.html` chama `/embedded/exchange`, guarda o payload em `localStorage` e redireciona para o manager.
 
 ### Webhook Meta (entrada)
-- Configure no BM/WA Cloud: `https://<host>/webhooks/whatsapp/<phone>`
+- Configure no BM/WA Cloud: `https://<host>/webhooks/whatsapp` (único endpoint; roteamos pelo `phone_number_id`).
 - Use o verify token de `UNOAPI_AUTH_TOKEN`.
 - Assine eventos de `messages`/`statuses`.
 - O webhook aciona a abertura da janela de 24h para os contatos que enviarem mensagens via Meta.

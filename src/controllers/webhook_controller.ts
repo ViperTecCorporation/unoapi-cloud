@@ -89,4 +89,17 @@ export class WebhookController {
       res.sendStatus(403)
     }
   }
+
+  public async whatsappVerifyNoParam(req: Request, res: Response) {
+    logger.debug('webhook whatsapp verify (no param) method %s', req.method)
+    const mode = req.query['hub.mode']
+    const token = req.query['hub.verify_token']
+    const challenge = req.query['hub.challenge']
+    const expectedToken = UNOAPI_AUTH_TOKEN
+    if (mode === 'subscribe' && token === expectedToken) {
+      res.status(200).send(challenge)
+    } else {
+      res.sendStatus(403)
+    }
+  }
 }
