@@ -770,7 +770,7 @@
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                               <label for="rejectCalls" class="form-label" data-i18n="rejectCallsLabel">Message when rejecting calls</label>
-                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = '; this.style.height = this.scrollHeight + 'px'"></textarea>
+                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                               <label for="server" class="form-label" data-i18n="serverLabel">Server</label>
@@ -1048,19 +1048,19 @@
                 }
                 lastTimeout = setTimeout(function() {
                   qrcodeDiv.innerHTML = t('qrWaitingNew');
-                  qrcodeDiv.textContent = ';
+                  qrcodeDiv.textContent = '';
                 }, timeoutMs);
             } else if (data.type === 'status' && data.content) {
                 if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
-                    qrcodeDiv.innerHTML = ';
+                    qrcodeDiv.innerHTML = '';
                     statusDiv.textContent = t('connected');
                 } else if (data.content.toLowerCase().indexOf('generate qrcode is exceded')  !== -1) {
                     console.log("QRCODE EXCEEDED")
-                    qrcodeDiv.innerHTML = ';
+                    qrcodeDiv.innerHTML = '';
                     statusDiv.textContent = 'Generating new QRCode/PairingCode...';
                     attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
                 } else {
-                    qrcodeDiv.innerHTML = '
+                    qrcodeDiv.innerHTML = ''
                     statusDiv.textContent = `Status: ${data.content}`;
                 }
             }
