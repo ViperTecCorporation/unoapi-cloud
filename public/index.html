@@ -1030,9 +1030,9 @@
         const tokenKey = "whatsappApiToken";
 
         const qrcodes = {};
-        let currentPhoneNumber = '
-        let currentQrTimeOut = '
-        let lastTimeout = undefined
+        let currentPhoneNumber = '';
+        let currentQrTimeOut = 0;
+        let lastTimeout = undefined;
         
         const onBroadcast = function(data) {
           if (data.phone == currentPhoneNumber) {
@@ -1672,10 +1672,10 @@
 
             // disconnect websocket on modal close
             $('#connectModal').on('hidden.bs.modal', function () {
-              currentPhoneNumber = '
-              currentQrTimeOut = '
-              document.getElementById('qrCodeContainer').innerHTML = ';
-                    document.getElementById('qrCodeMessage').textContent = t('qrWait');
+              currentPhoneNumber = '';
+              currentQrTimeOut = 0;
+              document.getElementById('qrCodeContainer').innerHTML = '';
+              document.getElementById('qrCodeMessage').textContent = t('qrWait');
             });            
         });
         
