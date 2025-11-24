@@ -519,43 +519,10 @@
           if (launch) {
             launch.addEventListener('click', function() {
               console.log('Embedded launch clicked');
-              const container = document.getElementById('embeddedWidgetContainer');
-              const locale = currentLang === 'pt-BR' ? 'pt_BR' : 'en_US';
-              const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
-              const appId = window.EMBEDDED_SIGNUP_APP_ID || '';
-              if (!appId || !redirect) {
-                alert('Configure EMBEDDED_SIGNUP_APP_ID e EMBEDDED_SIGNUP_REDIRECT_URI.');
-                return;
-              }
-              container.innerHTML = `
-                <div class="whatsapp-embedded-signup"
-                  data-client-name="Unoapi Cloud"
-                  data-redirect-uri="${redirect}"
-                  data-locale="${locale}"
-                  data-phone-input="BR"
-                  data-app-id="${appId}">
-                </div>
-              `;
-              const render = () => {
-                try { FB.XFBML.parse(container) } catch (e) { console.warn('FB parse error', e) }
-              }
-              const waitAndRender = (tries = 0) => {
-                if (window.FB && window.FB.XFBML) {
-                  console.log('FB SDK ready, parsing embedded widget');
-                  render();
-                  return;
-                }
-                if (tries < 10) {
-                  setTimeout(() => waitAndRender(tries + 1), 300);
-                  return;
-                }
-                const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0';
-                const scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management');
-                const fallback = https://www.facebook.com//dialog/oauth?client_id=&redirect_uri=&state=embedded_signup&scope=;
-                console.warn('FB SDK not ready after retries, opening fallback popup');
-                window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
-              };
-              waitAndRender();
+              const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION or 'v24.0'
+scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management')
+const fallback = https://www.facebook.com//dialog/oauth?client_id=&redirect_uri=&state=embedded_signup&scope=;
+window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
             });
           }
         } catch {}
