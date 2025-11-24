@@ -6,7 +6,11 @@ import logger from '../services/logger'
 export class EmbeddedController {
   public async configJs(_req: Request, res: Response) {
     res.setHeader('Content-Type', 'application/javascript')
-    res.send(`window.EMBEDDED_SIGNUP_APP_ID=${JSON.stringify(EMBEDDED_SIGNUP_APP_ID)};window.EMBEDDED_SIGNUP_REDIRECT_URI=${JSON.stringify(EMBEDDED_SIGNUP_REDIRECT_URI)};window.EMBEDDED_SIGNUP_GRAPH_VERSION=${JSON.stringify(EMBEDDED_SIGNUP_GRAPH_VERSION)};`)
+    const appId = EMBEDDED_SIGNUP_APP_ID || ''
+    const redirect = EMBEDDED_SIGNUP_REDIRECT_URI || ''
+    const version = EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0'
+    // Sempre retorna JS válido, mesmo que envs não estejam configuradas (evita SyntaxError no front)
+    res.status(200).send(`window.EMBEDDED_SIGNUP_APP_ID=${JSON.stringify(appId)};window.EMBEDDED_SIGNUP_REDIRECT_URI=${JSON.stringify(redirect)};window.EMBEDDED_SIGNUP_GRAPH_VERSION=${JSON.stringify(version)};`)
   }
 
   public async exchange(req: Request, res: Response) {
