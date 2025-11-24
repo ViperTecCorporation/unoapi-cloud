@@ -430,7 +430,7 @@
       // Inicializa FB SDK assim que carregar (se appId estiver configurado)
       window.fbAsyncInit = function() {
         try {
-          const appId = window.EMBEDDED_SIGNUP_APP_ID || '
+          const appId = window.EMBEDDED_SIGNUP_APP_ID || ''
           if (!appId) return
           FB.init({ appId, xfbml: true, version: window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0' })
         } catch (e) { console.warn('FB init failed', e) }
@@ -441,11 +441,11 @@
         document.querySelectorAll('[data-i18n-title]').forEach(function(el){ el.setAttribute('title', t(el.getAttribute('data-i18n-title'))) })
       }
       // Embedded signup helpers: expect appId from window.EMBEDDED_SIGNUP_APP_ID or data attribute on body
-      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || ';
-      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || ';
+      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || '';
+      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
       function parseEmbeddedFromUrl() {
         try {
-          const params = new URLSearchParams(window.location.search || ');
+          const params = new URLSearchParams(window.location.search || '');
           const phoneId = params.get('wa_phone_id');
           const wabaId = params.get('wa_waba_id');
           const token = params.get('wa_token');
@@ -489,7 +489,7 @@
         }
       }
       (function() {
-        const saved = (localStorage.getItem('unoapi_docs_theme') || ').toLowerCase();
+        const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase();
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
         // Armazena retorno do Embedded se vier via querystring
@@ -571,7 +571,7 @@
           }
           // language setup
           try {
-            const savedLang = localStorage.getItem('unoapi_docs_lang') || '
+            const savedLang = localStorage.getItem('unoapi_docs_lang') || ''
             if (savedLang === 'pt-BR' || savedLang === 'en') { currentLang = savedLang }
           } catch {}
           var sel = document.getElementById('lang'); if (sel) { sel.value = currentLang; sel.addEventListener('change', function(){ currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; applyI18n(); reinitDataTableLang(); }) }
@@ -1240,7 +1240,7 @@
 
             // Render status with icon
             function renderStatus(status) {
-                var raw = (status || ').toString();
+                var raw = (status || '').toString();
                 var s = raw.toLowerCase();
                 if (s === 'online') {
                     return `<span class="status status-online" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
@@ -1391,11 +1391,11 @@
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
                 $('#connectionType').val(session.connectionType);
                 $('#proxyUrl').val(session.proxyUrl);
-                try { $('#webhookForwardUrl').val(session.webhookForward?.url || '); } catch {}
-                try { $('#webhookForwardVersion').val(session.webhookForward?.version || '); } catch {}
-                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '); } catch {}
-                try { $('#webhookForwardToken').val(session.webhookForward?.token || '); } catch {}
-                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '); } catch {}
+                try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
+                try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '') } catch {}
+                try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
+                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '') } catch {}
                 $('#server').val(session.server);
                 // Se houver payload do Embedded guardado, aplica e mantém alerta visível
                 applyEmbeddedToForm(true);
@@ -1458,7 +1458,7 @@
                                 </label>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || '}" class="form-control">
+                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
