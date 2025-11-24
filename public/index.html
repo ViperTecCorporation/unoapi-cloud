@@ -1423,37 +1423,37 @@
                                 <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${webhook.header}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
                                 <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : '}>
-                                    <span class="slider round"></span>
+                                    <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
+                                <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendGroupMessages\" class=\"form-label\" data-i18n=\"whSendGroup\">Send Group Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendNewsletterMessages\" class=\"form-label\" data-i18n=\"whSendNewsletter\">Send Newsletter Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendOutgoingMessages\" class=\"form-label\" data-i18n=\"whSendOutgoing\">Send Outgoing Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendIncomingMessages\" class=\"form-label\" data-i18n=\"whSendIncoming\">Send Incoming Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendUpdateMessages\" class=\"form-label\" data-i18n=\"whSendUpdate\">Send Message Updates</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendTranscribeAudio\" class=\"form-label\" data-i18n=\"whSendTranscribe\">Send Audio Transcription</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : '}>
+                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
@@ -1582,7 +1582,7 @@
                         } else if (data.status === 'connecting') {
                             connectToWebSocket(number, data.qrTimeoutMs);
                         } else if (data.status === 'online') {
-                            document.getElementById('qrCodeContainer').innerHTML = ';
+                            document.getElementById('qrCodeContainer').innerHTML = '';
                             document.getElementById('qrCodeMessage').textContent = t('connected');
                         } else {
                             console.log("Status not offline nor connecting.");
