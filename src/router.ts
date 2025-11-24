@@ -30,6 +30,7 @@ import { ContactDummy } from './services/contact_dummy'
 import { middlewareNext } from './services/middleware_next'
 import { TimerController } from './controllers/timer_controller'
 import { PreflightController } from './controllers/preflight_controller'
+import { EmbeddedController } from './controllers/embedded_controller'
 
 
 export const router = (
@@ -60,6 +61,7 @@ export const router = (
   const blacklistController = new BlacklistController(addToBlacklist)
   const contactsController = new ContactsController(contact)
   const preflightController = new PreflightController(getConfig, contact)
+  const embeddedController = new EmbeddedController()
   const pairingCodeController = new PairingCodeController(getConfig, incoming)
   const connectController = new ConnectController(reload)
   const timerController = new TimerController()
@@ -120,6 +122,10 @@ export const router = (
   router.post('/timer/:phone/:to', middleware, timerController.start.bind(timerController))
   // when client reply, stop timer
   router.delete('/timer/:phone/:to', middleware, timerController.stop.bind(timerController))
+
+  // Embedded Signup helpers
+  router.get('/embedded/config.js', embeddedController.configJs.bind(embeddedController))
+  router.post('/embedded/exchange', express.json(), embeddedController.exchange.bind(embeddedController))
 
   injectRoute(router)
 

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unoapi Cloud — Manager</title>
+    <script src="/embedded/config.js"></script>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- DataTables CSS -->
@@ -20,6 +21,7 @@
         document.write('<' + 'script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js" crossorigin="anonymous"><' + '/script>')
       }
     </script>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
     <style>
         :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; }
         body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; }
@@ -357,6 +359,7 @@
           forwardBusinessIdPh: 'business_account_id',
           forwardHelper: 'Use WhatsApp Cloud Embedded Signup to fetch token and phone_number_id.',
           forwardImport: 'Import Embedded return',
+          forwardLaunch: 'Start Embedded Signup',
           forwardUpdated: 'Cloud data updated. Review and save.'
         },
         'pt-BR': {
@@ -419,6 +422,7 @@
           forwardBusinessIdPh: 'business_account_id',
           forwardHelper: 'Use o Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.',
           forwardImport: 'Importar retorno do Embedded',
+          forwardLaunch: 'Iniciar Embedded Signup',
           forwardUpdated: 'Dados de Cloud atualizados. Revise e salve.'
         }
       };
@@ -484,25 +488,53 @@
         storeEmbeddedPayload();
         window.addEventListener('DOMContentLoaded', function() {
           // Embedded helpers: mostrar appId e bind do botão de importação
-          try {
-            if (EMBEDDED_APP_ID) {
-              const el = document.getElementById('embeddedAppIdDisplay');
-              if (el) { el.textContent = `appId: ${EMBEDDED_APP_ID}`; }
-            }
-          } catch {}
-          try {
-            const btn = document.getElementById('importEmbeddedBtn');
-            if (btn) {
-              btn.addEventListener('click', function() {
-                const payload = consumeEmbeddedPayload();
-                if (!payload) {
-                  alert('Nenhum retorno do Embedded encontrado nesta aba. Conclua o fluxo ou abra pelo link de retorno.');
-                  return;
-                }
-                applyEmbeddedToForm(true);
-              });
-            }
-          } catch {}
+        try {
+          if (EMBEDDED_APP_ID) {
+            const el = document.getElementById('embeddedAppIdDisplay');
+            if (el) { el.textContent = `appId: ${EMBEDDED_APP_ID}`; }
+          }
+        } catch {}
+        try {
+          const btn = document.getElementById('importEmbeddedBtn');
+          if (btn) {
+            btn.addEventListener('click', function() {
+              const payload = consumeEmbeddedPayload();
+              if (!payload) {
+                alert('Nenhum retorno do Embedded encontrado nesta aba. Conclua o fluxo ou abra pelo link de retorno.');
+                return;
+              }
+              applyEmbeddedToForm(true);
+            });
+          }
+          const launch = document.getElementById('launchEmbeddedBtn');
+          if (launch) {
+            launch.addEventListener('click', function() {
+              if (!window.FB || !window.FB.XFBML) {
+                alert('SDK do Facebook ainda não carregou. Tente novamente em instantes.');
+                return;
+              }
+              const container = document.getElementById('embeddedWidgetContainer');
+              const locale = currentLang === 'pt-BR' ? 'pt_BR' : 'en_US';
+              const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+              const appId = window.EMBEDDED_SIGNUP_APP_ID || '';
+              if (!appId || !redirect) {
+                alert('Configure EMBEDDED_SIGNUP_APP_ID e EMBEDDED_SIGNUP_REDIRECT_URI.');
+                return;
+              }
+              container.innerHTML = `
+                <div class="whatsapp-embedded-signup"
+                  data-client-name="Unoapi Cloud"
+                  data-redirect-uri="${redirect}"
+                  data-locale="${locale}"
+                  data-phone-input="BR"
+                  data-app-id="${appId}">
+                </div>
+              `;
+              try { FB.init({ appId, xfbml: true, version: window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0' }) } catch {}
+              try { FB.XFBML.parse(container) } catch {}
+            });
+          }
+        } catch {}
           function reinitDataTableLang() {
             if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
               try { $('#sessionsTable').DataTable().destroy(); } catch {}
@@ -695,8 +727,10 @@
                                   <span data-i18n="forwardHelper">Use Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.</span>
                                   <span id="embeddedAppIdDisplay"></span>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-secondary mt-2" id="launchEmbeddedBtn" data-i18n="forwardLaunch">Iniciar Embedded Signup</button>
                                 <button type="button" class="btn btn-sm btn-primary mt-2" id="importEmbeddedBtn" data-i18n="forwardImport">Importar retorno do Embedded</button>
                                 <div class="alert alert-success mt-2 d-none" id="embeddedSuccess" role="alert" data-i18n="forwardUpdated">Dados de Cloud atualizados. Confira antes de salvar.</div>
+                                <div id="embeddedWidgetContainer" class="mt-2"></div>
                               </div>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">

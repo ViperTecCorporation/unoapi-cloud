@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embedded Signup Callback</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .card { border:1px solid #ddd; border-radius:8px; padding:16px; max-width:480px; margin:auto; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>Processando retorno do Embedded...</h3>
+    <p id="status">Trocando code por token no servidor.</p>
+  </div>
+  <script>
+    (async function() {
+      const params = new URLSearchParams(window.location.search || '');
+      const code = params.get('code');
+      if (!code) {
+        document.getElementById('status').textContent = 'Code não encontrado no retorno.';
+        return;
+      }
+      try {
+        const resp = await fetch('/embedded/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          document.getElementById('status').textContent = 'Erro ao trocar code: ' + txt;
+          return;
+        }
+        const data = await resp.json();
+        localStorage.setItem('embeddedSignupPayload', JSON.stringify({
+          token: data.token,
+          phoneId: data.phone_number_id,
+          wabaId: data.waba_id,
+          version: data.version || 'v24.0'
+        }));
+        document.getElementById('status').textContent = 'Sucesso! Redirecionando...';
+        setTimeout(() => window.location.href = '/', 800);
+      } catch (e) {
+        document.getElementById('status').textContent = 'Erro: ' + (e && e.message ? e.message : e);
+      }
+    })();
+  </script>
+</body>
+</html>

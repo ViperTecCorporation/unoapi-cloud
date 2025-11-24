@@ -200,6 +200,12 @@ export const AVAILABLE_LOCALES = JSON.parse(process.env.AVAILABLE_LOCALES || '["
 export const WAVOIP_TOKEN = process.env.WAVOIP_TOKEN || ''
 export const ONLY_HELLO_TEMPLATE: boolean = process.env.ONLY_HELLO_TEMPLATE === _undefined ? false : process.env.ONLY_HELLO_TEMPLATE == 'true'
 export const DEFAULT_BROWSER = [CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME, release()]
+
+// Embedded Signup (WhatsApp Cloud)
+export const EMBEDDED_SIGNUP_APP_ID = process.env.EMBEDDED_SIGNUP_APP_ID || ''
+export const EMBEDDED_SIGNUP_APP_SECRET = process.env.EMBEDDED_SIGNUP_APP_SECRET || ''
+export const EMBEDDED_SIGNUP_REDIRECT_URI = process.env.EMBEDDED_SIGNUP_REDIRECT_URI || ''
+export const EMBEDDED_SIGNUP_GRAPH_VERSION = process.env.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0'
 export const QR_TIMEOUT_MS = parseInt(process.env.QR_TIMEOUT_MS || '60000')
 export const STATUS_FAILED_WEBHOOK_URL = process.env.STATUS_FAILED_WEBHOOK_URL || ''
 // Status broadcast behavior

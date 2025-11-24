@@ -36,6 +36,8 @@
   - Mantém a modal aberta e exibe um alerta de “Dados de Cloud atualizados. Revise e salve.”
 - Se clicar em “Importar retorno do Embedded” e não houver payload armazenado na aba, é exibido um alerta avisando para concluir o fluxo ou abrir o link de retorno.
 - Clique em “Importar retorno do Embedded” (ou apenas abra a sessão) para aplicar os valores e depois salve a sessão para persistir.
+- Endpoint backend `/embedded/exchange`: troca `code` → `access_token` (usa env `EMBEDDED_SIGNUP_APP_ID`, `EMBEDDED_SIGNUP_APP_SECRET`, `EMBEDDED_SIGNUP_REDIRECT_URI`, versão padrão `EMBEDDED_SIGNUP_GRAPH_VERSION=v24.0`) e tenta preencher `phone_number_id`/`waba_id` automaticamente.
+- Página de callback `public/embedded-callback.html` chama `/embedded/exchange`, guarda o payload em `localStorage` e redireciona para o manager.
 
 ### Webhook Meta (entrada)
 - Configure no BM/WA Cloud: `https://<host>/webhooks/whatsapp/<phone>`
