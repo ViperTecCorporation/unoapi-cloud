@@ -291,6 +291,7 @@
     </style>
 </head>
 <body>
+    <div id="fb-root"></div>
     <script>
       function setTheme(theme) {
         document.body.setAttribute('data-theme', theme);
@@ -517,6 +518,7 @@
           const launch = document.getElementById('launchEmbeddedBtn');
           if (launch) {
             launch.addEventListener('click', function() {
+              console.log('Embedded launch clicked');
               const container = document.getElementById('embeddedWidgetContainer');
               const locale = currentLang === 'pt-BR' ? 'pt_BR' : 'en_US';
               const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
@@ -539,6 +541,7 @@
               }
               const waitAndRender = (tries = 0) => {
                 if (window.FB && window.FB.XFBML) {
+                  console.log('FB SDK ready, parsing embedded widget');
                   render()
                 } else if (tries < 10) {
                   setTimeout(() => waitAndRender(tries + 1), 300)
@@ -745,7 +748,7 @@
                                 <button type="button" class="btn btn-sm btn-secondary mt-2" id="launchEmbeddedBtn" data-i18n="forwardLaunch">Iniciar Embedded Signup</button>
                                 <button type="button" class="btn btn-sm btn-primary mt-2" id="importEmbeddedBtn" data-i18n="forwardImport">Importar retorno do Embedded</button>
                                 <div class="alert alert-success mt-2 d-none" id="embeddedSuccess" role="alert" data-i18n="forwardUpdated">Dados de Cloud atualizados. Confira antes de salvar.</div>
-                                <div id="embeddedWidgetContainer" class="mt-2"></div>
+                                <div id="embeddedWidgetContainer" class="mt-2" style="min-height:80px;"></div>
                               </div>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
