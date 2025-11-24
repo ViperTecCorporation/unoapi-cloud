@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -427,17 +427,25 @@
         }
       };
       function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
+      // Inicializa FB SDK assim que carregar (se appId estiver configurado)
+      window.fbAsyncInit = function() {
+        try {
+          const appId = window.EMBEDDED_SIGNUP_APP_ID || '
+          if (!appId) return
+          FB.init({ appId, xfbml: true, version: window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0' })
+        } catch (e) { console.warn('FB init failed', e) }
+      }
       function applyI18n(){
         document.querySelectorAll('[data-i18n]').forEach(function(el){ el.textContent = t(el.getAttribute('data-i18n')) })
         document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){ el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))) })
         document.querySelectorAll('[data-i18n-title]').forEach(function(el){ el.setAttribute('title', t(el.getAttribute('data-i18n-title'))) })
       }
       // Embedded signup helpers: expect appId from window.EMBEDDED_SIGNUP_APP_ID or data attribute on body
-      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || '';
-      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || ';
+      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || ';
       function parseEmbeddedFromUrl() {
         try {
-          const params = new URLSearchParams(window.location.search || '');
+          const params = new URLSearchParams(window.location.search || ');
           const phoneId = params.get('wa_phone_id');
           const wabaId = params.get('wa_waba_id');
           const token = params.get('wa_token');
@@ -481,7 +489,7 @@
         }
       }
       (function() {
-        const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase();
+        const saved = (localStorage.getItem('unoapi_docs_theme') || ').toLowerCase();
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
         // Armazena retorno do Embedded se vier via querystring
@@ -509,10 +517,6 @@
           const launch = document.getElementById('launchEmbeddedBtn');
           if (launch) {
             launch.addEventListener('click', function() {
-              if (!window.FB || !window.FB.XFBML) {
-                alert('SDK do Facebook ainda não carregou. Tente novamente em instantes.');
-                return;
-              }
               const container = document.getElementById('embeddedWidgetContainer');
               const locale = currentLang === 'pt-BR' ? 'pt_BR' : 'en_US';
               const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
@@ -530,8 +534,19 @@
                   data-app-id="${appId}">
                 </div>
               `;
-              try { FB.init({ appId, xfbml: true, version: window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0' }) } catch {}
-              try { FB.XFBML.parse(container) } catch {}
+              const render = () => {
+                try { FB.XFBML.parse(container) } catch (e) { console.warn('FB parse error', e) }
+              }
+              const waitAndRender = (tries = 0) => {
+                if (window.FB && window.FB.XFBML) {
+                  render()
+                } else if (tries < 10) {
+                  setTimeout(() => waitAndRender(tries + 1), 300)
+                } else {
+                  alert('SDK do Facebook nao carregou. Verifique bloqueio de rede/ads e tente novamente.');
+                }
+              }
+              waitAndRender()
             });
           }
         } catch {}
@@ -556,7 +571,7 @@
           }
           // language setup
           try {
-            const savedLang = localStorage.getItem('unoapi_docs_lang') || ''
+            const savedLang = localStorage.getItem('unoapi_docs_lang') || '
             if (savedLang === 'pt-BR' || savedLang === 'en') { currentLang = savedLang }
           } catch {}
           var sel = document.getElementById('lang'); if (sel) { sel.value = currentLang; sel.addEventListener('change', function(){ currentLang = sel.value; try { localStorage.setItem('unoapi_docs_lang', currentLang) } catch {}; applyI18n(); reinitDataTableLang(); }) }
@@ -755,7 +770,7 @@
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                               <label for="rejectCalls" class="form-label" data-i18n="rejectCallsLabel">Message when rejecting calls</label>
-                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+                              <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = '; this.style.height = this.scrollHeight + 'px'"></textarea>
                             </div>
                             <div class="col-12 col-md-12 col-lg-6">
                               <label for="server" class="form-label" data-i18n="serverLabel">Server</label>
@@ -1015,8 +1030,8 @@
         const tokenKey = "whatsappApiToken";
 
         const qrcodes = {};
-        let currentPhoneNumber = ''
-        let currentQrTimeOut = ''
+        let currentPhoneNumber = '
+        let currentQrTimeOut = '
         let lastTimeout = undefined
         
         const onBroadcast = function(data) {
@@ -1033,19 +1048,19 @@
                 }
                 lastTimeout = setTimeout(function() {
                   qrcodeDiv.innerHTML = t('qrWaitingNew');
-                  qrcodeDiv.textContent = '';
+                  qrcodeDiv.textContent = ';
                 }, timeoutMs);
             } else if (data.type === 'status' && data.content) {
                 if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
-                    qrcodeDiv.innerHTML = '';
+                    qrcodeDiv.innerHTML = ';
                     statusDiv.textContent = t('connected');
                 } else if (data.content.toLowerCase().indexOf('generate qrcode is exceded')  !== -1) {
                     console.log("QRCODE EXCEEDED")
-                    qrcodeDiv.innerHTML = '';
+                    qrcodeDiv.innerHTML = ';
                     statusDiv.textContent = 'Generating new QRCode/PairingCode...';
                     attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
                 } else {
-                    qrcodeDiv.innerHTML = ''
+                    qrcodeDiv.innerHTML = '
                     statusDiv.textContent = `Status: ${data.content}`;
                 }
             }
@@ -1225,7 +1240,7 @@
 
             // Render status with icon
             function renderStatus(status) {
-                var raw = (status || '').toString();
+                var raw = (status || ').toString();
                 var s = raw.toLowerCase();
                 if (s === 'online') {
                     return `<span class="status status-online" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
@@ -1376,11 +1391,11 @@
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
                 $('#connectionType').val(session.connectionType);
                 $('#proxyUrl').val(session.proxyUrl);
-                try { $('#webhookForwardUrl').val(session.webhookForward?.url || ''); } catch {}
-                try { $('#webhookForwardVersion').val(session.webhookForward?.version || ''); } catch {}
-                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || ''); } catch {}
-                try { $('#webhookForwardToken').val(session.webhookForward?.token || ''); } catch {}
-                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || ''); } catch {}
+                try { $('#webhookForwardUrl').val(session.webhookForward?.url || '); } catch {}
+                try { $('#webhookForwardVersion').val(session.webhookForward?.version || '); } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '); } catch {}
+                try { $('#webhookForwardToken').val(session.webhookForward?.token || '); } catch {}
+                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '); } catch {}
                 $('#server').val(session.server);
                 // Se houver payload do Embedded guardado, aplica e mantém alerta visível
                 applyEmbeddedToForm(true);
@@ -1408,42 +1423,42 @@
                                 <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${webhook.header}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
                                 <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendGroupMessages\" class=\"form-label\" data-i18n=\"whSendGroup\">Send Group Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendGroupMessages" ${webhook.sendGroupMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendNewsletterMessages\" class=\"form-label\" data-i18n=\"whSendNewsletter\">Send Newsletter Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendNewsletterMessages" ${webhook.sendNewsletterMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendOutgoingMessages\" class=\"form-label\" data-i18n=\"whSendOutgoing\">Send Outgoing Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendOutgoingMessages" ${webhook.sendOutgoingMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendIncomingMessages\" class=\"form-label\" data-i18n=\"whSendIncoming\">Send Incoming Messages</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendIncomingMessages" ${webhook.sendIncomingMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendUpdateMessages\" class=\"form-label\" data-i18n=\"whSendUpdate\">Send Message Updates</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendUpdateMessages" ${webhook.sendUpdateMessages ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendTranscribeAudio\" class=\"form-label\" data-i18n=\"whSendTranscribe\">Send Audio Transcription</label>
                                 <label class="switch">
-                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
+                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : '}>
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
+                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || '}" class="form-control">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
@@ -1567,7 +1582,7 @@
                         } else if (data.status === 'connecting') {
                             connectToWebSocket(number, data.qrTimeoutMs);
                         } else if (data.status === 'online') {
-                            document.getElementById('qrCodeContainer').innerHTML = '';
+                            document.getElementById('qrCodeContainer').innerHTML = ';
                             document.getElementById('qrCodeMessage').textContent = t('connected');
                         } else {
                             console.log("Status not offline nor connecting.");
@@ -1657,9 +1672,9 @@
 
             // disconnect websocket on modal close
             $('#connectModal').on('hidden.bs.modal', function () {
-              currentPhoneNumber = ''
-              currentQrTimeOut = ''
-              document.getElementById('qrCodeContainer').innerHTML = '';
+              currentPhoneNumber = '
+              currentQrTimeOut = '
+              document.getElementById('qrCodeContainer').innerHTML = ';
                     document.getElementById('qrCodeMessage').textContent = t('qrWait');
             });            
         });
@@ -1714,3 +1729,5 @@
     </script>
 </body>
 </html>
+
+
