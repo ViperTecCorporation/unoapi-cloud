@@ -70,6 +70,9 @@ export const router = (
   // Webhook (Cloud API) roteado por phone_number_id
   router.post('/webhooks/whatsapp', webhookController.whatsappNoParam.bind(webhookController))
   router.get('/webhooks/whatsapp', webhookController.whatsappVerifyNoParam.bind(webhookController))
+  // Compat: rota antiga por sessão (mantida para testes/compatibilidade)
+  router.post('/webhooks/whatsapp/:phone', webhookController.whatsapp.bind(webhookController))
+  router.get('/webhooks/whatsapp/:phone', webhookController.whatsappVerify.bind(webhookController))
 
   // for default webhook
   const webhookFakeController = new WebhookFakeController()
