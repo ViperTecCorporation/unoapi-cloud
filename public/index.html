@@ -542,14 +542,20 @@
               const waitAndRender = (tries = 0) => {
                 if (window.FB && window.FB.XFBML) {
                   console.log('FB SDK ready, parsing embedded widget');
-                  render()
-                } else if (tries < 10) {
-                  setTimeout(() => waitAndRender(tries + 1), 300)
-                } else {
-                  alert('SDK do Facebook nao carregou. Verifique bloqueio de rede/ads e tente novamente.');
+                  render();
+                  return;
                 }
-              }
-              waitAndRender()
+                if (tries < 10) {
+                  setTimeout(() => waitAndRender(tries + 1), 300);
+                  return;
+                }
+                const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0';
+                const scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management');
+                const fallback = https://www.facebook.com//dialog/oauth?client_id=&redirect_uri=&state=embedded_signup&scope=;
+                console.warn('FB SDK not ready after retries, opening fallback popup');
+                window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
+              };
+              waitAndRender();
             });
           }
         } catch {}
