@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import express, { Router } from 'express'
 import { Incoming } from './services/incoming'
 import { Outgoing } from './services/outgoing'
 import { getConfig } from './services/config'
