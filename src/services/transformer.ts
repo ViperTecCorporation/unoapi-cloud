@@ -999,11 +999,18 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const encodedFilename = encodeURIComponent(filename)
         const cleanBaseUrl = `${BASE_URL || ''}`.replace(/\/+$/, '')
         const cleanVersion = `${WEBHOOK_FORWARD_VERSION || ''}`.replace(/^\/+|\/+$/g, '')
-        const downloadUrl = `${cleanBaseUrl}/${cleanVersion}/download/${phone}/${encodedFilename}`
+        const mediaUrlRaw: string | undefined = (binMessage && (binMessage as any).url) || undefined
+        const mediaUrl = (() => {
+          const u = `${mediaUrlRaw || ''}`
+          if (!u) return ''
+          if (u.startsWith('data:')) return ''
+          return u
+        })()
+        const downloadUrl = mediaUrl || `${cleanBaseUrl}/${cleanVersion}/download/${phone}/${encodedFilename}`
         if (mediaType == 'pvt') {
           mediaType = mimetype.split('/')[0]
         }
-        message[mediaType] = { 
+        message[mediaType] = {
           caption: binMessage.caption,
           filename,
           mime_type: mimetype,

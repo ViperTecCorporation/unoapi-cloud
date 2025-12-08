@@ -555,7 +555,7 @@ describe('service transformer', () => {
     const mimetype = 'application/pdf'
     const fileSha256 = `fileSha256 ${new Date().getTime()}`
     const filename = `${id}.pdf`
-    const downloadUrl = `${BASE_URL}/${WEBHOOK_FORWARD_VERSION}/download/${phoneNumer}/${encodeURIComponent(filename)}`
+    const downloadUrl = link
     const input = {
       key: {
         remoteJid,
