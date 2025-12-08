@@ -249,6 +249,8 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     logger.debug('Saved buffer %s!', filePath)
     const mediaId = waMessage.key.id
     const mimeType = mime.lookup(filePath)
+    // Gerar link direto (7 dias) usando o backend de storage (S3 gera presigned)
+    const downloadUrl = await mediaStore.getFileUrl(filePath, 60 * 60 * 24 * 7)
     const payload = {
       messaging_product: 'whatsapp',
       mime_type: mimeType,
@@ -256,9 +258,17 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       file_size: binMessage?.message?.fileLength,
       id: `${phone}/${mediaId}`,
       filename: (chosenMime === 'audio/mpeg' ? filePath : (binMessage?.message?.fileName || filePath)),
+      url: downloadUrl,
     }
     const dataStore = await getDataStore(phone, config)
     await dataStore.setMediaPayload(mediaId!, payload)
+    // Propagar a URL para o payload da mensagem (webhook)
+    try {
+      const type = initial?.messageType && mapMediaType[initial.messageType]
+      if (type && (waMessage as any)?.message?.[initial.messageType]) {
+        ;(waMessage as any).message[initial.messageType].url = downloadUrl
+      }
+    } catch {}
     return waMessage
   }
 
