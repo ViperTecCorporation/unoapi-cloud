@@ -48,7 +48,12 @@ import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
 import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP, JIDMAP_ENRICH_AUTH_ENABLED } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
-import { ONE_TO_ONE_PREASSERT_ENABLED, ONE_TO_ONE_PREASSERT_COOLDOWN_MS, ONE_TO_ONE_ASSERT_PROBE_ENABLED } from '../defaults'
+import {
+  ONE_TO_ONE_PREASSERT_ENABLED,
+  ONE_TO_ONE_PREASSERT_COOLDOWN_MS,
+  ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
+  ONE_TO_ONE_ASSERT_PROBE_ENABLED,
+} from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -1463,7 +1468,21 @@ export const connect = async ({
         try { if (isLidUser(id)) cdKey = jidNormalizedUser(id) } catch {}
         const now = Date.now()
         const last = lastOneToOneAssertAt.get(cdKey) || 0
-        const doPreassert = ONE_TO_ONE_PREASSERT_ENABLED && (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
+        // Throttle persistente opcional: guarda o último preassert em Redis
+        let redisAllow = true
+        const redisTtlSec = ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || 0
+        let redisKey = ''
+        if (redisTtlSec > 0) {
+          try {
+            redisKey = `${BASE_KEY}preassert:1to1:${phone}:${cdKey}`.replace(/[^a-zA-Z0-9:@._-]/g, '_')
+            const existing = await redisGet(redisKey)
+            if (existing) redisAllow = false
+          } catch {}
+        }
+        const doPreassert =
+          ONE_TO_ONE_PREASSERT_ENABLED &&
+          redisAllow &&
+          (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()
         set.add(id)
         try {
@@ -1513,6 +1532,9 @@ export const connect = async ({
         if (doPreassert && targets.length) {
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
+          if (redisTtlSec > 0 && redisKey) {
+            try { await redisSetAndExpire(redisKey, '1', redisTtlSec) } catch {}
+          }
           logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
           try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
         } else {

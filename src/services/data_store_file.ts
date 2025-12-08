@@ -17,8 +17,9 @@ import { getDataStore, dataStores } from './data_store'
 import { Config } from './config'
 import logger from './logger'
 import NodeCache from 'node-cache'
-import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH } from '../defaults'
+import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH, PROFILE_PICTURE_REFRESH_INTERVAL_SEC } from '../defaults'
 import { JIDMAP_CACHE_ENABLED, JIDMAP_TTL_SECONDS } from '../defaults'
+import { BASE_KEY, redisGet, redisSetAndExpire } from './redis'
 
 export const MEDIA_DIR = './data/medias'
 const HOUR = 60 * 60
@@ -242,6 +243,18 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     // Se não existe local ou forçar atualização, buscar no WhatsApp e persistir
     if (!localUrl) {
       let remoteUrl: string | undefined
+      // Throttle opcional: evitar fetch frequente (chave com TTL em Redis)
+      const refreshTtl = PROFILE_PICTURE_REFRESH_INTERVAL_SEC || 0
+      const refreshKey = `${BASE_KEY}profile-picture-refresh:${phone}:${preferredJid}`.replace(/[^a-zA-Z0-9:@._-]/g, '_')
+      if (refreshTtl > 0) {
+        try {
+          const recent = await redisGet(refreshKey)
+          if (recent) {
+            logger.info('PROFILE_PICTURE refresh skipped (throttled %ss): %s', refreshTtl, preferredJid)
+            return localUrl
+          }
+        } catch {}
+      }
       try {
         // Ordem de tentativa:
         // - Se entrada for LID: tenta LID primeiro, depois PN
@@ -272,6 +285,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         localUrl = await buildLocalUrl()
         if (localUrl) {
           logger.info('PROFILE_PICTURE persisted -> local URL: %s', localUrl)
+        }
+        if (refreshTtl > 0) {
+          try { await redisSetAndExpire(refreshKey, '1', refreshTtl) } catch {}
         }
       }
     }

@@ -1,5 +1,18 @@
 import { createClient } from '@redis/client'
-import { REDIS_URL, DATA_TTL, SESSION_TTL, DATA_URL_TTL, JIDMAP_TTL_SECONDS, SIGNAL_PURGE_DEVICE_LIST_ENABLED, SIGNAL_PURGE_SESSION_ENABLED, SIGNAL_PURGE_SENDER_KEY_ENABLED, JIDMAP_ENRICH_PER_SWEEP, WATCHDOG_PURGE_SCAN_COUNT } from '../defaults'
+import {
+  REDIS_URL,
+  DATA_TTL,
+  SESSION_TTL,
+  DATA_URL_TTL,
+  JIDMAP_TTL_SECONDS,
+  SIGNAL_PURGE_DEVICE_LIST_ENABLED,
+  SIGNAL_PURGE_SESSION_ENABLED,
+  SIGNAL_PURGE_SENDER_KEY_ENABLED,
+  JIDMAP_ENRICH_PER_SWEEP,
+  WATCHDOG_PURGE_SCAN_COUNT,
+  WATCHDOG_TASK_MIN_INTERVAL_MS,
+  JIDMAP_ENRICH_MIN_INTERVAL_MS,
+} from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
@@ -8,6 +21,33 @@ export const BASE_KEY = 'unoapi-'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let client: any
+
+const redisTaskQueues: Map<string, Promise<any>> = new Map()
+const redisTaskLastRun: Map<string, number> = new Map()
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// Simple queue + throttle to avoid hammering Redis when the same task is triggered concurrently
+const enqueueRedisTask = async <T>(name: string, fn: () => Promise<T>, minIntervalMs = 0): Promise<T> => {
+  const previous = redisTaskQueues.get(name) || Promise.resolve()
+  const next = previous.then(async () => {
+    if (minIntervalMs > 0) {
+      const last = redisTaskLastRun.get(name) || 0
+      const elapsed = Date.now() - last
+      if (elapsed < minIntervalMs) {
+        await sleep(minIntervalMs - elapsed)
+      }
+    }
+    const result = await fn()
+    redisTaskLastRun.set(name, Date.now())
+    return result
+  }).catch((err) => {
+    try { logger.warn(err as any, 'Redis task %s failed', name) } catch {}
+    redisTaskLastRun.set(name, Date.now())
+    throw err
+  })
+  // store a settled promise to keep the chain alive even after failures
+  redisTaskQueues.set(name, next.then(() => undefined, () => undefined))
+  return next
+}
 
 export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
   if (!client) {
@@ -326,97 +366,99 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
 // This forces Baileys to fetch sessions again on next assert.
-export const delSignalSessionsForJids = async (session: string, jids: string[]) => {
-  try {
-    const base = `${BASE_KEY}auth:${session}:`
-    let totalDeleted = 0
-    for (const raw of (jids || [])) {
-      const v = `${raw || ''}`
-      if (!v) continue
-      // Build variants: full JID, base without domain/suffix, and digits-only PN when available
-      const variants = new Set<string>()
-      variants.add(v)
-      try {
-        const baseId = v.split('@')[0] // remove domain
-        if (baseId) variants.add(baseId)
-        const noDevice = baseId.split(':')[0] // remove :device
-        if (noDevice) variants.add(noDevice)
-      } catch {}
-      try {
-        // digits PN variant (if possible)
-        const digits = v.replace(/\D/g, '')
-        if (digits) variants.add(digits)
-      } catch {}
-      // Known Signal state key families to purge for target address (try with all variants)
-      const patterns: string[] = []
-      for (const id of Array.from(variants)) {
-        if (SIGNAL_PURGE_SESSION_ENABLED) patterns.push(`${base}session-${id}*`)
-        if (SIGNAL_PURGE_SENDER_KEY_ENABLED) patterns.push(`${base}sender-key-${id}*`)
-        if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) patterns.push(`${base}device-list-${id}*`)
-      }
-      for (const p of patterns) {
+export const delSignalSessionsForJids = async (session: string, jids: string[]) =>
+  enqueueRedisTask('delivery-watch-purge', async () => {
+    try {
+      const base = `${BASE_KEY}auth:${session}:`
+      let totalDeleted = 0
+      for (const raw of (jids || [])) {
+        const v = `${raw || ''}`
+        if (!v) continue
+        // Build variants: full JID, base without domain/suffix, and digits-only PN when available
+        const variants = new Set<string>()
+        variants.add(v)
         try {
-          const keys = await redisScanSome(p, Math.max(50, WATCHDOG_PURGE_SCAN_COUNT || 200))
-          let deleted = 0
-          for (const k of keys || []) {
-            try { await redisDel(k); deleted += 1 } catch {}
-          }
-          if (deleted > 0) {
-            totalDeleted += deleted
-            try { logger.debug('DELIVERY_WATCH purge: %s deleted for pattern %s', deleted, p) } catch {}
-          } else {
-            try { logger.debug('DELIVERY_WATCH purge: no keys for pattern %s', p) } catch {}
-          }
+          const baseId = v.split('@')[0] // remove domain
+          if (baseId) variants.add(baseId)
+          const noDevice = baseId.split(':')[0] // remove :device
+          if (noDevice) variants.add(noDevice)
         } catch {}
-      }
-    }
-    try { logger.info('DELIVERY_WATCH purge: total deleted=%s for %s target(s)', totalDeleted, (jids || []).length) } catch {}
-  } catch (e) {
-    try { logger.warn(e as any, 'Ignore error during session purge for %s', session) } catch {}
-  }
-}
-
-// Light probe to count Signal session keys for target JIDs (debug/observability)
-export const countSignalSessionsForJids = async (session: string, jids: string[]) => {
-  try {
-    const base = `${BASE_KEY}auth:${session}:`
-    let total = 0
-    for (const raw of (jids || [])) {
-      const v = `${raw || ''}`
-      if (!v) continue
-      const variants = new Set<string>()
-      variants.add(v)
-      try {
-        const baseId = v.split('@')[0]
-        if (baseId) variants.add(baseId)
-        const noDevice = baseId.split(':')[0]
-        if (noDevice) variants.add(noDevice)
-      } catch {}
-      try {
-        const digits = v.replace(/\D/g, '')
-        if (digits) variants.add(digits)
-      } catch {}
-      for (const id of Array.from(variants)) {
-        const patterns = [
-          `${base}session-${id}*`,
-          `${base}sender-key-${id}*`,
-          `${base}device-list-${id}*`,
-        ]
+        try {
+          // digits PN variant (if possible)
+          const digits = v.replace(/\D/g, '')
+          if (digits) variants.add(digits)
+        } catch {}
+        // Known Signal state key families to purge for target address (try with all variants)
+        const patterns: string[] = []
+        for (const id of Array.from(variants)) {
+          if (SIGNAL_PURGE_SESSION_ENABLED) patterns.push(`${base}session-${id}*`)
+          if (SIGNAL_PURGE_SENDER_KEY_ENABLED) patterns.push(`${base}sender-key-${id}*`)
+          if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) patterns.push(`${base}device-list-${id}*`)
+        }
         for (const p of patterns) {
           try {
             const keys = await redisScanSome(p, Math.max(50, WATCHDOG_PURGE_SCAN_COUNT || 200))
-            const count = (keys || []).length
-            total += count
-            try { logger.debug('ASSERT probe: %s keys (sample) for pattern %s', count, p) } catch {}
+            let deleted = 0
+            for (const k of keys || []) {
+              try { await redisDel(k); deleted += 1 } catch {}
+            }
+            if (deleted > 0) {
+              totalDeleted += deleted
+              try { logger.debug('DELIVERY_WATCH purge: %s deleted for pattern %s', deleted, p) } catch {}
+            } else {
+              try { logger.debug('DELIVERY_WATCH purge: no keys for pattern %s', p) } catch {}
+            }
           } catch {}
         }
       }
+      try { logger.info('DELIVERY_WATCH purge: total deleted=%s for %s target(s)', totalDeleted, (jids || []).length) } catch {}
+    } catch (e) {
+      try { logger.warn(e as any, 'Ignore error during session purge for %s', session) } catch {}
     }
-    try { logger.info('ASSERT probe: total keys=%s for %s target(s)', total, (jids || []).length) } catch {}
-  } catch (e) {
-    try { logger.warn(e as any, 'Ignore error during assert probe for %s', session) } catch {}
-  }
-}
+  }, WATCHDOG_TASK_MIN_INTERVAL_MS)
+
+// Light probe to count Signal session keys for target JIDs (debug/observability)
+export const countSignalSessionsForJids = async (session: string, jids: string[]) =>
+  enqueueRedisTask('delivery-watch-probe', async () => {
+    try {
+      const base = `${BASE_KEY}auth:${session}:`
+      let total = 0
+      for (const raw of (jids || [])) {
+        const v = `${raw || ''}`
+        if (!v) continue
+        const variants = new Set<string>()
+        variants.add(v)
+        try {
+          const baseId = v.split('@')[0]
+          if (baseId) variants.add(baseId)
+          const noDevice = baseId.split(':')[0]
+          if (noDevice) variants.add(noDevice)
+        } catch {}
+        try {
+          const digits = v.replace(/\D/g, '')
+          if (digits) variants.add(digits)
+        } catch {}
+        for (const id of Array.from(variants)) {
+          const patterns = [
+            `${base}session-${id}*`,
+            `${base}sender-key-${id}*`,
+            `${base}device-list-${id}*`,
+          ]
+          for (const p of patterns) {
+            try {
+              const keys = await redisScanSome(p, Math.max(50, WATCHDOG_PURGE_SCAN_COUNT || 200))
+              const count = (keys || []).length
+              total += count
+              try { logger.debug('ASSERT probe: %s keys (sample) for pattern %s', count, p) } catch {}
+            } catch {}
+          }
+        }
+      }
+      try { logger.info('ASSERT probe: total keys=%s for %s target(s)', total, (jids || []).length) } catch {}
+    } catch (e) {
+      try { logger.warn(e as any, 'Ignore error during assert probe for %s', session) } catch {}
+    }
+  }, WATCHDOG_TASK_MIN_INTERVAL_MS)
 
 export const blacklist = (from: string, webhookId: string, to: string) => {
   return `${BASE_KEY}blacklist:${from}:${webhookId}:${to}`
@@ -673,63 +715,64 @@ export const setContactInfo = async (phone: string, jid: string, info: any) => {
 }
 
 // Varre contact-info da sessão e enriquece o JIDMAP PN<->LID
-export const enrichJidMapFromContactInfo = async (session: string, limit = 2000) => {
-  try {
-    const base = `${BASE_KEY}contact-info:${session}:`
-    const pattern = `${BASE_KEY}contact-info:${session}:*`
-    const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:contact-info`
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const c: any = await getRedis()
-    let cursor: string = (await redisGet(cursorKey)) || '0'
-    let updated = 0
-    let scanned = 0
-    while (scanned < limit) {
-      let res: any
-      try { res = await c.scan(cursor, { MATCH: pattern, COUNT: Math.max(50, limit) }) } catch { break }
-      if (!res) break
-      cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
-      const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
-      if (!Array.isArray(keys) || keys.length === 0) {
+export const enrichJidMapFromContactInfo = async (session: string, limit = 2000) =>
+  enqueueRedisTask('jidmap-enrich-contact', async () => {
+    try {
+      const base = `${BASE_KEY}contact-info:${session}:`
+      const pattern = `${BASE_KEY}contact-info:${session}:*`
+      const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:contact-info`
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c: any = await getRedis()
+      let cursor: string = (await redisGet(cursorKey)) || '0'
+      let updated = 0
+      let scanned = 0
+      while (scanned < limit) {
+        let res: any
+        try { res = await c.scan(cursor, { MATCH: pattern, COUNT: Math.max(50, limit) }) } catch { break }
+        if (!res) break
+        cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
+        const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
+        if (!Array.isArray(keys) || keys.length === 0) {
+          if (cursor === '0') break
+          continue
+        }
+        for (const k of keys) {
+          if (scanned >= limit) break
+          scanned += 1
+          try {
+            const jid = k.substring(base.length)
+            const raw = await redisGet(k)
+            if (!raw) continue
+            const info = typeof raw === 'string' ? JSON.parse(raw) : raw
+            if (!info) continue
+            // LID -> PN
+            if (typeof jid === 'string' && jid.endsWith('@lid')) {
+              let pnJid: string | undefined = info?.pnJid
+              if (!pnJid && info?.pn) {
+                const digits = `${info.pn}`.replace(/\D/g, '')
+                if (digits) pnJid = `${digits}@s.whatsapp.net`
+              }
+              if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
+                try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
+              }
+            }
+            // PN -> LID
+            if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
+              const lidJid: string | undefined = info?.lidJid
+              if (lidJid && lidJid.endsWith('@lid')) {
+                try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
+              }
+            }
+          } catch {}
+        }
         if (cursor === '0') break
-        continue
       }
-      for (const k of keys) {
-        if (scanned >= limit) break
-        scanned += 1
-        try {
-          const jid = k.substring(base.length)
-          const raw = await redisGet(k)
-          if (!raw) continue
-          const info = typeof raw === 'string' ? JSON.parse(raw) : raw
-          if (!info) continue
-          // LID -> PN
-          if (typeof jid === 'string' && jid.endsWith('@lid')) {
-            let pnJid: string | undefined = info?.pnJid
-            if (!pnJid && info?.pn) {
-              const digits = `${info.pn}`.replace(/\D/g, '')
-              if (digits) pnJid = `${digits}@s.whatsapp.net`
-            }
-            if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
-              try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
-            }
-          }
-          // PN -> LID
-          if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
-            const lidJid: string | undefined = info?.lidJid
-            if (lidJid && lidJid.endsWith('@lid')) {
-              try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
-            }
-          }
-        } catch {}
-      }
-      if (cursor === '0') break
+      try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
+      try { logger.info('JIDMAP enrich: scanned=%s updated=%s (limit=%s) for session=%s', scanned, updated, limit, session) } catch {}
+    } catch (e) {
+      try { logger.warn(e as any, 'JIDMAP enrich failed for session=%s', session) } catch {}
     }
-    try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
-    try { logger.info('JIDMAP enrich: scanned=%s updated=%s (limit=%s) for session=%s', scanned, updated, limit, session) } catch {}
-  } catch (e) {
-    try { logger.warn(e as any, 'JIDMAP enrich failed for session=%s', session) } catch {}
-  }
-}
+  }, JIDMAP_ENRICH_MIN_INTERVAL_MS)
 
 // Fast-path lookups into Baileys internal auth lid-mapping cache (per-session)
 // Attempts to resolve PN JID from LID JID without a full sweep
@@ -832,61 +875,62 @@ export const bootstrapJidMapGlobalOnce = async (): Promise<void> => {
 }
 
 // Mirror Baileys internal per-session lid-mapping cache into our JIDMAP
-export const enrichJidMapFromAuthLidCache = async (session: string): Promise<void> => {
-  try {
-    const base = `${BASE_KEY}auth:${session}:`
-    const pattern = `${base}lid-mapping-*`
-    const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:auth-lid-cache`
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const c: any = await getRedis()
-    let cursor: string = (await redisGet(cursorKey)) || '0'
-    let updated = 0
-    let scanned = 0
-    const limit = Math.max(50, JIDMAP_ENRICH_PER_SWEEP || 200)
-    // Varre um pedaço por execução para reduzir custo (SCAN + COUNT)
-    let res: any
-    try { res = await c.scan(cursor, { MATCH: pattern, COUNT: limit }) } catch { res = undefined }
-    if (res) {
-      cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
-      const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
-      for (const k of keys || []) {
-        if (scanned >= limit) break
-        scanned += 1
-        try {
-          const v = await redisGet(k)
-          if (!v) continue
-          const sufIdx = k.indexOf('lid-mapping-')
-          if (sufIdx < 0) continue
-          const suffix = k.substring(sufIdx + 'lid-mapping-'.length)
-          const rawVal = `${v}`
-          const isReverse = suffix.endsWith('_reverse')
-          if (isReverse) {
-            const lidDigits = suffix.replace('_reverse', '').replace(/\D/g, '')
-            const lidJid = lidDigits ? `${lidDigits}@lid` : undefined
-            let pnJid: string | undefined
-            if (rawVal.endsWith('@s.whatsapp.net')) pnJid = rawVal
-            else {
-              const pnDigits = rawVal.replace(/\D/g, '')
-              if (pnDigits) pnJid = `${pnDigits}@s.whatsapp.net`
+export const enrichJidMapFromAuthLidCache = async (session: string): Promise<void> =>
+  enqueueRedisTask('jidmap-enrich-auth', async () => {
+    try {
+      const base = `${BASE_KEY}auth:${session}:`
+      const pattern = `${base}lid-mapping-*`
+      const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:auth-lid-cache`
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c: any = await getRedis()
+      let cursor: string = (await redisGet(cursorKey)) || '0'
+      let updated = 0
+      let scanned = 0
+      const limit = Math.max(50, JIDMAP_ENRICH_PER_SWEEP || 200)
+      // Varre um pedaço por execução para reduzir custo (SCAN + COUNT)
+      let res: any
+      try { res = await c.scan(cursor, { MATCH: pattern, COUNT: limit }) } catch { res = undefined }
+      if (res) {
+        cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
+        const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
+        for (const k of keys || []) {
+          if (scanned >= limit) break
+          scanned += 1
+          try {
+            const v = await redisGet(k)
+            if (!v) continue
+            const sufIdx = k.indexOf('lid-mapping-')
+            if (sufIdx < 0) continue
+            const suffix = k.substring(sufIdx + 'lid-mapping-'.length)
+            const rawVal = `${v}`
+            const isReverse = suffix.endsWith('_reverse')
+            if (isReverse) {
+              const lidDigits = suffix.replace('_reverse', '').replace(/\D/g, '')
+              const lidJid = lidDigits ? `${lidDigits}@lid` : undefined
+              let pnJid: string | undefined
+              if (rawVal.endsWith('@s.whatsapp.net')) pnJid = rawVal
+              else {
+                const pnDigits = rawVal.replace(/\D/g, '')
+                if (pnDigits) pnJid = `${pnDigits}@s.whatsapp.net`
+              }
+              if (pnJid && lidJid) {
+                try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
+              }
+            } else {
+              const pnDigits = suffix.replace(/\D/g, '')
+              const pnJid = pnDigits ? `${pnDigits}@s.whatsapp.net` : undefined
+              const lidJid = rawVal
+              if (pnJid && typeof lidJid === 'string' && lidJid.endsWith('@lid')) {
+                try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
+              }
             }
-            if (pnJid && lidJid) {
-              try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
-            }
-          } else {
-            const pnDigits = suffix.replace(/\D/g, '')
-            const pnJid = pnDigits ? `${pnDigits}@s.whatsapp.net` : undefined
-            const lidJid = rawVal
-            if (pnJid && typeof lidJid === 'string' && lidJid.endsWith('@lid')) {
-              try { await setJidMapping(session, pnJid, lidJid); updated += 1 } catch {}
-            }
-          }
-        } catch {}
+          } catch {}
+        }
       }
-    }
-    try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
-    try { logger.info('JIDMAP enrich(auth): session=%s scanned=%s updated=%s', session, scanned, updated) } catch {}
-  } catch (e) { try { logger.warn(e as any, 'JIDMAP enrich(auth) failed for session=%s', session) } catch {} }
-}
+      try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
+      try { logger.info('JIDMAP enrich(auth): session=%s scanned=%s updated=%s', session, scanned, updated) } catch {}
+    } catch (e) { try { logger.warn(e as any, 'JIDMAP enrich(auth) failed for session=%s', session) } catch {} }
+  }, JIDMAP_ENRICH_MIN_INTERVAL_MS)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setMessage = async (phone: string, jid: string, id: string, value: any) => {

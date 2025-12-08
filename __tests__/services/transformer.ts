@@ -17,6 +17,7 @@ import {
   isOutgoingMessage,
   getChatAndNumberAndId,
 } from '../../src/services/transformer'
+import { BASE_URL, WEBHOOK_FORWARD_VERSION } from '../../src/defaults'
 const key = { remoteJid: 'XXXX@s.whatsapp.net', id: 'abc' }
 
 const documentMessage: proto.Message.IDocumentMessage = {
@@ -554,6 +555,7 @@ describe('service transformer', () => {
     const mimetype = 'application/pdf'
     const fileSha256 = `fileSha256 ${new Date().getTime()}`
     const filename = `${id}.pdf`
+    const downloadUrl = `${BASE_URL}/${WEBHOOK_FORWARD_VERSION}/download/${phoneNumer}/${encodeURIComponent(filename)}`
     const input = {
       key: {
         remoteJid,
@@ -587,15 +589,16 @@ describe('service transformer', () => {
                     id,
                     timestamp: messageTimestamp,
                     audio: {
-                      caption: text,
-                      mime_type: mimetype,
-                      id: `${phoneNumer}/${id}`,
-                      sha256: fileSha256,
-                      filename,
-                    },
-                    type: 'audio',
+                    caption: text,
+                    mime_type: mimetype,
+                    id: `${phoneNumer}/${id}`,
+                    sha256: fileSha256,
+                    filename,
+                    url: downloadUrl,
                   },
-                ],
+                  type: 'audio',
+                },
+              ],
                 contacts: [{ profile: { name: pushName }, wa_id: remotePhoneNumber }],
                 statuses: [],
                 errors: [],

@@ -176,7 +176,7 @@ export const STORAGE_MAX_ATTEMPTS = parseInt(process.env.STORAGE_MAX_ATTEMPTS ||
 
 // Purga opcional de device-list no watchdog (para forçar reenumeração de devices)
 export const SIGNAL_PURGE_DEVICE_LIST_ENABLED =
-  process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED === _undefined ? true : process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED == 'true'
+  process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED === _undefined ? false : process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED == 'true'
 // Controla purga de sessões libsignal (session-*) no watchdog. Padrão false para preservar sessões boas
 export const SIGNAL_PURGE_SESSION_ENABLED =
   process.env.SIGNAL_PURGE_SESSION_ENABLED === _undefined ? false : process.env.SIGNAL_PURGE_SESSION_ENABLED == 'true'
@@ -187,6 +187,8 @@ export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE ==
 // Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
 export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
   process.env.PROFILE_PICTURE_FORCE_REFRESH === _undefined ? true : process.env.PROFILE_PICTURE_FORCE_REFRESH == 'true'
+// Tempo mínimo entre atualizações forçadas de foto de perfil (segundos). Padrão 4h.
+export const PROFILE_PICTURE_REFRESH_INTERVAL_SEC = parseInt(process.env.PROFILE_PICTURE_REFRESH_INTERVAL_SEC || `${60 * 60 * 4}`)
 export const IGNORED_CONNECTIONS_NUMBERS = JSON.parse(process.env.IGNORED_CONNECTIONS_NUMBERS || '[]')
 export const IGNORED_TO_NUMBERS = JSON.parse(process.env.IGNORED_TO_NUMBERS || '[]')
 export const CLEAN_CONFIG_ON_DISCONNECT =
@@ -288,6 +290,8 @@ export const ONE_TO_ONE_PREASSERT_ENABLED =
   process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
 export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
+// TTL do throttle de preassert 1:1 persistido no Redis (segundos). Padrão 4h.
+export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || `${60 * 60 * 4}`)
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
 export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
@@ -318,7 +322,7 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
 
 // Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
 export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
-export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '45000')
+export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '120000')
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
@@ -345,12 +349,15 @@ export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PE
 
 // Enriquecimento do JIDMAP (PN<->LID) a partir do contact-info
 export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_ENABLED == 'true'
-export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '200')
+export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '50')
 // Espelhar periodicamente o cache interno (unoapi-auth:*:lid-mapping-*) no JIDMAP
 export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'
 
 // Watchdog purge scan batch size (Redis SCAN COUNT per pattern)
-export const WATCHDOG_PURGE_SCAN_COUNT = parseInt(process.env.WATCHDOG_PURGE_SCAN_COUNT || '200')
+export const WATCHDOG_PURGE_SCAN_COUNT = parseInt(process.env.WATCHDOG_PURGE_SCAN_COUNT || '20')
+// Pace background Redis-heavy tasks (ms). Helps avoid CPU spikes under bursts.
+export const WATCHDOG_TASK_MIN_INTERVAL_MS = parseInt(process.env.WATCHDOG_TASK_MIN_INTERVAL_MS || '1500')
+export const JIDMAP_ENRICH_MIN_INTERVAL_MS = parseInt(process.env.JIDMAP_ENRICH_MIN_INTERVAL_MS || '3000')
 
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")

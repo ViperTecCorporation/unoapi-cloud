@@ -5,7 +5,13 @@ import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
 import { SendError } from './send_error'
-import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT, WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
+import {
+  BASE_URL,
+  MESSAGE_CHECK_WAAPP,
+  SEND_AUDIO_MESSAGE_AS_PTT,
+  WEBHOOK_FORWARD_VERSION,
+  WEBHOOK_PREFER_PN_OVER_LID,
+} from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -990,6 +996,10 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const mimetype = (rawMime && rawMime.split(';')[0]) || 'application/octet-stream'
         const extension = (mime.extension(mimetype) || 'bin') as string
         const filename = (binMessage && (binMessage as any).fileName) || `${whatsappMessageId}.${extension}`
+        const encodedFilename = encodeURIComponent(filename)
+        const cleanBaseUrl = `${BASE_URL || ''}`.replace(/\/+$/, '')
+        const cleanVersion = `${WEBHOOK_FORWARD_VERSION || ''}`.replace(/^\/+|\/+$/g, '')
+        const downloadUrl = `${cleanBaseUrl}/${cleanVersion}/download/${phone}/${encodedFilename}`
         if (mediaType == 'pvt') {
           mediaType = mimetype.split('/')[0]
         }
@@ -998,6 +1008,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           filename,
           mime_type: mimetype,
           sha256: binMessage.fileSha256,
+          url: downloadUrl,
           // url: binMessage.url && binMessage.url.indexOf('base64') < 0 ? binMessage.url : '',
           id: mediaKey,
         }
