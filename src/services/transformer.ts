@@ -1010,11 +1010,27 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         if (mediaType == 'pvt') {
           mediaType = mimetype.split('/')[0]
         }
+        const normalizeSha256 = (v: any): string | undefined => {
+          try {
+            if (!v) return undefined
+            if (typeof v === 'string') return v
+            if (v?.type === 'Buffer' && Array.isArray(v?.data)) {
+              return Buffer.from(v.data).toString('base64')
+            }
+            if (Array.isArray(v)) {
+              return Buffer.from(v as any).toString('base64')
+            }
+            if (v instanceof Uint8Array) {
+              return Buffer.from(v).toString('base64')
+            }
+          } catch {}
+          return undefined
+        }
         message[mediaType] = {
           caption: binMessage.caption,
           filename,
           mime_type: mimetype,
-          sha256: binMessage.fileSha256,
+          sha256: normalizeSha256((binMessage as any)?.fileSha256),
           url: downloadUrl,
           // url: binMessage.url && binMessage.url.indexOf('base64') < 0 ? binMessage.url : '',
           id: mediaKey,
