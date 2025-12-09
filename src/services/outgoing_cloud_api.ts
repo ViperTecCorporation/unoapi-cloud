@@ -43,6 +43,38 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
         return mm
       })
     }
+    if (value?.statuses && Array.isArray(value.statuses)) {
+      value.statuses = value.statuses.map((s: any) => {
+        const ss = { ...s }
+        // id apenas o uuid (sem phone/)
+        try {
+          const raw = `${ss.id || ''}`
+          if (raw.includes('/')) ss.id = raw.split('/').pop()
+        } catch {}
+        // timestamp como string
+        try {
+          if (typeof ss.timestamp !== 'string') ss.timestamp = `${ss.timestamp || ''}`
+        } catch {}
+        // recipient_id somente dígitos
+        try {
+          if (typeof ss.recipient_id === 'string') ss.recipient_id = ss.recipient_id.replace(/\D/g, '')
+        } catch {}
+        // errors: manter apenas code/title/message/error_data
+        try {
+          if (Array.isArray(ss.errors)) {
+            ss.errors = ss.errors.map((e: any) => {
+              const out: any = {}
+              if (typeof e?.code !== 'undefined') out.code = e.code
+              if (typeof e?.title !== 'undefined') out.title = e.title
+              if (typeof e?.message !== 'undefined') out.message = e.message
+              if (e?.error_data) out.error_data = e.error_data
+              return out
+            })
+          }
+        } catch {}
+        return ss
+      })
+    }
     return data
   } catch (e) {
     logger.warn(e as any, 'Unable to normalize payload for typebot (session=%s)', phone)
