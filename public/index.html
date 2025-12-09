@@ -328,7 +328,7 @@
           sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
           notifyFailures: 'Notify Failures', sendTyping: 'Send "Typing"', sendReactionAsReply: 'Send Reaction As Reply', ignoreOwnMessages: 'Ignore Own Messages', ignoreYourselfMessages: 'Ignore Yourself Messages', autoConnect: 'Auto Connect', ignoreBroadcastMessages: 'Ignore Broadcast Lists',
           whId: 'ID', whIdPh: 'Webhook ID', whUrlAbs: 'Absolute URL', whUrlAbsPh: 'Webhook Absolute URL', whToken: 'Token', whTokenPh: 'Webhook Token', whHeader: 'Header', whHeaderPh: 'Webhook Header',
-          whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', remove: 'Remove',
+          whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', whTypebot: 'Typebot payload (Cloud API strict)', remove: 'Remove',
           btnEdit: 'Edit', btnConnect: 'Connect', btnDelete: 'Delete', btnTest: 'Test',
           confirmDelete: 'Are you sure you want to delete this session?',
           apiNoQr: 'API did not generate the QR Code.', tokenNotFound: 'Token not found.',
@@ -391,7 +391,7 @@
           sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
           notifyFailures: 'Notificar Falhas', sendTyping: 'Enviar "Digitando"', sendReactionAsReply: 'Enviar Reação Como Resposta', ignoreOwnMessages: 'Ignorar Mensagens Próprias', ignoreYourselfMessages: 'Ignorar Suas Mensagens', autoConnect: 'Conexão Automática', ignoreBroadcastMessages: 'Ignorar Listas de Transmissão',
           whId: 'ID', whIdPh: 'ID do Webhook', whUrlAbs: 'URL Absoluta', whUrlAbsPh: 'URL Absoluta do Webhook', whToken: 'Token', whTokenPh: 'Token do Webhook', whHeader: 'Header', whHeaderPh: 'Header do Webhook',
-          whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', remove: 'Remover',
+          whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', whTypebot: 'Payload Typebot (schema Cloud API)', remove: 'Remover',
           btnEdit: 'Editar', btnConnect: 'Conectar', btnDelete: 'Deletar', btnTest: 'Testar',
           confirmDelete: 'Tem certeza que deseja deletar essa sessão?',
           apiNoQr: 'API não gerou o QRCODE.', tokenNotFound: 'Token não encontrado.',
@@ -940,6 +940,10 @@
                                     <input type="checkbox" class="webhook-sendTranscribeAudio">
                                     <span class="slider round"></span>
                                 </label>
+                                <div class="form-check mt-2">
+                                  <input class="form-check-input webhook-typebot" type="checkbox">
+                                  <label class="form-check-label" data-i18n="whTypebot">Typebot payload (Cloud API strict)</label>
+                                </div>
                                 <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
                                 <label>
                                     <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" class="form-control">
@@ -1434,13 +1438,17 @@
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendTranscribeAudio\" class=\"form-label\" data-i18n=\"whSendTranscribe\">Send Audio Transcription</label>
-                                <label class="switch">
-                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
-                                    <span class="slider round"></span>
+                                <label class=\"switch\">
+                                    <input type=\"checkbox\" class=\"webhook-sendTranscribeAudio\" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
+                                    <span class=\"slider round\"></span>
                                 </label>
+                                <div class=\"form-check mt-2\">
+                                  <input class=\"form-check-input webhook-typebot\" type=\"checkbox\" ${webhook.typebot ? 'checked' : ''}>
+                                  <label class=\"form-check-label\" data-i18n=\"whTypebot\">Typebot payload (Cloud API strict)</label>
+                                </div>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
+                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}\" class=\"form-control\">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
@@ -1514,6 +1522,7 @@
                             sendIncomingMessages: $(this).find('.webhook-sendIncomingMessages').is(':checked'),
                             sendUpdateMessages: $(this).find('.webhook-sendUpdateMessages').is(':checked'),
                             sendTranscribeAudio: $(this).find('.webhook-sendTranscribeAudio').is(':checked'),
+                            typebot: $(this).find('.webhook-typebot').is(':checked'),
                             addToBlackListOnOutgoingMessageWithTtl: $(this).find('.webhook-addToBlackListOnOutgoingMessageWithTtl').val(),
                         };
                     sessionData.webhooks.push(webhook);

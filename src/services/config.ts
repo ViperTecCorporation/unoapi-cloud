@@ -28,6 +28,7 @@ export type Webhook = {
   sendIncomingMessages: boolean
   sendTranscribeAudio: boolean
   addToBlackListOnOutgoingMessageWithTtl: number | undefined
+  typebot?: boolean
 }
 
 export type WebhookForward = {
@@ -153,7 +154,8 @@ export const defaultConfig: Config = {
       sendUpdateMessages: true,
       sendIncomingMessages: true,
       sendTranscribeAudio: false,
-      addToBlackListOnOutgoingMessageWithTtl: undefined
+      addToBlackListOnOutgoingMessageWithTtl: undefined,
+      typebot: false,
     },
   ],
   webhookForward: {},

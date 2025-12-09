@@ -7,6 +7,48 @@ import { WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
+// Ajusta payload para schema Cloud API estrito (Typebot)
+const normalizePayloadForTypebot = (payload: any, phone: string) => {
+  try {
+    const data = JSON.parse(JSON.stringify(payload))
+    const value = data?.entry?.[0]?.changes?.[0]?.value
+    if (value?.messages && Array.isArray(value.messages)) {
+      value.messages = value.messages.map((m: any) => {
+        const mm = { ...m }
+        const mediaTypes = ['image', 'video', 'audio', 'document', 'sticker', 'ptv']
+        for (const mt of mediaTypes) {
+          if (mm[mt]) {
+            const media = { ...mm[mt] }
+            const rawId = `${media.id || ''}`
+            const cleanId = rawId.includes('/') ? rawId.split('/').pop() : rawId
+            media.id = cleanId || rawId || ''
+            if (media.filename !== undefined) delete media.filename
+            if (media.url !== undefined) delete media.url
+            if (media.caption === null) delete media.caption
+            // sha256 deve ser string
+            try {
+              const v = media.sha256
+              if (v && typeof v !== 'string') {
+                media.sha256 = Buffer.isBuffer(v) ? v.toString('base64') : Buffer.from(v).toString('base64')
+              }
+            } catch { media.sha256 = undefined }
+            mm[mt] = media
+          }
+        }
+        // Forçar id de mensagem apenas como uuid (sem phone/)
+        try {
+          const raw = `${mm.id || ''}`
+          if (raw.includes('/')) mm.id = raw.split('/').pop()
+        } catch {}
+        return mm
+      })
+    }
+    return data
+  } catch (e) {
+    logger.warn(e as any, 'Unable to normalize payload for typebot (session=%s)', phone)
+    return payload
+  }
+}
 
 export class OutgoingCloudApi implements Outgoing {
   private getConfig: getConfig
@@ -30,7 +72,9 @@ export class OutgoingCloudApi implements Outgoing {
     await Promise.all(promises)
   }
 
-  public async sendHttp(phone: string, webhook: Webhook, message: object, _options: Partial<PublishOption> = {}) {
+  public async sendHttp(phone: string, webhook: Webhook, message: any, _options: Partial<PublishOption> = {}) {
+    // Clone to avoid cross-webhook mutations
+    try { message = JSON.parse(JSON.stringify(message)) } catch {}
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)
@@ -300,6 +344,10 @@ export class OutgoingCloudApi implements Outgoing {
         } catch {}
       }
     } catch {}
+    // Aplicar schema Typebot (Cloud API estrito) se habilitado no webhook
+    if (webhook.typebot) {
+      message = normalizePayloadForTypebot(message, phone)
+    }
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
