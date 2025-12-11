@@ -15,10 +15,24 @@ import { getConfig } from '../services/config'
 import { isUpdateMessage, isFailedStatus } from '../services/transformer'
 
 const  dUntil: Map<string, number> = new Map()
-const  dVerified: Map<string, boolean> = new Map()
+const  dVerified: Map<string, number> = new Map()
+const VERIFIED_TTL_MS = 24 * 60 * 60 * 1000
 
 const sleep = (ms) => {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const cleanDelayState = (now: number) => {
+  for (const [key, ts] of dVerified) {
+    if (now - ts > VERIFIED_TTL_MS) {
+      dVerified.delete(key)
+    }
+  }
+  for (const [key, next] of dUntil) {
+    if (now - next > VERIFIED_TTL_MS) {
+      dUntil.delete(key)
+    }
+  }
 }
 
 const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, payload) => {
@@ -26,6 +40,8 @@ const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, pa
  
   if (to) {
     const key = `${phone}:${to}`
+    const now = Date.now()
+    cleanDelayState(now)
     if (!dVerified.get(key)) {
       let nextMessageTime = dUntil.get(key)
       const epochMS: number = Math.floor(Date.now());
@@ -40,7 +56,7 @@ const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, pa
           await sleep(thisMessageDelay)
         } else {
           logger.debug('Key %s doesn\'t need more delays', key)
-          dVerified.set(key, true);
+          dVerified.set(key, now);
           dUntil.delete(key);
         }
       } 

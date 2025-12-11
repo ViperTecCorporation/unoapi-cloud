@@ -51,7 +51,15 @@ type QueueObject = {
 const exchanges = new Map<string, boolean>()
 const queues = new Map<string, QueueObject>()
 const routes = new Map<string, boolean>()
-const consumers = new Map<string, boolean>()
+const ROUTES_CACHE_LIMIT = 10000
+type ConsumerConfig = {
+  exchange: string
+  queue: string
+  routingKey: string
+  callback: ConsumeCallback
+  options: Partial<CreateOption>
+}
+const consumerConfigs = new Map<string, ConsumerConfig>()
 
 export const extractRoutingKeyFromBindingKey = (bindingKey) => {
   const parts = bindingKey.split('.')
@@ -85,6 +93,20 @@ export interface ConsumeCallback {
   (routingKey: string, data: object, options?: { countRetries: number; maxRetries: number }): Promise<void>
 }
 
+const resetAmqpState = (reason: unknown) => {
+  try {
+    logger.warn(reason as any, 'Resetting AMQP state after connection issue')
+  } catch {
+    logger.warn('Resetting AMQP state after connection issue')
+  }
+  amqpChannel = undefined
+  amqpChannelModel = undefined
+  exchanges.clear()
+  queues.clear()
+}
+
+const consumerId = (exchange: string, queue: string, routingKey: string) => `${exchange}::${queue}::${routingKey}`
+
 export const amqpConnect = async (amqpUrl = AMQP_URL) => {
   if (!amqpChannelModel) {
     logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
@@ -96,11 +118,11 @@ export const amqpConnect = async (amqpUrl = AMQP_URL) => {
 
   amqpChannelModel.on('error', (err) => {
     logger.error(err, 'Connection Error')
-    amqpChannelModel = undefined
+    resetAmqpState(err)
   })
   amqpChannelModel.on('close', (err) => {
     logger.error(err, 'Connection Closed')
-    amqpChannelModel = undefined
+    resetAmqpState(err)
   })
 
   return amqpChannelModel
@@ -192,6 +214,10 @@ export const amqpGetQueue = async (
   if (/^\d+$/.test(routingKey) && !routes.get(routingKey)) {
     await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, `${UNOAPI_QUEUE_BIND}.${UNOAPI_SERVER_NAME}`, '', { routingKey }, { type: 'direct' })
     routes.set(routingKey, true)
+    if (routes.size > ROUTES_CACHE_LIMIT) {
+      const first = routes.keys().next().value
+      routes.delete(first)
+    }
   }
   return queues.get(queue)!
 }
@@ -222,9 +248,11 @@ export const amqpPublish = async (
 ) => {
   validateRoutingKey(routingKey)
   const channel = await amqpGetChannel()
+  const prefetch = options.prefetch ?? 1
+  options.prefetch = prefetch
   options.type = options.type || getExchangeType(exchange)
   logger.debug('Publishing at exchange: %s, with queue: %s, routing key: %s and type: %s', exchange, queue, routingKey, options.type)
-  await amqpGetExchange(exchange, options.type!, options.prefetch!)
+  await amqpGetExchange(exchange, options.type!, prefetch)
   const { queueMain, queueDead, queueDelayed } = await amqpGetQueue(exchange, queue, routingKey, options)
   const { delay, dead, maxRetries, countRetries } = options
   const headers: any = {}
@@ -273,74 +301,102 @@ export const amqpConsume = async (
 ) => {
   logger.debug('Configurate to consume exchange: %s, queue: %s, routing key: %s and type: %s', exchange, queue, routingKey, options.type)
   validateRoutingKey(routingKey)
-  await amqpGetExchange(exchange, options.type!, options.prefetch!)
-  const channel = await amqpGetChannel()
-  await amqpGetQueue(exchange, queue, routingKey, options)
-  const fn = async (payload: ConsumeMessage | null) => {
-    if (!payload) {
-      throw `payload not be null `
-    }
-    const content: string = payload.content.toString()
-    const routingKey = extractRoutingKeyFromBindingKey(payload.fields.routingKey)
-    const data = JSON.parse(content)
-    const headers = payload.properties.headers || {}
-    const maxRetries = parseInt(headers[UNOAPI_X_MAX_RETRIES] || UNOAPI_MESSAGE_RETRY_LIMIT)
-    const countRetries = parseInt(headers[UNOAPI_X_COUNT_RETRIES] || '0') + 1
+  const prefetch = options.prefetch ?? 1
+  const type = options.type || getExchangeType(exchange)
+  const normalizedOptions = { ...options, prefetch, type }
+  const id = consumerId(exchange, queue, routingKey)
+  if (consumerConfigs.has(id)) {
+    logger.debug('Consumer %s already registered, skipping duplicate registration', id)
+    return
+  }
+
+  consumerConfigs.set(id, { exchange, queue, routingKey, callback, options: normalizedOptions })
+
+  const startConsumer = async () => {
     try {
-      logger.debug('Received in queue %s, with routing key: %s, with message: %s with headers: %s', queue, routingKey, content, JSON.stringify(payload.properties.headers))
-      if (IGNORED_CONNECTIONS_NUMBERS.includes(routingKey)) {
-        logger.info(`Ignore messages from ${routingKey}`)
-      } else if (IGNORED_TO_NUMBERS.length > 0 && IGNORED_TO_NUMBERS.includes(extractDestinyPhone(data.payload, false))) {
-        logger.info(`Ignore messages to ${extractDestinyPhone(data.payload, false)}`)
-      } else {
-        const timeoutError = `timeout ${CONSUMER_TIMEOUT_MS} is exceeded consume queue: ${queue}, routing key: ${routingKey}, payload: ${content}`
-        await withTimeout(CONSUMER_TIMEOUT_MS, timeoutError, callback(routingKey, data, { countRetries, maxRetries }))
-      }
-      logger.debug('Ack message!')
-      await channel?.ack(payload)
-    } catch (error) {
-      logger.error(error, 'Error on consume %s', queue)
-      if (countRetries >= maxRetries) {
-        logger.info('Reject %s retries', countRetries)
-        if (options.notifyFailedMessages) {
-          logger.info('Sending error to whatsapp...')
-          await amqpPublish(
-            UNOAPI_EXCHANGE_BROKER_NAME,
-            UNOAPI_QUEUE_NOTIFICATION,
-            routingKey,
-            {
-              payload: {
-                to: routingKey,
-                type: 'text',
-                text: {
-                  body: `Unoapi version ${version} message failed in queue ${queue}\n\nstack trace: ${error.stack}\n\n\nerror: ${error.message
-                    }\n\ndata: ${JSON.stringify(data, undefined, 2)}`,
-                },
-              },
-            },
-            { maxRetries: 0, type: 'topic' },
-          )
-          logger.info('Sent error to whatsapp!')
+      await amqpGetExchange(exchange, type, prefetch)
+      await amqpGetQueue(exchange, queue, routingKey, normalizedOptions)
+      const connection = await amqpConnect()
+      const channel = await connection.createChannel()
+      await channel.prefetch(prefetch)
+
+      const fn = async (payload: ConsumeMessage | null) => {
+        if (!payload) {
+          throw `payload not be null `
         }
-        await amqpPublish(exchange, queue, routingKey, data, { dead: true, type: options.type })
-      } else {
-        logger.info('Publish retry %s of %s', countRetries, maxRetries)
-        await amqpPublish(exchange, queue, routingKey, data, { delay: 60000, maxRetries, countRetries, type: options.type })
+        const content: string = payload.content.toString()
+        const routingKeyLocal = extractRoutingKeyFromBindingKey(payload.fields.routingKey)
+        const data = JSON.parse(content)
+        const headers = payload.properties.headers || {}
+        const maxRetries = parseInt(headers[UNOAPI_X_MAX_RETRIES] || UNOAPI_MESSAGE_RETRY_LIMIT)
+        const countRetries = parseInt(headers[UNOAPI_X_COUNT_RETRIES] || '0') + 1
+        try {
+          logger.debug('Received in queue %s, with routing key: %s, with message: %s with headers: %s', queue, routingKeyLocal, content, JSON.stringify(payload.properties.headers))
+          if (IGNORED_CONNECTIONS_NUMBERS.includes(routingKeyLocal)) {
+            logger.info(`Ignore messages from ${routingKeyLocal}`)
+          } else if (IGNORED_TO_NUMBERS.length > 0 && IGNORED_TO_NUMBERS.includes(extractDestinyPhone(data.payload, false))) {
+            logger.info(`Ignore messages to ${extractDestinyPhone(data.payload, false)}`)
+          } else {
+            const timeoutError = `timeout ${CONSUMER_TIMEOUT_MS} is exceeded consume queue: ${queue}, routing key: ${routingKeyLocal}, payload: ${content}`
+            await withTimeout(CONSUMER_TIMEOUT_MS, timeoutError, callback(routingKeyLocal, data, { countRetries, maxRetries }))
+          }
+          logger.debug('Ack message!')
+          await channel?.ack(payload)
+        } catch (error) {
+          logger.error(error, 'Error on consume %s', queue)
+          if (countRetries >= maxRetries) {
+            logger.info('Reject %s retries', countRetries)
+            if (normalizedOptions.notifyFailedMessages) {
+              logger.info('Sending error to whatsapp...')
+              await amqpPublish(
+                UNOAPI_EXCHANGE_BROKER_NAME,
+                UNOAPI_QUEUE_NOTIFICATION,
+                routingKeyLocal,
+                {
+                  payload: {
+                    to: routingKeyLocal,
+                    type: 'text',
+                    text: {
+                      body: `Unoapi version ${version} message failed in queue ${queue}\n\nstack trace: ${error.stack}\n\n\nerror: ${error.message
+                        }\n\ndata: ${JSON.stringify(data, undefined, 2)}`,
+                    },
+                  },
+                },
+                { maxRetries: 0, type: 'topic' },
+              )
+              logger.info('Sent error to whatsapp!')
+            }
+            await amqpPublish(exchange, queue, routingKeyLocal, data, { dead: true, type: normalizedOptions.type })
+          } else {
+            logger.info('Publish retry %s of %s', countRetries, maxRetries)
+            await amqpPublish(exchange, queue, routingKeyLocal, data, { delay: 60000, maxRetries, countRetries, type: normalizedOptions.type })
+          }
+          await channel?.ack(payload)
+        }
       }
-      await channel?.ack(payload)
+
+      const bindingKeyValue = await bindQueue(channel, exchange, queue, routingKey)
+      await bindQueue(channel, exchange, queue, routingKey, true)
+
+      channel?.on('close', () => {
+        logger.warn('Channel closed for queue %s, rebinding consumer...', queue)
+        setTimeout(() => {
+          startConsumer().catch((err) => logger.error(err, 'Error restarting consumer %s', id))
+        }, 1000)
+      })
+      channel?.on('error', (err) => {
+        logger.error(err, 'Channel error for queue %s', queue)
+      })
+
+      await channel?.consume(queue, fn)
+      logger.info('Waiting for message in queue %s with binding key %s', queue, bindingKeyValue)
+    } catch (err) {
+      logger.error(err, 'Failed to start consumer %s, will retry', id)
+      setTimeout(() => {
+        startConsumer().catch((error) => logger.error(error, 'Error restarting consumer %s', id))
+      }, 1000)
     }
   }
 
-  const bindingKey = await bindQueue(channel, exchange, queue, routingKey)
-  const bindingKeyDelayed = await bindQueue(channel, exchange, queue, routingKey, true)
-
-  channel?.on('close', () => {
-    channel.unbindQueue(queue, exchange, bindingKey)
-    channel.unbindQueue(queue, exchange, bindingKeyDelayed)
-  })
-  if (!consumers.get(queue)) {
-    consumers.set(queue, true)
-    channel?.consume(queue, fn)
-  }
-  logger.info('Waiting for message in queue %s with binding key %s', queue, bindingKey)
+  await startConsumer()
 }
