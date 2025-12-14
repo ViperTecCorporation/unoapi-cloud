@@ -65,7 +65,10 @@ export class MediaController {
         logger.debug('media typebot missing url %s', mediaId)
         return res.sendStatus(404)
       }
-      return res.status(200).json({ url, mime_type: mimeType })
+      const sha256 = mediaPayload?.sha256
+      const response: any = { url, mime_type: mimeType }
+      if (sha256) response.sha256 = sha256
+      return res.status(200).json(response)
     } catch (e) {
       logger.warn(e as any, 'media typebot error %s', raw)
       return res.sendStatus(500)
