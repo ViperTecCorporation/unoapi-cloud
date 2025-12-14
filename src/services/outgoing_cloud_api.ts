@@ -20,8 +20,9 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
           if (mm[mt]) {
             const media = { ...mm[mt] }
             const rawId = `${media.id || ''}`
-            const cleanId = rawId.includes('/') ? rawId.split('/').pop() : rawId
-            media.id = cleanId || rawId || ''
+            const cleanUuid = rawId.includes('/') ? rawId.split('/').pop() : rawId
+            // Preservar phone no id para poder resolver download: formata phone-uuid
+            media.id = cleanUuid ? `${phone}-${cleanUuid}` : (rawId || '')
             if (media.filename !== undefined) delete media.filename
             if (media.url !== undefined) delete media.url
             if (media.sha256 !== undefined) delete media.sha256

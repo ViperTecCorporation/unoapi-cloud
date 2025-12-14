@@ -122,6 +122,8 @@ export const router = (
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
   router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
   router.post('/:version/:phone/marketing_messages', middleware, marketingMessagesController.index.bind(marketingMessagesController))
+  // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId}
+  router.get('/:version/:media_id(\\d+-[A-Za-z0-9_-]+)', middleware, mediaController.typebot.bind(mediaController))
   router.get('/:version/:phone/:media_id', middleware, mediaController.index.bind(mediaController))
   router.get('/:version/download/:phone/:file', middleware, mediaController.download.bind(mediaController))
   router.post('/:phone/blacklist/:webhook_id', middleware, blacklistController.update.bind(blacklistController))

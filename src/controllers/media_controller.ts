@@ -30,6 +30,48 @@ export class MediaController {
     }
   }
 
+  public async typebot(req: Request, res: Response) {
+    logger.debug('media typebot method %s', req.method)
+    logger.debug('media typebot headers %s', JSON.stringify(req.headers))
+    logger.debug('media typebot params %s', JSON.stringify(req.params))
+    logger.debug('media typebot body %s', JSON.stringify(req.body))
+    const raw = `${req.params.media_id || ''}`
+    const match = raw.match(/^(\d+)-(.+)$/)
+    if (!match) {
+      logger.debug('media typebot invalid id %s', raw)
+      return res.sendStatus(404)
+    }
+    const [, phone, mediaId] = match
+    try {
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const { mediaStore, dataStore } = store
+      const mediaPayload = await dataStore.loadMediaPayload(mediaId)
+      if (!mediaPayload) {
+        logger.debug('media typebot not found %s', mediaId)
+        return res.sendStatus(404)
+      }
+      const mimeType = mediaPayload?.mime_type || mediaPayload?.content_type
+      let url: string | undefined = mediaPayload?.url
+      if (!url) {
+        try {
+          const fallback = await mediaStore.getMedia(this.baseUrl, mediaId)
+          url = fallback?.url
+        } catch (e) {
+          logger.warn(e as any, 'media typebot failed to compute fallback url %s', mediaId)
+        }
+      }
+      if (!url) {
+        logger.debug('media typebot missing url %s', mediaId)
+        return res.sendStatus(404)
+      }
+      return res.status(200).json({ url, mime_type: mimeType })
+    } catch (e) {
+      logger.warn(e as any, 'media typebot error %s', raw)
+      return res.sendStatus(500)
+    }
+  }
+
   public async download(req: Request, res: Response) {
     logger.debug('media download method %s', req.method)
     logger.debug('media download headers %s', JSON.stringify(req.headers))
