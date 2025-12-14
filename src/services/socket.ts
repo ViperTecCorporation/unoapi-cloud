@@ -444,7 +444,7 @@ export const connect = async ({
     scheduleNext()
   }
 
-  const purgeSignalSessionsFor = async (toJid: string) => {
+  const purgeSignalSessionsFor = async (toJid: string, forceDeviceList = false) => {
     try {
       const ids: string[] = []
       const pn = (() => { try { return jidNormalizedUser(toJid) } catch { return undefined } })()
@@ -478,7 +478,7 @@ export const connect = async ({
       } catch {}
       // Redis-backed sessions
       if ((config as any)?.useRedis) {
-        try { await delSignalSessionsForJids(phone, ids) } catch {}
+        try { await delSignalSessionsForJids(phone, ids, { forceDeviceList }) } catch {}
       } else {
         // File-backed sessions: remove session-<addr>* files
         try {
@@ -512,7 +512,8 @@ export const connect = async ({
           if (!pendingDeliveryWatch.has(messageId)) return
           try { logger.info('DELIVERY watch: firing attempt %s/%s for id=%s to=%s', entry.attempt + 1, maxAttempts, messageId, to) } catch {}
           // Force: purge current signal sessions for target and assert again
-          try { await purgeSignalSessionsFor(to) } catch {}
+          // Purge device-list as well to force fresh device enumeration (multi-device "Aguardando" fix)
+          try { await purgeSignalSessionsFor(to, true) } catch {}
           // Re-assert (cover PN/LID + self) and resend same id without userDevices cache
           try {
             const set = new Set<string>()
@@ -1530,6 +1531,8 @@ export const connect = async ({
         } catch {}
         const targets = Array.from(set)
         if (doPreassert && targets.length) {
+          // Forçar refresh da lista de devices antes do assert para evitar cache desatualizado (multi-device aguardando)
+          try { await purgeSignalSessionsFor(id, true) } catch {}
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
           if (redisTtlSec > 0 && redisKey) {
@@ -2293,5 +2296,3 @@ export const connect = async ({
 
   return { event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
 }
-
-

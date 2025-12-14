@@ -366,7 +366,7 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
 // This forces Baileys to fetch sessions again on next assert.
-export const delSignalSessionsForJids = async (session: string, jids: string[]) =>
+export const delSignalSessionsForJids = async (session: string, jids: string[], opts?: { forceDeviceList?: boolean }) =>
   enqueueRedisTask('delivery-watch-purge', async () => {
     try {
       const base = `${BASE_KEY}auth:${session}:`
@@ -390,10 +390,12 @@ export const delSignalSessionsForJids = async (session: string, jids: string[]) 
         } catch {}
         // Known Signal state key families to purge for target address (try with all variants)
         const patterns: string[] = []
+        const forceDeviceList = !!opts?.forceDeviceList
         for (const id of Array.from(variants)) {
           if (SIGNAL_PURGE_SESSION_ENABLED) patterns.push(`${base}session-${id}*`)
           if (SIGNAL_PURGE_SENDER_KEY_ENABLED) patterns.push(`${base}sender-key-${id}*`)
-          if (SIGNAL_PURGE_DEVICE_LIST_ENABLED) patterns.push(`${base}device-list-${id}*`)
+          // For device-list purge, allow opt-in per call (forceDeviceList) even when global default is false
+          if (SIGNAL_PURGE_DEVICE_LIST_ENABLED || forceDeviceList) patterns.push(`${base}device-list-${id}*`)
         }
         for (const p of patterns) {
           try {
