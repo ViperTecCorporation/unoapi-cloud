@@ -66,8 +66,14 @@ export class MediaController {
         return res.sendStatus(404)
       }
       const sha256 = mediaPayload?.sha256
-      const response: any = { url, mime_type: mimeType }
+      const response: any = {
+        url,
+        mime_type: mimeType,
+        id: raw,
+        messaging_product: 'whatsapp',
+      }
       if (sha256) response.sha256 = sha256
+      if (mediaPayload?.file_size) response.file_size = mediaPayload.file_size
       return res.status(200).json(response)
     } catch (e) {
       logger.warn(e as any, 'media typebot error %s', raw)
