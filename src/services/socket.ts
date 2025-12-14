@@ -53,6 +53,7 @@ import {
   ONE_TO_ONE_PREASSERT_COOLDOWN_MS,
   ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
   ONE_TO_ONE_ASSERT_PROBE_ENABLED,
+  ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST,
 } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -1531,8 +1532,10 @@ export const connect = async ({
         } catch {}
         const targets = Array.from(set)
         if (doPreassert && targets.length) {
-          // Forçar refresh da lista de devices antes do assert para evitar cache desatualizado (multi-device aguardando)
-          try { await purgeSignalSessionsFor(id, true) } catch {}
+          // Opcional: forçar refresh da lista de devices antes do assert (evitar cache desatualizado)
+          if (ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
+            try { await purgeSignalSessionsFor(id, true) } catch {}
+          }
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
           if (redisTtlSec > 0 && redisKey) {
