@@ -24,6 +24,7 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
             media.id = cleanId || rawId || ''
             if (media.filename !== undefined) delete media.filename
             if (media.url !== undefined) delete media.url
+            if (media.sha256 !== undefined) delete media.sha256
             if (media.caption === null) delete media.caption
             // sha256 deve ser string
             try {
@@ -41,6 +42,17 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
           if (raw.includes('/')) mm.id = raw.split('/').pop()
         } catch {}
         return mm
+      })
+    }
+    if (value?.contacts && Array.isArray(value.contacts)) {
+      value.contacts = value.contacts.map((c: any) => {
+        const cc = { ...c }
+        try {
+          if (cc.profile && cc.profile.picture !== undefined) {
+            delete cc.profile.picture
+          }
+        } catch {}
+        return cc
       })
     }
     if (value?.statuses && Array.isArray(value.statuses)) {
