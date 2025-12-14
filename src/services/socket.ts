@@ -54,6 +54,7 @@ import {
   ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
   ONE_TO_ONE_ASSERT_PROBE_ENABLED,
   ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST,
+  SIGNAL_CACHE_SAFE_MODE,
 } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
@@ -446,6 +447,7 @@ export const connect = async ({
   }
 
   const purgeSignalSessionsFor = async (toJid: string, forceDeviceList = false) => {
+    if (SIGNAL_CACHE_SAFE_MODE) return
     try {
       const ids: string[] = []
       const pn = (() => { try { return jidNormalizedUser(toJid) } catch { return undefined } })()
@@ -497,7 +499,7 @@ export const connect = async ({
   }
 
   const scheduleDeliveryWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
-    try { if (!DELIVERY_WATCHDOG_ENABLED) return } catch { return }
+    try { if (!DELIVERY_WATCHDOG_ENABLED || SIGNAL_CACHE_SAFE_MODE) return } catch { return }
     try { if (!messageId) return } catch { return }
     // Skip groups unless explicitly enabled
     try { if (typeof to === 'string' && to.endsWith('@g.us') && !DELIVERY_WATCHDOG_GROUPS) return } catch {}
@@ -1483,6 +1485,7 @@ export const connect = async ({
         }
         const doPreassert =
           ONE_TO_ONE_PREASSERT_ENABLED &&
+          !SIGNAL_CACHE_SAFE_MODE &&
           redisAllow &&
           (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()

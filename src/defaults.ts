@@ -297,6 +297,8 @@ export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
 export const ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST: boolean =
   process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST === _undefined ? false : process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST == 'true'
+export const SIGNAL_CACHE_SAFE_MODE: boolean =
+  process.env.SIGNAL_CACHE_SAFE_MODE === _undefined ? false : process.env.SIGNAL_CACHE_SAFE_MODE == 'true'
 
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
