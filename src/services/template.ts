@@ -11,29 +11,27 @@ export class Template {
   async bind(phone: string, name: string, parametersValues: any) {
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const template: any = (await store.dataStore.loadTemplates()).find((t: any) => t.name == name)
-    if (template) {
-      const types = ['header', 'body', 'footer']
-      let text = ''
-      types.forEach((type) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const component = template.components && template.components.find((c: any) => c.type.toLowerCase() == type)
-        if (component) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const value = parametersValues.find((c: any) => c.type.toLowerCase() == type)
-          if (value) {
-            text = `${text}${component.text}`
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            value.parameters.forEach((parameter: any) => {
-              text = text.replace(/\{\{.*?\}\}/, parameter.text)
-            })
-          }
-        }
-      })
-      return { text }
-    } else {
+    const templates: any[] = Array.isArray(await store.dataStore.loadTemplates()) ? await store.dataStore.loadTemplates() as any[] : []
+    const template: any = templates.find((t: any) => t?.name == name)
+    if (!template) {
       throw `Template name ${name} not found`
     }
+    const components: any[] = Array.isArray(template.components) ? template.components : []
+    const values: any[] = Array.isArray(parametersValues) ? parametersValues : []
+    const types = ['header', 'body', 'footer']
+    let text = ''
+    types.forEach((type) => {
+      const component = components.find((c: any) => (c?.type || '').toLowerCase() === type)
+      const value = values.find((v: any) => (v?.type || '').toLowerCase() === type)
+      if (component && value) {
+        const params: any[] = Array.isArray(value.parameters) ? value.parameters : []
+        let current = `${component.text || ''}`
+        params.forEach((parameter: any) => {
+          current = current.replace(/\{\{.*?\}\}/, parameter?.text || '')
+        })
+        text = `${text}${current}`
+      }
+    })
+    return { text }
   }
 }
