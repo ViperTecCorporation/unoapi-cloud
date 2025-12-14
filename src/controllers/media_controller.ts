@@ -46,7 +46,7 @@ export class MediaController {
       const config = await this.getConfig(phone)
       const store = await config.getStore(phone, config)
       const { mediaStore, dataStore } = store
-      const mediaPayload = await dataStore.loadMediaPayload(mediaId)
+      const mediaPayload: any = await dataStore.loadMediaPayload(mediaId)
       if (!mediaPayload) {
         logger.debug('media typebot not found %s', mediaId)
         return res.sendStatus(404)
@@ -55,7 +55,7 @@ export class MediaController {
       let url: string | undefined = mediaPayload?.url
       if (!url) {
         try {
-          const fallback = await mediaStore.getMedia(this.baseUrl, mediaId)
+          const fallback: any = await mediaStore.getMedia(this.baseUrl, mediaId)
           url = fallback?.url
         } catch (e) {
           logger.warn(e as any, 'media typebot failed to compute fallback url %s', mediaId)
