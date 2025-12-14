@@ -11,7 +11,8 @@ export class Template {
   async bind(phone: string, name: string, parametersValues: any) {
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
-    const templates: any[] = Array.isArray(await store.dataStore.loadTemplates()) ? await store.dataStore.loadTemplates() as any[] : []
+    const loaded = await store.dataStore.loadTemplates()
+    const templates: any[] = Array.isArray(loaded) ? loaded as any[] : []
     const template: any = templates.find((t: any) => t?.name == name)
     if (!template) {
       throw `Template name ${name} not found`
