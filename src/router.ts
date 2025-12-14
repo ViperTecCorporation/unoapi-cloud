@@ -102,6 +102,8 @@ export const router = (
   router.get('/connect/:phone', connectController.index.bind(connectController))
   router.get('/ping', indexController.ping)
   router.get('/:version/debug_token', indexController.debugToken)
+  // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)
+  router.get('/:version/:media_id(\\d+-[A-Za-z0-9_-]+)', middleware, mediaController.typebot.bind(mediaController))
   router.get('/sessions', middleware, phoneNumberController.list.bind(phoneNumberController))
   router.get('/sessions/:phone', sessionController.index.bind(sessionController))
   router.post('/:phone/contacts', middleware, contactsController.post.bind(contactsController))
@@ -122,8 +124,6 @@ export const router = (
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
   router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
   router.post('/:version/:phone/marketing_messages', middleware, marketingMessagesController.index.bind(marketingMessagesController))
-  // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId}
-  router.get('/:version/:media_id(\\d+-[A-Za-z0-9_-]+)', middleware, mediaController.typebot.bind(mediaController))
   router.get('/:version/:phone/:media_id', middleware, mediaController.index.bind(mediaController))
   router.get('/:version/download/:phone/:file', middleware, mediaController.download.bind(mediaController))
   router.post('/:phone/blacklist/:webhook_id', middleware, blacklistController.update.bind(blacklistController))
