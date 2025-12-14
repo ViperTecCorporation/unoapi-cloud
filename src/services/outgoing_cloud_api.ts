@@ -67,7 +67,14 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
               if (typeof e?.code !== 'undefined') out.code = e.code
               if (typeof e?.title !== 'undefined') out.title = e.title
               if (typeof e?.message !== 'undefined') out.message = e.message
-              if (e?.error_data) out.error_data = e.error_data
+              const details =
+                (e?.error_data && e.error_data.details) ||
+                e?.message ||
+                e?.title ||
+                ''
+              if (details) {
+                out.error_data = { details: `${details}` }
+              }
               return out
             })
           }
