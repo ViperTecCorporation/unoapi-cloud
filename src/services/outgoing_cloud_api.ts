@@ -13,8 +13,14 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
     const data = JSON.parse(JSON.stringify(payload))
     const value = data?.entry?.[0]?.changes?.[0]?.value
     if (value?.messages && Array.isArray(value.messages)) {
+      const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'document', 'sticker', 'ptv'])
       value.messages = value.messages.map((m: any) => {
         const mm = { ...m }
+        // Descartar tipos nÇœo suportados pelo schema Typebot (ex.: call)
+        if (mm.type && !allowedTypes.has(mm.type)) {
+          logger.debug('TYPEBOT normalize: dropping unsupported message type %s', mm.type)
+          return null
+        }
         const mediaTypes = ['image', 'video', 'audio', 'document', 'sticker', 'ptv']
         for (const mt of mediaTypes) {
           if (mm[mt]) {
@@ -43,7 +49,7 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
           if (raw.includes('/')) mm.id = raw.split('/').pop()
         } catch {}
         return mm
-      })
+      }).filter(Boolean)
     }
     if (value?.contacts && Array.isArray(value.contacts)) {
       value.contacts = value.contacts.map((c: any) => {
