@@ -358,8 +358,6 @@ export const groupKey = (phone: string, jid: string) => {
 //   - jidmap:<session>:lid:<pnJid>  => value = lidJid
 const jidMapPnKeyNew   = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn_for_lid:${lidJid}`
 const jidMapLidKeyNew  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
-const jidMapPnKeyOld   = (session: string, lidJid: string) => `${BASE_KEY}jidmap:${session}:pn:${lidJid}`
-const jidMapLidKeyOld  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid:${pnJid}`
 const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_lid:${lidJid}`
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
@@ -380,8 +378,6 @@ export const getPnForLid = async (session: string, lidJid: string) => {
   // Try per-session (legado) e fallback para schemas antigos
   const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
   if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
-  const vOld = await redisGet(jidMapPnKeyOld(session, lidJid))
-  if (vOld) { cacheSetJidMap(cacheKeySession, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
   return undefined
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
@@ -401,8 +397,6 @@ export const getLidForPn = async (session: string, pnJid: string) => {
   // Try per-session (legado)
   const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
   if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
-  const vOld = await redisGet(jidMapLidKeyOld(session, pnJid))
-  if (vOld) { cacheSetJidMap(cacheKeySession, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
   return undefined
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
