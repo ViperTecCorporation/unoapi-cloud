@@ -127,11 +127,19 @@ const redisDel = async (key: string) => {
 export const redisKeys = async (pattern: string) => {
   logger.trace(`Keys ${pattern}`)
   try {
-    return client.scanIterator({ MATCH: pattern, COUNT: 200 })
+    const out: string[] = []
+    for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
+      out.push(key as string)
+    }
+    return out
   } catch (error) {
     if (!client) {
       await getRedis()
-      return client.scanIterator({ MATCH: pattern, COUNT: 200 })
+      const out: string[] = []
+      for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
+        out.push(key as string)
+      }
+      return out
     } else {
       throw error
     }
