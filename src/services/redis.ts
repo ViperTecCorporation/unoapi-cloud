@@ -152,7 +152,7 @@ export const redisKeys = async (pattern: string) => {
       await getRedis()
       if (!isCriticalPattern(pattern) && REDIS_KEYS_USE_SCAN) {
         const out: string[] = []
-        for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
+        for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 500 })) {
           out.push(key as string)
         }
         return out
