@@ -348,20 +348,20 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   } catch { return }
   try {
     // Write both new and old schemas for compatibility
-    await redisSetAndExpire(jidMapPnKeyNew(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapPnKeyNew(session, lidJid), pnJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapLidKeyNew(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapLidKeyNew(session, pnJid), lidJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapPnKeyOld(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapPnKeyOld(session, lidJid), pnJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapLidKeyOld(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapLidKeyOld(session, pnJid), lidJid)
   } catch {}
   // Also persist to global scope to compartilhar entre sessões
-  try { await redisSetAndExpire(jidMapPnKeyGlob(lidJid), pnJid, JIDMAP_TTL_SECONDS) } catch {}
-  try { await redisSetAndExpire(jidMapLidKeyGlob(pnJid), lidJid, JIDMAP_TTL_SECONDS) } catch {}
+  try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
+  try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
@@ -850,19 +850,19 @@ export const bootstrapJidMapGlobalOnce = async (): Promise<void> => {
             // Determine kind and extract ids
             if (k.includes(':pn_for_lid:')) {
               const lid = k.substring(k.indexOf(':pn_for_lid:') + 12)
-              await redisSetAndExpire(jidMapPnKeyGlob(lid), v, JIDMAP_TTL_SECONDS)
+              await redisSet(jidMapPnKeyGlob(lid), v)
               total += 1
             } else if (k.includes(':lid_for_pn:')) {
               const pn = k.substring(k.indexOf(':lid_for_pn:') + 12)
-              await redisSetAndExpire(jidMapLidKeyGlob(pn), v, JIDMAP_TTL_SECONDS)
+              await redisSet(jidMapLidKeyGlob(pn), v)
               total += 1
             } else if (k.includes(':pn:')) {
               const lid = k.substring(k.indexOf(':pn:') + 4)
-              await redisSetAndExpire(jidMapPnKeyGlob(lid), v, JIDMAP_TTL_SECONDS)
+              await redisSet(jidMapPnKeyGlob(lid), v)
               total += 1
             } else if (k.includes(':lid:')) {
               const pn = k.substring(k.indexOf(':lid:') + 5)
-              await redisSetAndExpire(jidMapLidKeyGlob(pn), v, JIDMAP_TTL_SECONDS)
+              await redisSet(jidMapLidKeyGlob(pn), v)
               total += 1
             }
           } catch {}
