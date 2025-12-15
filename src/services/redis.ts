@@ -364,32 +364,46 @@ const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_li
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
-  const cacheKey = `pn|${session}|${lidJid}`
-  const cached = cacheGetJidMap(cacheKey)
-  if (cached) return cached
-  // Try new key first, then fallback to old
-  const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
-  if (vNew) { cacheSetJidMap(cacheKey, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
-  const vOld = await redisGet(jidMapPnKeyOld(session, lidJid))
-  if (vOld) { cacheSetJidMap(cacheKey, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
-  // Fallback: global scope
+  const cacheKeyGlobal = `pn|global|${lidJid}`
+  const cacheKeySession = `pn|${session}|${lidJid}`
+  const cachedGlobal = cacheGetJidMap(cacheKeyGlobal)
+  if (cachedGlobal) return cachedGlobal
+  const cachedSession = cacheGetJidMap(cacheKeySession)
+  if (cachedSession) return cachedSession
+  // Prefer lookup no escopo global primeiro para reduzir leituras duplicadas
   const vGlob = await redisGet(jidMapPnKeyGlob(lidJid))
-  if (vGlob) cacheSetJidMap(cacheKey, vGlob, LOCAL_JIDMAP_TTL_MS)
-  return vGlob
+  if (vGlob) {
+    cacheSetJidMap(cacheKeyGlobal, vGlob, LOCAL_JIDMAP_TTL_MS)
+    cacheSetJidMap(cacheKeySession, vGlob, LOCAL_JIDMAP_TTL_MS)
+    return vGlob
+  }
+  // Try per-session (legado) e fallback para schemas antigos
+  const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
+  if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
+  const vOld = await redisGet(jidMapPnKeyOld(session, lidJid))
+  if (vOld) { cacheSetJidMap(cacheKeySession, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
+  return undefined
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
-  const cacheKey = `lid|${session}|${pnJid}`
-  const cached = cacheGetJidMap(cacheKey)
-  if (cached) return cached
-  // Try new key first, then fallback to old
-  const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
-  if (vNew) { cacheSetJidMap(cacheKey, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
-  const vOld = await redisGet(jidMapLidKeyOld(session, pnJid))
-  if (vOld) { cacheSetJidMap(cacheKey, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
-  // Fallback: global scope
+  const cacheKeyGlobal = `lid|global|${pnJid}`
+  const cacheKeySession = `lid|${session}|${pnJid}`
+  const cachedGlobal = cacheGetJidMap(cacheKeyGlobal)
+  if (cachedGlobal) return cachedGlobal
+  const cachedSession = cacheGetJidMap(cacheKeySession)
+  if (cachedSession) return cachedSession
+  // Prefer lookup global primeiro
   const vGlob = await redisGet(jidMapLidKeyGlob(pnJid))
-  if (vGlob) cacheSetJidMap(cacheKey, vGlob, LOCAL_JIDMAP_TTL_MS)
-  return vGlob
+  if (vGlob) {
+    cacheSetJidMap(cacheKeyGlobal, vGlob, LOCAL_JIDMAP_TTL_MS)
+    cacheSetJidMap(cacheKeySession, vGlob, LOCAL_JIDMAP_TTL_MS)
+    return vGlob
+  }
+  // Try per-session (legado)
+  const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
+  if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
+  const vOld = await redisGet(jidMapLidKeyOld(session, pnJid))
+  if (vOld) { cacheSetJidMap(cacheKeySession, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
+  return undefined
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
   if (!pnJid || !lidJid) return
@@ -407,20 +421,7 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
       }
     }
   } catch { return }
-  try {
-    // Write both new and old schemas for compatibility
-    await redisSet(jidMapPnKeyNew(session, lidJid), pnJid)
-  } catch {}
-  try {
-    await redisSet(jidMapLidKeyNew(session, pnJid), lidJid)
-  } catch {}
-  try {
-    await redisSet(jidMapPnKeyOld(session, lidJid), pnJid)
-  } catch {}
-  try {
-    await redisSet(jidMapLidKeyOld(session, pnJid), lidJid)
-  } catch {}
-  // Also persist to global scope to compartilhar entre sessões
+  // Apenas escopo global (reduz chaves duplicadas por sess?o); leitura legacy continua via fallback
   try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
   try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
   cacheDelJidMap(`pn|${session}|${lidJid}`)
