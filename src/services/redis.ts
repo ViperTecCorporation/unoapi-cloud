@@ -22,18 +22,6 @@ export const BASE_KEY = 'unoapi-'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let client: any
 
-// Optional: force SCAN for all patterns (off by default); otherwise usamos HEUR囮STICA
-const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === 'true'
-// Prefixos cr乼ticos: mant覸m KEYS pela velocidade e baixo volume esperado
-const REDIS_KEYS_CRITICAL_PATTERNS = [
-  `${BASE_KEY}auth:*`,
-  `${BASE_KEY}config:*`,
-  `${BASE_KEY}status:*`,
-  `${BASE_KEY}last-incoming:*`,
-  `${BASE_KEY}meta:*`,
-]
-const isCriticalPattern = (pattern: string) => REDIS_KEYS_CRITICAL_PATTERNS.some((p) => pattern.startsWith(p))
-
 const redisTaskQueues: Map<string, Promise<any>> = new Map()
 const redisTaskLastRun: Map<string, number> = new Map()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -139,24 +127,10 @@ const redisDel = async (key: string) => {
 export const redisKeys = async (pattern: string) => {
   logger.trace(`Keys ${pattern}`)
   try {
-    if (!isCriticalPattern(pattern) && REDIS_KEYS_USE_SCAN) {
-      const out: string[] = []
-      for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
-        out.push(key as string)
-      }
-      return out
-    }
     return await client.keys(pattern)
   } catch (error) {
     if (!client) {
       await getRedis()
-      if (!isCriticalPattern(pattern) && REDIS_KEYS_USE_SCAN) {
-        const out: string[] = []
-        for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 500 })) {
-          out.push(key as string)
-        }
-        return out
-      }
       return await client.keys(pattern)
     } else {
       throw error
@@ -374,20 +348,20 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   } catch { return }
   try {
     // Write both new and old schemas for compatibility
-    await redisSet(jidMapPnKeyNew(session, lidJid), pnJid)
+    await redisSetAndExpire(jidMapPnKeyNew(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
   } catch {}
   try {
-    await redisSet(jidMapLidKeyNew(session, pnJid), lidJid)
+    await redisSetAndExpire(jidMapLidKeyNew(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
   } catch {}
   try {
-    await redisSet(jidMapPnKeyOld(session, lidJid), pnJid)
+    await redisSetAndExpire(jidMapPnKeyOld(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
   } catch {}
   try {
-    await redisSet(jidMapLidKeyOld(session, pnJid), lidJid)
+    await redisSetAndExpire(jidMapLidKeyOld(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
   } catch {}
   // Also persist to global scope to compartilhar entre sessões
-  try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
-  try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
+  try { await redisSetAndExpire(jidMapPnKeyGlob(lidJid), pnJid, JIDMAP_TTL_SECONDS) } catch {}
+  try { await redisSetAndExpire(jidMapLidKeyGlob(pnJid), lidJid, JIDMAP_TTL_SECONDS) } catch {}
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
