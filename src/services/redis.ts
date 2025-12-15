@@ -823,7 +823,7 @@ export const getConnectCount = async(phone: string) => {
 export const clearConnectCount = async(phone: string) => {
   const keyPattern = connectCountKey(phone, '*')
   const keys = await redisKeys(keyPattern)
-  for (let index = 0; index < keys.length.length; index++) {
+  for (let index = 0; index < keys.length; index++) {
     const key = keys[index];
     await redisDel(key)
   }
