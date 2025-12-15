@@ -327,7 +327,7 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
 // Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
-export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
+export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? false : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
 export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '120000')
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
