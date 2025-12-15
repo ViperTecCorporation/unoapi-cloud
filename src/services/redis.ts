@@ -17,6 +17,57 @@ import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
 
+// Cache local (LRU simples) para reduzir leituras repetidas em chaves pouco mutáveis
+type CacheEntry<T> = { value: T; expiresAt: number }
+const makeCacheGet = <T>(cache: Map<string, CacheEntry<T>>) => (key: string) => {
+  const entry = cache.get(key)
+  if (!entry) return undefined
+  if (entry.expiresAt < Date.now()) {
+    cache.delete(key)
+    return undefined
+  }
+  // Atualiza ordem LRU
+  cache.delete(key)
+  cache.set(key, entry)
+  return entry.value
+}
+const makeCacheSet = <T>(cache: Map<string, CacheEntry<T>>, max: number) => (key: string, value: T, ttlMs: number) => {
+  if (typeof value === 'undefined' || ttlMs <= 0) return
+  cache.delete(key)
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs })
+  if (cache.size > max) {
+    const oldest = cache.keys().next().value
+    cache.delete(oldest)
+  }
+}
+const makeCacheDel = (cache: Map<string, CacheEntry<unknown>>) => (key: string) => {
+  cache.delete(key)
+}
+
+// Limites/timings (curtos para evitar desatualização)
+const LOCAL_CONFIG_TTL_MS = 2 * 60 * 1000  // 2 minutos
+const LOCAL_CONFIG_MAX = 500
+const LOCAL_JIDMAP_TTL_MS = 5 * 60 * 1000  // 5 minutos
+const LOCAL_JIDMAP_MAX = 2000
+const LOCAL_PROFILE_TTL_MS = 5 * 60 * 1000 // 5 minutos
+const LOCAL_PROFILE_MAX = 1000
+
+const localConfigCache = new Map<string, CacheEntry<any>>()
+const localJidMapCache = new Map<string, CacheEntry<string>>()
+const localProfileCache = new Map<string, CacheEntry<string>>()
+
+const cacheGetConfig = makeCacheGet(localConfigCache)
+const cacheSetConfig = makeCacheSet(localConfigCache, LOCAL_CONFIG_MAX)
+const cacheDelConfig = makeCacheDel(localConfigCache)
+
+const cacheGetJidMap = makeCacheGet(localJidMapCache)
+const cacheSetJidMap = makeCacheSet(localJidMapCache, LOCAL_JIDMAP_MAX)
+const cacheDelJidMap = makeCacheDel(localJidMapCache)
+
+const cacheGetProfile = makeCacheGet(localProfileCache)
+const cacheSetProfile = makeCacheSet(localProfileCache, LOCAL_PROFILE_MAX)
+const cacheDelProfile = makeCacheDel(localProfileCache)
+
 export const BASE_KEY = 'unoapi-'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -313,22 +364,32 @@ const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_li
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
+  const cacheKey = `pn|${session}|${lidJid}`
+  const cached = cacheGetJidMap(cacheKey)
+  if (cached) return cached
   // Try new key first, then fallback to old
   const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
-  if (vNew) return vNew
+  if (vNew) { cacheSetJidMap(cacheKey, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
   const vOld = await redisGet(jidMapPnKeyOld(session, lidJid))
-  if (vOld) return vOld
+  if (vOld) { cacheSetJidMap(cacheKey, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
   // Fallback: global scope
-  return redisGet(jidMapPnKeyGlob(lidJid))
+  const vGlob = await redisGet(jidMapPnKeyGlob(lidJid))
+  if (vGlob) cacheSetJidMap(cacheKey, vGlob, LOCAL_JIDMAP_TTL_MS)
+  return vGlob
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
+  const cacheKey = `lid|${session}|${pnJid}`
+  const cached = cacheGetJidMap(cacheKey)
+  if (cached) return cached
   // Try new key first, then fallback to old
   const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
-  if (vNew) return vNew
+  if (vNew) { cacheSetJidMap(cacheKey, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
   const vOld = await redisGet(jidMapLidKeyOld(session, pnJid))
-  if (vOld) return vOld
+  if (vOld) { cacheSetJidMap(cacheKey, vOld, LOCAL_JIDMAP_TTL_MS); return vOld }
   // Fallback: global scope
-  return redisGet(jidMapLidKeyGlob(pnJid))
+  const vGlob = await redisGet(jidMapLidKeyGlob(pnJid))
+  if (vGlob) cacheSetJidMap(cacheKey, vGlob, LOCAL_JIDMAP_TTL_MS)
+  return vGlob
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
   if (!pnJid || !lidJid) return
@@ -362,6 +423,10 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   // Also persist to global scope to compartilhar entre sessões
   try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
   try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
+  cacheDelJidMap(`pn|${session}|${lidJid}`)
+  cacheDelJidMap(`lid|${session}|${pnJid}`)
+  cacheDelJidMap(`pn|global|${lidJid}`)
+  cacheDelJidMap(`lid|global|${pnJid}`)
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
@@ -547,10 +612,13 @@ export const setTemplates = async (phone: string, value: any) => {
 }
 
 export const getConfig = async (phone: string) => {
+  const cached = cacheGetConfig(phone)
+  if (cached) return cached
   const key = configKey(phone)
   const configString = await redisGet(key)
   if (configString) {
     const config = JSON.parse(configString)
+    cacheSetConfig(phone, config, LOCAL_CONFIG_TTL_MS)
     return config
   }
 }
@@ -587,12 +655,14 @@ export const setConfig = async (phone: string, value: any) => {
     }
   } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
   configs.delete(phone)
+  cacheSetConfig(phone, config, LOCAL_CONFIG_TTL_MS)
   return config
 }
 
 export const delConfig = async (phone: string) => {
   const key = configKey(phone)
   await redisDel(key)
+  cacheDelConfig(phone)
 }
 
 export const delAuth = async (phone: string) => {
@@ -964,12 +1034,18 @@ export const setMessage = async (phone: string, jid: string, id: string, value: 
 }
 
 export const getProfilePicture = async (phone: string, jid: string) => {
+  const cacheKey = `${phone}|${jid}`
+  const cached = cacheGetProfile(cacheKey)
+  if (cached) return cached
   const key = profilePictureKey(phone, jid)
-  return redisGet(key)
+  const url = await redisGet(key)
+  if (url) cacheSetProfile(cacheKey, url, LOCAL_PROFILE_TTL_MS)
+  return url
 }
 
 export const setProfilePicture = async (phone: string, jid: string, url: string) => {
   const key = profilePictureKey(phone, jid)
+  cacheDelProfile(`${phone}|${jid}`)
   return redisSetAndExpire(key, url, DATA_URL_TTL)
 }
 

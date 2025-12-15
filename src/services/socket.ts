@@ -1987,9 +1987,12 @@ export const connect = async ({
     // Prefer LID if mapped; otherwise, use the WA-resolved JID (even if 12-digit for BR).
     // Apply BR send-order for call rejection: try 12-digit first (onWhatsApp), then fallback to 13-digit.
     let target = callFrom
+    const targetIsLid = typeof target === 'string' && isLidUser(target)
     try {
-      // If a plain number was provided, resolve via onWhatsApp with BR 12→13 preference before falling back
-      if (typeof target === 'string' && target.indexOf('@') < 0) {
+      if (targetIsLid) {
+        logger.debug('CALL_REJECT: preserving LID %s for rejectCall', target)
+      // If a plain number was provided, resolve via onWhatsApp with BR 12?13 preference before falling back
+      } else if (typeof target === 'string' && target.indexOf('@') < 0) {
         try {
           const raw = ensurePn(target)
           if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
@@ -2052,37 +2055,39 @@ export const connect = async ({
           }
         } catch {}
       }
-      // BR mismatch guard (13 input vs 12 resolved): respeitar modo 1:1
-      try {
-        const inDigits = `${callFrom}`.replace(/\D/g, '')
-        const outDigits = `${target || ''}`.split('@')[0].replace(/\D/g, '')
-        const isBr13in = inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9'
-        const isBr12out = outDigits.startsWith('55') && outDigits.length === 12
-        if (isBr13in && isBr12out) {
-          // Se ONE_TO_ONE_ADDRESSING_MODE for 'lid', pode preferir LID; caso contrário, manter PN
-          if (ONE_TO_ONE_ADDRESSING_MODE === 'lid') {
-            try {
-              const lid = await (dataStore as any).getLidForPn?.(phone, target as any)
-              if (lid && typeof lid === 'string') {
-                logger.warn('BR_GUARD(rejectCall): prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
-                target = lid
-              } else {
-                logger.warn('BR_GUARD(rejectCall): keeping WA JID %s (input=%s); no LID mapping', target, inDigits)
-              }
-            } catch {}
-          } else {
-            // Modo PN: não alternar para LID; manter PN (incluindo candidato 12 dígitos)
-            logger.debug('BR_GUARD(rejectCall): ONE_TO_ONE_ADDRESSING_MODE=pn, mantendo PN %s', target)
+      // BR mismatch guard (13 input vs 12 resolved): respeitar modo 1:1. Se j? veio LID, mantenha LID.
+      if (!targetIsLid) {
+        try {
+          const inDigits = `${callFrom}`.replace(/\D/g, '')
+          const outDigits = `${target || ''}`.split('@')[0].replace(/\D/g, '')
+          const isBr13in = inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9'
+          const isBr12out = outDigits.startsWith('55') && outDigits.length === 12
+          if (isBr13in && isBr12out) {
+            // Se ONE_TO_ONE_ADDRESSING_MODE for 'lid', pode preferir LID; caso contr?rio, manter PN
+            if (ONE_TO_ONE_ADDRESSING_MODE === 'lid') {
+              try {
+                const lid = await (dataStore as any).getLidForPn?.(phone, target as any)
+                if (lid && typeof lid === 'string') {
+                  logger.warn('BR_GUARD(rejectCall): prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
+                  target = lid
+                } else {
+                  logger.warn('BR_GUARD(rejectCall): keeping WA JID %s (input=%s); no LID mapping', target, inDigits)
+                }
+              } catch {}
+            } else {
+              // Modo PN: n?o alternar para LID; manter PN (incluindo candidato 12 d?gitos)
+              logger.debug('BR_GUARD(rejectCall): ONE_TO_ONE_ADDRESSING_MODE=pn, mantendo PN %s', target)
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     } catch {}
-    // Preassert de sessões para rejeitar chamada com chaves atualizadas
+    // Preassert de sess?es para rejeitar chamada com chaves atualizadas
     try {
       const set = new Set<string>()
       if (typeof target === 'string' && target) set.add(target)
       try { if (isLidUser(target)) set.add(jidNormalizedUser(target)) } catch {}
-      // BR: incluir candidato alternativo (12↔13) quando alvo for PN JID
+      // BR: incluir candidato alternativo (12"13) quando alvo for PN JID
       try {
         if (typeof target === 'string' && target.endsWith('@s.whatsapp.net')) {
           const digits = ensurePn(target)
