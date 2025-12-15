@@ -79,6 +79,8 @@ export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
+// Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
+export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === 'true'
 export const PROXY_URL = process.env.PROXY_URL
 
 // behavior of unoapi
