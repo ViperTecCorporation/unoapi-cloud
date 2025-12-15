@@ -45,20 +45,14 @@ const makeCacheDel = (cache: Map<string, CacheEntry<unknown>>) => (key: string) 
 }
 
 // Limites/timings (curtos para evitar desatualização)
-const LOCAL_CONFIG_TTL_MS = 2 * 60 * 1000  // 2 minutos
-const LOCAL_CONFIG_MAX = 500
 const LOCAL_JIDMAP_TTL_MS = 5 * 60 * 1000  // 5 minutos
 const LOCAL_JIDMAP_MAX = 2000
 const LOCAL_PROFILE_TTL_MS = 5 * 60 * 1000 // 5 minutos
 const LOCAL_PROFILE_MAX = 1000
 
-const localConfigCache = new Map<string, CacheEntry<any>>()
 const localJidMapCache = new Map<string, CacheEntry<string>>()
 const localProfileCache = new Map<string, CacheEntry<string>>()
 
-const cacheGetConfig = makeCacheGet(localConfigCache)
-const cacheSetConfig = makeCacheSet(localConfigCache, LOCAL_CONFIG_MAX)
-const cacheDelConfig = makeCacheDel(localConfigCache)
 
 const cacheGetJidMap = makeCacheGet(localJidMapCache)
 const cacheSetJidMap = makeCacheSet(localJidMapCache, LOCAL_JIDMAP_MAX)
@@ -607,13 +601,10 @@ export const setTemplates = async (phone: string, value: any) => {
 }
 
 export const getConfig = async (phone: string) => {
-  const cached = cacheGetConfig(phone)
-  if (cached) return cached
   const key = configKey(phone)
   const configString = await redisGet(key)
   if (configString) {
     const config = JSON.parse(configString)
-    cacheSetConfig(phone, config, LOCAL_CONFIG_TTL_MS)
     return config
   }
 }
@@ -650,14 +641,12 @@ export const setConfig = async (phone: string, value: any) => {
     }
   } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
   configs.delete(phone)
-  cacheSetConfig(phone, config, LOCAL_CONFIG_TTL_MS)
   return config
 }
 
 export const delConfig = async (phone: string) => {
   const key = configKey(phone)
   await redisDel(key)
-  cacheDelConfig(phone)
 }
 
 export const delAuth = async (phone: string) => {
