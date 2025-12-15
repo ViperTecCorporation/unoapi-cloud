@@ -348,20 +348,20 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   } catch { return }
   try {
     // Write both new and old schemas for compatibility
-    await redisSetAndExpire(jidMapPnKeyNew(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapPnKeyNew(session, lidJid), pnJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapLidKeyNew(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapLidKeyNew(session, pnJid), lidJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapPnKeyOld(session, lidJid), pnJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapPnKeyOld(session, lidJid), pnJid)
   } catch {}
   try {
-    await redisSetAndExpire(jidMapLidKeyOld(session, pnJid), lidJid, JIDMAP_TTL_SECONDS)
+    await redisSet(jidMapLidKeyOld(session, pnJid), lidJid)
   } catch {}
   // Also persist to global scope to compartilhar entre sessões
-  try { await redisSetAndExpire(jidMapPnKeyGlob(lidJid), pnJid, JIDMAP_TTL_SECONDS) } catch {}
-  try { await redisSetAndExpire(jidMapLidKeyGlob(pnJid), lidJid, JIDMAP_TTL_SECONDS) } catch {}
+  try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
+  try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
