@@ -22,8 +22,17 @@ export const BASE_KEY = 'unoapi-'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let client: any
 
-// Optional: use SCAN instead of KEYS (off by default to avoid delays on large keyspaces)
+// Optional: force SCAN for all patterns (off by default); otherwise usamos HEUR囮STICA
 const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === 'true'
+// Prefixos cr乼ticos: mant覸m KEYS pela velocidade e baixo volume esperado
+const REDIS_KEYS_CRITICAL_PATTERNS = [
+  `${BASE_KEY}auth:*`,
+  `${BASE_KEY}config:*`,
+  `${BASE_KEY}status:*`,
+  `${BASE_KEY}last-incoming:*`,
+  `${BASE_KEY}meta:*`,
+]
+const isCriticalPattern = (pattern: string) => REDIS_KEYS_CRITICAL_PATTERNS.some((p) => pattern.startsWith(p))
 
 const redisTaskQueues: Map<string, Promise<any>> = new Map()
 const redisTaskLastRun: Map<string, number> = new Map()
@@ -130,7 +139,7 @@ const redisDel = async (key: string) => {
 export const redisKeys = async (pattern: string) => {
   logger.trace(`Keys ${pattern}`)
   try {
-    if (REDIS_KEYS_USE_SCAN) {
+    if (!isCriticalPattern(pattern) && REDIS_KEYS_USE_SCAN) {
       const out: string[] = []
       for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
         out.push(key as string)
@@ -141,7 +150,7 @@ export const redisKeys = async (pattern: string) => {
   } catch (error) {
     if (!client) {
       await getRedis()
-      if (REDIS_KEYS_USE_SCAN) {
+      if (!isCriticalPattern(pattern) && REDIS_KEYS_USE_SCAN) {
         const out: string[] = []
         for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 200 })) {
           out.push(key as string)
