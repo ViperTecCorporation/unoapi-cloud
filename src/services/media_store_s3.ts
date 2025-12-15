@@ -101,7 +101,12 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
     const command = new GetObjectCommand(getParams)
     try {
-      const link = await getSignedUrl(s3Client, command, { expiresIn })
+      let link = await getSignedUrl(s3Client, command, { expiresIn })
+      // Alguns provedores (ex.: R2) exigem X-Amz-Content-Sha256=UNSIGNED-PAYLOAD; se nÇõo vier, acrescenta
+      if (!/X-Amz-Content-Sha256=/i.test(link)) {
+        const sep = link.includes('?') ? '&' : '?'
+        link = `${link}${sep}X-Amz-Content-Sha256=UNSIGNED-PAYLOAD`
+      }
       return link
     } catch (error: any) {
       logger.error(
