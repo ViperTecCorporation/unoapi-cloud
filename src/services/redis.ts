@@ -12,6 +12,7 @@ import {
   WATCHDOG_PURGE_SCAN_COUNT,
   WATCHDOG_TASK_MIN_INTERVAL_MS,
   JIDMAP_ENRICH_MIN_INTERVAL_MS,
+  LOCAL_CACHE_ENABLED,
 } from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
@@ -53,14 +54,14 @@ const LOCAL_PROFILE_MAX = 1000
 const localJidMapCache = new Map<string, CacheEntry<string>>()
 const localProfileCache = new Map<string, CacheEntry<string>>()
 
+const cacheOn = LOCAL_CACHE_ENABLED
+const cacheGetJidMap = cacheOn ? makeCacheGet(localJidMapCache) : (() => undefined)
+const cacheSetJidMap = cacheOn ? makeCacheSet(localJidMapCache, LOCAL_JIDMAP_MAX) : (() => undefined)
+const cacheDelJidMap = cacheOn ? makeCacheDel(localJidMapCache) : (() => undefined)
 
-const cacheGetJidMap = makeCacheGet(localJidMapCache)
-const cacheSetJidMap = makeCacheSet(localJidMapCache, LOCAL_JIDMAP_MAX)
-const cacheDelJidMap = makeCacheDel(localJidMapCache)
-
-const cacheGetProfile = makeCacheGet(localProfileCache)
-const cacheSetProfile = makeCacheSet(localProfileCache, LOCAL_PROFILE_MAX)
-const cacheDelProfile = makeCacheDel(localProfileCache)
+const cacheGetProfile = cacheOn ? makeCacheGet(localProfileCache) : (() => undefined)
+const cacheSetProfile = cacheOn ? makeCacheSet(localProfileCache, LOCAL_PROFILE_MAX) : (() => undefined)
+const cacheDelProfile = cacheOn ? makeCacheDel(localProfileCache) : (() => undefined)
 
 export const BASE_KEY = 'unoapi-'
 

@@ -81,6 +81,8 @@ export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:56
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 // Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
 export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? true : process.env.REDIS_KEYS_USE_SCAN === 'true'
+// Habilita/desabilita caches locais (LRU) para JIDMAP/profile picture
+export const LOCAL_CACHE_ENABLED = process.env.LOCAL_CACHE_ENABLED === _undefined ? true : process.env.LOCAL_CACHE_ENABLED === 'true'
 export const PROXY_URL = process.env.PROXY_URL
 
 // behavior of unoapi
