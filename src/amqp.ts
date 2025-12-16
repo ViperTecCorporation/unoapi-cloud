@@ -138,6 +138,10 @@ export const amqpGetChannel = async () => {
     logger.info('Creating channel...')
     await amqpConnect()
     amqpChannel = await amqpChannelModel?.createChannel()
+    if (amqpChannel) {
+      amqpChannel.on('error', (err) => logger.error(err, 'Channel Error'))
+      amqpChannel.on('close', (err) => logger.error(err, 'Channel Closed'))
+    }
     logger.info('Created channel!')
   }
   return amqpChannel

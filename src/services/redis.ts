@@ -18,51 +18,6 @@ import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
 
-// Cache local (LRU simples) para reduzir leituras repetidas em chaves pouco mutáveis
-type CacheEntry<T> = { value: T; expiresAt: number }
-const makeCacheGet = <T>(cache: Map<string, CacheEntry<T>>) => (key: string) => {
-  const entry = cache.get(key)
-  if (!entry) return undefined
-  if (entry.expiresAt < Date.now()) {
-    cache.delete(key)
-    return undefined
-  }
-  // Atualiza ordem LRU
-  cache.delete(key)
-  cache.set(key, entry)
-  return entry.value
-}
-const makeCacheSet = <T>(cache: Map<string, CacheEntry<T>>, max: number) => (key: string, value: T, ttlMs: number) => {
-  if (typeof value === 'undefined' || ttlMs <= 0) return
-  cache.delete(key)
-  cache.set(key, { value, expiresAt: Date.now() + ttlMs })
-  if (cache.size > max) {
-    const oldest = cache.keys().next().value
-    cache.delete(oldest)
-  }
-}
-const makeCacheDel = (cache: Map<string, CacheEntry<unknown>>) => (key: string) => {
-  cache.delete(key)
-}
-
-// Limites/timings (curtos para evitar desatualização)
-const LOCAL_JIDMAP_TTL_MS = 5 * 60 * 1000  // 5 minutos
-const LOCAL_JIDMAP_MAX = 2000
-const LOCAL_PROFILE_TTL_MS = 5 * 60 * 1000 // 5 minutos
-const LOCAL_PROFILE_MAX = 1000
-
-const localJidMapCache = new Map<string, CacheEntry<string>>()
-const localProfileCache = new Map<string, CacheEntry<string>>()
-
-const cacheOn = LOCAL_CACHE_ENABLED
-const cacheGetJidMap = cacheOn ? makeCacheGet(localJidMapCache) : (() => undefined)
-const cacheSetJidMap = cacheOn ? makeCacheSet(localJidMapCache, LOCAL_JIDMAP_MAX) : (() => undefined)
-const cacheDelJidMap = cacheOn ? makeCacheDel(localJidMapCache) : (() => undefined)
-
-const cacheGetProfile = cacheOn ? makeCacheGet(localProfileCache) : (() => undefined)
-const cacheSetProfile = cacheOn ? makeCacheSet(localProfileCache, LOCAL_PROFILE_MAX) : (() => undefined)
-const cacheDelProfile = cacheOn ? makeCacheDel(localProfileCache) : (() => undefined)
-
 export const BASE_KEY = 'unoapi-'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,6 +26,10 @@ let client: any
 const redisTaskQueues: Map<string, Promise<any>> = new Map()
 const redisTaskLastRun: Map<string, number> = new Map()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// Health-check flags/intervals
+let redisHealthStarted = false
+const REDIS_HEALTH_INTERVAL_MS = 15_000
+const REDIS_PING_WARN_MS = 200
 // Simple queue + throttle to avoid hammering Redis when the same task is triggered concurrently
 const enqueueRedisTask = async <T>(name: string, fn: () => Promise<T>, minIntervalMs = 0): Promise<T> => {
   const previous = redisTaskQueues.get(name) || Promise.resolve()
@@ -112,6 +71,24 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
       }
     })
     logger.info(`Started redis!`)
+    // Health check loop (detect latência/queda)
+    if (!redisHealthStarted) {
+      redisHealthStarted = true
+      try {
+        setInterval(async () => {
+          const start = Date.now()
+          try {
+            await client.ping()
+            const dur = Date.now() - start
+            if (dur > REDIS_PING_WARN_MS) {
+              logger.warn('Redis ping lento: %d ms', dur)
+            }
+          } catch (e) {
+            logger.warn(e as any, 'Redis ping falhou')
+          }
+        }, REDIS_HEALTH_INTERVAL_MS)
+      } catch {}
+    }
   }
   return client
 }
@@ -357,41 +334,17 @@ const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_li
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
-  const cacheKeyGlobal = `pn|global|${lidJid}`
-  const cacheKeySession = `pn|${session}|${lidJid}`
-  const cachedGlobal = cacheGetJidMap(cacheKeyGlobal)
-  if (cachedGlobal) return cachedGlobal
-  const cachedSession = cacheGetJidMap(cacheKeySession)
-  if (cachedSession) return cachedSession
-  // Prefer lookup no escopo global primeiro para reduzir leituras duplicadas
   const vGlob = await redisGet(jidMapPnKeyGlob(lidJid))
-  if (vGlob) {
-    cacheSetJidMap(cacheKeyGlobal, vGlob, LOCAL_JIDMAP_TTL_MS)
-    cacheSetJidMap(cacheKeySession, vGlob, LOCAL_JIDMAP_TTL_MS)
-    return vGlob
-  }
-  // Try per-session (legado) e fallback para schemas antigos
+  if (vGlob) return vGlob
   const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
-  if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
+  if (vNew) return vNew
   return undefined
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
-  const cacheKeyGlobal = `lid|global|${pnJid}`
-  const cacheKeySession = `lid|${session}|${pnJid}`
-  const cachedGlobal = cacheGetJidMap(cacheKeyGlobal)
-  if (cachedGlobal) return cachedGlobal
-  const cachedSession = cacheGetJidMap(cacheKeySession)
-  if (cachedSession) return cachedSession
-  // Prefer lookup global primeiro
   const vGlob = await redisGet(jidMapLidKeyGlob(pnJid))
-  if (vGlob) {
-    cacheSetJidMap(cacheKeyGlobal, vGlob, LOCAL_JIDMAP_TTL_MS)
-    cacheSetJidMap(cacheKeySession, vGlob, LOCAL_JIDMAP_TTL_MS)
-    return vGlob
-  }
-  // Try per-session (legado)
+  if (vGlob) return vGlob
   const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
-  if (vNew) { cacheSetJidMap(cacheKeySession, vNew, LOCAL_JIDMAP_TTL_MS); return vNew }
+  if (vNew) return vNew
   return undefined
 }
 export const setJidMapping = async (session: string, pnJid: string, lidJid: string) => {
@@ -413,10 +366,6 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   // Apenas escopo global (reduz chaves duplicadas por sess?o); leitura legacy continua via fallback
   try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
   try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
-  cacheDelJidMap(`pn|${session}|${lidJid}`)
-  cacheDelJidMap(`lid|${session}|${pnJid}`)
-  cacheDelJidMap(`pn|global|${lidJid}`)
-  cacheDelJidMap(`lid|global|${pnJid}`)
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
