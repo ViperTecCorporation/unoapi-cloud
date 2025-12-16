@@ -968,18 +968,12 @@ export const setMessage = async (phone: string, jid: string, id: string, value: 
 }
 
 export const getProfilePicture = async (phone: string, jid: string) => {
-  const cacheKey = `${phone}|${jid}`
-  const cached = cacheGetProfile(cacheKey)
-  if (cached) return cached
   const key = profilePictureKey(phone, jid)
-  const url = await redisGet(key)
-  if (url) cacheSetProfile(cacheKey, url, LOCAL_PROFILE_TTL_MS)
-  return url
+  return redisGet(key)
 }
 
 export const setProfilePicture = async (phone: string, jid: string, url: string) => {
   const key = profilePictureKey(phone, jid)
-  cacheDelProfile(`${phone}|${jid}`)
   return redisSetAndExpire(key, url, DATA_URL_TTL)
 }
 
