@@ -13,6 +13,9 @@ import {
   WATCHDOG_TASK_MIN_INTERVAL_MS,
   JIDMAP_ENRICH_MIN_INTERVAL_MS,
   LOCAL_CACHE_ENABLED,
+  AUTH_CACHE_TTL_MS,
+  SESSION_STATUS_CACHE_TTL_MS,
+  CONNECT_COUNT_CACHE_TTL_MS,
 } from '../defaults'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
@@ -22,6 +25,12 @@ export const BASE_KEY = 'unoapi-'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let client: any
+let subscriber: any
+let configSubStarted = false
+const configSubHandlers: Set<(phone: string) => void> = new Set()
+const channelHandlers: Map<string, Set<(message: string) => void>> = new Map()
+const subscribedChannels: Set<string> = new Set()
+let subscriberStarting = false
 
 const redisTaskQueues: Map<string, Promise<any>> = new Map()
 const redisTaskLastRun: Map<string, number> = new Map()
@@ -30,6 +39,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 let redisHealthStarted = false
 const REDIS_HEALTH_INTERVAL_MS = 15_000
 const REDIS_PING_WARN_MS = 200
+const isCacheValid = (ts: number, ttlMs: number) => ttlMs <= 0 || (Date.now() - ts) <= ttlMs
+const authCache: Map<string, { value: string | null, ts: number }> = new Map()
+const sessionStatusCache: Map<string, { value: string | null, ts: number }> = new Map()
+const connectCountCache: Map<string, { value: number, ts: number }> = new Map()
 // Simple queue + throttle to avoid hammering Redis when the same task is triggered concurrently
 const enqueueRedisTask = async <T>(name: string, fn: () => Promise<T>, minIntervalMs = 0): Promise<T> => {
   const previous = redisTaskQueues.get(name) || Promise.resolve()
@@ -103,6 +116,114 @@ export const redisConnect = async (redisUrl = REDIS_URL) => {
   await redisClient.connect()
   logger.info(`Connected redis!`)
   return redisClient
+}
+
+const CONFIG_UPDATE_CHANNEL = `${BASE_KEY}config:update`
+const AUTH_UPDATE_CHANNEL = `${BASE_KEY}auth:update`
+const SESSION_STATUS_UPDATE_CHANNEL = `${BASE_KEY}status:update`
+const CONNECT_COUNT_UPDATE_CHANNEL = `${BASE_KEY}connect-count:update`
+
+const ensureSubscriber = async () => {
+  if (subscriber || subscriberStarting) return
+  subscriberStarting = true
+  try {
+    subscriber = createClient({ url: REDIS_URL })
+    await subscriber.connect()
+  } catch (e) {
+    logger.warn(e as any, 'Failed to connect redis subscriber')
+    subscriber = undefined
+  } finally {
+    subscriberStarting = false
+  }
+}
+
+const subscribeChannel = async (channel: string, handler: (message: string) => void) => {
+  let handlers = channelHandlers.get(channel)
+  if (!handlers) {
+    handlers = new Set()
+    channelHandlers.set(channel, handlers)
+  }
+  handlers.add(handler)
+  await ensureSubscriber()
+  if (!subscriber || subscribedChannels.has(channel)) return
+  try {
+    await subscriber.subscribe(channel, (message: string) => {
+      const hs = channelHandlers.get(channel)
+      if (!hs) return
+      for (const h of hs) {
+        try { h(message) } catch {}
+      }
+    })
+    subscribedChannels.add(channel)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to subscribe to channel %s', channel)
+  }
+}
+
+export const publishConfigUpdate = async (phone: string) => {
+  try {
+    await getRedis()
+    await client.publish(CONFIG_UPDATE_CHANNEL, phone)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to publish config update for %s', phone)
+  }
+}
+
+export const subscribeConfigUpdates = async (handler: (phone: string) => void) => {
+  configSubHandlers.add(handler)
+  if (configSubStarted) return
+  configSubStarted = true
+  await subscribeChannel(CONFIG_UPDATE_CHANNEL, (message: string) => {
+    for (const h of configSubHandlers) {
+      try { h(message) } catch {}
+    }
+  })
+  if (subscriber) logger.info('Redis config update subscription active')
+}
+
+export const publishAuthUpdate = async (authKeyFull: string) => {
+  try {
+    await getRedis()
+    await client.publish(AUTH_UPDATE_CHANNEL, authKeyFull)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to publish auth update for %s', authKeyFull)
+  }
+}
+
+export const publishSessionStatusUpdate = async (phone: string) => {
+  try {
+    await getRedis()
+    await client.publish(SESSION_STATUS_UPDATE_CHANNEL, phone)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to publish session status update for %s', phone)
+  }
+}
+
+export const publishConnectCountUpdate = async (phone: string) => {
+  try {
+    await getRedis()
+    await client.publish(CONNECT_COUNT_UPDATE_CHANNEL, phone)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to publish connect-count update for %s', phone)
+  }
+}
+
+const ensureAuthSub = async () => {
+  await subscribeChannel(AUTH_UPDATE_CHANNEL, (message: string) => {
+    authCache.delete(message)
+  })
+}
+
+const ensureSessionStatusSub = async () => {
+  await subscribeChannel(SESSION_STATUS_UPDATE_CHANNEL, (message: string) => {
+    sessionStatusCache.delete(message)
+  })
+}
+
+const ensureConnectCountSub = async () => {
+  await subscribeChannel(CONNECT_COUNT_UPDATE_CHANNEL, (message: string) => {
+    connectCountCache.delete(message)
+  })
 }
 
 export const redisGet = async (key: string) => {
@@ -218,6 +339,7 @@ const redisScanSome = async (pattern: string, limit: number): Promise<string[]> 
   }
 }
 
+
 // Atomic increment with TTL. Sets TTL on first increment (value === 1)
 export const redisIncrWithTtl = async (key: string, ttlSec: number): Promise<number> => {
   logger.trace(`INCR ${key} with ttl ${ttlSec}s`)
@@ -244,8 +366,12 @@ export const authKey = (phone: string) => {
   return `${BASE_KEY}auth:${phone}`
 }
 
-const connectCountKey = (phone: string, ordinal: number | string) => {
-  return `${BASE_KEY}connect-count:${phone}:${ordinal}`
+const authIndexKey = (phone: string) => {
+  return `${BASE_KEY}auth-index:${phone}`
+}
+
+const connectCountTotalKey = (phone: string) => {
+  return `${BASE_KEY}connect-count:${phone}:total`
 }
 
 export const lastTimerKey = (from: string, to: string) => {
@@ -266,6 +392,10 @@ const mediaKey = (phone: string, id: string) => {
 
 const bulkMessageKeyBase = (phone: string, bulkId: string) => {
   return `${BASE_KEY}bulk-message:${phone}:${bulkId}`
+}
+
+const bulkIndexKey = (phone: string, bulkId: string) => {
+  return `${BASE_KEY}bulk-index:${phone}:${bulkId}`
 }
 
 const bulkMessageKey = (phone: string, bulkId: string, messageId: string, phoneNumber: string) => {
@@ -492,13 +622,22 @@ export const setBlacklist = async (from: string, webhookId: string, to: string, 
 }
 
 export const getSessionStatus = async (phone: string) => {
+  await ensureSessionStatusSub()
+  const cached = sessionStatusCache.get(phone)
+  if (cached && isCacheValid(cached.ts, SESSION_STATUS_CACHE_TTL_MS)) {
+    return cached.value || undefined
+  }
   const key = sessionStatusKey(phone)
-  return redisGet(key)
+  const v = await redisGet(key)
+  sessionStatusCache.set(phone, { value: v || null, ts: Date.now() })
+  return v
 }
 
 export const setSessionStatus = async (phone: string, status: string) => {
   const key = sessionStatusKey(phone)
   await client.set(key, status)
+  sessionStatusCache.set(phone, { value: status, ts: Date.now() })
+  await publishSessionStatusUpdate(phone)
 }
 
 export const getMessageStatus = async (phone: string, id: string) => {
@@ -584,6 +723,7 @@ export const setConfig = async (phone: string, value: any) => {
   try { (config as any).useS3 = true } catch {}
   delete config.overrideWebhooks
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
+  await publishConfigUpdate(phone)
   try {
     const phoneNumberId = (config as any)?.webhookForward?.phoneNumberId
     if (phoneNumberId) {
@@ -597,48 +737,77 @@ export const setConfig = async (phone: string, value: any) => {
 export const delConfig = async (phone: string) => {
   const key = configKey(phone)
   await redisDel(key)
+  await publishConfigUpdate(phone)
 }
 
 export const delAuth = async (phone: string) => {
   const key = authKey(phone)
   logger.trace(`Deleting key ${key}...`)
   await redisDel(key)
+  authCache.delete(key)
+  await publishAuthUpdate(key)
   logger.debug(`Deleted key ${key}!`)
-  const pattern = authKey(`${phone}:*`)
-  const keys = await redisKeys(pattern)
+  const indexKey = authIndexKey(phone)
+  let keys = await client.sMembers(indexKey)
+  if (!keys || keys.length === 0) {
+    const pattern = authKey(`${phone}:*`)
+    keys = await redisKeys(pattern)
+  }
   logger.debug(`${keys.length} keys to delete auth for ${phone}`)
   for (let i = 0, j = keys.length; i < j; i++) {
     const key = keys[i]
     logger.trace(`Deleting key ${key}...`)
     await redisDel(key)
+    authCache.delete(key)
+    await publishAuthUpdate(key)
     logger.trace(`Deleted key ${key}!`)
   }
+  await redisDel(indexKey)
 }
 
 export const getAuth = async (phone: string, parse = (value: string) => JSON.parse(value)) => {
+  await ensureAuthSub()
   const key = authKey(phone)
+  const cached = authCache.get(key)
+  if (cached && isCacheValid(cached.ts, AUTH_CACHE_TTL_MS)) {
+    return cached.value ? parse(cached.value) : undefined
+  }
   const authString = await redisGet(key)
   if (authString) {
+    authCache.set(key, { value: authString, ts: Date.now() })
     const authJson = parse(authString)
     return authJson
   }
+  authCache.set(key, { value: null, ts: Date.now() })
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setAuth = async (phone: string, value: any, stringify = (value: string) => JSON.stringify(value, null, '\t')) => {
   const key = authKey(phone)
   const authValue = stringify(value)
-  return redisSetAndExpire(key, authValue, SESSION_TTL)
+  const res = await redisSetAndExpire(key, authValue, SESSION_TTL)
+  try {
+    const indexKey = authIndexKey(phone.split(':')[0])
+    await client.sAdd(indexKey, key)
+    await client.expire(indexKey, SESSION_TTL)
+  } catch {}
+  authCache.set(key, { value: authValue, ts: Date.now() })
+  await publishAuthUpdate(key)
+  return res
 }
 
 export const setbulkMessage = async (phone: string, bulkId: string, messageId: string, phoneNumber) => {
   const key = bulkMessageKey(phone, bulkId, messageId, phoneNumber)
+  const indexKey = bulkIndexKey(phone, bulkId)
+  await client.sAdd(indexKey, `${messageId}:${phoneNumber}`)
+  await client.expire(indexKey, DATA_TTL)
   return redisSetAndExpire(key, 'scheduled', DATA_TTL)
 }
 
 export const getBulkReport = async (phone: string, id: string) => {
-  const pattern = `${bulkMessageKeyBase(phone, id)}:*`
-  const keys: string[] = await redisKeys(pattern)
+  const indexKey = bulkIndexKey(phone, id)
+  const members: string[] = await client.sMembers(indexKey)
+  const keys = members.map((member) => `${bulkMessageKeyBase(phone, id)}:${member}`)
   logger.debug(`keys: ${JSON.stringify(keys)}`)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -721,67 +890,6 @@ export const setContactInfo = async (phone: string, jid: string, info: any) => {
 }
 
 // Varre contact-info da sessão e enriquece o JIDMAP PN<->LID
-export const enrichJidMapFromContactInfo = async (session: string, limit = 2000) =>
-  enqueueRedisTask('jidmap-enrich-contact', async () => {
-    try {
-      const base = `${BASE_KEY}contact-info:${session}:`
-      const pattern = `${BASE_KEY}contact-info:${session}:*`
-      const cursorKey = `${BASE_KEY}jidmap:cursor:${session}:contact-info`
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const c: any = await getRedis()
-      let cursor: string = (await redisGet(cursorKey)) || '0'
-      let updated = 0
-      let scanned = 0
-      while (scanned < limit) {
-        let res: any
-        try { res = await c.scan(cursor, { MATCH: pattern, COUNT: Math.max(50, limit) }) } catch { break }
-        if (!res) break
-        cursor = (typeof res.cursor !== 'undefined') ? `${res.cursor}` : `${res[0]}`
-        const keys: string[] = Array.isArray(res.keys) ? res.keys : (res[1] || [])
-        if (!Array.isArray(keys) || keys.length === 0) {
-          if (cursor === '0') break
-          continue
-        }
-        for (const k of keys) {
-          if (scanned >= limit) break
-          scanned += 1
-          try {
-            const jid = k.substring(base.length)
-            const raw = await redisGet(k)
-            if (!raw) continue
-            const info = typeof raw === 'string' ? JSON.parse(raw) : raw
-            if (!info) continue
-            // LID -> PN
-            if (typeof jid === 'string' && jid.endsWith('@lid')) {
-              let pnJid: string | undefined = info?.pnJid
-              if (!pnJid && info?.pn) {
-                const digits = `${info.pn}`.replace(/\D/g, '')
-                if (digits) pnJid = `${digits}@s.whatsapp.net`
-              }
-              if (pnJid && pnJid.endsWith('@s.whatsapp.net')) {
-                try { await setJidMapping(session, pnJid, jid); updated += 1 } catch {}
-              }
-            }
-            // PN -> LID
-            if (typeof jid === 'string' && jid.endsWith('@s.whatsapp.net')) {
-              const lidJid: string | undefined = info?.lidJid
-              if (lidJid && lidJid.endsWith('@lid')) {
-                try { await setJidMapping(session, jid, lidJid); updated += 1 } catch {}
-              }
-            }
-          } catch {}
-        }
-        if (cursor === '0') break
-      }
-      try { await redisSetAndExpire(cursorKey, cursor, 3600) } catch {}
-      try { logger.info('JIDMAP enrich: scanned=%s updated=%s (limit=%s) for session=%s', scanned, updated, limit, session) } catch {}
-    } catch (e) {
-      try { logger.warn(e as any, 'JIDMAP enrich failed for session=%s', session) } catch {}
-    }
-  }, JIDMAP_ENRICH_MIN_INTERVAL_MS)
-
-// Fast-path lookups into Baileys internal auth lid-mapping cache (per-session)
-// Attempts to resolve PN JID from LID JID without a full sweep
 export const getPnForLidFromAuthCache = async (session: string, lidJid: string): Promise<string | undefined> => {
   try {
     const digits = `${lidJid || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
@@ -811,76 +919,33 @@ export const getLidForPnFromAuthCache = async (session: string, pnJid: string): 
 }
 
 export const getConnectCount = async(phone: string) => {
-  const keyPattern = connectCountKey(phone, '*')
-  const keys = await redisKeys(keyPattern)
-  return keys.length || 0
+  await ensureConnectCountSub()
+  const cached = connectCountCache.get(phone)
+  if (cached && isCacheValid(cached.ts, CONNECT_COUNT_CACHE_TTL_MS)) {
+    return cached.value
+  }
+  const key = connectCountTotalKey(phone)
+  const raw = await redisGet(key)
+  const count = raw ? parseInt(`${raw}`, 10) || 0 : 0
+  connectCountCache.set(phone, { value: count, ts: Date.now() })
+  return count
 }
 
 export const clearConnectCount = async(phone: string) => {
-  const keyPattern = connectCountKey(phone, '*')
-  const keys = await redisKeys(keyPattern)
-  for (let index = 0; index < keys.length; index++) {
-    const key = keys[index];
-    await redisDel(key)
-  }
+  const key = connectCountTotalKey(phone)
+  await redisDel(key)
+  connectCountCache.delete(phone)
+  await publishConnectCountUpdate(phone)
 }
 
 export const setConnectCount = async (phone: string, count: number, ttl: number) => {
-  const key = connectCountKey(phone, count)
-  await redisSetAndExpire(key, 1, ttl)
+  const key = connectCountTotalKey(phone)
+  await redisSetAndExpire(key, count, ttl)
+  connectCountCache.set(phone, { value: count, ts: Date.now() })
+  await publishConnectCountUpdate(phone)
 }
 
 // One-time bootstrap: migrate all per-session JIDMAP pairs into the global JIDMAP namespace
-export const bootstrapJidMapGlobalOnce = async (): Promise<void> => {
-  try {
-    const marker = `${BASE_KEY}jidmap:global:bootstrapped`
-    const already = await redisGet(marker)
-    if (already) return
-    let total = 0
-    // Collect all per-session pn_for_lid / lid_for_pn (new + old schema)
-    const patterns = [
-      `${BASE_KEY}jidmap:*:pn_for_lid:*`,
-      `${BASE_KEY}jidmap:*:lid_for_pn:*`,
-      `${BASE_KEY}jidmap:*:pn:*`,
-      `${BASE_KEY}jidmap:*:lid:*`,
-    ]
-    for (const p of patterns) {
-      try {
-        const keys = await redisKeys(p)
-        for (const k of keys || []) {
-          try {
-            const v = await redisGet(k)
-            if (!v) continue
-            // Determine kind and extract ids
-            if (k.includes(':pn_for_lid:')) {
-              const lid = k.substring(k.indexOf(':pn_for_lid:') + 12)
-              await redisSet(jidMapPnKeyGlob(lid), v)
-              total += 1
-            } else if (k.includes(':lid_for_pn:')) {
-              const pn = k.substring(k.indexOf(':lid_for_pn:') + 12)
-              await redisSet(jidMapLidKeyGlob(pn), v)
-              total += 1
-            } else if (k.includes(':pn:')) {
-              const lid = k.substring(k.indexOf(':pn:') + 4)
-              await redisSet(jidMapPnKeyGlob(lid), v)
-              total += 1
-            } else if (k.includes(':lid:')) {
-              const pn = k.substring(k.indexOf(':lid:') + 5)
-              await redisSet(jidMapLidKeyGlob(pn), v)
-              total += 1
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-    try { logger.info('JIDMAP bootstrap: migrated %s mappings to global', total) } catch {}
-    await redisSetAndExpire(marker, '1', 365 * 24 * 60 * 60) // mark for ~1y
-  } catch (e) {
-    try { logger.warn(e as any, 'JIDMAP bootstrap failed') } catch {}
-  }
-}
-
-// Mirror Baileys internal per-session lid-mapping cache into our JIDMAP
 export const enrichJidMapFromAuthLidCache = async (session: string): Promise<void> =>
   enqueueRedisTask('jidmap-enrich-auth', async () => {
     try {

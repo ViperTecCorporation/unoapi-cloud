@@ -85,8 +85,7 @@ export class SessionStoreRedis extends SessionStore {
       await delAuth(phone)
       await this.setStatus(phone, 'disconnected')
     }
-    const key = sessionStatusKey(phone)
-    if (await redisGet(key) == 'standby' && await this.getConnectCount(phone) < MAX_CONNECT_RETRY) {
+    if (await getSessionStatus(phone) == 'standby' && await this.getConnectCount(phone) < MAX_CONNECT_RETRY) {
       logger.info(`Sync ${phone} standby!`)
       await this.setStatus(phone, 'offline')
     }

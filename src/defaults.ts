@@ -81,6 +81,12 @@ export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:56
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 // Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
 export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? true : process.env.REDIS_KEYS_USE_SCAN === 'true'
+// TTL (ms) para cache local de config por sessao. 0 desabilita TTL (usa apenas invalidacao por pub/sub).
+export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '5000')
+// TTLs (ms) para cache local de sessao/auth (0 = somente invalidacao por pub/sub)
+export const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS || '5000')
+export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')
+export const CONNECT_COUNT_CACHE_TTL_MS = parseInt(process.env.CONNECT_COUNT_CACHE_TTL_MS || '2000')
 // Habilita/desabilita caches locais (LRU) para JIDMAP/profile picture
 export const LOCAL_CACHE_ENABLED = process.env.LOCAL_CACHE_ENABLED === _undefined ? false : process.env.LOCAL_CACHE_ENABLED === 'true'
 export const PROXY_URL = process.env.PROXY_URL
@@ -301,6 +307,9 @@ export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
 export const ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST: boolean =
   process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST === _undefined ? false : process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST == 'true'
+// Enable Redis Signal session purge before retrying send (watchdog). Default false for performance.
+export const SIGNAL_SESSION_PURGE_ENABLED: boolean =
+  process.env.SIGNAL_SESSION_PURGE_ENABLED === _undefined ? false : process.env.SIGNAL_SESSION_PURGE_ENABLED == 'true'
 export const SIGNAL_CACHE_SAFE_MODE: boolean =
   process.env.SIGNAL_CACHE_SAFE_MODE === _undefined ? false : process.env.SIGNAL_CACHE_SAFE_MODE == 'true'
 

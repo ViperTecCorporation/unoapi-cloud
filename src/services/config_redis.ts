@@ -1,12 +1,44 @@
 import { getConfig, Config, configs } from './config'
-import { getConfig as getConfigCache } from './redis'
+import { getConfig as getConfigCache, subscribeConfigUpdates } from './redis'
 import { getStoreRedis } from './store_redis'
 import { getStoreFile } from './store_file'
 import logger from './logger'
 import { getConfigByEnv } from './config_by_env'
 import { MessageFilter } from './message_filter'
+import { CONFIG_CACHE_TTL_MS } from '../defaults'
+
+const configCacheTs: Map<string, number> = new Map()
+let configSubReady = false
+let configSubStarting = false
+
+const ensureConfigSub = async () => {
+  if (configSubReady || configSubStarting) return
+  configSubStarting = true
+  try {
+    await subscribeConfigUpdates((phone: string) => {
+      configs.delete(phone)
+      configCacheTs.delete(phone)
+    })
+    configSubReady = true
+  } catch (e) {
+    logger.warn(e as any, 'Config update subscription failed')
+  } finally {
+    configSubStarting = false
+  }
+}
 
 export const getConfigRedis: getConfig = async (phone: string): Promise<Config> => {
+  await ensureConfigSub()
+  if (configs.has(phone)) {
+    const ts = configCacheTs.get(phone) || 0
+    const ttlMs = CONFIG_CACHE_TTL_MS || 0
+    if (ttlMs <= 0 || Date.now() - ts <= ttlMs) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return configs.get(phone)!
+    }
+    configs.delete(phone)
+    configCacheTs.delete(phone)
+  }
   if (!configs.has(phone)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const configRedis: any = { ...((await getConfigCache(phone)) || {}) }
@@ -60,6 +92,7 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
     }
     logger.info('Config redis: %s -> %s', phone, JSON.stringify(config))
     configs.set(phone, config)
+    configCacheTs.set(phone, Date.now())
   }
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   return configs.get(phone)!
