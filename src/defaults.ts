@@ -82,7 +82,7 @@ export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 // Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
 export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? true : process.env.REDIS_KEYS_USE_SCAN === 'true'
 // TTL (ms) para cache local de config por sessao. 0 desabilita TTL (usa apenas invalidacao por pub/sub).
-export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '5000')
+export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '0')
 // TTLs (ms) para cache local de sessao/auth (0 = somente invalidacao por pub/sub)
 export const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS || '5000')
 export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')

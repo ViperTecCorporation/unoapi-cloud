@@ -29,6 +29,8 @@ const ensureConfigSub = async () => {
 
 export const getConfigRedis: getConfig = async (phone: string): Promise<Config> => {
   await ensureConfigSub()
+  const previous = configs.get(phone)
+  const previousGetMessageMetadata = previous?.getMessageMetadata
   if (configs.has(phone)) {
     const ts = configCacheTs.get(phone) || 0
     const ttlMs = CONFIG_CACHE_TTL_MS || 0
@@ -89,6 +91,9 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
       config.getStore = getStoreRedis
     } else {
       config.getStore = getStoreFile
+    }
+    if (previousGetMessageMetadata) {
+      config.getMessageMetadata = previousGetMessageMetadata
     }
     logger.info('Config redis: %s -> %s', phone, JSON.stringify(config))
     configs.set(phone, config)

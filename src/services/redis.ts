@@ -423,6 +423,10 @@ export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
 
+const configAuthTokenIndexKey = () => {
+  return `${BASE_KEY}config:auth-token-index`
+}
+
 export const templateKey = (phone: string) => {
   return `${BASE_KEY}template:${phone}`
 }
@@ -698,6 +702,22 @@ export const getConfig = async (phone: string) => {
   }
 }
 
+export const getAllAuthTokens = async (): Promise<string[]> => {
+  try {
+    return await client.sMembers(configAuthTokenIndexKey())
+  } catch {
+    return []
+  }
+}
+
+export const addAuthTokensToIndex = async (tokens: string[]) => {
+  try {
+    const vals = (tokens || []).filter((t) => !!t)
+    if (vals.length === 0) return
+    await client.sAdd(configAuthTokenIndexKey(), vals)
+  } catch {}
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setConfig = async (phone: string, value: any) => {
   const currentConfig = await getConfig(phone)
@@ -723,6 +743,17 @@ export const setConfig = async (phone: string, value: any) => {
   try { (config as any).useS3 = true } catch {}
   delete config.overrideWebhooks
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
+  try {
+    const oldToken = (currentConfig as any)?.authToken
+    const newToken = (config as any)?.authToken
+    const indexKey = configAuthTokenIndexKey()
+    if (oldToken && oldToken !== newToken) {
+      await client.sRem(indexKey, oldToken)
+    }
+    if (newToken) {
+      await client.sAdd(indexKey, newToken)
+    }
+  } catch {}
   await publishConfigUpdate(phone)
   try {
     const phoneNumberId = (config as any)?.webhookForward?.phoneNumberId
@@ -736,6 +767,13 @@ export const setConfig = async (phone: string, value: any) => {
 
 export const delConfig = async (phone: string) => {
   const key = configKey(phone)
+  try {
+    const current = await getConfig(phone)
+    const token = (current as any)?.authToken
+    if (token) {
+      await client.sRem(configAuthTokenIndexKey(), token)
+    }
+  } catch {}
   await redisDel(key)
   await publishConfigUpdate(phone)
 }
