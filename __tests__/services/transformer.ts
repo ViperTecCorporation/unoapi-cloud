@@ -1441,35 +1441,32 @@ describe('service transformer', () => {
       },
     }
     const output = {
-      listMessage: {
-        buttonText: 'sections',
-        description: 'your-text-message-content',
-        footerText: 'Cloud UnoApi',
-        listType: 2,
-        sections: [
-          {
-            rows: [
-              {
-                description: 'row-description-content',
-                rowId: undefined,
-                title: 'row-title-content',
-              },
-            ],
-            title: 'your-section-title-content',
-          },
-          {
-            rows: [
-              {
-                description: 'row-description-content',
-                rowId: undefined,
-                title: 'row-title-content',
-              },
-            ],
-            title: 'your-section-title-content',
-          },
-        ],
-        title: 'Title',
-      },
+      buttonText: 'sections',
+      footer: 'Cloud UnoApi',
+      sections: [
+        {
+          rows: [
+            {
+              description: 'row-description-content',
+              rowId: 'unique-row-identifier',
+              title: 'row-title-content',
+            },
+          ],
+          title: 'your-section-title-content',
+        },
+        {
+          rows: [
+            {
+              description: 'row-description-content',
+              rowId: 'unique-row-identifier',
+              title: 'row-title-content',
+            },
+          ],
+          title: 'your-section-title-content',
+        },
+      ],
+      text: 'your-text-message-content',
+      title: 'Title',
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
