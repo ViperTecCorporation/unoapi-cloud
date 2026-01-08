@@ -318,7 +318,16 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   mediaStore.getMedia = async (baseUrl: string, mediaId: string) => {
     const dataStore = await getDataStore(phone, config)
     const mediaPayload = await dataStore.loadMediaPayload(mediaId!)
-    const filePath = mediaStore.getFilePath(phone, mediaId!, mediaPayload.mime_type!)
+    if (!mediaPayload) {
+      logger.debug('media getMedia not found: %s', mediaId)
+      return undefined
+    }
+    const mimeType = mediaPayload?.mime_type || mediaPayload?.content_type
+    if (!mimeType) {
+      logger.debug('media getMedia missing mime_type: %s', mediaId)
+      return undefined
+    }
+    const filePath = mediaStore.getFilePath(phone, mediaId!, mimeType)
     const url = await mediaStore.getDownloadUrl(baseUrl, filePath)
     const payload = {
       ...mediaPayload,
