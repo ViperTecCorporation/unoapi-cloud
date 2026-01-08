@@ -422,6 +422,19 @@ export class OutgoingCloudApi implements Outgoing {
         url = `${webhook.url}/${phone}`
       }
     } catch {}
+    try {
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const m = Array.isArray(v.messages) ? v.messages[0] : undefined
+      if (m?.type === 'interactive') {
+        logger.info(
+          'INTERACTIVE webhook: id=%s to=%s subtype=%s url=%s',
+          m?.id || '<none>',
+          m?.to || '<none>',
+          m?.interactive?.type || '<none>',
+          url,
+        )
+      }
+    } catch {}
     logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
     let response: Response
     try {

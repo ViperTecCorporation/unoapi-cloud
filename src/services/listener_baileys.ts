@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
@@ -80,16 +80,19 @@ export class ListenerBaileys implements Listener {
       return
     }
     const getFilterMessageType = (m: any) => {
-      let mt = getMessageType(m)
-      if (!mt) {
+      // Prefer normalized content to catch wrappers (ephemeral/viewOnce/deviceSent)
+      try {
+        const normalized = normalizeMessageContent(m?.message)
+        const mt = getMessageType({ message: normalized })
+        if (mt) return mt
+      } catch {}
+      try {
         const inner =
           m?.message?.deviceSentMessage?.message ||
           m?.update?.message?.deviceSentMessage?.message
-        if (inner) {
-          mt = getMessageType({ message: inner })
-        }
-      }
-      return mt
+        if (inner) return getMessageType({ message: inner })
+      } catch {}
+      return getMessageType(m)
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filteredMessages = messages.filter((m: any) => {
@@ -114,6 +117,12 @@ export class ListenerBaileys implements Listener {
     }
     let i: WAMessage = message as WAMessage
     let messageType = getMessageType(message)
+    if (messageType && ['listMessage', 'buttonsMessage', 'interactiveMessage'].includes(messageType)) {
+      try {
+        const k: any = (i as any)?.key || {}
+        logger.info('INTERACTIVE in: jid=%s id=%s type=%s fromMe=%s', k?.remoteJid, k?.id, messageType, k?.fromMe)
+      } catch {}
+    }
     logger.debug(`messageType %s...`, messageType)
     // Deduplicação leve para mensagens (não afeta 'update'/'receipt')
     try {
@@ -407,6 +416,20 @@ export class ListenerBaileys implements Listener {
       }
     }
     if (data) {
+
+      try {
+        const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
+        const m = Array.isArray(v.messages) ? v.messages[0] : undefined
+        if (m?.type === 'interactive') {
+          logger.info(
+            'INTERACTIVE out: from=%s to=%s subtype=%s id=%s',
+            m.from || '<none>',
+            m.to || '<none>',
+            m?.interactive?.type || '<none>',
+            m?.id || '<none>',
+          )
+        }
+      } catch {}
       // Guardar contra regressão/duplicata de status (não enviar 'sent' após 'delivered' e nem duplicar)
       try {
         const change = (data as any)?.entry?.[0]?.changes?.[0]?.value
