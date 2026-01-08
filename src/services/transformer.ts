@@ -66,6 +66,9 @@ export const TYPE_MESSAGES_TO_READ = [
   'reactionMessage',
   'locationMessage',
   'liveLocationMessage',
+  'listMessage',
+  'buttonsMessage',
+  'interactiveMessage',
   'listResponseMessage',
   'conversation',
   'ptvMessage',
@@ -1501,6 +1504,111 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
         message.type = 'text'
         break
+
+      case 'listMessage': {
+        const listMessage: any = binMessage || payload?.message?.listMessage || {}
+        const sections = Array.isArray(listMessage.sections)
+          ? listMessage.sections.map((section: any) => ({
+              title: section.title || '',
+              rows: (section.rows || []).map((row: any) => ({
+                id: row.id || row.rowId || '',
+                title: row.title || '',
+                description: row.description || '',
+              })),
+            }))
+          : []
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'list',
+          header: listMessage.title ? { type: 'text', text: listMessage.title } : undefined,
+          body: { text: listMessage.description || listMessage.text || '' },
+          footer: listMessage.footerText ? { text: listMessage.footerText } : undefined,
+          action: {
+            button: listMessage.buttonText || 'Selecionar',
+            sections,
+          },
+        }
+        break
+      }
+
+      case 'buttonsMessage': {
+        const buttonsMessage: any = binMessage || payload?.message?.buttonsMessage || {}
+        const buttons = Array.isArray(buttonsMessage.buttons)
+          ? buttonsMessage.buttons.map((button: any) => ({
+              type: 'reply',
+              reply: {
+                id: button.buttonId || '',
+                title: button.buttonText?.displayText || '',
+              },
+            }))
+          : []
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button',
+          body: { text: buttonsMessage.contentText || buttonsMessage.text || '' },
+          footer: buttonsMessage.footerText ? { text: buttonsMessage.footerText } : undefined,
+          action: { buttons },
+        }
+        break
+      }
+
+      case 'interactiveMessage': {
+        const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
+        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
+        const buttons = Array.isArray(nfButtons)
+          ? nfButtons.map((button: any) => {
+              let params: any = {}
+              try {
+                params = JSON.parse(button?.buttonParamsJson || '{}')
+              } catch {}
+              if (button?.name === 'cta_url') {
+                return {
+                  type: 'cta_url',
+                  url: {
+                    title: params.display_text || '',
+                    link: params.url || '',
+                  },
+                }
+              }
+              if (button?.name === 'cta_call') {
+                return {
+                  type: 'cta_call',
+                  call: {
+                    title: params.display_text || '',
+                    phone_number: params.phone_number || '',
+                  },
+                }
+              }
+              if (button?.name === 'cta_copy') {
+                return {
+                  type: 'cta_copy',
+                  copy_code: {
+                    title: params.display_text || '',
+                    code: params.copy_code || '',
+                  },
+                }
+              }
+              return {
+                type: 'reply',
+                reply: {
+                  id: params.id || '',
+                  title: params.display_text || '',
+                },
+              }
+            })
+          : []
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button',
+          header: interactiveMessage?.header?.title
+            ? { type: 'text', text: interactiveMessage.header.title }
+            : undefined,
+          body: { text: interactiveMessage?.body?.text || '' },
+          footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
+          action: { buttons },
+        }
+        break
+      }
 
       case 'statusMentionMessage':
         break
