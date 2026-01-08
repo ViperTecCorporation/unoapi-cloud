@@ -11,7 +11,9 @@ export class SessionStoreRedis extends SessionStore {
     try {
       const pattern = configKey('*')
       const keys = await redisKeys(pattern)
-      return keys.map((key: string) => key.replace(toReplaceConfig, ''))
+      return keys
+        .map((key: string) => key.replace(toReplaceConfig, ''))
+        .filter((phone: string) => phone !== 'auth-token-index')
     } catch (error) {
       logger.error(error, 'Erro on get phones')
       throw error
