@@ -1106,6 +1106,33 @@ export class ClientBaileys implements Client {
             const r: Response = { ok }
             return r
           }
+          try {
+            if (type === 'interactive' && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
+              const toId = jidToPhoneNumber(to, '')
+              const localId = `uno_${uuid()}`
+              const msg: any = {
+                from: this.phone.replace('+', ''),
+                id: localId,
+                type: 'interactive',
+                interactive: payload.interactive,
+              }
+              const ctxId = payload?.context?.message_id || payload?.context?.id
+              if (ctxId) {
+                msg.context = { message_id: ctxId, id: ctxId }
+              }
+              const webhookPayload = completeCloudApiWebHook(this.phone, toId, msg)
+              await amqpPublish(
+                UNOAPI_EXCHANGE_BROKER_NAME,
+                UNOAPI_QUEUE_OUTGOING,
+                this.phone,
+                { webhooks: this.config.webhooks, payload: webhookPayload, split: true },
+                { type: 'topic' },
+              )
+              logger.info('INTERACTIVE webhook enqueue (no response): id=%s to=%s', localId, toId)
+            }
+          } catch (e) {
+            logger.warn(e as any, 'INTERACTIVE webhook enqueue failed (no response)')
+          }
         } else {
           throw new Error(`Unknow message type ${type}`)
         }
