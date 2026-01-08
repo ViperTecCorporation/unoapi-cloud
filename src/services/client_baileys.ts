@@ -349,8 +349,16 @@ export class ClientBaileys implements Client {
       try {
         const arr: any[] = (payload?.messages || []) as any[]
         const cnt = arr.length
-        const sample = arr.slice(0, 1).map((m) => ({ jid: m?.key?.remoteJid, id: m?.key?.id, type: Object.keys(m?.message || {})[0] }))
-        logger.debug('messages.upsert %s count=%s sample=%s', this.phone, cnt, JSON.stringify(sample))
+        const types = arr.map((m) => {
+          try { return getMessageType(m) || Object.keys(m?.message || {})[0] || '<none>' } catch { return '<none>' }
+        })
+        const sample = arr.slice(0, 3).map((m) => ({
+          jid: m?.key?.remoteJid,
+          id: m?.key?.id,
+          type: getMessageType(m) || Object.keys(m?.message || {})[0] || '<none>',
+          fromMe: m?.key?.fromMe,
+        }))
+        logger.info('BAILEYS upsert: phone=%s count=%s types=%s sample=%s', this.phone, cnt, types.join(','), JSON.stringify(sample))
         // Update contact name cache from pushName/verifiedBizName
         try {
           const store = this.store
@@ -412,6 +420,27 @@ export class ClientBaileys implements Client {
       }
     })
     this.event('messages.update', async (messages: object[]) => {
+      try {
+        const updates: any[] = Array.isArray(messages) ? (messages as any[]) : []
+        const types = updates.map((m) => {
+          try {
+            const inner = m?.update?.message || m?.message
+            return getMessageType({ message: inner }) || Object.keys(inner || {})[0] || '<none>'
+          } catch { return '<none>' }
+        })
+        const sample = updates.slice(0, 3).map((m) => ({
+          jid: m?.key?.remoteJid,
+          id: m?.key?.id,
+          hasUpdateMessage: !!m?.update?.message,
+          type: (() => {
+            try {
+              const inner = m?.update?.message || m?.message
+              return getMessageType({ message: inner }) || Object.keys(inner || {})[0] || '<none>'
+            } catch { return '<none>' }
+          })(),
+        }))
+        logger.info('BAILEYS update: phone=%s count=%s types=%s sample=%s', this.phone, updates.length, types.join(','), JSON.stringify(sample))
+      } catch {}
       try {
         // Persist partial media updates to the DataStore so decrypt can pick improved keys/paths
         try {
