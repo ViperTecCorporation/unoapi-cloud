@@ -79,11 +79,25 @@ export class ListenerBaileys implements Listener {
       // Não propagar notificações internas como mensagens para webhooks
       return
     }
+    const getFilterMessageType = (m: any) => {
+      let mt = getMessageType(m)
+      if (!mt) {
+        const inner =
+          m?.message?.deviceSentMessage?.message ||
+          m?.update?.message?.deviceSentMessage?.message
+        if (inner) {
+          mt = getMessageType({ message: inner })
+        }
+      }
+      return mt
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filteredMessages = messages.filter((m: any) => {
+      const mt = getFilterMessageType(m)
       return (
         m?.key?.remoteJid &&
-        (['qrcode', 'status'].includes(type) || (!config.shouldIgnoreJid(m.key.remoteJid) && !config.shouldIgnoreKey(m.key, getMessageType(m))))
+        (['qrcode', 'status'].includes(type) ||
+          (!config.shouldIgnoreJid(m.key.remoteJid) && !config.shouldIgnoreKey(m.key, mt)))
       )
     })
     logger.debug('%s filtereds messages/updates of %s', messages.length - filteredMessages.length, messages.length)
