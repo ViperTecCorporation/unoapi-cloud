@@ -166,6 +166,7 @@ export const normalizeMessageContent = (
     content?.viewOnceMessage?.message ||
     content?.viewOnceMessageV2Extension?.message ||
     content?.viewOnceMessageV2?.message ||
+    (content as any)?.deviceSentMessage?.message ||
 		content?.documentWithCaptionMessage?.message ||
     // unwrap lottieStickerMessage to inner message (often stickerMessage)
     (content as any)?.lottieStickerMessage?.message ||
@@ -927,6 +928,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const changedPayload = { ...rest, message: innerUpdateMsg }
         return fromBaileysMessageContent(phone, changedPayload, config)
       }
+    }
+    // Unwrap device-sent messages (from companion) to inner message
+    const innerDeviceMsg = payload?.message?.deviceSentMessage?.message
+    if (innerDeviceMsg) {
+      const { update: _omitDev, ...restDev } = payload || {}
+      const changedPayload = { ...restDev, message: innerDeviceMsg }
+      return fromBaileysMessageContent(phone, changedPayload, config)
     }
     // Also unwrap editedMessage wrappers into their inner original message content
     let innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
