@@ -231,6 +231,13 @@ export const redisGet = async (key: string) => {
   try {
     return client.get(key)
   } catch (error) {
+    try {
+      const msg = (error as any)?.message || `${error || ''}`
+      if (msg.includes('WRONGTYPE')) {
+        logger.warn('Redis WRONGTYPE on GET %s', key)
+        return null
+      }
+    } catch {}
     if (!client) {
       await getRedis()
       return client.get(key)
