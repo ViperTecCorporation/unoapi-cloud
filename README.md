@@ -121,6 +121,84 @@ http://localhost:9876/v15.0/554931978550/messages \
   } 
 }'
 ```
+
+Interactive list (sections)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "list",
+    "header": { "type": "text", "text": "Menu" },
+    "body": { "text": "Escolha uma opcao" },
+    "footer": { "text": "Unoapi" },
+    "action": {
+      "button": "Ver opcoes",
+      "sections": [
+        {
+          "title": "Planos",
+          "rows": [
+            { "id": "plan_basic", "title": "Basico", "description": "R$ 10" },
+            { "id": "plan_pro", "title": "Pro", "description": "R$ 20" }
+          ]
+        }
+      ]
+    }
+  }
+}'
+```
+
+Interactive buttons (quick replies, default when UNOAPI_NATIVE_FLOW_BUTTONS=false)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "body": { "text": "Posso ajudar?" },
+    "action": {
+      "buttons": [
+        { "type": "reply", "reply": { "id": "btn_yes", "title": "Sim" } },
+        { "type": "reply", "reply": { "id": "btn_no", "title": "Nao" } }
+      ]
+    }
+  }
+}'
+```
+
+Interactive buttons (native flow CTA, requires UNOAPI_NATIVE_FLOW_BUTTONS=true)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "body": { "text": "Acesse ou fale com a equipe" },
+    "action": {
+      "buttons": [
+        { "type": "cta_url", "url": { "title": "Abrir site", "link": "https://unoapi.cloud" } },
+        { "type": "cta_call", "call": { "title": "Ligar", "phone_number": "+5511999999999" } },
+        { "type": "cta_copy", "copy_code": { "title": "Copiar codigo", "code": "ABC-123" } }
+      ]
+    }
+  }
+}'
+```
 To Send a Status
 Requisitos:
 to = 'status@broadcast'
@@ -576,6 +654,7 @@ CONFIG_SESSION_PHONE_NAME=Chrome Browser Name = Chrome | Firefox | Edge | Opera 
 WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version. Format is `[2, 3000, 1019810866]`
 VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, default true
 OPENAI_API_KEY=openai api key to transcribe audio
+UNOAPI_NATIVE_FLOW_BUTTONS=enable native flow buttons (cta_url/cta_call/cta_copy). Default false for compatibility.
 SEND_AUDIO_MESSAGE_AS_PTT=false flag outgoing audio messages as PTT (voice note) without forced conversion
 CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus via ffmpeg when sending as PTT; defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset
 ```

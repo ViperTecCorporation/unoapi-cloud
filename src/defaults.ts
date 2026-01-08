@@ -37,6 +37,8 @@ export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
 export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '97')
+export const UNOAPI_NATIVE_FLOW_BUTTONS: boolean =
+  process.env.UNOAPI_NATIVE_FLOW_BUTTONS == _undefined ? false : process.env.UNOAPI_NATIVE_FLOW_BUTTONS == 'true'
 
 // Convert downloaded audio (e.g., OGG/OGA/OPUS) to MP3 before storing/sending (iOS Safari compatibility)
 export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 = process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? true : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'

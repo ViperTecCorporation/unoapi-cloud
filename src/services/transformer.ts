@@ -9,6 +9,7 @@ import {
   BASE_URL,
   MESSAGE_CHECK_WAAPP,
   SEND_AUDIO_MESSAGE_AS_PTT,
+  UNOAPI_NATIVE_FLOW_BUTTONS,
   WEBHOOK_FORWARD_VERSION,
   WEBHOOK_PREFER_PN_OVER_LID,
 } from '../defaults'
@@ -236,53 +237,148 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'text':
       response.text = customMessageCharactersFunction(payload.text.body)
       break
-    case 'interactive':
-      let listMessage = {}
-      if (payload.interactive.header) {
-        listMessage = {
-          title: payload.interactive.header.text,
-          description: payload.interactive.body.text,
-          buttonText: payload.interactive.action.button,
-          footerText: payload.interactive.footer.text,
-          sections: payload.interactive.action.sections.map(
-            (section: { title: string; rows: { title: string; rowId: string; description: string }[] }) => {
-              return {
-                title: section.title,
-                rows: section.rows.map((row: { title: string; rowId: string; description: string }) => {
-                  return {
-                    title: row.title,
-                    rowId: row.rowId,
-                    description: row.description,
-                  }
-                }),
-              }
-            },
-          ),
-          listType: 2,
-        }
-      } else {
-        listMessage = {
-          title: '',
-          description: payload.interactive.body.text || 'Nenhuma descriçao encontrada',
-          buttonText: 'Selecione',
-          footerText: '',
-          sections: [
-            {
-              title: 'Opcões',
-              rows: payload.interactive.action.buttons.map((button: { reply: { title: string; id: string; description: string } }) => {
-                return {
-                  title: button.reply.title,
-                  rowId: button.reply.id,
-                  description: '',
-                }
-              }),
-            },
-          ],
-          listType: 2,
+    case 'interactive': {
+      const interactive = payload.interactive || {}
+      const action = interactive.action || {}
+      const header = interactive.header || {}
+      const body = interactive.body || {}
+      const footer = interactive.footer || {}
+      const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
+
+      if (header.type && header.type !== 'text') {
+        const mediaType = header.type
+        const mediaObj = header[mediaType] || {}
+        const link = mediaObj.link || mediaObj.url
+        if (link) {
+          response[mediaType] = { url: link }
+          if (mediaObj.filename) {
+            response.fileName = mediaObj.filename
+          }
+          try {
+            const tmpPayload: any = { type: mediaType }
+            tmpPayload[mediaType] = { link }
+            const mimetype = getMimetype(tmpPayload)
+            if (mimetype) response.mimetype = mimetype
+          } catch {}
         }
       }
-      response.listMessage = listMessage
+
+      if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = header.text || ''
+        response.buttonText = action.button || 'Selecionar'
+        response.sections = action.sections.map((section: any) => ({
+          title: section.title || '',
+          rows: (section.rows || []).map((row: any) => ({
+            rowId: row.id || row.rowId || '',
+            title: row.title || '',
+            description: row.description || '',
+          })),
+        }))
+        break
+      }
+
+      if (useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
+        const buttons = action.buttons
+          .map((button: any) => {
+            if (button.type === 'url' || button.url) {
+              const u = button.url || button
+              return {
+                name: 'cta_url',
+                buttonParamsJson: JSON.stringify({
+                  display_text: u.title || 'Abrir',
+                  url: u.link || u.url,
+                }),
+              }
+            }
+
+            if (button.type === 'call' || button.call) {
+              const c = button.call || button
+              return {
+                name: 'cta_call',
+                buttonParamsJson: JSON.stringify({
+                  display_text: c.title || 'Ligar',
+                  phone_number: c.phone_number || c.phone,
+                }),
+              }
+            }
+
+            if (button.type === 'cta_copy' || button.copy_code) {
+              const cp = button.copy_code || button
+              return {
+                name: 'cta_copy',
+                buttonParamsJson: JSON.stringify({
+                  display_text: cp.title || 'Copiar',
+                  copy_code: cp.code || cp.copy_code,
+                }),
+              }
+            }
+
+            const r = button.reply || button
+            return {
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({
+                id: r.id || '',
+                display_text: r.title || r.displayText || '',
+              }),
+            }
+          })
+          .filter(Boolean)
+
+        response.interactiveMessage = {
+          body: { text: body.text || '' },
+          footer: footer.text ? { text: footer.text } : undefined,
+          header: header.text
+            ? {
+                type: 4,
+                title: header.text,
+                hasMediaAttachment: false,
+              }
+            : undefined,
+          nativeFlowMessage: {
+            buttons,
+          },
+        }
+
+        break
+      }
+
+      if (!useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.buttons = action.buttons.map((button: any) => {
+          if (button.type === 'url' || button.url) {
+            const u = button.url || button
+            return {
+              buttonId: u.link || u.url,
+              buttonText: { displayText: u.title || 'Abrir link' },
+              type: 1,
+            }
+          }
+
+          if (button.type === 'call' || button.call) {
+            const c = button.call || button
+            return {
+              buttonId: `call:${c.phone_number || c.phone}`,
+              buttonText: { displayText: c.title || 'Ligar' },
+              type: 1,
+            }
+          }
+
+          const r = button.reply || button
+          return {
+            buttonId: r.id || r.buttonId || '',
+            buttonText: {
+              displayText: r.title || r.displayText || '',
+            },
+            type: 1,
+          }
+        })
+        break
+      }
       break
+    }
     case 'image':
     case 'audio':
     case 'document':
