@@ -19,13 +19,14 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, completeCloudApiWebHook } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_OUTGOING } from '../defaults'
+import { amqpPublish } from '../amqp'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -1051,6 +1052,34 @@ export class ClientBaileys implements Client {
             const key = response.key
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
+            try {
+              if (type === 'interactive' && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
+                const toId = jidToPhoneNumber(to, '')
+                const ts = (response as any)?.messageTimestamp
+                const msg: any = {
+                  from: this.phone.replace('+', ''),
+                  id: key.id,
+                  type: 'interactive',
+                  interactive: payload.interactive,
+                }
+                if (ts) msg.timestamp = `${ts}`
+                const ctxId = payload?.context?.message_id || payload?.context?.id
+                if (ctxId) {
+                  msg.context = { message_id: ctxId, id: ctxId }
+                }
+                const webhookPayload = completeCloudApiWebHook(this.phone, toId, msg)
+                await amqpPublish(
+                  UNOAPI_EXCHANGE_BROKER_NAME,
+                  UNOAPI_QUEUE_OUTGOING,
+                  this.phone,
+                  { webhooks: this.config.webhooks, payload: webhookPayload, split: true },
+                  { type: 'topic' },
+                )
+                logger.info('INTERACTIVE webhook enqueue: id=%s to=%s', key.id, toId)
+              }
+            } catch (e) {
+              logger.warn(e as any, 'INTERACTIVE webhook enqueue failed')
+            }
             const ok = {
               messaging_product: 'whatsapp',
               contacts: [
