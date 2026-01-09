@@ -1257,6 +1257,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       case 'messageStubType': {
+        const stubParams = Array.isArray((payload as any)?.messageStubParameters)
+          ? (payload as any).messageStubParameters.map((p: any) => `${p}`)
+          : []
+        if (stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')) {
+          message.text = { body: 'Conteúdo de visualização única indisponível aqui. Confira no aparelho celular.' }
+          message.unsupported = { reason: 'view_once_not_available_on_companion' }
+          message.type = 'text'
+          change.value.messages.push(message)
+          return [data, senderPhone, senderId]
+        }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
           (payload as any)?.messageStubParameters &&
