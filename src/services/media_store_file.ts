@@ -157,17 +157,18 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     }
     const tryDownload = async (ctx: any) => {
       const mediaUrl = ctx?.message?.url || initial?.message?.url
-      if (!ctx || !ctx.message || !mediaUrl) {
+      const directPath = ctx?.message?.directPath || initial?.message?.directPath
+      if (!ctx || !ctx.message || (!mediaUrl && !directPath)) {
         throw new Error('Missing media context to download media')
       }
-      if (mediaUrl.indexOf('base64') >= 0) {
+      if (mediaUrl && mediaUrl.indexOf('base64') >= 0) {
         const base64 = mediaUrl.split(',')[1]
         return Buffer.from(base64, 'base64')
       }
       const content: any = {
         mediaKey: ctx?.message?.mediaKey,
-        directPath: ctx?.message?.directPath,
-        url: `https://mmg.whatsapp.net${ctx?.message?.directPath}`,
+        directPath,
+        url: directPath ? `https://mmg.whatsapp.net${directPath}` : mediaUrl,
         fileEncSha256: ctx?.message?.fileEncSha256,
         fileSha256: ctx?.message?.fileSha256,
         mediaKeyTimestamp: ctx?.message?.mediaKeyTimestamp,
