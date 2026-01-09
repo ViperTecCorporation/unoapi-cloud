@@ -331,11 +331,49 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
 
       if (interactive.type === 'carousel' || interactive.carousel || action.carousel) {
         const carousel = interactive.carousel || action.carousel || {}
-        const cards = (carousel.cards || interactive.cards || action.cards || []).map((card: any) => {
+        const mapCardActionToButtons = (cardAction: any, cardType?: string) => {
+          const name = cardAction?.name || cardType
+          const params = cardAction?.parameters || cardAction?.params || {}
+          if (name === 'cta_url') {
+            return [
+              {
+                type: 'cta_url',
+                url: {
+                  title: params.display_text || params.title || 'Abrir',
+                  link: params.url || params.link || '',
+                },
+              },
+            ]
+          }
+          if (name === 'cta_call') {
+            return [
+              {
+                type: 'cta_call',
+                call: {
+                  title: params.display_text || params.title || 'Ligar',
+                  phone_number: params.phone_number || params.phone || '',
+                },
+              },
+            ]
+          }
+          if (name === 'cta_copy') {
+            return [
+              {
+                type: 'cta_copy',
+                copy_code: {
+                  title: params.display_text || params.title || 'Copiar',
+                  code: params.copy_code || params.code || '',
+                },
+              },
+            ]
+          }
+          return []
+        }
+        const cards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
           const cardHeader = card.header || {}
           const cardBody = card.body || {}
           const cardFooter = card.footer || {}
-          const cardButtons = card.buttons || card.action?.buttons || []
+          const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
           const headerObj: any = {}
           if (cardHeader.type === 'text' && cardHeader.text) {
             headerObj.title = cardHeader.text
