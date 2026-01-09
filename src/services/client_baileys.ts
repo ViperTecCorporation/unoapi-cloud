@@ -940,6 +940,7 @@ export class ClientBaileys implements Client {
             } catch { logger.warn(e as any, 'PROFILE_PICTURE prefetch error') }
           }
           let response
+          const isInteractivePayload = type === 'interactive' || !!payload?.interactive
           // merge base options and ensure status broadcast defaults when applicable
           const messageOptions: any = {
             composing: this.config.composingMessage,
@@ -1053,7 +1054,7 @@ export class ClientBaileys implements Client {
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
             try {
-              if (type === 'interactive' && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
+              if (isInteractivePayload && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
                 const toId = jidToPhoneNumber(to, '')
                 const ts = (response as any)?.messageTimestamp
                 const msg: any = {
@@ -1107,7 +1108,7 @@ export class ClientBaileys implements Client {
             return r
           }
           try {
-            if (type === 'interactive' && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
+            if (isInteractivePayload && this.config?.webhooks?.length && !this.config?.ignoreOwnMessages) {
               const toId = jidToPhoneNumber(to, '')
               const localId = `uno_${uuid()}`
               const msg: any = {
