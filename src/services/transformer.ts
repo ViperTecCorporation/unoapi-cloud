@@ -374,47 +374,52 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           const cardBody = card.body || {}
           const cardFooter = card.footer || {}
           const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
-          const headerObj: any = {}
-          if (cardHeader.type === 'text' && cardHeader.text) {
-            headerObj.title = cardHeader.text
-          } else if (cardHeader.type && cardHeader.type !== 'text') {
-            const mediaType = cardHeader.type
-            const mediaObj = cardHeader[mediaType] || {}
-            const link = mediaObj.link || mediaObj.url
-            if (link) {
-              headerObj.hasMediaAttachment = true
-              if (mediaType === 'image') {
-                headerObj.imageMessage = { url: link }
-              } else if (mediaType === 'video') {
-                headerObj.videoMessage = { url: link }
-              } else if (mediaType === 'document') {
-                headerObj.documentMessage = { url: link, fileName: mediaObj.filename }
-              }
-            }
-          }
-
           return {
-            header: Object.keys(headerObj).length ? headerObj : undefined,
-            body: { text: cardBody.text || '' },
-            footer: cardFooter.text ? { text: cardFooter.text } : undefined,
-            nativeFlowMessage: {
-              buttons: mapButtonsToNativeFlow(cardButtons),
-            },
+            header: cardHeader,
+            body: cardBody,
+            footer: cardFooter,
+            buttons: cardButtons,
+            index: card.card_index,
           }
         })
+        const listTitle = header.text || body.text || 'Opcoes'
+        const listButtonText = action.button || 'Selecionar'
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = listTitle
+        response.buttonText = listButtonText
+        response.sections = cards.map((card: any, idx: number) => {
+          const headerText = card?.header?.text || ''
+          const bodyText = card?.body?.text || ''
+          const sectionTitle = headerText || bodyText || `Opcao ${idx + 1}`
+          const button = Array.isArray(card?.buttons) ? card.buttons[0] : undefined
+          const rowId =
+            (button?.reply?.id || button?.url?.link || button?.call?.phone_number || button?.copy_code?.code ||
+              `carousel_${typeof card.index === 'number' ? card.index : idx}`) as string
+          const rowTitle =
+            button?.reply?.title ||
+            button?.url?.title ||
+            button?.call?.title ||
+            button?.copy_code?.title ||
+            sectionTitle
+          const rowDesc =
+            button?.url?.link ||
+            button?.call?.phone_number ||
+            button?.copy_code?.code ||
+            card?.footer?.text ||
+            ''
 
-        response.interactiveMessage = {
-          header: header.text
-            ? { type: 4, title: header.text, hasMediaAttachment: false }
-            : undefined,
-          body: body.text ? { text: body.text } : undefined,
-          footer: footer.text ? { text: footer.text } : undefined,
-          carouselMessage: {
-            messageVersion: 1,
-            carouselCardType: 1,
-            cards,
-          },
-        }
+          return {
+            title: sectionTitle,
+            rows: [
+              {
+                rowId,
+                title: rowTitle,
+                description: rowDesc,
+              },
+            ],
+          }
+        })
         break
       }
 
