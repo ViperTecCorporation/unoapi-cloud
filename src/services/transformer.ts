@@ -248,43 +248,8 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const body = interactive.body || {}
       const footer = interactive.footer || {}
       const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
-
-      if (header.type && header.type !== 'text') {
-        const mediaType = header.type
-        const mediaObj = header[mediaType] || {}
-        const link = mediaObj.link || mediaObj.url
-        if (link) {
-          response[mediaType] = { url: link }
-          if (mediaObj.filename) {
-            response.fileName = mediaObj.filename
-          }
-          try {
-            const tmpPayload: any = { type: mediaType }
-            tmpPayload[mediaType] = { link }
-            const mimetype = getMimetype(tmpPayload)
-            if (mimetype) response.mimetype = mimetype
-          } catch {}
-        }
-      }
-
-      if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
-        response.text = body.text || ''
-        response.footer = footer.text || ''
-        response.title = header.text || ''
-        response.buttonText = action.button || 'Selecionar'
-        response.sections = action.sections.map((section: any) => ({
-          title: section.title || '',
-          rows: (section.rows || []).map((row: any) => ({
-            rowId: row.id || row.rowId || '',
-            title: row.title || '',
-            description: row.description || '',
-          })),
-        }))
-        break
-      }
-
-      if (useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
-        const buttons = action.buttons
+      const mapButtonsToNativeFlow = (buttons: any[]) =>
+        (buttons || [])
           .map((button: any) => {
             if (button.type === 'url' || button.url) {
               const u = button.url || button
@@ -329,6 +294,94 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
             }
           })
           .filter(Boolean)
+
+      if (header.type && header.type !== 'text') {
+        const mediaType = header.type
+        const mediaObj = header[mediaType] || {}
+        const link = mediaObj.link || mediaObj.url
+        if (link) {
+          response[mediaType] = { url: link }
+          if (mediaObj.filename) {
+            response.fileName = mediaObj.filename
+          }
+          try {
+            const tmpPayload: any = { type: mediaType }
+            tmpPayload[mediaType] = { link }
+            const mimetype = getMimetype(tmpPayload)
+            if (mimetype) response.mimetype = mimetype
+          } catch {}
+        }
+      }
+
+      if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = header.text || ''
+        response.buttonText = action.button || 'Selecionar'
+        response.sections = action.sections.map((section: any) => ({
+          title: section.title || '',
+          rows: (section.rows || []).map((row: any) => ({
+            rowId: row.id || row.rowId || '',
+            title: row.title || '',
+            description: row.description || '',
+          })),
+        }))
+        break
+      }
+
+      if (interactive.type === 'carousel' || interactive.carousel || action.carousel) {
+        const carousel = interactive.carousel || action.carousel || {}
+        const cards = (carousel.cards || interactive.cards || action.cards || []).map((card: any) => {
+          const cardHeader = card.header || {}
+          const cardBody = card.body || {}
+          const cardFooter = card.footer || {}
+          const cardButtons = card.buttons || card.action?.buttons || []
+          const headerObj: any = {}
+          if (cardHeader.type === 'text' && cardHeader.text) {
+            headerObj.title = cardHeader.text
+          } else if (cardHeader.type && cardHeader.type !== 'text') {
+            const mediaType = cardHeader.type
+            const mediaObj = cardHeader[mediaType] || {}
+            const link = mediaObj.link || mediaObj.url
+            if (link) {
+              headerObj.hasMediaAttachment = true
+              if (mediaType === 'image') {
+                headerObj.imageMessage = { url: link }
+              } else if (mediaType === 'video') {
+                headerObj.videoMessage = { url: link }
+              } else if (mediaType === 'document') {
+                headerObj.documentMessage = { url: link, fileName: mediaObj.filename }
+              }
+            }
+          }
+
+          return {
+            header: Object.keys(headerObj).length ? headerObj : undefined,
+            body: { text: cardBody.text || '' },
+            footer: cardFooter.text ? { text: cardFooter.text } : undefined,
+            nativeFlowMessage: {
+              buttons: mapButtonsToNativeFlow(cardButtons),
+            },
+          }
+        })
+
+        response.interactiveMessage = {
+          header: header.text
+            ? { type: 4, title: header.text, hasMediaAttachment: false }
+            : undefined,
+          body: body.text ? { text: body.text } : undefined,
+          footer: footer.text ? { text: footer.text } : undefined,
+          carouselMessage: {
+            messageVersion: 1,
+            carouselCardType: 1,
+            cards,
+          },
+        }
+        break
+      }
+
+      if (useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
+        const buttons = mapButtonsToNativeFlow(action.buttons)
 
         response.interactiveMessage = {
           body: { text: body.text || '' },
@@ -1572,49 +1625,87 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'interactiveMessage': {
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
+        const mapButtonsFromNativeFlow = (nfButtons: any[]) =>
+          Array.isArray(nfButtons)
+            ? nfButtons.map((button: any) => {
+                let params: any = {}
+                try {
+                  params = JSON.parse(button?.buttonParamsJson || '{}')
+                } catch {}
+                if (button?.name === 'cta_url') {
+                  return {
+                    type: 'cta_url',
+                    url: {
+                      title: params.display_text || '',
+                      link: params.url || '',
+                    },
+                  }
+                }
+                if (button?.name === 'cta_call') {
+                  return {
+                    type: 'cta_call',
+                    call: {
+                      title: params.display_text || '',
+                      phone_number: params.phone_number || '',
+                    },
+                  }
+                }
+                if (button?.name === 'cta_copy') {
+                  return {
+                    type: 'cta_copy',
+                    copy_code: {
+                      title: params.display_text || '',
+                      code: params.copy_code || '',
+                    },
+                  }
+                }
+                return {
+                  type: 'reply',
+                  reply: {
+                    id: params.id || '',
+                    title: params.display_text || '',
+                  },
+                }
+              })
+            : []
+
+        if (interactiveMessage?.carouselMessage?.cards?.length) {
+          const cards = interactiveMessage.carouselMessage.cards.map((card: any) => {
+            const header = card?.header || {}
+            let headerObj: any = undefined
+            if (header?.imageMessage?.url) {
+              headerObj = { type: 'image', image: { link: header.imageMessage.url } }
+            } else if (header?.videoMessage?.url) {
+              headerObj = { type: 'video', video: { link: header.videoMessage.url } }
+            } else if (header?.documentMessage?.url) {
+              headerObj = { type: 'document', document: { link: header.documentMessage.url } }
+            } else if (header?.title) {
+              headerObj = { type: 'text', text: header.title }
+            }
+
+            return {
+              header: headerObj,
+              body: { text: card?.body?.text || '' },
+              footer: card?.footer?.text ? { text: card.footer.text } : undefined,
+              action: {
+                buttons: mapButtonsFromNativeFlow(card?.nativeFlowMessage?.buttons || []),
+              },
+            }
+          })
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'carousel',
+            header: interactiveMessage?.header?.title
+              ? { type: 'text', text: interactiveMessage.header.title }
+              : undefined,
+            body: interactiveMessage?.body?.text ? { text: interactiveMessage.body.text } : undefined,
+            footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
+            carousel: { cards },
+          }
+          break
+        }
         const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
-        const buttons = Array.isArray(nfButtons)
-          ? nfButtons.map((button: any) => {
-              let params: any = {}
-              try {
-                params = JSON.parse(button?.buttonParamsJson || '{}')
-              } catch {}
-              if (button?.name === 'cta_url') {
-                return {
-                  type: 'cta_url',
-                  url: {
-                    title: params.display_text || '',
-                    link: params.url || '',
-                  },
-                }
-              }
-              if (button?.name === 'cta_call') {
-                return {
-                  type: 'cta_call',
-                  call: {
-                    title: params.display_text || '',
-                    phone_number: params.phone_number || '',
-                  },
-                }
-              }
-              if (button?.name === 'cta_copy') {
-                return {
-                  type: 'cta_copy',
-                  copy_code: {
-                    title: params.display_text || '',
-                    code: params.copy_code || '',
-                  },
-                }
-              }
-              return {
-                type: 'reply',
-                reply: {
-                  id: params.id || '',
-                  title: params.display_text || '',
-                },
-              }
-            })
-          : []
+        const buttons = mapButtonsFromNativeFlow(nfButtons)
         message.type = 'interactive'
         message.interactive = {
           type: 'button',
