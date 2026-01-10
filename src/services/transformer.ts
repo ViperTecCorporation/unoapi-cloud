@@ -1134,13 +1134,14 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           {
             profile: (
               () => {
-                // Em eventos de status (update/receipt), não incluir picture
-                // Em novos messages, manter picture (mesmo undefined) para compatibilidade dos testes
+                // Em eventos de status (update/receipt), nao incluir picture
                 const p: any = { name: profileName }
                 const mt = `${messageType || ''}`
                 if (!['update', 'receipt'].includes(mt)) {
-                  // manter a chave 'picture' (pode ser undefined) nos eventos de mensagem
-                  p.picture = payload.profilePicture
+                  const pic = payload.profilePicture
+                  if (typeof pic === 'string' && pic) {
+                    p.picture = pic
+                  }
                 }
                 return p
               }

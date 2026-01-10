@@ -361,7 +361,7 @@ describe('service transformer', () => {
                     type: 'text',
                   },
                 ],
-                contacts: [{ profile: { name: pushName, picture: undefined }, wa_id: remotePhoneNumer }],
+                contacts: [{ profile: { name: pushName}, wa_id: remotePhoneNumer }],
                 statuses: [],
                 errors: [],
               },
@@ -592,14 +592,13 @@ describe('service transformer', () => {
                     caption: text,
                     mime_type: mimetype,
                     id: `${phoneNumer}/${id}`,
-                    sha256: fileSha256,
                     filename,
                     url: downloadUrl,
                   },
                   type: 'audio',
                 },
               ],
-                contacts: [{ profile: { name: pushName }, wa_id: remotePhoneNumber }],
+                contacts: [{ profile: { name: pushName}, wa_id: remotePhoneNumber }],
                 statuses: [],
                 errors: [],
               },
@@ -650,10 +649,8 @@ describe('service transformer', () => {
                     id,
                     timestamp: messageTimestamp,
                     contacts: [
-                      {
-                        name: {
-                          formatted_name: pushName,
-                        },
+                      { name: {
+                          formatted_name: pushName },
                         phones: [
                           {
                             phone: remotePhoneNumber,
@@ -1122,7 +1119,7 @@ describe('service transformer', () => {
               value: {
                 messaging_product: 'whatsapp',
                 metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
-                contacts: [{ profile: { name: pushName, picture: undefined }, wa_id: remotePhoneNumber.replace('+', '') }],
+                contacts: [{ profile: { name: pushName}, wa_id: remotePhoneNumber.replace('+', '') }],
                 statuses: [],
                 messages: [
                   {
@@ -1185,7 +1182,7 @@ describe('service transformer', () => {
               value: {
                 messaging_product: 'whatsapp',
                 metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
-                contacts: [{ profile: { name: remotePhoneNumber, picture: undefined }, wa_id: remotePhoneNumber.replace('+', '') }],
+                contacts: [{ profile: { name: remotePhoneNumber}, wa_id: remotePhoneNumber.replace('+', '') }],
                 statuses: [],
                 messages: [
                   {
