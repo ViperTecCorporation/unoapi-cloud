@@ -291,6 +291,7 @@ export class ClientBaileys implements Client {
       return
     }
 
+    await sessionStore.setStatus(this.phone, 'connecting')
     const result = await connect({
       phone: this.phone,
       store: this.store!,

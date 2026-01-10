@@ -669,7 +669,6 @@ export const connect = async ({
 
     if (event.isNewLogin) {
       await onNewLogin(phone)
-      await sessionStore.setStatus(phone, 'online')
     }
 
     if (event.receivedPendingNotifications) {
@@ -677,7 +676,6 @@ export const connect = async ({
     }
 
     if (event.isOnline) {
-      await sessionStore.setStatus(phone, 'online')
       await onNotification(t('online_session'), true)
     }
     

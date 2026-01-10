@@ -167,8 +167,14 @@ export class ListenerBaileys implements Listener {
     if (messageType && !['update', 'receipt'].includes(messageType)) {
       i = await config.getMessageMetadata(i)
       if (i.key && i.key) {
-        const idUno = uuid()
         const idBaileys = i.key.id!
+        let idUno = await store?.dataStore.loadUnoId(idBaileys)
+        if (!idUno) {
+          idUno = uuid()
+          logger.debug('Generated new unoapi id %s for %s', idUno, idBaileys)
+        } else {
+          logger.debug('Reusing unoapi id %s for %s', idUno, idBaileys)
+        }
         await store?.dataStore.setUnoId(idBaileys, idUno)
         await store?.dataStore.setKey(idUno, i.key)
         await store?.dataStore.setKey(idBaileys, i.key)

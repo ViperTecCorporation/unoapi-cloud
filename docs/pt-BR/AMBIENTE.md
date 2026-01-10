@@ -26,6 +26,13 @@ Este guia explica as principais variÃ¡veis de ambiente, quando usar e por quÃ
   - Use para forÃ§ar estado limpo no disconnect.
   - Exemplo: `CLEAN_CONFIG_ON_DISCONNECT=true`
 
+### Status de sessao na inicializacao
+
+- Ao iniciar o container, todas as sessoes elegiveis sao marcadas como `offline` antes do auto-connect.
+- Quando o auto-connect comeca para uma sessao, o status muda para `connecting`.
+- O status `online` so e definido quando `event.connection === 'open'` (conexao aberta).
+- Eventos `isOnline` e `isNewLogin` apenas notificam; nao alteram o status.
+
 ## Log
 
 - `LOG_LEVEL` â€” NÃ­vel de log do serviÃ§o. PadrÃ£o `warn`.
@@ -42,6 +49,41 @@ Este guia explica as principais variÃ¡veis de ambiente, quando usar e por quÃ
 - `AMQP_URL` â€” URL do RabbitMQ para broker.
   - Habilita filas (modelo web/worker, retries, dead letters).
   - Exemplo: `AMQP_URL=amqp://guest:guest@localhost:5672?frameMax=8192`
+## Filas RabbitMQ (AMQP)
+
+As filas usam o prefixo `UNOAPI_QUEUE_NAME` (padrao `unoapi`). As filas do exchange bridge usam sufixo `.<server>` (ex.: `unoapi.incoming.server_1`).
+
+Bridge (exchange `unoapi.brigde`, direct):
+- `unoapi.bind.<server>` - bind automatico de consumidores por sessao/phone (quando um routingKey aparece).
+- `unoapi.incoming.<server>` - comandos de envio (HTTP API -> Baileys).
+- `unoapi.listener.<server>` - eventos do Baileys (upsert/update/delete) para virar webhook.
+- `unoapi.reload.<server>` - recarrega configuracao/sessao no bridge.
+- `unoapi.logout.<server>` - encerra sessao no bridge.
+
+Broker (exchange `unoapi.broker`, topic):
+- `unoapi.outgoing` - entrega de webhooks (fan-out por webhook).
+- `unoapi.webhook.status.failed` - webhook dedicado para status failed (quando configurado).
+- `unoapi.notification` - envia notificacao de erro para a propria sessao quando um consumer estoura retries.
+- `unoapi.media` - job de limpeza de midia (S3/FS) apos DATA_TTL.
+- `unoapi.transcribe` - transcricao de audio (OpenAI/Groq/local).
+- `unoapi.timer` - mensagens agendadas via /timer.
+- `unoapi.blacklist.add` - adiciona destino na blacklist (TTL).
+- `unoapi.broadcast` - eventos de socket/broadcast (qrcode/status/etc).
+- `unoapi.reload` - recarrega configs no web/broker.
+
+Bulk:
+- `unoapi.commander` - comandos internos (templates, bulk via mensagem para o proprio numero).
+- `unoapi.bulk.parser` - parse de arquivos de campanha.
+- `unoapi.bulk.sender` - envio em lotes (bulk).
+- `unoapi.bulk.status` - atualiza status especial de bulk (ex.: invalid-phone-number).
+- `unoapi.bulk.report` - relatorio final de bulk.
+- `unoapi.bulk.webhook` - reservado (nao ha producer ativo no codigo).
+
+Reservadas/legado:
+- `unoapi.contact` - reservado (nao usado atualmente).
+- `unoapi.blacklist.reload` - reservado (nao usado atualmente).
+- `*.delayed` e `*.dead` - filas internas criadas automaticamente para delay e dead-letter.
+
 
 ## Storage (S3/MinIO)
 
