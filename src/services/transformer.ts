@@ -1267,7 +1267,6 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           id: mediaKey,
         }
         if (!WEBHOOK_INCLUDE_MEDIA_DATA && message[mediaType]) {
-          delete message[mediaType].url
           delete message[mediaType].sha256
           delete message[mediaType].filename
         }
