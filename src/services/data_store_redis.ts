@@ -12,6 +12,7 @@ import {
   getKey,
   setKey,
   getUnoId,
+  getProviderId,
   setUnoId,
   getTemplates,
   setMessageStatus,
@@ -204,7 +205,15 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     return setMessageStatus(phone, id, status)
   }
   store.loadStatus = async (id: string) => {
-    return getMessageStatus(phone, id)
+    const direct = await getMessageStatus(phone, id)
+    if (direct) return direct
+    try {
+      const providerId = await getProviderId(phone, id)
+      if (providerId) {
+        return getMessageStatus(phone, providerId)
+      }
+    } catch {}
+    return direct
   }
   store.setTemplates = async (templates: string) => {
     return setTemplates(phone, templates)

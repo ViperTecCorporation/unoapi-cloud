@@ -62,10 +62,13 @@ export class IncomingJob {
     }
     const { ok, error } = response
     const optionsOutgoing: Partial<PublishOption>  =  { delay: 0 } // evitar que 'sent' chegue após delivered/read
+    const rankStatus = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
     if (ok && ok.messages && ok.messages[0] && ok.messages[0].id) {
       const idProvider: string = ok.messages[0].id
       logger.debug('%s id %s to Unoapi id %s', config.provider, idProvider, idUno)
       const { dataStore } = await config.getStore(phone, config)
+      const prevProviderStatus = await dataStore.loadStatus(idProvider)
+      const prevUnoStatus = await dataStore.loadStatus(idUno)
       await dataStore.setUnoId(idProvider, idUno)
       const key = await dataStore.loadKey(idProvider)
       if (key) {
@@ -138,6 +141,69 @@ export class IncomingJob {
       const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
       logger.debug('%s webhooks with sendNewMessages', webhooks.length)
       await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
+      // Reconcile early status updates that arrived before UNO<->provider mapping
+      try {
+        if (prevProviderStatus && rankStatus(prevProviderStatus) > rankStatus(prevUnoStatus || '')) {
+          const shouldReplay = prevProviderStatus === 'delivered' || prevProviderStatus === 'read'
+          if (shouldReplay) {
+            const buildStatusPayload = (status: string) => ({
+              object: 'whatsapp_business_account',
+              entry: [
+                {
+                  id: phone,
+                  changes: [
+                    {
+                      value: {
+                        messaging_product: 'whatsapp',
+                        metadata: {
+                          display_phone_number: phone,
+                          phone_number_id: phone,
+                        },
+                        contacts: [
+                          {
+                            wa_id: waId,
+                            profile: {
+                              name: '',
+                              picture: '',
+                            },
+                          },
+                        ],
+                        statuses: [
+                          {
+                            id: idUno,
+                            recipient_id: waId,
+                            status,
+                            timestamp,
+                          },
+                        ],
+                      },
+                      field: 'messages',
+                    },
+                  ],
+                },
+              ],
+            })
+            const sendStatus = async (status: string) => {
+              const statusPayload = buildStatusPayload(status)
+              await amqpPublish(
+                UNOAPI_EXCHANGE_BROKER_NAME,
+                UNOAPI_QUEUE_BULK_STATUS,
+                phone,
+                { payload: statusPayload, type: 'whatsapp' },
+                { type: 'topic' }
+              )
+              await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, statusPayload, optionsOutgoing)))
+              await dataStore.setStatus(idUno, status as any)
+            }
+            if (prevProviderStatus === 'read' && rankStatus(prevUnoStatus || '') < rankStatus('delivered')) {
+              await sendStatus('delivered')
+            }
+            await sendStatus(prevProviderStatus)
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error reconciling status after id mapping')
+      }
     } else if (!ok.success) {
       throw `Unknow response ${JSON.stringify(response)}`
     } else if (ok.success) {
@@ -241,8 +307,7 @@ export class IncomingJob {
       try {
         const { dataStore } = await config.getStore(phone, config)
         const prev = await dataStore.loadStatus(idUno)
-        const rank = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
-        if (rank(prev || '') >= 3) {
+        if (rankStatus(prev || '') >= 3) {
           logger.info("Skip 'sent' webhook for %s (prev status %s)", idUno, prev)
           outgingPayload = null as any
         }

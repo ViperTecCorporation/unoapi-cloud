@@ -446,6 +446,10 @@ export const unoIdKey = (phone: string, id: string) => {
   return `${BASE_KEY}id:${phone}:${id}`
 }
 
+export const providerIdKey = (phone: string, unoId: string) => {
+  return `${BASE_KEY}id_rev:${phone}:${unoId}`
+}
+
 export const jidKey = (phone: string, jid: string) => {
   return `${BASE_KEY}jid:${phone}:${jid}`
 }
@@ -1141,10 +1145,17 @@ export const getUnoId = async (phone: string, idBaileys: string) => {
   return redisGet(key)
 }
 
+export const getProviderId = async (phone: string, idUno: string) => {
+  const key = providerIdKey(phone, idUno)
+  return redisGet(key)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setUnoId = async (phone: string, idBaileys: string, idUno: string) => {
   const key = unoIdKey(phone, idBaileys)
-  return redisSetAndExpire(key, idUno, DATA_TTL)
+  await redisSetAndExpire(key, idUno, DATA_TTL)
+  const reverseKey = providerIdKey(phone, idUno)
+  return redisSetAndExpire(reverseKey, idBaileys, DATA_TTL)
 }
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session

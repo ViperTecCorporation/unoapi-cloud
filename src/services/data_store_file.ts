@@ -54,6 +54,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const keys: Map<string, proto.IMessageKey> = new Map()
   const jids: Map<string, string> = new Map()
   const ids: Map<string, string> = new Map()
+  const idsReverse: Map<string, string> = new Map()
   const statuses: Map<string, string> = new Map()
   const medias: Map<string, string> = new Map()
   // Armazena mensagens como base64 de WebMessageInfo para evitar JSON.stringify do WAProto
@@ -102,6 +103,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       keys,
       jids,
       ids,
+      idsReverse,
       statuses,
       groups: groups.keys().reduce((acc, key) => {
           acc.set(key, groups.get(key))
@@ -125,6 +127,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     })
     json?.ids.entries().forEach(([key, value]) => {
       jids.set(key, value)
+    })
+    json?.idsReverse?.entries?.().forEach(([key, value]) => {
+      idsReverse.set(key, value)
     })
     json?.statuses.entries().forEach(([key, value]) => {
       statuses.set(key, value)
@@ -319,12 +324,19 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     statuses.set(id, status)
   }
   dataStore.loadStatus = async (id: string) => {
-    return statuses.get(id)
+    const direct = statuses.get(id) || statuses.get(`${phone}-${id}`)
+    if (direct) return direct
+    const providerId = idsReverse.get(`${phone}-${id}`) || idsReverse.get(id)
+    if (providerId) {
+      return statuses.get(providerId) || statuses.get(`${phone}-${providerId}`)
+    }
+    return undefined
   }
 
   dataStore.loadUnoId = async (id: string) =>  ids.get(id) || ids.get(`${phone}-${id}`)
   dataStore.setUnoId = async (id: string, unoId: string) => {
     ids.set(`${phone}-${id}`, unoId)
+    idsReverse.set(`${phone}-${unoId}`, id)
   }
   dataStore.loadJid = async (phoneOrJid: string, sock: Partial<WASocket>) => {
     /**
