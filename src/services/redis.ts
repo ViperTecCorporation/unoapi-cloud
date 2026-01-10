@@ -504,9 +504,14 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
       }
     }
   } catch { return }
+  const ttlSec = Number.isFinite(JIDMAP_TTL_SECONDS) ? JIDMAP_TTL_SECONDS : 0
+  const setMapping = async (key: string, value: string) => {
+    if (ttlSec > 0) return redisSetAndExpire(key, value, ttlSec)
+    return redisSet(key, value)
+  }
   // Apenas escopo global (reduz chaves duplicadas por sess?o); leitura legacy continua via fallback
-  try { await redisSet(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
-  try { await redisSet(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
+  try { await setMapping(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
+  try { await setMapping(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
 }
 
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)

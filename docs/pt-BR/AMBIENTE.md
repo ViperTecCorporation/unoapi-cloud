@@ -172,6 +172,12 @@ ObservaÃ§Ã£o de confiabilidade:
   - Exemplo: `JIDMAP_CACHE_ENABLED=true`
 - `JIDMAP_TTL_SECONDS` â€” TTL das entradas do cache. PadrÃ£o `604800` (7 dias).
   - Exemplo: `JIDMAP_TTL_SECONDS=604800`
+  - Use `0` ou valor negativo para nao expirar.
+
+- `JIDMAP_ENRICH_ENABLED` ? Enriquecimento em background (varredura) do JIDMAP. Padrao `false`.
+  - Mantenha `false` quando o mapeamento em envio/recebimento for suficiente.
+- `JIDMAP_ENRICH_AUTH_ENABLED` ? Enriquecimento em background a partir do cache auth lid-mapping. Padrao `true`.
+  - Requer Redis; habilite apenas se quiser backfill periodico.
 
 ## Antiâ€‘Spam / Rate Limits
 
@@ -210,6 +216,11 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre apÃ³s um envio b
 
 - `OUTGOING_IDEMPOTENCY_ENABLED` â€” Quando `true` (padrÃ£o), o job de entrada checa no store (key/status) para o id UNO antes de enviar; se jÃ¡ parecer processado, ignora o envio.
   - Exemplo: `OUTGOING_IDEMPOTENCY_ENABLED=false` (para desabilitar)
+
+### Tamanho do payload do webhook
+
+- `WEBHOOK_INCLUDE_MEDIA_DATA` - Inclui binario/base64 de midia no webhook. Padrao `false`.
+  - Quando `false`, o payload mantem `url` e `filename` e remove campos pesados.
 
 ### Fotos de Perfil
 

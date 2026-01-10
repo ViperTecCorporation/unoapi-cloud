@@ -3,7 +3,7 @@ import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
-import { WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
@@ -126,6 +126,15 @@ export class OutgoingCloudApi implements Outgoing {
 
   public async send(phone: string, message: object) {
     const config = await this.getConfig(phone)
+    if (WEBHOOK_ASYNC) {
+      config.webhooks.forEach((w) => {
+        this.sendHttp(phone, w, message).catch((error) => {
+          logger.error('WEBHOOK_ASYNC: send failed (phone=%s webhook=%s)', phone, w?.id || '<none>')
+          logger.error(error)
+        })
+      })
+      return
+    }
     const promises = config.webhooks.map(async (w) => this.sendHttp(phone, w, message))
     await Promise.all(promises)
   }

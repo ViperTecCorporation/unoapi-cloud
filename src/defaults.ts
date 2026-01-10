@@ -82,6 +82,9 @@ export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
   process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
 export const WEBHOOK_INCLUDE_MEDIA_DATA =
   process.env.WEBHOOK_INCLUDE_MEDIA_DATA == _undefined ? false : process.env.WEBHOOK_INCLUDE_MEDIA_DATA == 'true'
+export const WEBHOOK_ASYNC =
+  process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
+export const WEBHOOK_ASYNC_MODE = process.env.WEBHOOK_ASYNC_MODE || 'amqp'
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
@@ -371,7 +374,7 @@ export const LID_RESOLVER_SWEEP_INTERVAL_MS = parseInt(process.env.LID_RESOLVER_
 export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PENDING || '2000')
 
 // Enriquecimento do JIDMAP (PN<->LID) a partir do contact-info
-export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_ENABLED == 'true'
+export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? false : process.env.JIDMAP_ENRICH_ENABLED == 'true'
 export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '20')
 // Espelhar periodicamente o cache interno (unoapi-auth:*:lid-mapping-*) no JIDMAP
 export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'

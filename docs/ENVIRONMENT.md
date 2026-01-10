@@ -200,6 +200,12 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
   - Example: `JIDMAP_CACHE_ENABLED=true`
 - `JIDMAP_TTL_SECONDS` Ã¢â‚¬â€ TTL for cache entries. Default `604800` (7 days).
   - Example: `JIDMAP_TTL_SECONDS=604800`
+  - Set `0` or a negative value to keep mappings without expiration.
+
+- `JIDMAP_ENRICH_ENABLED` ? Background enrich (sweep) for JIDMAP. Default `false`.
+  - Keep `false` when on-the-fly mapping during send/receive is enough.
+- `JIDMAP_ENRICH_AUTH_ENABLED` ? Background enrich from auth lid-mapping cache. Default `true`.
+  - Requires Redis; enable only if you want periodic backfill.
 
 ## LID/PN Behavior
 
@@ -229,6 +235,14 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 - `NOTIFY_FAILED_MESSAGES` Ã¢â‚¬â€ Send a diagnostic text to the session number when retries are exhausted. Default `true`.
   - Example: `NOTIFY_FAILED_MESSAGES=false`
 
+## Webhook Delivery (Async)
+
+- `WEBHOOK_ASYNC` ÇŸ¶½Ç½ƒ?s¶ªÇ½ƒ'ª¶? Send webhooks in background (fire-and-forget). Default `true`.
+  - Use `false` to block the request until all webhooks finish.
+- `WEBHOOK_ASYNC_MODE` ÇŸ¶½Ç½ƒ?s¶ªÇ½ƒ'ª¶? Async delivery backend. Default `amqp`.
+  - `amqp`: enqueue webhooks in RabbitMQ (recommended in production). Requires `AMQP_URL`.
+  - When `AMQP_URL` is missing, the service falls back to direct HTTP send and logs a warning.
+
 ## Media & Timeouts
 
 ### Inbound deduplication
@@ -244,6 +258,11 @@ Skip sending the same message again when a job retry happens after a successful 
 
 - `OUTGOING_IDEMPOTENCY_ENABLED` Ã¢â‚¬â€ When `true` (default), the incoming job checks the store (key/status) for the UNO id before sending; if it looks processed, it skips the send.
   - Example: `OUTGOING_IDEMPOTENCY_ENABLED=false` (to disable)
+
+### Webhook payload size
+
+- `WEBHOOK_INCLUDE_MEDIA_DATA` ÇŸ¶½Ç½ƒ?s¶ªÇ½ƒ'ª¶? Include media binary/base64 in webhook payloads. Default `false`.
+  - When `false`, payloads keep `url` and `filename` but remove heavy binary/base64 fields.
 
 ### Profile Pictures
 
