@@ -13,6 +13,7 @@ import {
   UNOAPI_NATIVE_FLOW_BUTTONS,
   WEBHOOK_FORWARD_VERSION,
   WEBHOOK_PREFER_PN_OVER_LID,
+  WEBHOOK_INCLUDE_MEDIA_DATA,
 } from '../defaults'
 import { t } from '../i18n'
 
@@ -1264,6 +1265,11 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           url: downloadUrl,
           // url: binMessage.url && binMessage.url.indexOf('base64') < 0 ? binMessage.url : '',
           id: mediaKey,
+        }
+        if (!WEBHOOK_INCLUDE_MEDIA_DATA && message[mediaType]) {
+          delete message[mediaType].url
+          delete message[mediaType].sha256
+          delete message[mediaType].filename
         }
         message.type = mediaType
         break
