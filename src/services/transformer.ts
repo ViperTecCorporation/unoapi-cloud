@@ -9,6 +9,7 @@ import {
   BASE_URL,
   MESSAGE_CHECK_WAAPP,
   SEND_AUDIO_MESSAGE_AS_PTT,
+  UNOAPI_DEBUG_BAILEYS_LIST_DUMP,
   UNOAPI_NATIVE_FLOW_BUTTONS,
   WEBHOOK_FORWARD_VERSION,
   WEBHOOK_PREFER_PN_OVER_LID,
@@ -326,6 +327,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
             description: row.description || '',
           })),
         }))
+        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
+          logger.debug(
+            'toBaileys list dump input=%s output=%s',
+            JSON.stringify({ interactive, action, header, body, footer }),
+            JSON.stringify({
+              text: response.text,
+              title: response.title,
+              footer: response.footer,
+              buttonText: response.buttonText,
+              sections: response.sections,
+            }),
+          )
+        }
         break
       }
 
@@ -420,6 +434,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
             ],
           }
         })
+        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
+          logger.debug(
+            'toBaileys carousel->list dump input=%s output=%s',
+            JSON.stringify({ interactive, action, header, body, footer }),
+            JSON.stringify({
+              text: response.text,
+              title: response.title,
+              footer: response.footer,
+              buttonText: response.buttonText,
+              sections: response.sections,
+            }),
+          )
+        }
         break
       }
 
