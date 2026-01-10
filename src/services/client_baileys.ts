@@ -25,7 +25,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP } from '../defaults'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -999,6 +999,13 @@ export class ClientBaileys implements Client {
             if (typeof messageOptions.statusJidList === 'undefined') messageOptions.statusJidList = []
           }
           if (content?.listMessage) {
+            if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
+              try {
+                logger.debug('baileys list send content=%s', JSON.stringify(content))
+              } catch {
+                logger.debug('baileys list send content')
+              }
+            }
             response = await this.sendMessage(
               to,
               {
@@ -1014,6 +1021,24 @@ export class ClientBaileys implements Client {
               },
               messageOptions,
             )
+            if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
+              try {
+                logger.debug(
+                  'baileys list send forward=%s',
+                  JSON.stringify({
+                    forward: {
+                      key: {
+                        remoteJid: jidToPhoneNumber(jidNormalizedUser(this.store?.state.creds.me?.id)),
+                        fromMe: true,
+                      },
+                      message: content,
+                    },
+                  }),
+                )
+              } catch {
+                logger.debug('baileys list send forward')
+              }
+            }
           } else {
             // Envio com retry para mídia: em caso de erro de link (11), aguardamos e tentamos de novo
             const trySendOnce = async () => this.sendMessage(to, content, messageOptions)
