@@ -2143,10 +2143,6 @@ export const connect = async ({
 
   const connect = async () => {
     await sessionStore.syncConnection(phone)
-    if (await sessionStore.isStatusConnecting(phone)) {
-      logger.warn('Already Connecting %s', phone)
-      return
-    }
     if (await sessionStore.isStatusOnline(phone)) {
       logger.warn('Already Connected %s', phone)
       return
