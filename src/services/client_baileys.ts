@@ -25,7 +25,8 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC } from '../defaults'
+import { setContactSyncPending } from './redis'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
@@ -538,6 +539,11 @@ export class ClientBaileys implements Client {
             }
           }
         }
+        try {
+          if (Array.isArray(list) && list.length > 0) {
+            await setContactSyncPending(this.phone, CONTACT_SYNC_PENDING_TTL_SEC)
+          }
+        } catch {}
       } catch {}
     })
     this.event('contacts.upsert' as any, async (list: any[]) => {
@@ -629,17 +635,61 @@ export class ClientBaileys implements Client {
         }
       } catch {}
     })
-    this.event('message-receipt.update', (updates: object[]) => {
+    this.event('message-receipt.update', async (updates: object[]) => {
       // Para mensagens de grupo, quando habilitado, ignorar recibos individuais (read/played/delivery por participante)
       try {
         if (this.config.ignoreGroupIndividualReceipts) {
-          const filtered = Array.isArray(updates)
-            ? (updates as any[]).filter((u: any) => {
-                const jid = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
-                return !(typeof jid === 'string' && jid.endsWith('@g.us'))
+          const list = Array.isArray(updates) ? (updates as any[]) : []
+          const isGroupUpdate = (u: any) => {
+            const jid = u?.key?.remoteJid || u?.remoteJid || u?.attrs?.from
+            return typeof jid === 'string' && jid.endsWith('@g.us')
+          }
+          const groupUpdates = list.filter(isGroupUpdate)
+          const filtered = list.filter((u: any) => !isGroupUpdate(u))
+          if (groupUpdates.length) {
+            const store = this.store
+            const dataStore = store?.dataStore
+            const seen = new Set<string>()
+            const synthetic: any[] = []
+            const rankStatus = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
+            for (const u of groupUpdates) {
+              const key = u?.key || {}
+              const jid = key?.remoteJid || u?.remoteJid || u?.attrs?.from
+              const id = key?.id
+              if (!jid || !id) continue
+              if (key?.fromMe === false) continue
+              const dedupeKey = `${jid}|${id}`
+              if (seen.has(dedupeKey)) continue
+              seen.add(dedupeKey)
+              let statusId = id
+              try {
+                const mapped = await dataStore?.loadUnoId?.(id)
+                if (mapped) statusId = mapped
+              } catch {}
+              try {
+                const current = await dataStore?.loadStatus?.(statusId)
+                if (current && rankStatus(current) >= rankStatus('delivered')) continue
+              } catch {}
+              let tsRaw: any = u?.receipt?.t || u?.receipt?.receiptTimestamp || u?.receipt?.readTimestamp
+              let tsNum = parseInt(`${tsRaw || ''}`, 10)
+              if (!Number.isFinite(tsNum) || tsNum <= 0) {
+                tsNum = Math.floor(Date.now() / 1000)
+              } else if (tsNum > 1000000000000) {
+                tsNum = Math.floor(tsNum / 1000)
+              }
+              synthetic.push({
+                key: { ...key, remoteJid: jid, id },
+                receipt: { receiptTimestamp: tsNum },
               })
-            : updates
-          if (Array.isArray(filtered) && filtered.length === 0) {
+            }
+            if (synthetic.length) {
+              try {
+                logger.info('Group receipt synth %s: delivered=%s from=%s', this.phone, synthetic.length, groupUpdates.length)
+              } catch {}
+              await this.listener.process(this.phone, synthetic as any, 'update')
+            }
+          }
+          if (filtered.length === 0) {
             logger.debug('message-receipt.update %s ignorado para grupos (0 itens)', this.phone)
             return
           }
@@ -647,7 +697,7 @@ export class ClientBaileys implements Client {
             const sample = filtered.slice(0, 2).map((u: any) => ({ jid: u?.key?.remoteJid, id: u?.key?.id, type: (u as any)?.receipt?.type, ts: (u as any)?.receipt?.t }))
             logger.debug('message-receipt.update %s count=%s sample=%s', this.phone, filtered.length, JSON.stringify(sample))
           } catch { logger.debug('message-receipt.update %s count=%s', this.phone, filtered.length) }
-          this.listener.process(this.phone, filtered as any, 'update')
+          await this.listener.process(this.phone, filtered as any, 'update')
           return
         }
       } catch {}
@@ -655,7 +705,7 @@ export class ClientBaileys implements Client {
         const sample = updates.slice(0, 2).map((u: any) => ({ jid: (u as any)?.key?.remoteJid, id: (u as any)?.key?.id, type: (u as any)?.receipt?.type, ts: (u as any)?.receipt?.t }))
         logger.debug('message-receipt.update %s count=%s sample=%s', this.phone, updates.length, JSON.stringify(sample))
       } catch { logger.debug('message-receipt.update %s count=%s', this.phone, updates.length) }
-      this.listener.process(this.phone, updates, 'update')
+      await this.listener.process(this.phone, updates, 'update')
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.event('messages.delete', (updates: any) => {

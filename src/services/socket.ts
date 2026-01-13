@@ -657,7 +657,15 @@ export const connect = async ({
           logger.debug(message)
           await onNotification(message, true)
           status.attempt = 1
-          return logout()
+          const registered = !!sock?.authState?.creds?.registered || !!state?.creds?.me?.id
+          const isOpen = event.connection === 'open' || event.isOnline === true
+          const alreadyOnline = await sessionStore.isStatusOnline(phone)
+          if (registered || isOpen || alreadyOnline) {
+            logger.info('Skip attempts_exceeded cleanup; session already open %s', phone)
+            return
+          }
+          await sessionStore.setStatus(phone, 'offline')
+          return
         } else {
           logger.debug('QRCode generate... %s of %s', status.attempt, attempts)
           return onQrCode(event.qr, status.attempt++, attempts)

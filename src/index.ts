@@ -36,6 +36,7 @@ import { ReloadBaileys } from './services/reload_baileys'
 import { LogoutBaileys } from './services/logout_baileys'
 import { amqpConnect, amqpConsume } from './amqp'
 import { OutgoingJob } from './jobs/outgoing'
+import { startContactSyncScheduler } from './jobs/contact_sync'
 
 import * as Sentry from '@sentry/node'
 import { isTransientBaileysError } from './services/error_utils'
@@ -89,6 +90,7 @@ broadcast.setSever(app.socket)
 app.server.listen(PORT, '0.0.0.0', async () => {
   logger.info('Unoapi Cloud version: %s, listening on port: %s', version, PORT)
   autoConnect(sessionStore, listenerBaileys, getConfigByEnv, getClientBaileys, onNewLoginn)
+  startContactSyncScheduler(outgoing)
 })
 
 export default app

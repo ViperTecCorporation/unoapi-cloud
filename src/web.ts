@@ -33,6 +33,7 @@ import { BroacastJob } from './jobs/broadcast'
 import { ReloadAmqp } from './services/reload_amqp'
 import { LogoutAmqp } from './services/logout_amqp'
 import { Reload } from './services/reload'
+import { startContactSyncScheduler } from './jobs/contact_sync'
 
 import * as Sentry from '@sentry/node'
 import { isTransientBaileysError } from './services/error_utils'
@@ -70,6 +71,7 @@ app.server.listen(PORT, '0.0.0.0', async () => {
   await amqpConsume(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BROADCAST, '*', broadcastJob.consume.bind(broadcastJob), { type: 'topic' })
   await amqpConsume(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_RELOAD, '*', reload.run.bind(reloadJob), { type: 'topic' })
   logger.info('Unoapi Cloud version: %s, listening on port: %s | Linked Device: %s(%s)', version, PORT, CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME)
+  startContactSyncScheduler(outgoing)
 })
 
 

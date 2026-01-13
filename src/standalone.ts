@@ -72,6 +72,7 @@ import atbl from './jobs/add_to_blacklist'
 import { MediaJob } from './jobs/media'
 import { OutgoingJob } from './jobs/outgoing'
 import { NotificationJob } from './jobs/notification'
+import { startContactSyncScheduler } from './jobs/contact_sync'
 
 import * as Sentry from '@sentry/node'
 import { isTransientBaileysError } from './services/error_utils'
@@ -219,6 +220,7 @@ broadcast.setSever(app.socket)
 app.server.listen(PORT, '0.0.0.0', async () => {
   logger.info('Unoapi standalone mode up version: %s, listening on port: %s', version, PORT)
   autoConnect(sessionStore, listener, getConfigVar, getClientBaileys, onNewLoginn)
+  startContactSyncScheduler(outgoing)
 })
 
 process.on('uncaughtException', (reason: any) => {

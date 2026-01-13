@@ -3,7 +3,7 @@ import { session } from './session'
 import logger from './logger'
 
 export const authState = async (session: session, phone: string) => {
-  const { readData, writeData, removeData, getKey } = await session(phone)
+  const { readData, readManyData, writeData, removeData, getKey } = await session(phone)
 
   const creds: AuthenticationCreds = ((await readData('')) || initAuthCreds()) as AuthenticationCreds
 
@@ -11,6 +11,33 @@ export const authState = async (session: session, phone: string) => {
     get: async (type: string, ids: string[]) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data: any = {}
+      const keys = ids.map((id) => getKey(type, id))
+      let bulk: Record<string, object | undefined> | undefined
+      if (readManyData && ids.length > 1) {
+        try {
+          bulk = await readManyData(keys)
+        } catch {
+          bulk = undefined
+        }
+      }
+      if (bulk) {
+        for (let i = 0; i < ids.length; i += 1) {
+          const id = ids[i]
+          const value = bulk[keys[i]]
+          if (type === 'app-state-sync-key' && value) {
+            try {
+              // Normalize to the expected protobuf type to avoid decrypt issues
+              data[id] = proto.Message.AppStateSyncKeyData.fromObject(value as any)
+            } catch {
+              // Fallback to raw value if conversion fails
+              data[id] = value
+            }
+          } else {
+            data[id] = value
+          }
+        }
+        return data
+      }
       await Promise.all(
         ids.map(async (id) => {
           const key = getKey(type, id)

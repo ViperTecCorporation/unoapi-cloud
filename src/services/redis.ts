@@ -247,6 +247,23 @@ export const redisGet = async (key: string) => {
   }
 }
 
+export const redisMGet = async (keys: string[]): Promise<(string | null | undefined)[]> => {
+  if (!keys || keys.length === 0) return []
+  logger.trace(`MGET ${keys.length} keys`)
+  try {
+    return await client.mGet(keys)
+  } catch (error) {
+    try {
+      const msg = (error as any)?.message || `${error || ''}`
+      if (msg.includes('WRONGTYPE')) {
+        logger.warn('Redis WRONGTYPE on MGET (%s keys)', keys.length)
+        return keys.map(() => null)
+      }
+    } catch {}
+    throw error
+  }
+}
+
 export const redisTtl = async (key: string) => {
   logger.trace(`Ttl ${key}`)
   try {
@@ -369,6 +386,17 @@ export const redisIncrWithTtl = async (key: string, ttlSec: number): Promise<num
   }
 }
 
+// Set key with NX + TTL (seconds). Returns true if the lock was acquired.
+export const redisSetIfNotExists = async (key: string, value: string, ttlSec: number): Promise<boolean> => {
+  try {
+    const c: any = await getRedis()
+    const res = await c.set(key, value, { NX: true, EX: ttlSec })
+    return res === 'OK'
+  } catch {
+    return false
+  }
+}
+
 export const authKey = (phone: string) => {
   return `${BASE_KEY}auth:${phone}`
 }
@@ -424,6 +452,9 @@ const contactNameKey = (phone: string, jid: string) => {
 }
 const contactInfoKey = (phone: string, jid: string) => {
   return `${BASE_KEY}contact-info:${phone}:${jid}`
+}
+const contactSyncPendingKey = (phone: string) => {
+  return `${BASE_KEY}contact-sync:pending:${phone}`
 }
 
 export const configKey = (phone: string) => {
@@ -850,6 +881,71 @@ export const setAuth = async (phone: string, value: any, stringify = (value: str
   return res
 }
 
+export const getAuthRaw = async (phone: string): Promise<string | undefined> => {
+  await ensureAuthSub()
+  const key = authKey(phone)
+  const cached = authCache.get(key)
+  if (cached && isCacheValid(cached.ts, AUTH_CACHE_TTL_MS)) {
+    return cached.value ?? undefined
+  }
+  const authString = await redisGet(key)
+  if (authString) {
+    authCache.set(key, { value: authString, ts: Date.now() })
+    return authString
+  }
+  authCache.set(key, { value: null, ts: Date.now() })
+}
+
+export const getAuthRawMany = async (phones: string[]): Promise<Record<string, string | undefined>> => {
+  await ensureAuthSub()
+  const out: Record<string, string | undefined> = {}
+  if (!phones || phones.length === 0) return out
+  const keys = phones.map((p) => authKey(p))
+  const missing: { key: string; phone: string }[] = []
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i]
+    const cached = authCache.get(key)
+    if (cached && isCacheValid(cached.ts, AUTH_CACHE_TTL_MS)) {
+      out[phones[i]] = cached.value ?? undefined
+    } else {
+      missing.push({ key, phone: phones[i] })
+    }
+  }
+  if (!missing.length) return out
+  const values = await redisMGet(missing.map((m) => m.key))
+  for (let i = 0; i < missing.length; i += 1) {
+    const value = values?.[i]
+    const phone = missing[i].phone
+    const key = missing[i].key
+    if (value) {
+      authCache.set(key, { value, ts: Date.now() })
+      out[phone] = value
+    } else {
+      authCache.set(key, { value: null, ts: Date.now() })
+      out[phone] = undefined
+    }
+  }
+  return out
+}
+
+export const getAuthIndexMembers = async (phone: string): Promise<string[]> => {
+  const indexKey = authIndexKey(phone)
+  try {
+    return await client.sMembers(indexKey)
+  } catch {
+    return []
+  }
+}
+
+export const addAuthKeysToIndex = async (phone: string, keys: string[]) => {
+  try {
+    if (!keys || keys.length === 0) return
+    const indexKey = authIndexKey(phone)
+    await client.sAdd(indexKey, keys)
+    await client.expire(indexKey, SESSION_TTL)
+  } catch {}
+}
+
 export const setbulkMessage = async (phone: string, bulkId: string, messageId: string, phoneNumber) => {
   const key = bulkMessageKey(phone, bulkId, messageId, phoneNumber)
   const indexKey = bulkIndexKey(phone, bulkId)
@@ -941,6 +1037,23 @@ export const getContactInfo = async (phone: string, jid: string) => {
 export const setContactInfo = async (phone: string, jid: string, info: any) => {
   const key = contactInfoKey(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(info || {}), SESSION_TTL)
+}
+
+export const setContactSyncPending = async (phone: string, ttlSec: number) => {
+  if (!process.env.REDIS_URL) return undefined
+  const key = contactSyncPendingKey(phone)
+  return redisSetAndExpire(key, '1', ttlSec)
+}
+
+export const delContactSyncPending = async (phone: string) => {
+  if (!process.env.REDIS_URL) return 0
+  const key = contactSyncPendingKey(phone)
+  try {
+    const c: any = await getRedis()
+    return c.del(key)
+  } catch {
+    return 0
+  }
 }
 
 // Varre contact-info da sessão e enriquece o JIDMAP PN<->LID

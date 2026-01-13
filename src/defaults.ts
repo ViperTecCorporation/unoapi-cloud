@@ -86,6 +86,12 @@ export const WEBHOOK_ASYNC =
   process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
 export const WEBHOOK_ASYNC_MODE = process.env.WEBHOOK_ASYNC_MODE || 'amqp'
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
+export const CONTACT_SYNC_ENABLED =
+  process.env.CONTACT_SYNC_ENABLED == _undefined ? true : process.env.CONTACT_SYNC_ENABLED == 'true'
+export const CONTACT_SYNC_INTERVAL_MS = parseInt(process.env.CONTACT_SYNC_INTERVAL_MS || `${8 * 60 * 60 * 1000}`)
+export const CONTACT_SYNC_SCAN_COUNT = parseInt(process.env.CONTACT_SYNC_SCAN_COUNT || '500')
+export const CONTACT_SYNC_PENDING_TTL_SEC = parseInt(process.env.CONTACT_SYNC_PENDING_TTL_SEC || '900')
+export const CONTACT_SYNC_PENDING_POLL_MS = parseInt(process.env.CONTACT_SYNC_PENDING_POLL_MS || '60000')
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 // Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
