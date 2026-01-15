@@ -4,7 +4,8 @@ import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EX
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import { mediaStores, MediaStore, getMediaStore } from './media_store'
 import { getDataStore } from './data_store'
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client, GetObjectCommandOutput } from '@aws-sdk/client-s3'
+import { GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, S3Client, GetObjectCommandOutput } from '@aws-sdk/client-s3'
+import { Upload } from '@aws-sdk/lib-storage'
 import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { amqpPublish } from '../amqp'
@@ -44,6 +45,9 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
   const mediaStore = mediaStoreFile(phone, config, getDataStore)
   mediaStore.type = 's3'
 
+  const multipartPartSize = 10 * 1024 * 1024
+  const multipartQueueSize = 4
+
   // helper: send with single retry on AbortError
   const sendWithRetry = async <T>(command: any, abortMs: number): Promise<T> => {
     const attempt = async () => {
@@ -56,6 +60,48 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         try { logger.warn(e as any, 'S3 send aborted; retrying once') } catch {}
+        await new Promise((r) => setTimeout(r, 800))
+        return await attempt()
+      }
+      throw e
+    }
+  }
+
+  const uploadWithRetry = async (params: { Bucket: string; Key: string; Body: Buffer }, abortMs: number) => {
+    const attempt = async () => {
+      const uploader = new Upload({
+        client: s3Client,
+        params,
+        partSize: multipartPartSize,
+        queueSize: multipartQueueSize,
+        leavePartsOnError: false,
+      })
+      const safeAbortMs = Number.isFinite(abortMs) ? abortMs : 0
+      let timeoutId: NodeJS.Timeout | undefined
+      try {
+        if (safeAbortMs > 0) {
+          const timeout = new Promise((_resolve, reject) => {
+            timeoutId = setTimeout(() => {
+              try { uploader.abort() } catch {}
+              const err: any = new Error(`S3 upload timed out after ${safeAbortMs}ms`)
+              err.name = 'AbortError'
+              reject(err)
+            }, safeAbortMs)
+          })
+          return await Promise.race([uploader.done(), timeout])
+        }
+        return await uploader.done()
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+      }
+    }
+    try {
+      return await attempt()
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        try { logger.warn(e as any, 'S3 multipart upload aborted; retrying once') } catch {}
         await new Promise((r) => setTimeout(r, 800))
         return await attempt()
       }
@@ -82,7 +128,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       Key: fileName,
       Body: content,
     }
-    await sendWithRetry(new PutObjectCommand(putParams), s3Config.timeoutMs)
+    await uploadWithRetry(putParams, s3Config.timeoutMs)
     logger.debug(`Uploaded file ${fileName} to bucket ${bucket}!`)
     await amqpPublish(
       UNOAPI_EXCHANGE_BROKER_NAME,
