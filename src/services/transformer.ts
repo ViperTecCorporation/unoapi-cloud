@@ -177,6 +177,213 @@ export const normalizeMessageContent = (
   return (content || undefined) as any;
 };
 
+const toArray = <T>(value: T | T[] | undefined): T[] => {
+  if (Array.isArray(value)) return value
+  if (value) return [value]
+  return []
+}
+
+const normalizeTypeList = (raw: any): string[] => {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : `${raw}`.split(',')
+  return list.map((v) => `${v}`.trim().toLowerCase()).filter(Boolean)
+}
+
+const normalizeContactName = (nameObj: any) => {
+  const raw = nameObj || {}
+  const first = `${raw.first_name || raw.firstName || ''}`.trim()
+  const last = `${raw.last_name || raw.lastName || ''}`.trim()
+  const middle = `${raw.middle_name || raw.middleName || ''}`.trim()
+  const prefix = `${raw.prefix || ''}`.trim()
+  const suffix = `${raw.suffix || ''}`.trim()
+  let formatted = `${raw.formatted_name || raw.formattedName || raw.name || ''}`.trim()
+  if (!formatted) {
+    const parts = [prefix, first, middle, last, suffix].filter((p) => p)
+    formatted = parts.join(' ').trim()
+  }
+  if (!formatted) formatted = 'Contact'
+  return { formatted, first, last, middle, prefix, suffix }
+}
+
+const buildContactVcard = (contact: any): string => {
+  const nameParts = normalizeContactName(contact?.name || {})
+  const given = nameParts.first || (!nameParts.first && !nameParts.last ? nameParts.formatted : '')
+  const family = nameParts.last || ''
+  const additional = nameParts.middle || ''
+  const prefix = nameParts.prefix || ''
+  const suffix = nameParts.suffix || ''
+
+  const card = new vCard()
+  card.set('fn', nameParts.formatted)
+  card.set('n', `${family};${given};${additional};${prefix};${suffix}`)
+
+  const org = contact?.org || {}
+  const orgParts: string[] = []
+  if (org.company) orgParts.push(`${org.company}`)
+  if (org.department) orgParts.push(`${org.department}`)
+  if (orgParts.length) {
+    card.set('org', orgParts)
+  }
+  if (org.title) {
+    card.set('title', `${org.title}`)
+  }
+
+  const phonesArr = Array.isArray(contact?.phones) ? contact.phones : []
+  if (!phonesArr.length) throw new Error('invalid_contacts_payload: missing phones')
+  let hasPhone = false
+  for (const ph of phonesArr) {
+    const phoneRaw = `${ph?.phone || ph?.wa_id || ''}`.trim()
+    if (!phoneRaw) continue
+    hasPhone = true
+    const waid = `${ph?.wa_id || phoneRaw}`.replace(/\D/g, '')
+    const types = normalizeTypeList(ph?.type)
+    if (!types.length) types.push('cell')
+    if (!types.includes('voice')) types.push('voice')
+    const params: any = { type: types }
+    if (waid) params.waid = waid
+    card.add('tel', phoneRaw, params)
+  }
+  if (!hasPhone) throw new Error('invalid_contacts_payload: missing phones')
+
+  const emailsArr = Array.isArray(contact?.emails) ? contact.emails : []
+  for (const em of emailsArr) {
+    const emailVal = `${em?.email || em?.address || ''}`.trim()
+    if (!emailVal) continue
+    const types = normalizeTypeList(em?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('email', emailVal, params as any)
+  }
+
+  const urlsArr = Array.isArray(contact?.urls) ? contact.urls : []
+  for (const u of urlsArr) {
+    const urlVal = `${u?.url || u?.link || ''}`.trim()
+    if (!urlVal) continue
+    const types = normalizeTypeList(u?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('url', urlVal, params as any)
+  }
+
+  const addrArr = Array.isArray(contact?.addresses) ? contact.addresses : []
+  for (const a of addrArr) {
+    const street = `${a?.street || ''}`.trim()
+    const city = `${a?.city || ''}`.trim()
+    const state = `${a?.state || ''}`.trim()
+    const zip = `${a?.zip || ''}`.trim()
+    const country = `${a?.country || ''}`.trim()
+    if (!street && !city && !state && !zip && !country) continue
+    const adrValue = ['', '', street, city, state, zip, country]
+    const types = normalizeTypeList(a?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('adr', adrValue as any, params as any)
+  }
+
+  return card.toString('3.0')
+}
+
+const parseVcardContact = (rawVcard: string): any | undefined => {
+  if (!rawVcard) return undefined
+  const card: any = new vCard().parse(rawVcard.replace(/\r?\n/g, '\r\n'))
+  const fn = card.get('fn')
+  const n = card.get('n')
+  const formatted = fn?.valueOf ? `${fn.valueOf()}`.trim() : ''
+  const parts = n?.valueOf ? `${n.valueOf()}`.split(';') : []
+  const last = `${parts[0] || ''}`.trim()
+  const first = `${parts[1] || ''}`.trim()
+  const middle = `${parts[2] || ''}`.trim()
+  const prefix = `${parts[3] || ''}`.trim()
+  const suffix = `${parts[4] || ''}`.trim()
+  let formattedName = formatted
+  if (!formattedName) {
+    const nameParts = [prefix, first, middle, last, suffix].filter((p) => p)
+    formattedName = nameParts.join(' ').trim()
+  }
+  if (!formattedName) formattedName = 'Contact'
+  const name: any = { formatted_name: formattedName }
+  if (first) name.first_name = first
+  if (last) name.last_name = last
+  if (middle) name.middle_name = middle
+  if (prefix) name.prefix = prefix
+  if (suffix) name.suffix = suffix
+
+  const phones: any[] = []
+  const telProps = toArray(card.get('tel'))
+  for (const tel of telProps) {
+    const phoneVal = tel?.valueOf ? `${tel.valueOf()}`.trim() : ''
+    if (!phoneVal) continue
+    const waid = tel?.waid ? `${tel.waid}`.replace(/\D/g, '') : phoneVal.replace(/\D/g, '')
+    const typeRaw = tel?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const phoneObj: any = { phone: phoneVal }
+    if (waid) phoneObj.wa_id = waid
+    if (type) phoneObj.type = `${type}`.toUpperCase()
+    phones.push(phoneObj)
+  }
+
+  const emails: any[] = []
+  const emailProps = toArray(card.get('email'))
+  for (const em of emailProps) {
+    const emailVal = em?.valueOf ? `${em.valueOf()}`.trim() : ''
+    if (!emailVal) continue
+    const typeRaw = em?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const emailObj: any = { email: emailVal }
+    if (type) emailObj.type = `${type}`.toUpperCase()
+    emails.push(emailObj)
+  }
+
+  const urls: any[] = []
+  const urlProps = toArray(card.get('url'))
+  for (const u of urlProps) {
+    const urlVal = u?.valueOf ? `${u.valueOf()}`.trim() : ''
+    if (!urlVal) continue
+    const typeRaw = u?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const urlObj: any = { url: urlVal }
+    if (type) urlObj.type = `${type}`.toUpperCase()
+    urls.push(urlObj)
+  }
+
+  const addresses: any[] = []
+  const adrProps = toArray(card.get('adr'))
+  for (const a of adrProps) {
+    const adrVal = a?.valueOf ? `${a.valueOf()}` : ''
+    const fields = adrVal.split(';')
+    const street = `${fields[2] || ''}`.trim()
+    const city = `${fields[3] || ''}`.trim()
+    const state = `${fields[4] || ''}`.trim()
+    const zip = `${fields[5] || ''}`.trim()
+    const country = `${fields[6] || ''}`.trim()
+    if (!street && !city && !state && !zip && !country) continue
+    const typeRaw = a?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const addrObj: any = { street, city, state, zip, country }
+    if (type) addrObj.type = `${type}`.toUpperCase()
+    addresses.push(addrObj)
+  }
+
+  const orgProp = card.get('org')
+  const titleProp = card.get('title')
+  let orgObj: any = undefined
+  if (orgProp?.valueOf || titleProp?.valueOf) {
+    const orgVal = orgProp?.valueOf ? `${orgProp.valueOf()}` : ''
+    const orgParts = orgVal ? orgVal.split(';') : []
+    const company = `${orgParts[0] || ''}`.trim()
+    const department = `${orgParts[1] || ''}`.trim()
+    const title = titleProp?.valueOf ? `${titleProp.valueOf()}`.trim() : ''
+    orgObj = {}
+    if (company) orgObj.company = company
+    if (department) orgObj.department = department
+    if (title) orgObj.title = title
+  }
+
+  const contact: any = { name, phones }
+  if (emails.length) contact.emails = emails
+  if (urls.length) contact.urls = urls
+  if (addresses.length) contact.addresses = addresses
+  if (orgObj && Object.keys(orgObj).length > 0) contact.org = orgObj
+  return contact
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getBinMessage = (waMessage: WAMessage): { messageType: string; message: any } | undefined => {
   const message: proto.IMessage | undefined = (normalizeMessageContent(waMessage.message) || undefined) as any
@@ -539,26 +746,15 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'contacts': {
       const list: any[] = Array.isArray(payload?.[type]) ? payload[type] : []
       if (!list.length) throw new Error('invalid_contacts_payload: empty list')
-      const first = list[0] || {}
-      const nameObj = first?.name || {}
-      const contactName = nameObj.formatted_name || nameObj.formattedName || nameObj.name || 'Contact'
-      const phonesArr: any[] = Array.isArray(first?.phones) ? first.phones : []
-      if (!phonesArr.length) throw new Error('invalid_contacts_payload: missing phones')
       const contacts: any[] = []
-      for (let index = 0; index < phonesArr.length; index++) {
-        const ph = phonesArr[index] || {}
-        const numberRaw = `${ph.phone || ph.wa_id || ''}`
-        const number = numberRaw || ''
-        const waid = `${ph.wa_id || number}`.replace(/\D/g, '')
-        const vcard =
-          'BEGIN:VCARD\n' +
-          'VERSION:3.0\n' +
-          `N:${contactName}\n` +
-          `TEL;type=CELL;type=VOICE;waid=${waid}:${number}\n` +
-          'END:VCARD'
+      for (const entry of list) {
+        const vcard = buildContactVcard(entry)
         contacts.push({ vcard })
       }
-      const displayName = phonesArr.length > 1 ? `${phonesArr.length} contacts` : contactName
+      const first = list[0] || {}
+      const nameObj = first?.name || {}
+      const contactName = normalizeContactName(nameObj).formatted
+      const displayName = contacts.length > 1 ? `${contacts.length} contacts` : contactName
       response[type] = { displayName, contacts }
       break
     }
@@ -1283,18 +1479,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         for (let i = 0; i < vcards.length; i++) {
           const vcard = vcards[i]
           if (vcard) {
-            const card: vCard = new vCard().parse(vcard.replace(/\r?\n/g, '\r\n'))
-            const contact = {
-              name: {
-                formatted_name: card.get('fn').valueOf(),
-              },
-              phones: [
-                {
-                  phone: card.get('tel').valueOf(),
-                },
-              ],
-            }
-            contacts.push(contact)
+            const contact = parseVcardContact(vcard)
+            if (contact) contacts.push(contact)
           }
         }
         message.contacts = contacts
