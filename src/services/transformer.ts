@@ -225,7 +225,7 @@ const buildContactVcard = (contact: any): string => {
   if (org.company) orgParts.push(`${org.company}`)
   if (org.department) orgParts.push(`${org.department}`)
   if (orgParts.length) {
-    card.set('org', orgParts)
+    card.set('org', orgParts.join(';'))
   }
   if (org.title) {
     card.set('title', `${org.title}`)
