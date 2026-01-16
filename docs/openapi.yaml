@@ -189,6 +189,14 @@ paths:
                   reaction:
                     message_id: "MESSAGE_ID"
                     emoji: "👍"
+              sticker:
+                summary: Figurinha
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: sticker
+                  sticker:
+                    link: "https://example.com/sticker.png"
               interactiveButtons:
                 summary: Interativo - Botões
                 value:
@@ -680,6 +688,19 @@ components:
                 link: { type: string }
                 caption: { type: string }
 
+    MessageSticker:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: sticker }
+            sticker:
+              type: object
+              properties:
+                link:
+                  type: string
+                  description: 'PNG/JPG/GIF are auto-converted to WEBP before sending'
+
     MessageAudio:
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
@@ -804,6 +825,7 @@ components:
         - $ref: '#/components/schemas/MessageText'
         - $ref: '#/components/schemas/MessageImage'
         - $ref: '#/components/schemas/MessageVideo'
+        - $ref: '#/components/schemas/MessageSticker'
         - $ref: '#/components/schemas/MessageAudio'
         - $ref: '#/components/schemas/MessageDocument'
         - $ref: '#/components/schemas/MessageContacts'

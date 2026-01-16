@@ -66,6 +66,21 @@ POST /v15.0/{phone}/messages
 }
 ```
 
+## Exemplo de figurinha
+
+PNG/JPG/GIF sao convertidos automaticamente para WEBP antes do envio.
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "5511999999999",
+  "type": "sticker",
+  "sticker": {
+    "link": "https://example.com/sticker.png"
+  }
+}
+```
+
 ## Problemas Comuns
 
 - Erro de certificado ao baixar `wait-for` no build:

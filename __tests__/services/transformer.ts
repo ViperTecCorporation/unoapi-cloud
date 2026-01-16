@@ -1288,6 +1288,23 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent sticker', async () => {
+    const link = `${new Date().getTime()}.png`
+    const input = {
+      type: 'sticker',
+      sticker: {
+        link,
+      },
+    }
+    const output = {
+      mimetype: 'image/png',
+      sticker: {
+        url: link,
+      },
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
   test('toBaileysMessageContent unknown', async () => {
     const input = {
       type: 'unknown',

@@ -763,6 +763,19 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
       break
     }
+    case 'sticker': {
+      const media: any = (payload && payload[type]) || {}
+      const link: string = (media?.link || '').toString()
+      if (!link || !link.trim()) {
+        throw new SendError(11, `invalid_${type}_payload: missing link`)
+      }
+      let mimetype: string = getMimetype(payload)
+      if (mimetype) {
+        response.mimetype = mimetype
+      }
+      response[type] = { url: link }
+      break
+    }
     case 'image':
     case 'audio':
     case 'document':

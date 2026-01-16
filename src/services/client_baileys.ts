@@ -28,6 +28,7 @@ import logger from './logger'
 import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC } from '../defaults'
 import { setContactSyncPending } from './redis'
 import { convertToOggPtt } from '../utils/audio_convert'
+import { convertToWebpSticker } from '../utils/sticker_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { ClientCoexistence } from './client_coexistence'
@@ -969,6 +970,30 @@ export class ClientBaileys implements Client {
                 }
               } catch (err) {
                 logger.warn(err, 'Ignore error converting audio to ogg sending original')
+              }
+            }
+            if (type === 'sticker') {
+              try {
+                const stickerPayload: any = payload?.sticker || {}
+                const stickerLink = stickerPayload?.link || (content as any)?.sticker?.url
+                const cleanLink = `${stickerLink || ''}`.split('?')[0].split('#')[0]
+                const stickerMimeRaw = `${stickerPayload?.mime_type || stickerPayload?.mimetype || (content as any)?.mimetype || ''}`.toLowerCase()
+                const isWebp = stickerMimeRaw.includes('webp') || cleanLink.toLowerCase().endsWith('.webp')
+                if (stickerLink && !isWebp && typeof (content as any)?.sticker === 'object' && (content as any)?.sticker?.url) {
+                  const resp = await fetch(stickerLink, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET' })
+                  if (!resp?.ok) {
+                    throw new Error(`sticker_download_failed: ${resp?.status || 0}`)
+                  }
+                  const contentType = `${resp.headers.get('content-type') || ''}`.toLowerCase()
+                  const isAnimated = contentType.includes('gif') || cleanLink.toLowerCase().endsWith('.gif')
+                  const buf = Buffer.from(await resp.arrayBuffer())
+                  const webp = await convertToWebpSticker(buf, { animated: isAnimated })
+                  ;(content as any).sticker = webp
+                  ;(content as any).mimetype = 'image/webp'
+                  logger.debug('Sticker converted to webp for %s', stickerLink)
+                }
+              } catch (err) {
+                logger.warn(err, 'Ignore error converting sticker to webp sending original')
               }
             }
           }

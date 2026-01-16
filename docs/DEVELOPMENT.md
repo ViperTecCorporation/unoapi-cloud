@@ -66,6 +66,21 @@ POST /v15.0/{phone}/messages
 }
 ```
 
+## Sticker Example
+
+PNG/JPG/GIF are auto-converted to WEBP before sending.
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "5511999999999",
+  "type": "sticker",
+  "sticker": {
+    "link": "https://example.com/sticker.png"
+  }
+}
+```
+
 ## Troubleshooting
 
 - Cert error fetching `wait-for` during build:
