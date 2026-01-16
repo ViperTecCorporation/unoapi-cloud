@@ -359,6 +359,11 @@ export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS ||
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
 
+// BR send-order: if enabled, tries 12-digit then 13-digit candidate on send
+export const BR_SEND_ORDER_ENABLED =
+  process.env.BR_SEND_ORDER_ENABLED === _undefined ? true : process.env.BR_SEND_ORDER_ENABLED == 'true'
+
+
 // Endereçamento para conversas 1:1 (envio)
 // 'pn' (padrão): quando possível, envia usando PN; 'lid': força envio usando lid.
 export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {

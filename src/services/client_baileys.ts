@@ -891,6 +891,7 @@ export class ClientBaileys implements Client {
         if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction'].includes(type)) {
           let content
           let targetTo = to
+          const extraSendOptions: any = {}
           if ('reaction' === type) {
             const reaction = payload?.reaction || {}
             const messageId =
@@ -930,6 +931,8 @@ export class ClientBaileys implements Client {
             const reactionKey = providerId && key.id !== providerId ? { ...key, id: providerId } : key
             content = { react: { text: emoji, key: reactionKey } }
             targetTo = reactionKey.remoteJid
+            extraSendOptions.forceRemoteJid = reactionKey.remoteJid
+            extraSendOptions.skipBrSendOrder = true
           } else if ('template' === type) {
             const template = new Template(this.getConfig)
             content = await template.bind(this.phone, payload.template.name, payload.template.components)
@@ -1061,6 +1064,7 @@ export class ClientBaileys implements Client {
             quoted,
             disappearingMessagesInChat,
             ...options,
+            ...extraSendOptions,
           }
           // Apply addressing mode para grupos
           // Se GROUP_SEND_ADDRESSING_MODE estiver setada, respeita. Caso contrário, usa LID por padrão

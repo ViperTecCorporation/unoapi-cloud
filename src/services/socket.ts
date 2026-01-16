@@ -37,7 +37,7 @@ import {
 } from '../defaults'
 import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS, ACK_RETRY_ENABLED } from '../defaults'
 import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS, PERIODIC_ASSERT_FORCE, PERIODIC_ASSERT_INCLUDE_GROUPS } from '../defaults'
-import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
+import { ONE_TO_ONE_ADDRESSING_MODE, BR_SEND_ORDER_ENABLED } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
@@ -1348,12 +1348,21 @@ export const connect = async ({
   ) => {
     await validateStatus()
     // Prefer LID for 1:1 when possível; manter grupos inalterados
-    let idCandidate = to
-    let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    const forceRemoteJid = options?.forceRemoteJid
+    const skipBrSendOrder = options?.skipBrSendOrder
+    let idCandidate = forceRemoteJid || to
+    let id = forceRemoteJid ? idCandidate : (isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate)
+    try {
+      logger.debug('1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s skipBrSendOrder=%s brSendOrder=%s', to, idCandidate, id || '<none>', !!forceRemoteJid, !!skipBrSendOrder, !!BR_SEND_ORDER_ENABLED)
+    } catch {}
     // BR send-order: tentar 12 dígitos primeiro; se não existir, tentar 13. Webhooks permanecem 13.
     // Quando o input vier como LID, e o modo 1:1 for 'pn', usar o PN resolvido via exists() para aplicar a regra.
     try {
-      let raw = ensurePn(idCandidate)
+      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
+        // Reactions (and similar) require the exact remote key JID.
+        // Do not apply BR heuristics to the destination.
+      } else {
+        let raw = ensurePn(idCandidate)
       try {
         if ((!raw || raw.length === 0) && ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
           raw = ensurePn(`${id || ''}`)
@@ -1393,12 +1402,15 @@ export const connect = async ({
           id = chosen
         }
       }
+      }
     } catch {}
     // preferAddressingMode declarado acima
     // BR 9º dígito: só preferir LID quando o modo 1:1 NÃO for 'pn'.
     // Em modo 'pn', mantemos PN para evitar enviar via LID.
     try {
-      if (ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
+        // Skip BR guard when disabled or explicitly bypassed.
+      } else if (ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
         const inDigits = `${idCandidate}`.replace(/\D/g, '')
         const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
         if (
