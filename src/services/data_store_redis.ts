@@ -117,6 +117,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     return setGroup(phone, jid, data)
   }
   store.loadUnoId = async (id: string) => await getUnoId(phone, id)
+  store.loadProviderId = async (id: string) => await getProviderId(phone, id)
   store.setUnoId = async (id: string, unoId: string) => setUnoId(phone, id, unoId)
   store.loadMediaPayload = async (id: string) => getMedia(phone, id)
   store.setMediaPayload = async (id: string, payload: string) => setMedia(phone, id, payload)

@@ -902,12 +902,23 @@ export class ClientBaileys implements Client {
             if (!messageId) {
               throw new SendError(400, 'invalid_reaction_payload: missing message_id')
             }
-            let key = await this.store?.dataStore?.loadKey(messageId)
-            if (!key) {
+            const dataStore = this.store?.dataStore
+            let providerId: string | undefined
+            let key = undefined as any
+            try {
+              providerId = await dataStore?.loadProviderId?.(messageId)
+            } catch {}
+            if (!providerId) {
               try {
-                const mapped = await this.store?.dataStore?.loadUnoId(messageId)
-                if (mapped) key = await this.store?.dataStore?.loadKey(mapped)
+                const unoFromProvider = await dataStore?.loadUnoId?.(messageId)
+                if (unoFromProvider) providerId = messageId
               } catch {}
+            }
+            if (providerId) {
+              key = await dataStore?.loadKey(providerId)
+            }
+            if (!key) {
+              key = await dataStore?.loadKey(messageId)
             }
             if (!key || !key.id || !key.remoteJid) {
               throw new SendError(404, `reaction_message_not_found: ${messageId}`)
@@ -916,8 +927,9 @@ export class ClientBaileys implements Client {
               ? reaction.emoji
               : (typeof reaction?.text !== 'undefined' ? reaction.text : reaction?.value)
             const emoji = `${emojiRaw ?? ''}`
-            content = { react: { text: emoji, key } }
-            targetTo = key.remoteJid
+            const reactionKey = providerId && key.id !== providerId ? { ...key, id: providerId } : key
+            content = { react: { text: emoji, key: reactionKey } }
+            targetTo = reactionKey.remoteJid
           } else if ('template' === type) {
             const template = new Template(this.getConfig)
             content = await template.bind(this.phone, payload.template.name, payload.template.components)
