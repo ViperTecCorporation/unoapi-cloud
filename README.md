@@ -314,7 +314,8 @@ http://localhost:9876/v15.0/5549988290955/messages \
 ```
 Note: 
 Your number's WhatsApp status privacy must allow delivery to the provided JIDs.
-If you provide an empty JIDList, the status will not be delivered.
+If statusJidList is empty or null and type is image/video, Unoapi auto-fills from Redis contact-info (unoapi-contact-info:<phone>:*).
+If the list is still empty, the status will not be delivered.
 To send a contact
 ![Imagem do WhatsApp de 2025-09-21 à(s) 20 03 33_a199430a](https://github.com/user-attachments/assets/c498de41-b8dc-4368-98b0-737b2fee4735)
 
@@ -408,6 +409,24 @@ http://localhost:9876/v15.0/5549988290955/messages \
   "messaging_product": "whatsapp",
   "status": "read",
   "message_id": "MESSAGE_ID"
+}'
+```
+
+To react to a message
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "reaction",
+  "reaction": {
+    "message_id": "MESSAGE_ID",
+    "emoji": "👍"
+  }
 }'
 ```
 

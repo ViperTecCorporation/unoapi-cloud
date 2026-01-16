@@ -38,6 +38,10 @@ POST /v15.0/{phone}/messages
 }
 ```
 
+Nota:
+- Se statusJidList estiver vazio ou nulo e type for image/video, Unoapi preenche via Redis contact-info (unoapi-contact-info:<phone>:*).
+- Se a lista continuar vazia, nao faz relay.
+
 Resposta adiciona ao Cloud API:
 
 ```
@@ -45,6 +49,20 @@ Resposta adiciona ao Cloud API:
   ...,
   "status_skipped": ["5511..."],
   "status_recipients": 123
+}
+```
+
+## Exemplo de reacao
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "5511999999999",
+  "type": "reaction",
+  "reaction": {
+    "message_id": "MESSAGE_ID",
+    "emoji": "👍"
+  }
 }
 ```
 

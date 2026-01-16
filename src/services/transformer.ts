@@ -72,8 +72,11 @@ export const TYPE_MESSAGES_TO_READ = [
   'buttonsMessage',
   'interactiveMessage',
   'listResponseMessage',
+  'buttonsResponseMessage',
+  'interactiveResponseMessage',
   'conversation',
   'ptvMessage',
+  'templateButtonReplyMessage',
 ]
 
 const OTHER_MESSAGES_TO_PROCESS = [
@@ -280,6 +283,28 @@ const buildContactVcard = (contact: any): string => {
   return card.toString('3.0')
 }
 
+const parseInteractiveResponse = (binMessage: any) => {
+  const native = binMessage?.nativeFlowResponseMessage
+  const bodyText = binMessage?.body?.text
+  let params: Record<string, any> | undefined
+  try {
+    if (native?.paramsJson) params = JSON.parse(native.paramsJson)
+  } catch {}
+  const id =
+    params?.id ||
+    params?.button_id ||
+    params?.selected_row_id ||
+    params?.row_id ||
+    params?.selection_id ||
+    params?.list_reply_id
+  const title = params?.title || params?.display_text || params?.text
+  const description = params?.description
+  const name = `${native?.name || ''}`.toLowerCase()
+  const isList = name.includes('list') || name.includes('single_select') || !!params?.row_id || !!params?.selected_row_id
+  const isButton = name.includes('quick_reply') || name.includes('button') || !!params?.button_id || !!params?.id
+  return { id, title, description, isList, isButton, bodyText }
+}
+
 const parseVcardContact = (rawVcard: string): any | undefined => {
   if (!rawVcard) return undefined
   const card: any = new vCard().parse(rawVcard.replace(/\r?\n/g, '\r\n'))
@@ -457,6 +482,11 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const body = interactive.body || {}
       const footer = interactive.footer || {}
       const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
+      const normalizeInteractiveText = (value: any) => {
+        if (value === null || typeof value === 'undefined') return ''
+        const out = customMessageCharactersFunction(`${value}`)
+        return `${out ?? ''}`.trim()
+      }
       const mapButtonsToNativeFlow = (buttons: any[]) =>
         (buttons || [])
           .map((button: any) => {
@@ -523,18 +553,37 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
 
       if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
-        response.text = body.text || ''
-        response.footer = footer.text || ''
-        response.title = header.text || ''
-        response.buttonText = action.button || 'Selecionar'
-        response.sections = action.sections.map((section: any) => ({
-          title: section.title || '',
-          rows: (section.rows || []).map((row: any) => ({
-            rowId: row.id || row.rowId || '',
-            title: row.title || '',
-            description: row.description || '',
-          })),
-        }))
+        const listBody = normalizeInteractiveText(body.text)
+        const listFooter = normalizeInteractiveText(footer.text)
+        const listTitle = normalizeInteractiveText(header.text)
+        const listButtonText = normalizeInteractiveText(action.button) || 'Selecionar'
+        const sections = action.sections
+          .map((section: any, sectionIndex: number) => {
+            const sectionTitle = normalizeInteractiveText(section.title) || `Secao ${sectionIndex + 1}`
+            const rows = (section.rows || [])
+              .map((row: any, rowIndex: number) => {
+                const rawId = `${row.id || row.rowId || row.row_id || ''}`.trim()
+                const rowId = rawId || `row_${sectionIndex + 1}_${rowIndex + 1}`
+                const rowTitle = normalizeInteractiveText(row.title) || rowId
+                const rowDescription = normalizeInteractiveText(row.description)
+                return {
+                  rowId,
+                  title: rowTitle,
+                  description: rowDescription,
+                }
+              })
+              .filter((row: any) => row.rowId)
+            return rows.length > 0 ? { title: sectionTitle, rows } : undefined
+          })
+          .filter(Boolean)
+        if (!sections.length) {
+          throw new Error('invalid_interactive_list_payload: empty sections')
+        }
+        response.text = listBody || listTitle || listButtonText || 'Opcoes'
+        if (listFooter) response.footer = listFooter
+        if (listTitle) response.title = listTitle
+        response.buttonText = listButtonText
+        response.sections = sections
         if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
           logger.debug(
             'toBaileys list dump input=%s output=%s',
@@ -864,6 +913,7 @@ export const getNumberAndId = (payload: any): [string, string] => {
       participant,
       senderLid,
       participantLid,
+      recipientLid,
       // Baileys >=6.8 alt JIDs
       remoteJidAlt,
       participantAlt,
@@ -874,7 +924,7 @@ export const getNumberAndId = (payload: any): [string, string] => {
   } = payload || {}
 
   // Normalize base ID (can be PN or LID)
-  const lid = senderLid || participantLid || participant || participant2 || remoteJid || ''
+  const lid = senderLid || participantLid || recipientLid || participant || participant2 || remoteJid || ''
   const split = `${lid}`.split('@')
   const id = split.length >= 2 ? `${split[0].split(':')[0]}@${split[1]}` : `${lid}`
 
@@ -1721,6 +1771,77 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           message.type = 'reaction'
         }
         break
+
+      case 'templateButtonReplyMessage':
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        message.button = {
+          payload: binMessage?.selectedId,
+          text: binMessage?.selectedDisplayText,
+        }
+        message.type = 'button'
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+
+      case 'buttonsResponseMessage': {
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        const payload = `${binMessage?.selectedButtonId || binMessage?.selectedDisplayText || ''}`
+        const text = `${binMessage?.selectedDisplayText || binMessage?.selectedButtonId || ''}`
+        message.interactive = {
+          type: 'button_reply',
+          button_reply: {
+            id: payload,
+            title: text,
+          },
+        }
+        message.type = 'interactive'
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+      }
+
+      case 'interactiveResponseMessage': {
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        const parsed = parseInteractiveResponse(binMessage)
+        if (parsed?.isList && parsed?.id) {
+          message.interactive = {
+            type: 'list_reply',
+            list_reply: {
+              id: `${parsed.id}`,
+              title: `${parsed.title || ''}`,
+              description: `${parsed.description || ''}`,
+            },
+          }
+          message.type = 'interactive'
+        } else if (parsed?.isButton && parsed?.id) {
+          message.interactive = {
+            type: 'button_reply',
+            button_reply: {
+              id: `${parsed.id}`,
+              title: `${parsed.title || ''}`,
+            },
+          }
+          message.type = 'interactive'
+        } else if (parsed?.bodyText) {
+          message.text = { body: `${parsed.bodyText}` }
+          message.type = 'text'
+        }
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+      }
 
       case 'locationMessage':
       case 'liveLocationMessage':

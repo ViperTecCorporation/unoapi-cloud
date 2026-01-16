@@ -180,6 +180,15 @@ paths:
                       phones:
                         - wa_id: "5511988887777"
                           phone: "+55 11 98888-7777"
+              reaction:
+                summary: Reacao
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: reaction
+                  reaction:
+                    message_id: "MESSAGE_ID"
+                    emoji: "👍"
               interactiveButtons:
                 summary: Interativo - Botões
                 value:
@@ -633,7 +642,7 @@ components:
         statusJidList:
           type: array
           items: { type: string }
-          description: 'Atalho equivalente a options.statusJidList'
+          description: 'Atalho equivalente a options.statusJidList. If empty/null with to=status@broadcast and type=image/video, Unoapi auto-fills from Redis contact-info (unoapi-contact-info:<phone>:*).'
 
     MessageText:
       allOf:
@@ -717,6 +726,18 @@ components:
                         wa_id: { type: string }
                         phone: { type: string }
 
+    MessageReaction:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          properties:
+            type: { const: reaction }
+            reaction:
+              type: object
+              properties:
+                message_id: { type: string }
+                emoji: { type: string }
+
     MessageInteractiveButtons:
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
@@ -786,6 +807,7 @@ components:
         - $ref: '#/components/schemas/MessageAudio'
         - $ref: '#/components/schemas/MessageDocument'
         - $ref: '#/components/schemas/MessageContacts'
+        - $ref: '#/components/schemas/MessageReaction'
         - $ref: '#/components/schemas/MessageInteractiveButtons'
         - $ref: '#/components/schemas/MessageInteractiveList'
 

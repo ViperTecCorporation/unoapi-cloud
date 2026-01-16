@@ -887,9 +887,37 @@ export class ClientBaileys implements Client {
           throw new Error(`Unknow message status ${status}`)
         }
       } else if (type) {
-        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts'].includes(type)) {
+        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction'].includes(type)) {
           let content
-          if ('template' === type) {
+          let targetTo = to
+          if ('reaction' === type) {
+            const reaction = payload?.reaction || {}
+            const messageId =
+              reaction?.message_id ||
+              reaction?.messageId ||
+              payload?.message_id ||
+              payload?.context?.message_id ||
+              payload?.context?.id
+            if (!messageId) {
+              throw new SendError(400, 'invalid_reaction_payload: missing message_id')
+            }
+            let key = await this.store?.dataStore?.loadKey(messageId)
+            if (!key) {
+              try {
+                const mapped = await this.store?.dataStore?.loadUnoId(messageId)
+                if (mapped) key = await this.store?.dataStore?.loadKey(mapped)
+              } catch {}
+            }
+            if (!key || !key.id || !key.remoteJid) {
+              throw new SendError(404, `reaction_message_not_found: ${messageId}`)
+            }
+            const emojiRaw = typeof reaction?.emoji !== 'undefined'
+              ? reaction.emoji
+              : (typeof reaction?.text !== 'undefined' ? reaction.text : reaction?.value)
+            const emoji = `${emojiRaw ?? ''}`
+            content = { react: { text: emoji, key } }
+            targetTo = key.remoteJid
+          } else if ('template' === type) {
             const template = new Template(this.getConfig)
             content = await template.bind(this.phone, payload.template.name, payload.template.components)
           } else {
@@ -951,7 +979,7 @@ export class ClientBaileys implements Client {
             const key = await this.store?.dataStore?.loadKey(messageId)
             try { logger.debug('Quoted message key %s!', key?.id) } catch {}
             if (key?.id) {
-              const remoteJid = phoneNumberToJid(to)
+              const remoteJid = phoneNumberToJid(targetTo)
               quoted = await this.store?.dataStore.loadMessage(remoteJid, key?.id)
               if (!quoted) {
                 const unoId = await this.store?.dataStore?.loadUnoId(key?.id)
@@ -973,19 +1001,19 @@ export class ClientBaileys implements Client {
           // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           const sockDelays = delays.get(this.phone) || (delays.set(this.phone, new Map<string, Delay>()) && delays.get(this.phone)!)
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const toDelay = sockDelays.get(to) || (async (_phone: string, to) => sockDelays.set(to, this.delayBeforeSecondMessage))
-          await toDelay(this.phone, to)
+          const toDelay = sockDelays.get(targetTo) || (async (_phone: string, to) => sockDelays.set(to, this.delayBeforeSecondMessage))
+          await toDelay(this.phone, targetTo)
           // Prefetch foto de perfil do destino (1:1 ou grupo) para garantir cache atualizado em FS/S3
           try {
-            if (this.config.sendProfilePicture && typeof to === 'string') {
-              const prefetchJid = to.includes('@') ? to : phoneNumberToJid(to)
+            if (this.config.sendProfilePicture && typeof targetTo === 'string') {
+              const prefetchJid = targetTo.includes('@') ? targetTo : phoneNumberToJid(targetTo)
               logger.info('PROFILE_PICTURE prefetch start: %s', prefetchJid)
               const fetched = await this.fetchImageUrl(prefetchJid)
               logger.info('PROFILE_PICTURE prefetch done: %s -> %s', prefetchJid, fetched || '<none>')
             }
           } catch (e) {
             try {
-              const prefetchJid = to.includes('@') ? to : phoneNumberToJid(to)
+              const prefetchJid = targetTo.includes('@') ? targetTo : phoneNumberToJid(targetTo)
               logger.warn(e as any, 'PROFILE_PICTURE prefetch error for %s', prefetchJid)
             } catch { logger.warn(e as any, 'PROFILE_PICTURE prefetch error') }
           }
@@ -1001,7 +1029,7 @@ export class ClientBaileys implements Client {
           // Se GROUP_SEND_ADDRESSING_MODE estiver setada, respeita. Caso contrário, usa LID por padrão
           // para reduzir "session not found" em grupos grandes.
           try {
-            if (to && to.endsWith('@g.us')) {
+            if (targetTo && targetTo.endsWith('@g.us')) {
               let applied = ''
               if (GROUP_SEND_ADDRESSING_MODE) {
                 const preferred = GROUP_SEND_ADDRESSING_MODE
@@ -1019,15 +1047,15 @@ export class ClientBaileys implements Client {
                 delete (messageOptions as any).addressingMode
                 applied = 'auto'
               }
-              logger.debug('Applied group addressingMode %s for %s', applied, to)
+              logger.debug('Applied group addressingMode %s for %s', applied, targetTo)
             }
           } catch (e) {
             logger.warn(e, 'Ignore error applying group addressingMode')
           }
           // Soft membership check: warn when not found, but do not block send
-          if (to && to.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
+          if (targetTo && targetTo.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
             try {
-              const gm = await this.fetchGroupMetadata(to)
+              const gm = await this.fetchGroupMetadata(targetTo)
               const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
               const participants = gm?.participants || []
               const isParticipant = participants.length > 0 && !!participants.find?.((p: any) => {
@@ -1039,13 +1067,13 @@ export class ClientBaileys implements Client {
                 }
               })
               if (!isParticipant) {
-                logger.warn('Membership not verified for group %s (self: %s, participants: %s) — proceeding to send', to, myId, participants.length)
+                logger.warn('Membership not verified for group %s (self: %s, participants: %s) — proceeding to send', targetTo, myId, participants.length)
               }
             } catch (err) {
               logger.warn(err, 'Ignore error on group membership check; proceeding to send')
             }
           }
-          if (to === 'status@broadcast') {
+          if (targetTo === 'status@broadcast') {
             if (typeof messageOptions.broadcast === 'undefined') messageOptions.broadcast = true
             if (typeof messageOptions.statusJidList === 'undefined') messageOptions.statusJidList = []
           }
@@ -1058,7 +1086,7 @@ export class ClientBaileys implements Client {
               }
             }
             response = await this.sendMessage(
-              to,
+              targetTo,
               {
                 forward: {
                   key: {
@@ -1092,7 +1120,7 @@ export class ClientBaileys implements Client {
             }
           } else {
             // Envio com retry para mídia: em caso de erro de link (11), aguardamos e tentamos de novo
-            const trySendOnce = async () => this.sendMessage(to, content, messageOptions)
+            const trySendOnce = async () => this.sendMessage(targetTo, content, messageOptions)
             try {
               response = await trySendOnce()
             } catch (firstErr) {

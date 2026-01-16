@@ -650,10 +650,13 @@ describe('service transformer', () => {
                     timestamp: messageTimestamp,
                     contacts: [
                       { name: {
-                          formatted_name: pushName },
+                          formatted_name: pushName,
+                          last_name: 'Einstein',
+                        },
                         phones: [
                           {
                             phone: remotePhoneNumber,
+                            wa_id: remotePhoneNumber.replace('+', ''),
                           },
                         ],
                       },
@@ -1253,10 +1256,11 @@ describe('service transformer', () => {
         }
       ]
     }
-    const vcard = 'BEGIN:VCARD\n'
-      + 'VERSION:3.0\n'
-      + `N:${displayName}\n`
-      + `TEL;type=CELL;type=VOICE;waid=${wa_id}:${phone}\n`
+    const vcard = 'BEGIN:VCARD\r\n'
+      + 'VERSION:3.0\r\n'
+      + `FN:${displayName}\r\n`
+      + `N:;${displayName};;;\r\n`
+      + `TEL;TYPE=CELL,VOICE;WAID=${wa_id}:${phone}\r\n`
       + 'END:VCARD'
     const output = { contacts: { displayName, contacts: [{ vcard }] } }
     expect(toBaileysMessageContent(input)).toEqual(output)
@@ -1549,6 +1553,142 @@ describe('service transformer', () => {
                   },
                 ],
                 contacts: [{ profile: { name: pushName }, wa_id: remotePhoneNumber }],
+                statuses: [],
+                errors: [],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent templateButtonReplyMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remotePhoneNumer = '554988290955'
+    const remoteJid = `${remotePhoneNumer}@s.whatsapp.net`
+    const normalizedRemotePhoneNumer = jidToPhoneNumber(remoteJid, '')
+    const body = `${new Date().getTime()}`
+    const id = `wa.${new Date().getTime()}`
+    const stanzaId = `wa.${new Date().getTime()}`
+    const pushName = `Mary ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id,
+      },
+      message: {
+        templateButtonReplyMessage: {
+          selectedId: body,
+          selectedDisplayText: body,
+          contextInfo: {
+            stanzaId,
+          },
+        },
+      },
+      pushName,
+      messageTimestamp,
+    }
+    const output = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phoneNumer,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
+                messages: [
+                  {
+                    context: {
+                      message_id: stanzaId,
+                      id: stanzaId,
+                    },
+                    from: normalizedRemotePhoneNumer,
+                    id,
+                    timestamp: messageTimestamp,
+                    button: {
+                      payload: body,
+                      text: body,
+                    },
+                    type: 'button',
+                  },
+                ],
+                contacts: [{ profile: { name: pushName }, wa_id: normalizedRemotePhoneNumer }],
+                statuses: [],
+                errors: [],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent buttonsResponseMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remotePhoneNumer = '554988290955'
+    const remoteJid = `${remotePhoneNumer}@s.whatsapp.net`
+    const normalizedRemotePhoneNumer = jidToPhoneNumber(remoteJid, '')
+    const id = `wa.${new Date().getTime()}`
+    const stanzaId = `wa.${new Date().getTime()}`
+    const pushName = `Mary ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id,
+      },
+      message: {
+        buttonsResponseMessage: {
+          selectedButtonId: 'btn_yes',
+          selectedDisplayText: 'Sim',
+          contextInfo: {
+            stanzaId,
+          },
+        },
+      },
+      pushName,
+      messageTimestamp,
+    }
+    const output = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phoneNumer,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
+                messages: [
+                  {
+                    context: {
+                      message_id: stanzaId,
+                      id: stanzaId,
+                    },
+                    from: normalizedRemotePhoneNumer,
+                    id,
+                    timestamp: messageTimestamp,
+                    interactive: {
+                      type: 'button_reply',
+                      button_reply: {
+                        id: 'btn_yes',
+                        title: 'Sim',
+                      },
+                    },
+                    type: 'interactive',
+                  },
+                ],
+                contacts: [{ profile: { name: pushName }, wa_id: normalizedRemotePhoneNumer }],
                 statuses: [],
                 errors: [],
               },

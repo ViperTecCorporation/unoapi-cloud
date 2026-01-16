@@ -8,6 +8,10 @@ This document details how Unoapi handles Stories (Status) via Baileys and the pr
 - `type` is a content type supported by Baileys (text, image, video, etc.)
 - `options.statusJidList = [numbers | JIDs]` — the recipient list to relay after initial send
 
+Auto-fill (image/video only):
+- If statusJidList is empty or null and type is image/video, Unoapi auto-fills from Redis contact-info keys (unoapi-contact-info:<phone>:*).
+- This happens before normalization; if the list is still empty, relayMessage is skipped.
+
 ## Validation & Normalization
 
 Implemented in `src/services/socket.ts` inside the `send()` path for `status@broadcast`:
