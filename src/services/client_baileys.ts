@@ -928,7 +928,13 @@ export class ClientBaileys implements Client {
               ? reaction.emoji
               : (typeof reaction?.text !== 'undefined' ? reaction.text : reaction?.value)
             const emoji = `${emojiRaw ?? ''}`
-            const reactionKey = providerId && key.id !== providerId ? { ...key, id: providerId } : key
+            let reactionKey = providerId && key.id !== providerId ? { ...key, id: providerId } : key
+            try {
+              const original = await dataStore?.loadMessage?.(reactionKey.remoteJid, reactionKey.id)
+              if (original?.key) {
+                reactionKey = { ...original.key, id: reactionKey.id }
+              }
+            } catch {}
             try {
               logger.info(
                 'REACTION send: msgId=%s providerId=%s key.id=%s key.remoteJid=%s key.participant=%s',
