@@ -933,6 +933,9 @@ export class ClientBaileys implements Client {
               const original = await dataStore?.loadMessage?.(reactionKey.remoteJid, reactionKey.id)
               if (original?.key) {
                 reactionKey = { ...original.key, id: reactionKey.id }
+                if (typeof reactionKey.participant === 'string' && reactionKey.participant.trim() === '') {
+                  delete (reactionKey as any).participant
+                }
               }
             } catch {}
             try {
