@@ -361,7 +361,7 @@ export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS ===
 
 // BR send-order: if enabled, tries 12-digit then 13-digit candidate on send
 export const BR_SEND_ORDER_ENABLED =
-  process.env.BR_SEND_ORDER_ENABLED === _undefined ? true : process.env.BR_SEND_ORDER_ENABLED == 'true'
+  process.env.BR_SEND_ORDER_ENABLED === _undefined ? false : process.env.BR_SEND_ORDER_ENABLED == 'true'
 
 
 // Endereçamento para conversas 1:1 (envio)
