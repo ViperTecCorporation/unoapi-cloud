@@ -26,7 +26,7 @@ import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
 import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC } from '../defaults'
-import { setContactSyncPending } from './redis'
+import { setContactSyncPending, getPnForLidFromAuthCache } from './redis'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { convertToWebpSticker } from '../utils/sticker_convert'
 import { t } from '../i18n'
@@ -781,6 +781,11 @@ export class ClientBaileys implements Client {
             try {
               if (isLidUser(from)) {
                 senderPnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from)
+              }
+            } catch {}
+            try {
+              if (!senderPnJid && isLidUser(from)) {
+                senderPnJid = await getPnForLidFromAuthCache(this.phone, from)
               }
             } catch {}
             try {
