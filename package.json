@@ -1,6 +1,6 @@
 {
   "name": "unoapi-cloud",
-  "version": "3.0.8-5",
+  "version": "3.0.8-6",
   "description": "Unoapi Cloud Fork Viper Tec baileys 7",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -85,7 +85,7 @@
     "@google-cloud/text-to-speech": "^5.2.0",
     "@redis/client": "^1.5.14",
     "@sentry/node": "^9.29.0",
-    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#6c3592a1f7e90f99a9e54a308120c272194632de",
+    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#94ef569f20d2d0d18754d4fc6c8da4020f094e54",
     "amqplib": "^0.10.8",
     "audio-decode": "^2.2.3",
     "audio2textjs": "^1.0.5",
@@ -121,6 +121,6 @@
   "resolutions": {
     "libsignal": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
     "@whiskeysockets/libsignal-node": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
-    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#6c3592a1f7e90f99a9e54a308120c272194632de"
+    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#94ef569f20d2d0d18754d4fc6c8da4020f094e54"
   }
 }
