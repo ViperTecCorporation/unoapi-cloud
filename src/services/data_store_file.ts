@@ -294,6 +294,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         if (refreshTtl > 0) {
           try { await redisSetAndExpire(refreshKey, '1', refreshTtl) } catch {}
         }
+      } else if (refreshTtl > 0) {
+        // Even on failure, set TTL to avoid tight retry loops.
+        try { await redisSetAndExpire(refreshKey, '1', refreshTtl) } catch {}
       }
     }
     logger.debug('Found %s profile picture for %s (canonical=%s)', localUrl, jid, canonicalPn || '<unknown>')

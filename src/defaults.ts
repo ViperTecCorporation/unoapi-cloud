@@ -102,8 +102,6 @@ export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '
 export const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS || '5000')
 export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')
 export const CONNECT_COUNT_CACHE_TTL_MS = parseInt(process.env.CONNECT_COUNT_CACHE_TTL_MS || '2000')
-// Habilita/desabilita caches locais (LRU) para JIDMAP/profile picture
-export const LOCAL_CACHE_ENABLED = process.env.LOCAL_CACHE_ENABLED === _undefined ? false : process.env.LOCAL_CACHE_ENABLED === 'true'
 export const PROXY_URL = process.env.PROXY_URL
 
 // behavior of unoapi
@@ -212,8 +210,8 @@ export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE ==
 // Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
 export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
   process.env.PROFILE_PICTURE_FORCE_REFRESH === _undefined ? true : process.env.PROFILE_PICTURE_FORCE_REFRESH == 'true'
-// Tempo mínimo entre atualizações forçadas de foto de perfil (segundos). Padrão 4h.
-export const PROFILE_PICTURE_REFRESH_INTERVAL_SEC = parseInt(process.env.PROFILE_PICTURE_REFRESH_INTERVAL_SEC || `${60 * 60 * 4}`)
+// Tempo mínimo entre atualizações forçadas de foto de perfil (segundos). Padrão 24h.
+export const PROFILE_PICTURE_REFRESH_INTERVAL_SEC = parseInt(process.env.PROFILE_PICTURE_REFRESH_INTERVAL_SEC || `${60 * 60 * 24}`)
 export const IGNORED_CONNECTIONS_NUMBERS = JSON.parse(process.env.IGNORED_CONNECTIONS_NUMBERS || '[]')
 export const IGNORED_TO_NUMBERS = JSON.parse(process.env.IGNORED_TO_NUMBERS || '[]')
 export const CLEAN_CONFIG_ON_DISCONNECT =
@@ -314,9 +312,9 @@ export const PERIODIC_ASSERT_INCLUDE_GROUPS =
 export const ONE_TO_ONE_PREASSERT_ENABLED =
   process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
-export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '0')
+export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || `${20 * 60 * 1000}`)
 // TTL do throttle de preassert 1:1 persistido no Redis (segundos). Padrão 4h.
-export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || '0')
+export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || `${20 * 60}`)
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
 export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
