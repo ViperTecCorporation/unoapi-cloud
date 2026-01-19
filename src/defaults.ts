@@ -288,6 +288,11 @@ export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RET
 
 // JID mapping cache (PN <-> LID)
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
+// Enable/disable jidmap list endpoint.
+export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? true : process.env.JIDMAP_LIST_ENABLED == 'true'
+// Enable/disable lookups against stored jidmap cache (unoapi-jidmap:*).
+export const JIDMAP_STORED_LOOKUP_ENABLED =
+  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? true : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
 // Self-heal: assert sessions when decrypt stub is detected in inbound messages

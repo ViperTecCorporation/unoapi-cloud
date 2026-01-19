@@ -5,6 +5,7 @@ import {
   SESSION_TTL,
   DATA_URL_TTL,
   JIDMAP_TTL_SECONDS,
+  JIDMAP_STORED_LOOKUP_ENABLED,
   SIGNAL_PURGE_DEVICE_LIST_ENABLED,
   SIGNAL_PURGE_SESSION_ENABLED,
   SIGNAL_PURGE_SENDER_KEY_ENABLED,
@@ -509,6 +510,7 @@ const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_li
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
 
 export const getPnForLid = async (session: string, lidJid: string) => {
+  if (!JIDMAP_STORED_LOOKUP_ENABLED) return undefined
   const vGlob = await redisGet(jidMapPnKeyGlob(lidJid))
   if (vGlob) return vGlob
   const vNew = await redisGet(jidMapPnKeyNew(session, lidJid))
@@ -516,6 +518,7 @@ export const getPnForLid = async (session: string, lidJid: string) => {
   return undefined
 }
 export const getLidForPn = async (session: string, pnJid: string) => {
+  if (!JIDMAP_STORED_LOOKUP_ENABLED) return undefined
   const vGlob = await redisGet(jidMapLidKeyGlob(pnJid))
   if (vGlob) return vGlob
   const vNew = await redisGet(jidMapLidKeyNew(session, pnJid))
