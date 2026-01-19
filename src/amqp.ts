@@ -352,6 +352,17 @@ export const amqpConsume = async (
             logger.info('Reject %s retries', countRetries)
             if (normalizedOptions.notifyFailedMessages) {
               logger.info('Sending error to whatsapp...')
+              const errObj: any = error as any
+              const errorText = (() => {
+                try {
+                  if (errObj && typeof errObj === 'object') {
+                    return JSON.stringify(errObj)
+                  }
+                  return `${errObj}`
+                } catch {
+                  return `${errObj}`
+                }
+              })()
               await amqpPublish(
                 UNOAPI_EXCHANGE_BROKER_NAME,
                 UNOAPI_QUEUE_NOTIFICATION,
@@ -361,8 +372,7 @@ export const amqpConsume = async (
                     to: routingKeyLocal,
                     type: 'text',
                     text: {
-                      body: `Unoapi version ${version} message failed in queue ${queue}\n\nstack trace: ${error.stack}\n\n\nerror: ${error.message
-                        }\n\ndata: ${JSON.stringify(data, undefined, 2)}`,
+                      body: `Unoapi version ${version} message failed in queue ${queue}\n\nstack trace: ${errObj?.stack || '<none>'}\n\n\nerror: ${errObj?.message || errorText}\n\ndata: ${JSON.stringify(data, undefined, 2)}`,
                     },
                   },
                 },

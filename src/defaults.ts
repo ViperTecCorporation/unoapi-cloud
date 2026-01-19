@@ -38,7 +38,7 @@ export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '97')
 export const UNOAPI_NATIVE_FLOW_BUTTONS: boolean =
-  process.env.UNOAPI_NATIVE_FLOW_BUTTONS == _undefined ? false : process.env.UNOAPI_NATIVE_FLOW_BUTTONS == 'true'
+  process.env.UNOAPI_NATIVE_FLOW_BUTTONS == _undefined ? true : process.env.UNOAPI_NATIVE_FLOW_BUTTONS == 'true'
 export const UNOAPI_DEBUG_BAILEYS_LIST_DUMP =
   process.env.UNOAPI_DEBUG_BAILEYS_LIST_DUMP == _undefined ? false : process.env.UNOAPI_DEBUG_BAILEYS_LIST_DUMP == 'true'
 
@@ -312,9 +312,9 @@ export const PERIODIC_ASSERT_INCLUDE_GROUPS =
 export const ONE_TO_ONE_PREASSERT_ENABLED =
   process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
-export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || `${20 * 60 * 1000}`)
+export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || `${0}`)
 // TTL do throttle de preassert 1:1 persistido no Redis (segundos). Padrão 4h.
-export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || `${20 * 60}`)
+export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || `${0}`)
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
 export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
