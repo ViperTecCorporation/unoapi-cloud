@@ -182,25 +182,8 @@ export class ListenerBaileys implements Listener {
         i.key.id = idUno
         if (isSaveMedia(i)) {
           logger.debug(`Saving media...`)
-          try {
-            i = await store?.mediaStore.saveMedia(i)
-            logger.debug(`Saved media!`)
-          } catch (err) {
-            logger.warn(err as any, 'Failed to download media for %s', i?.key?.id)
-            try {
-              const msg: any = (i as any)?.message || {}
-              const hasViewOnce =
-                !!msg?.viewOnceMessage ||
-                !!msg?.viewOnceMessageV2 ||
-                !!msg?.viewOnceMessageV2Extension ||
-                !!msg?.ephemeralMessage?.message?.viewOnceMessage ||
-                !!msg?.ephemeralMessage?.message?.viewOnceMessageV2 ||
-                !!msg?.ephemeralMessage?.message?.viewOnceMessageV2Extension
-              if (hasViewOnce) {
-                i = { ...i, message: { conversation: 'Mensagem de visualização única não disponível, verifique no aparelho.' } } as any
-              }
-            } catch {}
-          }
+          i = await store?.mediaStore.saveMedia(i)
+          logger.debug(`Saved media!`)
         }
       }
     } else if (messageType === 'update') {
