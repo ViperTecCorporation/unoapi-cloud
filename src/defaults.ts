@@ -95,7 +95,7 @@ export const CONTACT_SYNC_PENDING_POLL_MS = parseInt(process.env.CONTACT_SYNC_PE
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 // Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
-export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? true : process.env.REDIS_KEYS_USE_SCAN === 'true'
+export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? false : process.env.REDIS_KEYS_USE_SCAN === 'true'
 // TTL (ms) para cache local de config por sessao. 0 desabilita TTL (usa apenas invalidacao por pub/sub).
 export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '0')
 // TTLs (ms) para cache local de sessao/auth (0 = somente invalidacao por pub/sub)
@@ -292,7 +292,7 @@ export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefi
 export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? true : process.env.JIDMAP_LIST_ENABLED == 'true'
 // Enable/disable lookups against stored jidmap cache (unoapi-jidmap:*).
 export const JIDMAP_STORED_LOOKUP_ENABLED =
-  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? true : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
+  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? false : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
 // Self-heal: assert sessions when decrypt stub is detected in inbound messages
@@ -301,7 +301,7 @@ export const SELFHEAL_ASSERT_ON_DECRYPT =
 
 // Periodic session assert (prevent stale e2e causing "Aguardando mensagem")
 export const PERIODIC_ASSERT_ENABLED =
-  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'true'
+  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? false : process.env.PERIODIC_ASSERT_ENABLED == 'true'
 export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '7200000') // 10 min
 export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '75')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
