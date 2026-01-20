@@ -34,8 +34,17 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   const mediaStore: MediaStore = {} as MediaStore
   mediaStore.type = 'file'
 
-  mediaStore.getFilePath = (phone: string, mediaId: string, mimeType: string) => {
-    const extension = mime.extension(mimeType)
+  mediaStore.getFilePath = (phone: string, mediaId: string, mimeType: string, fileName?: string) => {
+    let extension = mime.extension(mimeType) as string | false
+    if (!extension && fileName) {
+      const baseName = `${fileName}`.split(/[\\/]/).pop() || ''
+      const dot = baseName.lastIndexOf('.')
+      if (dot > 0 && dot < baseName.length - 1) {
+        const ext = baseName.slice(dot + 1).toLowerCase()
+        if (/^[a-z0-9]{1,10}$/.test(ext)) extension = ext
+      }
+    }
+    if (!extension) extension = 'bin'
     return `${phone}/${mediaId}.${extension}`
   }
 
@@ -48,7 +57,12 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         convertToMp3 = true
       }
     }
-    const filePath = mediaStore.getFilePath(phone, message.id, convertToMp3 ? 'audio/mpeg' : inMime)
+    const filePath = mediaStore.getFilePath(
+      phone,
+      message.id,
+      convertToMp3 ? 'audio/mpeg' : inMime,
+      message[message.type].filename,
+    )
     const url = `${config.webhookForward.url}/${config.webhookForward.version}/${message[message.type].id}`
     const { buffer } = await mediaToBuffer(url, config.webhookForward.token!, config.webhookForward?.timeoutMs || 0)
     const outBuffer = convertToMp3 ? await convertBufferToMp3(buffer) : buffer
@@ -244,7 +258,12 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       logger.warn(e as any, 'Failed to convert audio to MP3; storing original')
       outBuffer = buffer
     }
-    const filePath = mediaStore.getFilePath(phone, waMessage.key.id!, chosenMime)
+    const filePath = mediaStore.getFilePath(
+      phone,
+      waMessage.key.id!,
+      chosenMime,
+      (binMessage as any)?.message?.fileName,
+    )
     logger.debug('Saving buffer %s...', filePath)
     await mediaStore.saveMediaBuffer(filePath, outBuffer)
     logger.debug('Saved buffer %s!', filePath)
@@ -328,7 +347,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       logger.debug('media getMedia missing mime_type: %s', mediaId)
       return undefined
     }
-    const filePath = mediaStore.getFilePath(phone, mediaId!, mimeType)
+    const filePath = mediaStore.getFilePath(phone, mediaId!, mimeType, mediaPayload?.filename)
     const url = await mediaStore.getDownloadUrl(baseUrl, filePath)
     const payload = {
       ...mediaPayload,
