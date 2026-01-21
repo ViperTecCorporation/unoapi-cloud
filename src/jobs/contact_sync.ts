@@ -8,7 +8,7 @@ import {
 } from '../defaults'
 import logger from '../services/logger'
 import { Outgoing } from '../services/outgoing'
-import { BASE_KEY, delContactSyncPending, getRedis, redisSetIfNotExists } from '../services/redis'
+import { BASE_KEY, delContactSyncPending, getRedis, redisGet, redisSetAndExpire, redisSetIfNotExists } from '../services/redis'
 import { jidToPhoneNumber } from '../services/transformer'
 
 type ContactSyncItem = {
@@ -25,6 +25,15 @@ const CONTACT_SYNC_LOCK_PREFIX = `${BASE_KEY}contact-sync:lock:`
 const CONTACT_SYNC_LOCK_BUFFER_SEC = 60
 const CONTACT_SYNC_PAGE_SIZE = 100
 const CONTACT_SYNC_PENDING_PREFIX = `${BASE_KEY}contact-sync:pending:`
+const CONTACT_SYNC_SCHEDULE_PREFIX = `${BASE_KEY}contact-sync:schedule:`
+const CONTACT_SYNC_SCHEDULE_MIN_SEC = 4 * 60 * 60
+const CONTACT_SYNC_SCHEDULE_MAX_SEC = 12 * 60 * 60
+
+const getScheduleTtlSec = () =>
+  Math.floor(CONTACT_SYNC_SCHEDULE_MIN_SEC +
+    (Math.random() * (CONTACT_SYNC_SCHEDULE_MAX_SEC - CONTACT_SYNC_SCHEDULE_MIN_SEC + 1)))
+
+const scheduleKeyForPhone = (phone: string) => `${CONTACT_SYNC_SCHEDULE_PREFIX}${phone}`
 
 const normalizeDigits = (value?: string) => `${value || ''}`.replace(/\D/g, '')
 
@@ -75,6 +84,7 @@ const parseContactInfoKey = (key: string) => {
 }
 
 const resolveContactFromInfo = (jid: string, info: any) => {
+  if (jid === 'status@broadcast') return undefined
   if (jid.includes('@lid')) return undefined
   const name = `${info?.name || ''}`.trim()
   let pn = normalizeDigits(info?.pn)
@@ -191,8 +201,15 @@ export class ContactSyncJob {
   }
 
   public async runForPhone(phone: string): Promise<boolean> {
-    if (!CONTACT_SYNC_ENABLED || CONTACT_SYNC_INTERVAL_MS <= 0) return false
+    if (!CONTACT_SYNC_ENABLED || CONTACT_SYNC_INTERVAL_MS <= 0) return false    
     if (!process.env.REDIS_URL) return false
+    try {
+      const scheduled = await redisGet(scheduleKeyForPhone(phone))
+      if (scheduled) {
+        logger.debug('CONTACT_SYNC skip: schedule active for %s', phone)
+        return false
+      }
+    } catch {}
     const lockTtlSec = Math.max(60, CONTACT_SYNC_PENDING_TTL_SEC)
     const lockKey = `${CONTACT_SYNC_LOCK_PREFIX}${phone}`
     const acquired = await redisSetIfNotExists(lockKey, `${Date.now()}`, lockTtlSec)
@@ -204,6 +221,7 @@ export class ContactSyncJob {
     const contacts = Array.from(bucket.values())
     if (!contacts.length) return false
     await this.sendContacts(phone, contacts)
+    try { await redisSetAndExpire(scheduleKeyForPhone(phone), `${Date.now()}`, getScheduleTtlSec()) } catch {}
     return true
   }
 
@@ -218,9 +236,17 @@ export class ContactSyncJob {
     }
     const perPhone = await this.loadContactsByPhone()
     for (const [phone, items] of perPhone) {
+      try {
+        const scheduled = await redisGet(scheduleKeyForPhone(phone))
+        if (scheduled) {
+          logger.debug('CONTACT_SYNC skip: schedule active for %s', phone)
+          continue
+        }
+      } catch {}
       const contacts = Array.from(items.values())
       if (!contacts.length) continue
       await this.sendContacts(phone, contacts)
+      try { await redisSetAndExpire(scheduleKeyForPhone(phone), `${Date.now()}`, getScheduleTtlSec()) } catch {}
     }
   }
 
