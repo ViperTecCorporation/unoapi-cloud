@@ -492,13 +492,14 @@ export class OutgoingCloudApi implements Outgoing {
     logger.debug('Response: %s', response?.status)
     if (!response?.ok) {
       const errText = await response?.text()
+      const err = new Error(`Webhook response ${response?.status} ${response?.statusText}: ${errText}`)
       if (cbEnabled) {
-        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, errText)
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err)
         if (opened) {
           throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
         }
       }
-      throw errText
+      throw err
     }
     if (cbEnabled) {
       try {
@@ -533,14 +534,15 @@ export class OutgoingCloudApi implements Outgoing {
         return true
       } else {
         logger.warn('WEBHOOK_CB failure (phone=%s webhook=%s count=%s/%s)', phone, cbId, count, threshold)
+        try { logger.warn(error as any, 'WEBHOOK_CB send failed (phone=%s webhook=%s)', phone, cbId) } catch {}
         return false
       }
     } catch (e) {
-      logger.warn(e as any, 'WEBHOOK_CB failure handler error')
+      logger.warn(e as any, 'WEBHOOK_CB failure handler error (phone=%s webhook=%s)', phone, cbId)
+      try { logger.warn(error as any, 'WEBHOOK_CB original error (phone=%s webhook=%s)', phone, cbId) } catch {}
+      // If the CB handler fails, fall back to the original error path (no circuit open)
+      return false
     }
-    // Fail fast: do not throw to avoid queue backlog
-    try { logger.warn(error as any, 'WEBHOOK_CB send failed (phone=%s webhook=%s)', phone, cbId) } catch {}
-    return false
   }
 }
 
