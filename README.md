@@ -721,9 +721,21 @@ WEBHOOK_URL_ABSOLUTE=the webhook absolute url, not use this if already use WEBHO
 WEBHOOK_URL=the webhook url, this config attribute put phone number on the end, no use if use WEBHOOK_URL_ABSOLUTE
 WEBHOOK_TOKEN=the webhook header token
 WEBHOOK_HEADER=the webhook header name
-WEBHOOK_TIMEOUT_MS=webhook request timeout, default 5000 ms
+WEBHOOK_TIMEOUT_MS=webhook request timeout, default 30000 ms
 WEBHOOK_ASYNC=true to send webhooks in background (fire-and-forget), default true
 WEBHOOK_ASYNC_MODE=amqp to enqueue webhooks in RabbitMQ even in cloud mode; requires AMQP_URL, default amqp
+WEBHOOK_CB_ENABLED=true enable webhook circuit breaker to avoid backlog when endpoint is offline, default true
+WEBHOOK_CB_FAILURE_THRESHOLD=number of failures within window to open circuit, default 1
+WEBHOOK_CB_OPEN_MS=how long to keep the circuit open (skip sends), default 120000
+WEBHOOK_CB_FAILURE_TTL_MS=failure counter window in ms, default 300000
+
+Example (circuit breaker):
+```env
+WEBHOOK_CB_ENABLED=true
+WEBHOOK_CB_FAILURE_THRESHOLD=1
+WEBHOOK_CB_FAILURE_TTL_MS=300000
+WEBHOOK_CB_OPEN_MS=120000
+```
 WEBHOOK_INCLUDE_MEDIA_DATA=false to avoid sending binary/base64 media data in webhook payloads; keeps url/filename, default false
 WEBHOOK_SEND_NEW_MESSAGES=true, send new messages to webhook, caution with this, messages will be duplicated, default is false
 WEBHOOK_SEND_GROUP_MESSAGES=true, send group messages to webhook, default is true
@@ -1070,8 +1082,8 @@ SEND_AUDIO_WAVEFORM=true
 AUDIO_WAVEFORM_SAMPLES=85
 
 # timeouts (ms)
-WEBHOOK_TIMEOUT_MS=360000
-FETCH_TIMEOUT_MS=360000
+WEBHOOK_TIMEOUT_MS=30000
+FETCH_TIMEOUT_MS=30000
 ```
 
 Notes:

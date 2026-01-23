@@ -243,6 +243,19 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
   - `amqp`: enqueue webhooks in RabbitMQ (recommended in production). Requires `AMQP_URL`.
   - When `AMQP_URL` is missing, the service falls back to direct HTTP send and logs a warning.
 
+## Webhook Circuit Breaker
+
+Fail fast when a webhook endpoint is offline to avoid queue backlog.
+
+- `WEBHOOK_CB_ENABLED` — Enable/disable the circuit breaker. Default `true`.
+- `WEBHOOK_CB_FAILURE_THRESHOLD` — Failures within the window required to open the circuit. Default `1`.
+- `WEBHOOK_CB_FAILURE_TTL_MS` — Failure counting window (ms). Default `300000`.
+- `WEBHOOK_CB_OPEN_MS` — How long the circuit stays open (skip sends) after tripping. Default `120000`.
+
+Behavior:
+- When open, webhook delivery is skipped for that endpoint.
+- After the open window, sends are attempted again automatically.
+
 ## Media & Timeouts
 
 ### Inbound deduplication

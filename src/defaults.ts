@@ -54,7 +54,7 @@ export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_B
 export const WEBHOOK_FORWARD_TOKEN = process.env.WEBHOOK_FORWARD_TOKEN || ''
 export const WEBHOOK_FORWARD_VERSION = process.env.WEBHOOK_FORWARD_VERSION || 'v17.0'
 export const WEBHOOK_FORWARD_URL = process.env.WEBHOOK_FORWARD_URL || 'https://graph.facebook.com'
-export const WEBHOOK_FORWARD_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '360000')
+export const WEBHOOK_FORWARD_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '30000')
 
 // comunication
 export const UNOAPI_URL = process.env.UNOAPI_URL || 'http://localhost:9876'
@@ -62,8 +62,8 @@ export const WEBHOOK_URL_ABSOLUTE = process.env.WEBHOOK_URL_ABSOLUTE || ''
 export const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:9876/webhooks/fake'
 export const WEBHOOK_HEADER = process.env.WEBHOOK_HEADER || 'Authorization'
 export const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || UNOAPI_AUTH_TOKEN || '123abc'
-export const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '360000')
-export const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || '360000')
+export const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '30000')
+export const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || '30000')
 export const CONNECTION_TYPE = process.env.CONNECTION_TYPE || 'qrcode'
 
 export const CONSUMER_TIMEOUT_MS = parseInt(process.env.CONSUMER_TIMEOUT_MS || '1200000')
@@ -86,6 +86,12 @@ export const WEBHOOK_ASYNC =
   process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
 export const WEBHOOK_ASYNC_MODE = process.env.WEBHOOK_ASYNC_MODE || 'amqp'
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
+// Webhook circuit breaker (fail fast when endpoints are offline)
+export const WEBHOOK_CB_ENABLED =
+  process.env.WEBHOOK_CB_ENABLED == _undefined ? true : process.env.WEBHOOK_CB_ENABLED == 'true'
+export const WEBHOOK_CB_FAILURE_THRESHOLD = parseInt(process.env.WEBHOOK_CB_FAILURE_THRESHOLD || '1')
+export const WEBHOOK_CB_OPEN_MS = parseInt(process.env.WEBHOOK_CB_OPEN_MS || '120000')
+export const WEBHOOK_CB_FAILURE_TTL_MS = parseInt(process.env.WEBHOOK_CB_FAILURE_TTL_MS || '300000')
 export const CONTACT_SYNC_ENABLED =
   process.env.CONTACT_SYNC_ENABLED == _undefined ? true : process.env.CONTACT_SYNC_ENABLED == 'true'
 export const CONTACT_SYNC_INTERVAL_MS = parseInt(process.env.CONTACT_SYNC_INTERVAL_MS || `${8 * 60 * 60 * 1000}`)
@@ -120,7 +126,7 @@ export const UNOAPI_EXCHANGE_NAME = process.env.UNOAPI_EXCHANGE_NAME || 'unoapi'
 export const UNOAPI_EXCHANGE_BROKER_NAME =`${UNOAPI_EXCHANGE_NAME}.broker`
 export const UNOAPI_EXCHANGE_BRIDGE_NAME = `${UNOAPI_EXCHANGE_NAME}.brigde`
 export const UNOAPI_QUEUE_NAME = process.env.UNOAPI_QUEUE_NAME || 'unoapi'
-export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '1')
+export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '4')
 export const UNOAPI_QUEUE_DELAYED = `${UNOAPI_QUEUE_NAME}.delayed`
 export const UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED = `${UNOAPI_QUEUE_NAME}.webhook.status.failed`
 export const UNOAPI_QUEUE_MEDIA = `${UNOAPI_QUEUE_NAME}.media`

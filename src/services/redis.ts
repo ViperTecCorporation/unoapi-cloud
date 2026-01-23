@@ -292,6 +292,8 @@ const redisDel = async (key: string) => {
   }
 }
 
+export const redisDelKey = async (key: string) => redisDel(key)
+
 export const redisKeys = async (pattern: string) => {
   logger.trace(`Keys ${pattern}`)
   try {
@@ -394,6 +396,47 @@ export const redisSetIfNotExists = async (key: string, value: string, ttlSec: nu
     return res === 'OK'
   } catch {
     return false
+  }
+}
+
+// Webhook circuit breaker keys
+export const webhookCircuitOpenKey = (session: string, webhookId: string) =>
+  `${BASE_KEY}webhook-cb:${session}:${webhookId}:open`
+export const webhookCircuitFailKey = (session: string, webhookId: string) =>
+  `${BASE_KEY}webhook-cb:${session}:${webhookId}:fail`
+
+export const isWebhookCircuitOpen = async (session: string, webhookId: string): Promise<boolean> => {
+  if (!process.env.REDIS_URL) return false
+  const key = webhookCircuitOpenKey(session, webhookId)
+  try {
+    const v = await redisGet(key)
+    return !!v
+  } catch {
+    return false
+  }
+}
+
+export const openWebhookCircuit = async (session: string, webhookId: string, openMs: number): Promise<void> => {
+  if (!process.env.REDIS_URL) return
+  const ttlSec = Math.max(1, Math.ceil((openMs || 0) / 1000))
+  try {
+    await redisSetAndExpire(webhookCircuitOpenKey(session, webhookId), '1', ttlSec)
+  } catch {}
+}
+
+export const closeWebhookCircuit = async (session: string, webhookId: string): Promise<void> => {
+  if (!process.env.REDIS_URL) return
+  try { await redisDel(webhookCircuitOpenKey(session, webhookId)) } catch {}
+  try { await redisDel(webhookCircuitFailKey(session, webhookId)) } catch {}
+}
+
+export const bumpWebhookCircuitFailure = async (session: string, webhookId: string, ttlMs: number): Promise<number> => {
+  if (!process.env.REDIS_URL) return 0
+  const ttlSec = Math.max(1, Math.ceil((ttlMs || 0) / 1000))
+  try {
+    return await redisIncrWithTtl(webhookCircuitFailKey(session, webhookId), ttlSec)
+  } catch {
+    return 0
   }
 }
 
