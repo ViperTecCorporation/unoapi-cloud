@@ -3,7 +3,7 @@ import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
-import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS } from '../defaults'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
@@ -155,15 +155,16 @@ export class OutgoingCloudApi implements Outgoing {
     const cbKey = `${phone}:${cbId}`
     const now = Date.now()
     if (cbEnabled) {
+      let open = false
       try {
-        const open = process.env.REDIS_URL
+        open = process.env.REDIS_URL
           ? await isWebhookCircuitOpen(phone, cbId)
           : isCircuitOpenLocal(cbKey, now)
-        if (open) {
-          logger.warn('WEBHOOK_CB open: skipping send (phone=%s webhook=%s)', phone, cbId)
-          throw new WebhookCircuitOpenError(`WEBHOOK_CB open for ${cbId}`, this.cbRequeueDelayMs())
-        }
       } catch {}
+      if (open) {
+        logger.warn('WEBHOOK_CB open: skipping send (phone=%s webhook=%s)', phone, cbId)
+        throw new WebhookCircuitOpenError(`WEBHOOK_CB open for ${cbId}`, this.cbRequeueDelayMs())
+      }
     }
     // Clone to avoid cross-webhook mutations
     try { message = JSON.parse(JSON.stringify(message)) } catch {}
@@ -546,7 +547,7 @@ export class OutgoingCloudApi implements Outgoing {
 const cbOpenUntil: Map<string, number> = new Map()
 const cbFailState: Map<string, { count: number; exp: number }> = new Map()
 let cbLastCleanup = 0
-const CB_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+const CB_CLEANUP_INTERVAL_MS = WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS || 60 * 60 * 1000
 
 const isCircuitOpenLocal = (key: string, now: number) => {
   maybeCleanupLocalCircuit(now)

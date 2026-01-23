@@ -729,6 +729,7 @@ WEBHOOK_CB_FAILURE_THRESHOLD=number of failures within window to open circuit, d
 WEBHOOK_CB_OPEN_MS=how long to keep the circuit open (skip sends), default 120000
 WEBHOOK_CB_FAILURE_TTL_MS=failure counter window in ms, default 300000
 WEBHOOK_CB_REQUEUE_DELAY_MS=delay (ms) used to requeue when circuit is open, default 300000
+WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS=local CB map cleanup interval (ms), default 3600000
 
 Example (circuit breaker):
 ```env
@@ -737,6 +738,7 @@ WEBHOOK_CB_FAILURE_THRESHOLD=1
 WEBHOOK_CB_FAILURE_TTL_MS=300000
 WEBHOOK_CB_OPEN_MS=120000
 WEBHOOK_CB_REQUEUE_DELAY_MS=300000
+WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS=3600000
 ```
 WEBHOOK_INCLUDE_MEDIA_DATA=false to avoid sending binary/base64 media data in webhook payloads; keeps url/filename, default false
 WEBHOOK_SEND_NEW_MESSAGES=true, send new messages to webhook, caution with this, messages will be duplicated, default is false

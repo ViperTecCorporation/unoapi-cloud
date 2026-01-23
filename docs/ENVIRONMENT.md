@@ -252,6 +252,7 @@ Fail fast when a webhook endpoint is offline to avoid queue backlog.
 - `WEBHOOK_CB_FAILURE_TTL_MS` — Failure counting window (ms). Default `300000`.
 - `WEBHOOK_CB_OPEN_MS` — How long the circuit stays open (skip sends) after tripping. Default `120000`.
 - `WEBHOOK_CB_REQUEUE_DELAY_MS` — Delay (ms) used to requeue when the circuit is open. Default `300000`.
+- `WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS` — Local CB map cleanup interval (ms). Default `3600000`.
 
 Behavior:
 - When open, webhook delivery is skipped for that endpoint.
