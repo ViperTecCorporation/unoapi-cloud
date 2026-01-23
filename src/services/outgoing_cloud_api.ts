@@ -3,11 +3,20 @@ import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
-import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS } from '../defaults'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
 import { isWebhookCircuitOpen, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
+
+class WebhookCircuitOpenError extends Error {
+  public code = 'WEBHOOK_CB_OPEN'
+  public delayMs: number
+  constructor(message: string, delayMs: number) {
+    super(message)
+    this.delayMs = delayMs
+  }
+}
 // Ajusta payload para schema Cloud API estrito (Typebot)
 const normalizePayloadForTypebot = (payload: any, phone: string) => {
   try {
@@ -152,7 +161,7 @@ export class OutgoingCloudApi implements Outgoing {
           : isCircuitOpenLocal(cbKey, now)
         if (open) {
           logger.warn('WEBHOOK_CB open: skipping send (phone=%s webhook=%s)', phone, cbId)
-          return
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB open for ${cbId}`, this.cbRequeueDelayMs())
         }
       } catch {}
     }
@@ -472,8 +481,10 @@ export class OutgoingCloudApi implements Outgoing {
       logger.error('Error on send to url %s with headers %s and body %s', url, JSON.stringify(headers), body)
       logger.error(error)
       if (cbEnabled) {
-        await this.handleCircuitFailure(phone, cbId, cbKey, error as any)
-        return
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any)
+        if (opened) {
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+        }
       }
       throw error
     }
@@ -481,8 +492,10 @@ export class OutgoingCloudApi implements Outgoing {
     if (!response?.ok) {
       const errText = await response?.text()
       if (cbEnabled) {
-        await this.handleCircuitFailure(phone, cbId, cbKey, errText)
-        return
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, errText)
+        if (opened) {
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+        }
       }
       throw errText
     }
@@ -497,7 +510,11 @@ export class OutgoingCloudApi implements Outgoing {
     }
   }
 
-  private async handleCircuitFailure(phone: string, cbId: string, cbKey: string, error: any) {
+  private cbRequeueDelayMs() {
+    return WEBHOOK_CB_REQUEUE_DELAY_MS || WEBHOOK_CB_OPEN_MS || 120000
+  }
+
+  private async handleCircuitFailure(phone: string, cbId: string, cbKey: string, error: any): Promise<boolean> {
     try {
       const threshold = WEBHOOK_CB_FAILURE_THRESHOLD || 1
       const openMs = WEBHOOK_CB_OPEN_MS || 120000
@@ -512,14 +529,17 @@ export class OutgoingCloudApi implements Outgoing {
           openCircuitLocal(cbKey, openMs)
         }
         logger.warn('WEBHOOK_CB opened (phone=%s webhook=%s count=%s openMs=%s)', phone, cbId, count, openMs)
+        return true
       } else {
         logger.warn('WEBHOOK_CB failure (phone=%s webhook=%s count=%s/%s)', phone, cbId, count, threshold)
+        return false
       }
     } catch (e) {
       logger.warn(e as any, 'WEBHOOK_CB failure handler error')
     }
     // Fail fast: do not throw to avoid queue backlog
     try { logger.warn(error as any, 'WEBHOOK_CB send failed (phone=%s webhook=%s)', phone, cbId) } catch {}
+    return false
   }
 }
 

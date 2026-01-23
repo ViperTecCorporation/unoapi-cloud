@@ -238,8 +238,8 @@ ObservaÃ§Ã£o de confiabilidade:
 - `UNOAPI_MESSAGE_RETRY_DELAY` â€” Atraso padrÃ£o (ms) usado por utilitÃ¡rios ao publicar mensagens com delay. PadrÃ£o `10000`.
   - ObservaÃ§Ã£o: o caminho de retry do consumidor usa um reenvio fixo de 60s.
   - Exemplo: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
-- `CONSUMER_TIMEOUT_MS` â€” Tempo mÃ¡ximo (ms) para um consumidor processar a mensagem antes de forÃ§ar retry. PadrÃ£o `360000`.
-  - Exemplo: `CONSUMER_TIMEOUT_MS=180000`
+- `CONSUMER_TIMEOUT_MS` â€” Tempo mÃ¡ximo (ms) para um consumidor processar a mensagem antes de forÃ§ar retry. Padrao `15000`.
+  - Exemplo: `CONSUMER_TIMEOUT_MS=15000`
 - `NOTIFY_FAILED_MESSAGES` â€” Envia um texto de diagnÃ³stico para o nÃºmero da sessÃ£o quando as tentativas se esgotam. PadrÃ£o `true`.
   - Exemplo: `NOTIFY_FAILED_MESSAGES=false`
 
@@ -255,6 +255,7 @@ Falha rapida quando o endpoint do webhook estiver offline para evitar backlog na
 Comportamento:
 - Quando aberto, o envio do webhook e pulado para aquele endpoint.
 - Depois do tempo aberto, o envio volta automaticamente.
+- Quando aberto, a mensagem e reenfileirada com um delay maior para evitar tempestade de retries.
 ## MÃ­dia & Timeouts
 
 ### DeduplicaÃ§Ã£o de entrada

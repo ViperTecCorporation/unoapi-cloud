@@ -230,8 +230,8 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 - `UNOAPI_MESSAGE_RETRY_DELAY` Ã¢â‚¬â€ Default delay used by helpers when publishing delayed messages (ms). Default `10000`.
   - Note: the consumer retry path uses a fixed 60s requeue delay.
   - Example: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
-- `CONSUMER_TIMEOUT_MS` Ã¢â‚¬â€ Max time (ms) allowed for a consumer to process a message before forcing retry. Default `360000`.
-  - Example: `CONSUMER_TIMEOUT_MS=180000`
+- `CONSUMER_TIMEOUT_MS` Ã¢â‚¬â€ Max time (ms) allowed for a consumer to process a message before forcing retry. Default `15000`.
+  - Example: `CONSUMER_TIMEOUT_MS=15000`
 - `NOTIFY_FAILED_MESSAGES` Ã¢â‚¬â€ Send a diagnostic text to the session number when retries are exhausted. Default `true`.
   - Example: `NOTIFY_FAILED_MESSAGES=false`
 
@@ -251,10 +251,12 @@ Fail fast when a webhook endpoint is offline to avoid queue backlog.
 - `WEBHOOK_CB_FAILURE_THRESHOLD` — Failures within the window required to open the circuit. Default `1`.
 - `WEBHOOK_CB_FAILURE_TTL_MS` — Failure counting window (ms). Default `300000`.
 - `WEBHOOK_CB_OPEN_MS` — How long the circuit stays open (skip sends) after tripping. Default `120000`.
+- `WEBHOOK_CB_REQUEUE_DELAY_MS` — Delay (ms) used to requeue when the circuit is open. Default `300000`.
 
 Behavior:
 - When open, webhook delivery is skipped for that endpoint.
 - After the open window, sends are attempted again automatically.
+- When open, the message is requeued with a longer delay to avoid retry storms.
 
 ## Media & Timeouts
 
