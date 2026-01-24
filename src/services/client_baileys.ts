@@ -841,7 +841,8 @@ export class ClientBaileys implements Client {
      * @param options Extra Baileys options (e.g., composing, addressingMode, statusJidList)
      * @returns Response with Cloud API-compatible shape and optional error object
      */
-    const { status, type, to } = payload
+    const { status, type } = payload
+    let { to } = payload
     try {
       if (status) {
         if (['sent', 'delivered', 'failed', 'progress', 'read', 'deleted'].includes(status)) {
@@ -955,6 +956,7 @@ export class ClientBaileys implements Client {
             } catch {}
             content = { react: { text: emoji, key: reactionKey } }
             targetTo = reactionKey.remoteJid
+            to = targetTo
             extraSendOptions.forceRemoteJid = reactionKey.remoteJid
             extraSendOptions.skipBrSendOrder = true
           } else if ('template' === type) {
