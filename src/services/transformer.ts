@@ -482,11 +482,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const body = interactive.body || {}
       const footer = interactive.footer || {}
       const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
-      const normalizeInteractiveText = (value: any) => {
-        if (value === null || typeof value === 'undefined') return ''
-        const out = customMessageCharactersFunction(`${value}`)
-        return `${out ?? ''}`.trim()
-      }
       const mapButtonsToNativeFlow = (buttons: any[]) =>
         (buttons || [])
           .map((button: any) => {
@@ -553,50 +548,18 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
 
       if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
-        const listBody = normalizeInteractiveText(body.text)
-        const listFooter = normalizeInteractiveText(footer.text)
-        const listTitle = normalizeInteractiveText(header.text)
-        const listButtonText = normalizeInteractiveText(action.button) || 'Selecionar'
-        const sections = action.sections
-          .map((section: any, sectionIndex: number) => {
-            const sectionTitle = normalizeInteractiveText(section.title) || `Secao ${sectionIndex + 1}`
-            const rows = (section.rows || [])
-              .map((row: any, rowIndex: number) => {
-                const rawId = `${row.id || row.rowId || row.row_id || ''}`.trim()
-                const rowId = rawId || `row_${sectionIndex + 1}_${rowIndex + 1}`
-                const rowTitle = normalizeInteractiveText(row.title) || rowId
-                const rowDescription = normalizeInteractiveText(row.description)
-                return {
-                  rowId,
-                  title: rowTitle,
-                  description: rowDescription,
-                }
-              })
-              .filter((row: any) => row.rowId)
-            return rows.length > 0 ? { title: sectionTitle, rows } : undefined
-          })
-          .filter(Boolean)
-        if (!sections.length) {
-          throw new Error('invalid_interactive_list_payload: empty sections')
-        }
-        response.text = listBody || listTitle || listButtonText || 'Opcoes'
-        if (listFooter) response.footer = listFooter
-        if (listTitle) response.title = listTitle
-        response.buttonText = listButtonText
-        response.sections = sections
-        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
-          logger.debug(
-            'toBaileys list dump input=%s output=%s',
-            JSON.stringify({ interactive, action, header, body, footer }),
-            JSON.stringify({
-              text: response.text,
-              title: response.title,
-              footer: response.footer,
-              buttonText: response.buttonText,
-              sections: response.sections,
-            }),
-          )
-        }
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = header.text || ''
+        response.buttonText = action.button || 'Selecione'
+        response.sections = action.sections.map((section: any) => ({
+          title: section.title || '',
+          rows: (section.rows || []).map((row: any) => ({
+            rowId: row.rowId || row.id || '',
+            title: row.title || '',
+            description: row.description || '',
+          })),
+        }))
         break
       }
 
