@@ -1311,9 +1311,32 @@ export const getProviderId = async (phone: string, idUno: string) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setUnoId = async (phone: string, idBaileys: string, idUno: string) => {
   const key = unoIdKey(phone, idBaileys)
-  await redisSetAndExpire(key, idUno, DATA_TTL)
+  const ttlSec = DATA_TTL
+  const setIfAbsent = async (k: string, v: string, ttl: number): Promise<boolean> => {
+    try {
+      const c: any = await getRedis()
+      const opts: any = { NX: true }
+      if (ttl > 0) opts.EX = ttl
+      const res = await c.set(k, v, opts)
+      return res === 'OK'
+    } catch {
+      return false
+    }
+  }
+
+  // Try to create the mapping only if it doesn't exist to avoid race duplicates.
+  const created = await setIfAbsent(key, idUno, ttlSec)
+  if (!created) {
+    // Another worker created it; reuse the existing uno id.
+    const existing = await redisGet(key)
+    const chosen = existing || idUno
+    const reverseKey = providerIdKey(phone, chosen)
+    await redisSetAndExpire(reverseKey, idBaileys, ttlSec)
+    return
+  }
+
   const reverseKey = providerIdKey(phone, idUno)
-  return redisSetAndExpire(reverseKey, idBaileys, DATA_TTL)
+  await redisSetAndExpire(reverseKey, idBaileys, ttlSec)
 }
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session

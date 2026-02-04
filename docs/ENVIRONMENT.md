@@ -178,7 +178,7 @@ Webhook normalization
 - WEBHOOK_PREFER_PN_OVER_LID â€” If 	rue (default), webhook payloads prefer PN in wa_id, rom and 
 ecipient_id when safely resolvable; otherwise a LID/JID may be returned.## LID/PN Mapping Cache
 
-- `JIDMAP_CACHE_ENABLED` Ã¢â‚¬â€ Enable PNÃ¢â€ â€LID cache. Default `true`.
+- `JIDMAP_CACHE_ENABLED` Ã¢â‚¬â€ Enable PNÃ¢â€ â€LID cache. Default `false`.
   - Stores perÃ¢â‚¬â€˜session mapping between LID JIDs and PN JIDs to reduce runtime lookups and improve delivery in large groups.
 
 ## Session Self‑Heal & Periodic Assert
@@ -204,7 +204,7 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 
 - `JIDMAP_ENRICH_ENABLED` ? Background enrich (sweep) for JIDMAP. Default `false`.
   - Keep `false` when on-the-fly mapping during send/receive is enough.
-- `JIDMAP_ENRICH_AUTH_ENABLED` ? Background enrich from auth lid-mapping cache. Default `true`.
+- `JIDMAP_ENRICH_AUTH_ENABLED` ? Background enrich from auth lid-mapping cache. Default `false`.
   - Requires Redis; enable only if you want periodic backfill.
 
 ## LID/PN Behavior

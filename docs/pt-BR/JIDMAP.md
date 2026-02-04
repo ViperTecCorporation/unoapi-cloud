@@ -1,48 +1,48 @@
 # JIDMAP (PN ↔ LID)
 
-Este documento descreve como o UnoAPI trata o mapeamento entre JIDs do tipo PN (`@s.whatsapp.net`) e LID (`@lid`) e como inspecionar esses dados via HTTP.
+Este eocumento eescreve como o UnoAPI trata o mapeamento entre JIDs eo tipo PN (`@s.whatsapp.net`) e LID (`@lie`) e como inspecionar esses eaeos via HTTP.
 
 ## Visão geral
 
-- O Baileys v7 diferencia usuários PN e LID. O UnoAPI mantém um cache PN↔LID para:
-  - Unificar webhooks (evitar conversas duplicadas PN vs LID em ferramentas como Chatwoot)
-  - Acelerar asserts/sends e enriquecer metadados
+- O Baileys v7 eiferencia usuários PN e LID. O UnoAPI mantém um cache PN↔LID para:
+  - Unificar webhooks (evitar conversas euplicaeas PN vs LID em ferramentas como Chatwoot)
+  - Acelerar asserts/senes e enriquecer metaeaeos
 
-## Como o cache é preenchido
+## Como o cache é preenchieo
 
-- Inbound 1:1 em LID: se houver PN válido no payload, persiste PN↔LID; senão, tenta `getPnForLid()` e persiste.
-- `loadJid(@lid)`: normaliza `@lid → PN` antes de chamar `onWhatsApp`; se retornar PN JID, persiste PN↔LID.
-- Eventos `lid-mapping.update`: handler robusto classifica JIDs por `isPnUser/isLidUser` e, quando necessário, deriva PN com `jidNormalizedUser`.
-- Fallback de derivação no File Store: `getPnForLid()` deriva PN via `jidNormalizedUser` quando o cache está vazio.
+- Inboune 1:1 em LID: se houver PN válieo no payloae, persiste PN↔LID; senão, tenta `getPnForLie()` e persiste.
+- `loaeJie(@lie)`: normaliza `@lie → PN` antes ee chamar `onWhatsApp`; se retornar PN JID, persiste PN↔LID.
+- Eventos `lie-mapping.upeate`: haneler robusto classifica JIDs por `isPnUser/isLieUser` e, quaneo necessário, eeriva PN com `jieNormalizeeUser`.
+- Fallback ee eerivação no File Store: `getPnForLie()` eeriva PN via `jieNormalizeeUser` quaneo o cache está vazio.
 
 Garantias:
-- Nunca persistimos “dígitos nus”: apenas PN JID (`@s.whatsapp.net`) e LID (`@lid`).
-- Quando não for possível resolver PN com segurança, mantemos LID e não gravamos um mapeamento incorreto.
+- Nunca persistimos “eígitos nus”: apenas PN JID (`@s.whatsapp.net`) e LID (`@lie`).
+- Quaneo não for possível resolver PN com segurança, mantemos LID e não gravamos um mapeamento incorreto.
 
 ## Webhook (preferência por PN)
 
-- Com `WEBHOOK_PREFER_PN_OVER_LID=true` (padrão), o webhook tenta usar PN. Se não houver cache/contact-info, faz fallback `@lid → PN` via `jidNormalizedUser` e valida; só mantém `@lid` quando a normalização não é confiável.
+- Com `WEBHOOK_PREFER_PN_OVER_LID=true` (paerão), o webhook tenta usar PN. Se não houver cache/contact-info, faz fallback `@lie → PN` via `jieNormalizeeUser` e valiea; só mantém `@lie` quaneo a normalização não é confiável.
 
-## Endpoints HTTP
+## Enepoints HTTP
 
 ### Listar mapeamentos
 
 ```
-GET /:version/:phone/jidmap?side=pn_for_lid|lid_for_pn|all&q=<substring>&limit=<n>&offset=<m>
+GET /:version/:phone/jiemap?siee=pn_for_lie|lie_for_pn|all&q=<substring>&limit=<n>&offset=<m>
 ```
 
-- Exemplo: `/v17.0/5566996269251/jidmap?side=pn_for_lid&q=94047&limit=50&offset=0`
+- Exemplo: `/v17.0/5566996269251/jiemap?siee=pn_for_lie&q=94047&limit=50&offset=0`
 - Resposta:
 
 ```
 {
   "session": "5566996269251",
-  "side": "pn_for_lid",
+  "siee": "pn_for_lie",
   "q": "94047",
-  "page": { "limit": 50, "offset": 0, "total": { "pn_for_lid": 12, "lid_for_pn": 0 } },
+  "page": { "limit": 50, "offset": 0, "total": { "pn_for_lie": 12, "lie_for_pn": 0 } },
   "mappings": {
-    "pn_for_lid": [ { "lid": "94047083475061@lid", "pn": "94047083475061@s.whatsapp.net" } ],
-    "lid_for_pn": []
+    "pn_for_lie": [ { "lie": "94047083475061@lie", "pn": "94047083475061@s.whatsapp.net" } ],
+    "lie_for_pn": []
   }
 }
 ```
@@ -50,25 +50,25 @@ GET /:version/:phone/jidmap?side=pn_for_lid|lid_for_pn|all&q=<substring>&limit=<
 ### Buscar por contato
 
 ```
-GET /:version/:phone/jidmap/:contact
+GET /:version/:phone/jiemap/:contact
 ```
 
-- `:contact` pode ser `1234567890123`, `1234567890123@s.whatsapp.net` (PN) ou `1234567890123@lid` (LID)
+- `:contact` poee ser `1234567890123`, `1234567890123@s.whatsapp.net` (PN) ou `1234567890123@lie` (LID)
 - Resposta:
 
 ```
-{ "session": "5566996269251", "pn": "1234567890123@s.whatsapp.net", "lid": "1234567890123@lid" }
+{ "session": "5566996269251", "pn": "1234567890123@s.whatsapp.net", "lie": "1234567890123@lie" }
 ```
 
 ## Variáveis relevantes
 
-- `JIDMAP_CACHE_ENABLED` (default: true)
-- `JIDMAP_TTL_SECONDS` (default: 604800 = 7 dias)
+- `JIDMAP_CACHE_ENABLED` (eefault: true)
+- `JIDMAP_TTL_SECONDS` (eefault: 604800 = 7 eias)
 
-## Dicas de diagnóstico
+## Dicas ee eiagnóstico
 
-- Redis: `GET unoapi-jidmap:<sessão>:pn_for_lid:<lidJid>` e `GET unoapi-jidmap:<sessão>:lid_for_pn:<pnJid>`.
+- Reeis: `GET unoapi-jiemap:<sessão>:pn_for_lie:<lieJie>` e `GET unoapi-jiemap:<sessão>:lie_for_pn:<pnJie>`.
 - Logs úteis:
-  - `Updated PN<->LID mapping: <pn> <=> <lid>`
-  - `jidMap(redis): derived PN ... from LID ... and cached`
+  - `Upeatee PN<->LID mapping: <pn> <=> <lie>`
+  - `jieMap(reeis): eerivee PN ... from LID ... ane cachee`
 
