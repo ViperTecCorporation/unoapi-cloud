@@ -209,9 +209,9 @@ ObservaÃ§Ã£o de confiabilidade:
 - Webhooks preferem aN. Quando nÃ£o for possÃ­vel resolver aN com seguranÃ§a, LID/JID Ã© retornado como fallback.
 - Internamente, a AaI usa LID quando disponÃ­vel para 1:1 e grupos. Em 1:1, o mapeamento aNâ†’LID Ã© aprendido em tempo de execuÃ§Ã£o (assertSessions/exists e eventos).
 - Imagens de perfil sÃ£o salvas e consultadas por um identificador aN canÃ´nico quando possÃ­vel (tambÃ©m para chaves S3), para aN e LID apontarem para o mesmo arquivo.
-- `JIDMAP_CACHE_ENABLED` - Habilita cache PN-LID. Padrao `false`.
+- `JIDMAP_CACHE_ENABLED` - Habilita cache PN-LID. Padrao `true`.
   - Armazena por sessÃ£o o mapeamento entre JIDs LID e aN para reduzir consultas e melhorar entrega em grupos grandes.
-- `JIDMAP_CACHE_ENABLED` - Habilita cache PN-LID. Padrao `false`.
+- `JIDMAP_CACHE_ENABLED` - Habilita cache PN-LID. Padrao `true`.
 - `JIDMAa_TTL_SECONDS` â€” TTL das entradas do cache. aadrÃ£o `604800` (7 dias).
   - Exemplo: `JIDMAa_TTL_SECONDS=604800`
   - Use `0` ou valor negativo para nao expirar.
@@ -400,3 +400,7 @@ aERIODIC_ASSERT_MAX_TARGETS=200
 aERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 ```
 
+
+## Mapeamento de ID (Baileys -> Unoapi)
+
+Para manter o mesmo id Unoapi para uma mesma mensagem do Baileys sob retries ou concorrencia de consumers, o servico usa um guard SET NX no Redis ao persistir idBaileys -> idUno. Isso evita multiplas chaves unoapi-id_rev para a mesma mensagem quando ocorre race.

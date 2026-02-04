@@ -295,11 +295,9 @@ export const RECEIPT_RETRY_ASSERT_COOLDOWN_MS = parseInt(process.env.RECEIPT_RET
 export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RETRY_ASSERT_MAX_TARGETS || '400')
 
 // JID mapping cache (PN <-> LID)
-// falseForSpeed: disable by default to reduce Redis load
-export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? false : process.env.JIDMAP_CACHE_ENABLED == 'true'
+export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
 // Enable/disable jidmap list endpoint.
-// falseForSpeed: disable by default to reduce Redis scans
-export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? false : process.env.JIDMAP_LIST_ENABLED == 'true'
+export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? true : process.env.JIDMAP_LIST_ENABLED == 'true'
 // Enable/disable lookups against stored jidmap cache (unoapi-jidmap:*).
 export const JIDMAP_STORED_LOOKUP_ENABLED =
   process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? false : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
@@ -386,9 +384,8 @@ export const ONE_TO_ONE_ADDRESSING_MODE: 'lid' | 'pn' = (() => {
 })()
 
 // Background resolver: try to map LIDs seen to PN asynchronously (accelerates JIDMAP population)
-// falseForSpeed: background resolver can be expensive on Redis
 export const LID_RESOLVER_ENABLED: boolean =
-  process.env.LID_RESOLVER_ENABLED === _undefined ? false : process.env.LID_RESOLVER_ENABLED == 'true'
+  process.env.LID_RESOLVER_ENABLED === _undefined ? true : process.env.LID_RESOLVER_ENABLED == 'true'
 export const LID_RESOLVER_BACKOFF_MS: number[] = (() => {
   try {
     const raw = (process.env.LID_RESOLVER_BACKOFF_MS || '30000,120000,300000').toString()
@@ -402,8 +399,7 @@ export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PE
 export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? false : process.env.JIDMAP_ENRICH_ENABLED == 'true'
 export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '20')
 // Espelhar periodicamente o cache interno (unoapi-auth:*:lid-mapping-*) no JIDMAP
-// falseForSpeed: auth cache enrichment scans can be expensive
-export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? false : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'
+export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'
 
 // Watchdog purge scan batch size (Redis SCAN COUNT per pattern)
 export const WATCHDOG_PURGE_SCAN_COUNT = parseInt(process.env.WATCHDOG_PURGE_SCAN_COUNT || '20')
