@@ -1655,6 +1655,15 @@
             function connectToWebSocket(phoneNumber, qrTimeoutMs) {
               currentPhoneNumber = phoneNumber
               currentQrTimeOut = qrTimeoutMs
+              if (window.socket) {
+                if (window.socket.connected) {
+                  window.socket.emit('subscribe_qr', { phone: phoneNumber })
+                } else {
+                  window.socket.once('connect', function() {
+                    window.socket.emit('subscribe_qr', { phone: phoneNumber })
+                  })
+                }
+              }
               if (qrcodes[phoneNumber]) {
                 const qrcodeDiv = document.getElementById('qrCodeContainer');
                 qrcodeDiv.innerHTML = `<img src="${qrcodes[phoneNumber]}" alt="QR Code">`;
