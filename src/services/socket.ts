@@ -789,18 +789,20 @@ export const connect = async ({
   const onClose = async (payload: any) => {
     // Limpar timer do assert periódico ao desconectar
     try { if (periodicAssertTimer) { clearInterval(periodicAssertTimer); periodicAssertTimer = undefined; logger.debug('PERIODIC_ASSERT: timer cleared on close') } } catch {}
+    const { lastDisconnect } = payload || {}
+    const statusCode = lastDisconnect?.error?.output?.statusCode
     if (await sessionStore.isStatusOffline(phone)) {
       logger.warn('Already Offline %s', phone)
       sock = undefined
       return
     }
-    if (await sessionStore.isStatusDisconnect(phone)) {
+    // Durante o pareamento é comum receber 515 logo após persistências/reloads.
+    // Não bloquear esse caso com "Already Disconnected", pois precisa reconectar.
+    if (await sessionStore.isStatusDisconnect(phone) && statusCode !== DisconnectReason.restartRequired) {
       logger.warn('Already Disconnected %s', phone)
       sock = undefined
       return
     }
-    const { lastDisconnect } = payload
-    const statusCode = lastDisconnect?.error?.output?.statusCode
     logger.info(`${phone} disconnected with status: ${statusCode}`)
     if ([DisconnectReason.loggedOut, 403].includes(statusCode)) {
       status.attempt = 1
@@ -824,7 +826,7 @@ export const connect = async ({
         return await onReconnect(1)
       } catch (e) {
         logger.error(e as any, 'onReconnect failed after restartRequired for %s; fallback reconnect()', phone)
-        return reconnect()
+        return reconnect(statusCode)
       }
     } else if (statusCode === DisconnectReason.badSession && config.proxyUrl && lastDisconnect?.error?.data?.options?.command?.connect) {
       const message = t('server_error', config.proxyUrl)
@@ -834,7 +836,7 @@ export const connect = async ({
       const message = t('closed', statusCode, detail)
       await onNotification(message, true)
     }
-    return reconnect()
+    return reconnect(statusCode)
   }
 
   const getMessage = async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> => {
@@ -1241,7 +1243,7 @@ export const connect = async ({
     }
   } catch {}
 
-  const reconnect = async () => {
+  const reconnect = async (lastStatusCode?: number) => {
     logger.info(`${phone} reconnecting`, status.attempt)
     if (status.attempt > attempts) {
       const message =  t('attempts_exceeded', attempts)
@@ -1249,6 +1251,17 @@ export const connect = async ({
       status.attempt = 1
       return close()
     } else {
+      // Stream 503 bursts happen in waves; backoff avoids reconnect storms.
+      if (lastStatusCode === 503) {
+        const attemptIndex = Math.max(0, (status.attempt || 1) - 1)
+        const base = Math.max(800, config.retryRequestDelayMs || 1000)
+        const exp = Math.min(6, attemptIndex)
+        const backoff = Math.min(60000, base * Math.pow(2, exp))
+        const jitter = Math.floor(Math.random() * 700)
+        const waitMs = backoff + jitter
+        logger.warn('%s reconnect backoff for 503: waiting %sms (attempt=%s)', phone, waitMs, status.attempt)
+        try { await delay(waitMs) } catch {}
+      }
       const message =  t('connecting_attemps', status.attempt, attempts)
       await onNotification(message, false)
       await close()
@@ -2218,7 +2231,21 @@ export const connect = async ({
       socketConfig.version = whatsappVersion
     } else {
       try {
-        const { version } = await fetchLatestWaWebVersion()
+        const fetchVer: any = fetchLatestWaWebVersion as any
+        let version: number[] | undefined
+        try {
+          const res = await fetchVer({
+            headers: {
+              'sec-fetch-site': 'none',
+              'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            }
+          })
+          version = res?.version || res
+        } catch {
+          const res = await fetchVer()
+          version = res?.version || res
+        }
+        if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
         socketConfig.version = version
         logger.debug('Using latest WA Web version %s', JSON.stringify(version))
       } catch (e) {
