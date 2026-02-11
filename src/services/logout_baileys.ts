@@ -23,6 +23,10 @@ export class LogoutBaileys implements Logout {
 
   async run(phone: string) {
     logger.debug('Logout baileys for phone %s', phone)
+    try {
+      const stack = new Error('logout_trace').stack
+      logger.warn('LogoutBaileys.run invoked for %s stack=%s', phone, stack)
+    } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
     const { sessionStore, dataStore } = store

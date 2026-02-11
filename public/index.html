@@ -1019,6 +1019,7 @@
         let currentPhoneNumber = '';
         let currentQrTimeOut = 0;
         let lastTimeout = undefined;
+        const getActiveToken = () => (localStorage.getItem(tokenKey) || ($('#tokenInput').val() || '').trim());
         
         const onBroadcast = function(data) {
           if (data.phone == currentPhoneNumber) {
@@ -1033,8 +1034,8 @@
                   clearTimeout(lastTimeout);
                 }
                 lastTimeout = setTimeout(function() {
-                  qrcodeDiv.innerHTML = t('qrWaitingNew');
-                  qrcodeDiv.textContent = '';
+                  qrcodeDiv.innerHTML = '';
+                  statusDiv.textContent = t('qrWaitingNew');
                 }, timeoutMs);
             } else if (data.type === 'status' && data.content) {
                 if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
@@ -1044,7 +1045,7 @@
                     console.log("QRCODE EXCEEDED")
                     qrcodeDiv.innerHTML = '';
                     statusDiv.textContent = 'Generating new QRCode/PairingCode...';
-                    attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
+                    attemptRegister(currentPhoneNumber, getActiveToken());
                 } else {
                     qrcodeDiv.innerHTML = ''
                     statusDiv.textContent = `Status: ${data.content}`;
@@ -1555,7 +1556,7 @@
             //connectButton
             $(document).on('click', '.connect-btn', function () {
                 const number = $(this).data('number');
-                const token = localStorage.getItem(tokenKey);
+                const token = getActiveToken();
 
                 if (token) {
                     fetch(`${apiUrl}/v15.0/${number}`, {
@@ -1564,7 +1565,12 @@
                         }
                     })
                     .then(response => {
-                        if (!response.ok) throw new Error(t('errorInvalid'));
+                        if (!response.ok) {
+                            if (response.status === 401 || response.status === 403) {
+                                throw new Error(t('errorInvalid'));
+                            }
+                            throw new Error(`HTTP ${response.status}`);
+                        }
                         return response.json();
                     })
                     .then(data => {
@@ -1580,6 +1586,10 @@
                         }
                     })
                     .catch(error => {
+                        if (`${error?.message || ''}` === t('errorInvalid')) {
+                          localStorage.removeItem(tokenKey);
+                          $('#errorMessage').removeClass('d-none');
+                        }
                         console.error("Erro ao verificar status:", error);
                     });
                 } else {
@@ -1589,6 +1599,10 @@
 
             // init qrcode and confirm
             function attemptRegister(number, token) {
+                if (!number || !token) {
+                  console.error('attemptRegister sem número/token');
+                  return;
+                }
                 fetch(`${apiUrl}/v15.0/${number}/register`, {
                     method: 'POST',
                     headers: {
@@ -1655,6 +1669,9 @@
             function connectToWebSocket(phoneNumber, qrTimeoutMs) {
               currentPhoneNumber = phoneNumber
               currentQrTimeOut = qrTimeoutMs
+              if (!window.socket) {
+                initWebSocket()
+              }
               if (window.socket) {
                 if (window.socket.connected) {
                   window.socket.emit('subscribe_qr', { phone: phoneNumber })
