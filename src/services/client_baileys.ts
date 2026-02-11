@@ -733,9 +733,13 @@ export class ClientBaileys implements Client {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.event('call', async (events: any[]) => {
       for (let i = 0; i < events.length; i++) {
-        const { from, id, status } = events[i]
+        const event = events[i] || {}
+        const from = event?.from
+        const id = event?.id
+        const status = event?.status
+        const callerPn = event?.callerPn || event?.caller_pn
         try {
-          logger.info('CALL event: from=%s id=%s status=%s', from, id, status)
+          logger.info('CALL event: from=%s callerPn=%s id=%s status=%s', from, callerPn || '<none>', id, status)
         } catch {}
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
@@ -748,7 +752,9 @@ export class ClientBaileys implements Client {
             try {
               if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
                 let pnJid: string | undefined
-                if (isLidUser(from)) {
+                if (callerPn && isPnUser(callerPn)) {
+                  pnJid = callerPn
+                } else if (isLidUser(from)) {
                   try { pnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from) } catch {}
                   if (!pnJid) { try { const cand = jidNormalizedUser(from); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {} }
                 } else if (isPnUser(from)) {
@@ -779,7 +785,12 @@ export class ClientBaileys implements Client {
             // Tenta resolver PN para o remetente da chamada (quando vier em LID)
             let senderPnJid: string | undefined = undefined
             try {
-              if (isLidUser(from)) {
+              if (callerPn && isPnUser(callerPn)) {
+                senderPnJid = callerPn
+              }
+            } catch {}
+            try {
+              if (!senderPnJid && isLidUser(from)) {
                 senderPnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from)
               }
             } catch {}
