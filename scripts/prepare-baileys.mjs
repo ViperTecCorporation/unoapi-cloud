@@ -38,19 +38,28 @@ const patchBaileysCompat = (modDir) => {
   const cryptoPath = join(modDir, 'lib', 'Utils', 'crypto.js')
   const chatUtilsPath = join(modDir, 'lib', 'Utils', 'chat-utils.js')
   const ltHashPath = join(modDir, 'lib', 'Utils', 'lt-hash.js')
+  const reportingUtilsPath = join(modDir, 'lib', 'Utils', 'reporting-utils.js')
 
   const patchedCrypto = patchFile(cryptoPath, (src) => {
-    if (src.includes('[unoapi-compat] rust-bridgeless crypto')) return src
-    if (!src.includes(`export { md5, hkdf } from 'whatsapp-rust-bridge';`)) return src
-    return src
-      .replace(
+    let out = src
+    if (!out.includes('hkdfSync')) {
+      out = out.replace(
         `import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'crypto';`,
         `import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes } from 'crypto';`
       )
-      .replace(
+    }
+    if (out.includes(`export { md5, hkdf } from 'whatsapp-rust-bridge';`)) {
+      out = out.replace(
         `export { md5, hkdf } from 'whatsapp-rust-bridge';`,
         `// [unoapi-compat] rust-bridgeless crypto\nexport function md5(buffer) {\n    return createHash('md5').update(buffer).digest();\n}\nexport function hkdf(buffer, expandedLength, info = {}) {\n    const ikm = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);\n    const salt = info?.salt ? Buffer.from(info.salt) : Buffer.alloc(0);\n    const inf = info?.info ? Buffer.from(info.info) : Buffer.alloc(0);\n    return Buffer.from(hkdfSync('sha256', ikm, salt, inf, expandedLength));\n}`
       )
+    } else if (out.includes('export async function hkdf(') && !out.includes('[unoapi-compat] sync hkdf')) {
+      out = out.replace(
+        /export async function hkdf\([\s\S]*?\n}\nexport async function derivePairingCodeKey\(/,
+        `// [unoapi-compat] sync hkdf to avoid Promise leaks in callers expecting Buffer\nexport function hkdf(buffer, expandedLength, info = {}) {\n    const ikm = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);\n    const salt = info?.salt ? Buffer.from(info.salt) : Buffer.alloc(0);\n    const inf = info?.info ? Buffer.from(info.info) : Buffer.alloc(0);\n    return Buffer.from(hkdfSync('sha256', ikm, salt, inf, expandedLength));\n}\nexport async function derivePairingCodeKey(`
+      )
+    }
+    return out
   })
 
   const patchedChatUtils = patchFile(chatUtilsPath, (src) => {
@@ -74,7 +83,16 @@ const patchBaileysCompat = (modDir) => {
     return `import { hkdf } from './crypto.js';\n// [unoapi-compat] rust-bridgeless LT hash\nclass LTHashCompat {\n    constructor(salt) {\n        this.salt = salt;\n    }\n    add(hashBuffer, values) {\n        for (const value of values) {\n            hashBuffer = this._addSingle(hashBuffer, value);\n        }\n        return hashBuffer;\n    }\n    subtract(hashBuffer, values) {\n        for (const value of values) {\n            hashBuffer = this._subtractSingle(hashBuffer, value);\n        }\n        return hashBuffer;\n    }\n    subtractThenAdd(hashBuffer, subtractValues, addValues) {\n        const subtracted = this.subtract(hashBuffer, subtractValues);\n        return this.add(subtracted, addValues);\n    }\n    _addSingle(hashBuffer, value) {\n        const derived = hkdf(Buffer.from(value), 128, { info: this.salt });\n        return this.performPointwiseWithOverflow(hashBuffer, derived, (a, b) => a + b);\n    }\n    _subtractSingle(hashBuffer, value) {\n        const derived = hkdf(Buffer.from(value), 128, { info: this.salt });\n        return this.performPointwiseWithOverflow(hashBuffer, derived, (a, b) => a - b);\n    }\n    performPointwiseWithOverflow(current, delta, op) {\n        const currentView = Buffer.isBuffer(current) ? current : Buffer.from(current);\n        const deltaView = Buffer.isBuffer(delta) ? delta : Buffer.from(delta);\n        const out = Buffer.alloc(currentView.length);\n        for (let i = 0; i < currentView.length; i += 2) {\n            const a = currentView.readUInt16LE(i);\n            const b = deltaView.readUInt16LE(i);\n            out.writeUInt16LE(op(a, b) & 0xffff, i);\n        }\n        return out;\n    }\n}\nexport const LT_HASH_ANTI_TAMPERING = new LTHashCompat('WhatsApp Patch Integrity');\n`
   })
 
-  if (patchedCrypto || patchedChatUtils || patchedLtHash) {
+  const patchedReporting = patchFile(reportingUtilsPath, (src) => {
+    if (src.includes('[unoapi-compat] normalize reporting secret')) return src
+    if (!src.includes(`const reportingToken = createHmac('sha256', reportingSecret)`)) return src
+    return src.replace(
+      `const reportingSecret = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);`,
+      `const reportingSecretRaw = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);\n    // [unoapi-compat] normalize reporting secret\n    const reportingSecret = (reportingSecretRaw && typeof reportingSecretRaw?.then === 'function')\n        ? await reportingSecretRaw\n        : reportingSecretRaw;`
+    )
+  })
+
+  if (patchedCrypto || patchedChatUtils || patchedLtHash || patchedReporting) {
     log('compat patch aplicado para evitar TLA do whatsapp-rust-bridge')
   }
 }

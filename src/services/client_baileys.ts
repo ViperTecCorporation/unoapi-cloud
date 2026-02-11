@@ -35,6 +35,7 @@ import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
 
 const attempts = 3
+const pendingClients: Map<string, Promise<Client>> = new Map()
 
 interface Delay {
   (phone: string, to: string): Promise<void>
@@ -53,28 +54,42 @@ export const getClientBaileys: getClient = async ({
   getConfig: getConfig
   onNewLogin: OnNewLogin
 }): Promise<Client> => {
+  if (pendingClients.has(phone)) {
+    logger.warn('Awaiting pending client creation %s', phone)
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return pendingClients.get(phone)!
+  }
   if (!clients.has(phone)) {
-    logger.info('Creating client baileys %s', phone)
-    const config = await getConfig(phone)
-    let client
-    if (config.coexistenceEnabled) {
-      logger.info('Connecting client coexistence (web+meta) %s', phone)
-      client = new ClientCoexistence(phone, listener, getConfig, onNewLogin)
-    } else if (config.connectionType == 'forward') {
-      logger.info('Connecting client forward %s', phone)
-      client = new ClientForward(phone, getConfig, listener)
-    } else {
-      logger.info('Connecting client baileys %s', phone)
-      client = new ClientBaileys(phone, listener, getConfig, onNewLogin)
+    const createPromise = (async () => {
+      logger.info('Creating client baileys %s', phone)
+      const config = await getConfig(phone)
+      let client
+      if (config.coexistenceEnabled) {
+        logger.info('Connecting client coexistence (web+meta) %s', phone)
+        client = new ClientCoexistence(phone, listener, getConfig, onNewLogin)
+      } else if (config.connectionType == 'forward') {
+        logger.info('Connecting client forward %s', phone)
+        client = new ClientForward(phone, getConfig, listener)
+      } else {
+        logger.info('Connecting client baileys %s', phone)
+        client = new ClientBaileys(phone, listener, getConfig, onNewLogin)
+      }
+      if (config.autoConnect) {
+        logger.info('Connecting client %s', phone)
+        await client.connect(1)
+        logger.info('Created and connected client %s', phone)
+      } else {
+        logger.info('Config client to not auto connect %s', phone)
+      }
+      clients.set(phone, client)
+      return client as Client
+    })()
+    pendingClients.set(phone, createPromise)
+    try {
+      return await createPromise
+    } finally {
+      pendingClients.delete(phone)
     }
-    if (config.autoConnect) {
-      logger.info('Connecting client %s', phone)
-      await client.connect(1)
-      logger.info('Created and connected client %s', phone)
-    } else {
-      logger.info('Config client to not auto connect %s', phone)
-    }
-    clients.set(phone, client)
   } else {
     logger.debug('Retrieving client baileys %s', phone)
   }

@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
@@ -152,6 +152,25 @@ export class ListenerBaileys implements Listener {
     } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
+    const shouldSkipMediaPersist = (m: WAMessage) => {
+      try {
+        const msgType = getMessageType(m as any)
+        const protocolType = (m as any)?.message?.protocolMessage?.type
+        if (msgType === 'protocolMessage' || protocolType === 'HISTORY_SYNC_NOTIFICATION' || protocolType === 'APP_STATE_SYNC_KEY_SHARE') {
+          return true
+        }
+        const bin = getBinMessage(m as any)
+        const media: any = bin?.message
+        if (!media) return false
+        const hasMediaKey = !!media.mediaKey
+        const hasDirectPath = !!media.directPath
+        const url = `${media.url || ''}`
+        const hasHttpUrlOnly = !!url && /^https?:\/\//i.test(url) && !hasMediaKey && !hasDirectPath
+        const isQrCaption = `${media.caption || ''}`.toLowerCase().includes('read the qr code')
+        if (hasHttpUrlOnly || isQrCaption) return true
+      } catch {}
+      return false
+    }
     // Se o evento vier como 'update' mas contiver conteúdo de mensagem (caso comum em upsert/notify),
     // preferimos tratar como mensagem real para não suprimir o webhook.
     try {
@@ -181,9 +200,13 @@ export class ListenerBaileys implements Listener {
         await store.dataStore.setMessage(i.key.remoteJid!, i)
         i.key.id = idUno
         if (isSaveMedia(i)) {
-          logger.debug(`Saving media...`)
-          i = await store?.mediaStore.saveMedia(i)
-          logger.debug(`Saved media!`)
+          if (shouldSkipMediaPersist(i)) {
+            logger.debug('Skipping media persistence for system/non-downloadable payload id=%s', i?.key?.id)
+          } else {
+            logger.debug(`Saving media...`)
+            i = await store?.mediaStore.saveMedia(i)
+            logger.debug(`Saved media!`)
+          }
         }
       }
     } else if (messageType === 'update') {
