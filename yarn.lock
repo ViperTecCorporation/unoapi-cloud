@@ -2938,7 +2938,6 @@
     p-queue "^9.0.0"
     pino "^9.6"
     protobufjs "^7.2.4"
-    whatsapp-rust-bridge "0.5.2"
     ws "^8.13.0"
 
 "@whiskeysockets/libsignal-node@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1":
@@ -7133,11 +7132,6 @@ vcf@^2.1.2:
   dependencies:
     camelcase "^5.0.0"
     foldline "^1.1.0"
-
-"voice-calls-baileys@file:vendor/voice-calls-baileys":
-  version "1.0.7-uno-v7"
-  dependencies:
-    socket.io-client "^4.7.5"
 
 walker@^1.0.8:
   version "1.0.8"

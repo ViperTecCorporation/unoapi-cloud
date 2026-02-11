@@ -43,7 +43,7 @@ import {
   PROXY_URL,
   UNOAPI_AUTH_TOKEN,
   UNOAPI_HEADER_NAME,
-  WAVOIP_TOKEN,
+  BAILEYS_COUNTRY_CODE,
   CONNECTION_TYPE,
   QR_TIMEOUT_MS,
   READ_ON_RECEIPT,
@@ -107,7 +107,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.proxyUrl = PROXY_URL
     config.authToken = UNOAPI_AUTH_TOKEN
     config.authHeader = UNOAPI_HEADER_NAME
-    config.wavoipToken = WAVOIP_TOKEN
+    config.baileysCountryCode = BAILEYS_COUNTRY_CODE
     config.openaiApiKey = OPENAI_API_KEY
     config.openaiApiTranscribeModel = OPENAI_API_TRANSCRIBE_MODEL
     config.openaiAssistantId = OPENAI_API_ASSISTANT_ID

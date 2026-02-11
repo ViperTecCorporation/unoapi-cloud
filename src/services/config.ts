@@ -83,7 +83,7 @@ export type Config = {
   provider: 'baileys' | 'forwarder' | undefined
   server:  string | undefined
   connectionType: connectionType
-  wavoipToken:  string | undefined
+  baileysCountryCode: string
   useRedis: boolean
   useS3: boolean
   // Coexistência Web + Meta
@@ -169,7 +169,7 @@ export const defaultConfig: Config = {
   provider: undefined,
   server: undefined,
   connectionType: 'qrcode',
-  wavoipToken: '',
+  baileysCountryCode: 'BR',
   useRedis: false,
   useS3: false,
   coexistenceEnabled: false,

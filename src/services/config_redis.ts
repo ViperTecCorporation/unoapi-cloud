@@ -49,31 +49,42 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
 
     if (configRedis) {
       Object.keys(configRedis).forEach((key) => {
-        if (key in configRedis) {
-          if (key === 'webhooks') {
-            const webhooks: any[] = []
-            configRedis[key].forEach((webhook) => {
-              Object.keys(config.webhooks[0]).forEach((keyWebhook) => {
-                if (!(keyWebhook in webhook)) {
-                  // override by env, if not present in redis
-                  webhook[keyWebhook] = config.webhooks[0][keyWebhook]
-                }
-              });
-              webhooks.push(webhook)
-            })
-            configRedis[key] = webhooks
-          } else if (key === 'webhookForward'){
-            const webhookForward = configRedis[key]
-            Object.keys(configRedis[key]).forEach((k) => {
-              if (!webhookForward[k]) {
-                webhookForward[k] = config[key][k]
+        const value = configRedis[key]
+        if (value === null || value === undefined) {
+          logger.debug('Ignore null/undefined redis config in %s: %s', phone, key)
+          return
+        }
+        if (!(key in config)) {
+          logger.debug('Ignore unknown redis config in %s: %s', phone, key)
+          return
+        }
+        if (key === 'webhooks') {
+          if (!Array.isArray(value)) {
+            logger.debug('Ignore invalid webhooks redis config in %s: expected array', phone)
+            return
+          }
+          const webhooks: any[] = []
+          value.forEach((webhook: any) => {
+            Object.keys(config.webhooks[0]).forEach((keyWebhook) => {
+              if (!(keyWebhook in webhook)) {
+                // override by env, if not present in redis
+                webhook[keyWebhook] = config.webhooks[0][keyWebhook]
               }
             })
-            configRedis[key] = webhookForward
-          }
-          logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configRedis[key]));
-          config[key] = configRedis[key];
+            webhooks.push(webhook)
+          })
+          configRedis[key] = webhooks
+        } else if (key === 'webhookForward'){
+          const webhookForward = value
+          Object.keys(value).forEach((k) => {
+            if (!webhookForward[k]) {
+              webhookForward[k] = (config as any)[key][k]
+            }
+          })
+          configRedis[key] = webhookForward
         }
+        logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configRedis[key]))
+        ;(config as any)[key] = configRedis[key]
       });
     }
 

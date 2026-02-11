@@ -25,7 +25,6 @@ import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { useVoiceCallsBaileys } from 'voice-calls-baileys/lib/services/transport.model'
 import { 
   DEFAULT_BROWSER,
   LOG_LEVEL,
@@ -693,6 +692,10 @@ export const connect = async ({
         break
         
         case 'close':
+        try {
+          const statusCode = (event as any)?.lastDisconnect?.error?.output?.statusCode
+          logger.warn('connection.update close for %s (status=%s)', phone, statusCode)
+        } catch {}
         await onClose(event)
         break
 
@@ -815,8 +818,14 @@ export const connect = async ({
       const message = t('restart')
       await onNotification(message, true)
       await sessionStore.setStatus(phone, 'restart_required')
+      logger.warn('%s received restartRequired (515), closing socket and triggering reconnect', phone)
       await close()
-      return onReconnect(1)
+      try {
+        return await onReconnect(1)
+      } catch (e) {
+        logger.error(e as any, 'onReconnect failed after restartRequired for %s; fallback reconnect()', phone)
+        return reconnect()
+      }
     } else if (statusCode === DisconnectReason.badSession && config.proxyUrl && lastDisconnect?.error?.data?.options?.command?.connect) {
       const message = t('server_error', config.proxyUrl)
       await onNotification(message, true)
@@ -2203,6 +2212,7 @@ export const connect = async ({
       agent,
       fetchAgent,
       qrTimeout: config.qrTimeoutMs,
+      countryCode: `${(config as any).baileysCountryCode || 'BR'}`.toUpperCase(),
     }
     if (whatsappVersion) {
       socketConfig.version = whatsappVersion
@@ -2220,7 +2230,7 @@ export const connect = async ({
       socketConfig.browser = Browsers.ubuntu('Chrome')
     } else {
       if (!config.ignoreHistoryMessages) {
-        browser = Browsers.ubuntu('Desktop')
+        browser = Browsers.ubuntu('Chrome')
       }
       // Evita aviso deprecatado; QR é tratado via connection.update
       socketConfig.printQRInTerminal = false
@@ -2298,13 +2308,6 @@ export const connect = async ({
         } catch (error) {
           console.error(error)
           throw error
-        }
-      }
-      if (config.wavoipToken) {
-        try {
-          useVoiceCallsBaileys(config.wavoipToken, sock as any, 'close', true)
-        } catch (e) {
-          logger.warn(e, 'Ignore voice-calls-baileys error')
         }
       }
       // Start background LID->PN resolver loop

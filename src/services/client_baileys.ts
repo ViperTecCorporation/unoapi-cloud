@@ -253,7 +253,16 @@ export class ClientBaileys implements Client {
     }
   }
 
-  private onReconnect: OnReconnect = async (time: number) => this.connect(time)
+  private onReconnect: OnReconnect = async (time: number) => {
+    logger.warn('ClientBaileys onReconnect requested for %s (attempt=%s)', this.phone, time)
+    try {
+      await this.connect(time)
+      logger.warn('ClientBaileys onReconnect completed for %s', this.phone)
+    } catch (e) {
+      logger.error(e as any, 'ClientBaileys onReconnect failed for %s', this.phone)
+      throw e
+    }
+  }
 
   private delayBeforeSecondMessage: Delay = async (phone, to) => {
     const time = 2000
