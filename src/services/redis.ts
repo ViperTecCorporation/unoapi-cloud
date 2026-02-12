@@ -736,6 +736,38 @@ export const setSessionStatus = async (phone: string, status: string) => {
   await publishSessionStatusUpdate(phone)
 }
 
+export const delSessionStatus = async (phone: string) => {
+  const key = sessionStatusKey(phone)
+  await redisDel(key)
+  sessionStatusCache.delete(phone)
+  await publishSessionStatusUpdate(phone)
+}
+
+export const delSessionTransientKeys = async (phone: string) => {
+  const patterns = [
+    `${BASE_KEY}contact-info:${phone}:*`,
+    `${BASE_KEY}contact-name:${phone}:*`,
+    `${BASE_KEY}last-incoming:${phone}:*`,
+    `${BASE_KEY}profile-picture-refresh:${phone}:*`,
+  ]
+  let totalDeleted = 0
+  for (const pattern of patterns) {
+    try {
+      const keys = await redisKeys(pattern)
+      if (!keys || keys.length === 0) continue
+      for (const key of keys) {
+        try {
+          await redisDel(key)
+          totalDeleted += 1
+        } catch {}
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Ignore error deleting transient keys for %s with pattern %s', phone, pattern)
+    }
+  }
+  logger.info('Deleted %s transient redis keys for %s', totalDeleted, phone)
+}
+
 export const getMessageStatus = async (phone: string, id: string) => {
   const key = messageStatusKey(phone, id)
   return redisGet(key)

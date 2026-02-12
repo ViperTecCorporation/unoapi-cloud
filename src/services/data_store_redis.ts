@@ -22,6 +22,8 @@ import {
   setGroup,
   getGroup,
   delConfig,
+  delSessionStatus,
+  delSessionTransientKeys,
   setTemplates,
   setMedia,
   getMedia,
@@ -199,6 +201,8 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   store.cleanSession = async (removeConfig = CLEAN_CONFIG_ON_DISCONNECT) => {
     if (removeConfig) {
       await delConfig(phone)
+      await delSessionStatus(phone)
+      await delSessionTransientKeys(phone)
     }
     await delAuth(phone)
   }

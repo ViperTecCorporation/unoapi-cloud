@@ -13,6 +13,7 @@ import { extractDestinyPhone, isAudioMessage, isIncomingMessage, TYPE_MESSAGES_M
 import logger from '../services/logger'
 import { getConfig } from '../services/config'
 import { isUpdateMessage, isFailedStatus } from '../services/transformer'
+import { getConfig as getRedisConfig } from '../services/redis'
 
 const  dUntil: Map<string, number> = new Map()
 const  dVerified: Map<string, number> = new Map()
@@ -74,6 +75,12 @@ export class OutgoingJob {
   }
 
   async consume(phone: string, data: object) {
+    const persistedConfig = await getRedisConfig(phone)
+    if (!persistedConfig) {
+      logger.warn('Dropping outgoing job for %s because session config was not found in redis', phone)
+      return
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = { ...data as any }
     const payload: any = a.payload

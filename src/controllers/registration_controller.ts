@@ -47,11 +47,11 @@ export class RegistrationController {
 
       RegistrationController.inFlightByPhone.add(phone)
       RegistrationController.lastRegisterAtByPhone.set(phone, now)
-      try {
-        await this.reload.run(phone)
-      } finally {
-        RegistrationController.inFlightByPhone.delete(phone)
-      }
+      this.reload.run(phone)
+        .catch((err) => logger.error(`register reload failed for ${phone}: ${err.message}`))
+        .finally(() => {
+          RegistrationController.inFlightByPhone.delete(phone)
+        })
 
       const config = await this.getConfig(phone)
       return res.status(200).json(config)

@@ -9,12 +9,25 @@ const connect = async (phone: string) => {
     <script>
       const apiUrl = window.location.origin;
       const socket = io(apiUrl, { path: '/ws' });
+      const targetPhone = String(${JSON.stringify(phone)});
+      let latestQrTs = 0;
       socket.on('broadcast', function(data) {
         console.log(data)
-        if (!data.phone || data.phone != ${phone}) {
+        if (!data.phone || String(data.phone) !== targetPhone) {
           return;
         }
         if (data.type === 'qrcode') {
+          if (data.cached === true) {
+            return;
+          }
+          if (typeof data.timestamp === 'number') {
+            if (data.timestamp < latestQrTs) {
+              return;
+            }
+            latestQrTs = data.timestamp;
+          } else {
+            latestQrTs = Date.now();
+          }
           document.getElementById('qrcode').innerHTML = ''
           document.getElementById('qrcode').innerHTML = '<img src="' + data.content + '" alt="QR Code">'
         } else {

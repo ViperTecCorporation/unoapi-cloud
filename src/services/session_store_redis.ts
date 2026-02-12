@@ -90,8 +90,9 @@ export class SessionStoreRedis extends SessionStore {
 
   async syncConnection(phone: string) {
     logger.info(`Syncing ${phone} lost connection`)
-    if(await this.isStatusRestartRequired(phone)) {
-      logger.info(`Is not lost connection, is restart required ${phone}`)
+    const currentStatus = await this.getStatus(phone)
+    if (['restart_required', 'connecting', 'online'].includes(currentStatus)) {
+      logger.info(`Is not lost connection, status is ${currentStatus} for ${phone}`)
       return
     }
     const aKey = authKey(`${phone}*`)

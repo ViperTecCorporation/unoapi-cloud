@@ -7,6 +7,7 @@ import logger from './logger'
 import { stores } from './store'
 import { dataStores } from './data_store'
 import { mediaStores } from './media_store'
+import { delSessionStatus } from './redis'
 
 export class LogoutBaileys implements Logout {
   private getClient: getClient
@@ -30,14 +31,25 @@ export class LogoutBaileys implements Logout {
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
     const { sessionStore, dataStore } = store
-    if (await sessionStore.isStatusOnline(phone)) {
-      const client = await this.getClient({
+    const existingClient = clients.get(phone)
+    const shouldForceLogout =
+      !!existingClient ||
+      await sessionStore.isStatusOnline(phone) ||
+      await sessionStore.isStatusConnecting(phone) ||
+      await sessionStore.isStatusRestartRequired(phone)
+
+    if (shouldForceLogout) {
+      const client = existingClient || await this.getClient({
         phone,
         listener: this.listener,
         getConfig: this.getConfig,
         onNewLogin: this.onNewLogin,
       })
-      await client.logout()
+      try {
+        await client.logout()
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error while forcing Baileys logout for %s', phone)
+      }
     }
     await dataStore.cleanSession(true)
     clients.delete(phone)
@@ -45,6 +57,10 @@ export class LogoutBaileys implements Logout {
     dataStores.delete(phone)
     mediaStores.delete(phone)
     configs.delete(phone)
-    sessionStore.setStatus(phone, 'disconnected')
+    if (config.useRedis) {
+      await delSessionStatus(phone)
+    } else {
+      await sessionStore.setStatus(phone, 'disconnected')
+    }
   }
 }
