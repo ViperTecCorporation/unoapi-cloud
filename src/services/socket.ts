@@ -41,7 +41,7 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
@@ -1244,6 +1244,26 @@ export const connect = async ({
   } catch {}
 
   const reconnect = async (lastStatusCode?: number) => {
+    if (config.useRedis) {
+      try {
+        const key = configKey(phone)
+        const sessionConfig = await redisGet(key)
+        if (!sessionConfig) {
+          logger.warn('%s reconnect skipped: redis session config not found (%s)', phone, key)
+          status.attempt = 1
+          await close()
+          await sessionStore.setStatus(phone, 'disconnected')
+          return
+        }
+      } catch (error) {
+        logger.warn(error as any, '%s reconnect skipped: failed to verify redis session config', phone)
+        status.attempt = 1
+        await close()
+        await sessionStore.setStatus(phone, 'disconnected')
+        return
+      }
+    }
+
     logger.info(`${phone} reconnecting`, status.attempt)
     if (status.attempt > attempts) {
       const message =  t('attempts_exceeded', attempts)

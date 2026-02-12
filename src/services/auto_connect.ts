@@ -13,7 +13,6 @@ export const autoConnect = async (
   getClient: getClient,
   onNewLogin: OnNewLogin,
 ) => {
-  const staggerMs = Math.max(0, parseInt(process.env.AUTO_CONNECT_STAGGER_MS || '1200'))
   try {
     const phones = await sessionStore.getPhones()
     logger.info(`${phones.length} phones to verify if is auto connect`)
@@ -51,7 +50,9 @@ export const autoConnect = async (
         }
         logger.info(`Auto connecting phone ${phone}...`)
         try {
-          await getClient({ phone, listener, getConfig, onNewLogin })
+          void getClient({ phone, listener, getConfig, onNewLogin }).catch((error) => {
+            logger.error(error, `Error on async auto connect phone ${phone}`)
+          })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
           if (e instanceof ConnectionInProgress) {
@@ -61,9 +62,6 @@ export const autoConnect = async (
           }
         }
         logger.info(`Auto connected phone ${phone}!`)
-        if (staggerMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, staggerMs))
-        }
       } catch (error) {
         logger.error(error, `Error on connect phone ${phone}`)
       }

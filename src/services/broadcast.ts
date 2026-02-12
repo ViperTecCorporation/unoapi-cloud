@@ -3,7 +3,7 @@ import { Server } from 'socket.io'
 export class Broadcast {
   private server: Server
   private lastQrByPhone: Map<string, { content: string; ts: number }> = new Map()
-  private static readonly LAST_QR_TTL_MS = 5 * 60 * 1000
+  private static readonly LAST_QR_TTL_MS = 30 * 1000
   private hasBoundSocket = false
 
   public setSever(server: Server) {
@@ -18,7 +18,7 @@ export class Broadcast {
     if (type === 'qrcode' && phone && content) {
       this.lastQrByPhone.set(phone, { content, ts: Date.now() })
     }
-    await this.server.emit('broadcast', { phone, type, content })
+    await this.server.emit('broadcast', { phone, type, content, ts: Date.now(), cached: false })
   }
 
   private bindSocketHandlers() {
@@ -34,7 +34,7 @@ export class Broadcast {
           this.lastQrByPhone.delete(phone)
           return
         }
-        socket.emit('broadcast', { phone, type: 'qrcode', content: cached.content })
+        socket.emit('broadcast', { phone, type: 'qrcode', content: cached.content, ts: cached.ts, cached: true })
       })
     })
   }

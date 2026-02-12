@@ -1016,9 +1016,11 @@
         const tokenKey = "whatsappApiToken";
 
         const qrcodes = {};
+        const MAX_QR_CACHE_AGE_MS = 30000;
         let currentPhoneNumber = '';
         let currentQrTimeOut = 0;
         let lastTimeout = undefined;
+        let hasFreshQrForCurrent = false;
         const getActiveToken = () => (localStorage.getItem(tokenKey) || ($('#tokenInput').val() || '').trim());
         
         const onBroadcast = function(data) {
@@ -1026,6 +1028,12 @@
             const qrcodeDiv = document.getElementById('qrCodeContainer');
             const statusDiv = document.getElementById('qrCodeMessage');
             if (data.type === 'qrcode' && data.content) {
+                const ts = Number(data.ts || Date.now());
+                if (Date.now() - ts > MAX_QR_CACHE_AGE_MS) {
+                  statusDiv.textContent = t('qrWaitingNew');
+                  return;
+                }
+                hasFreshQrForCurrent = true;
                 // Exibe o QR Code
                 qrcodeDiv.innerHTML = `<img src="${data.content}" alt="QR Code">`;
                 statusDiv.textContent = t('qrScanBelow');
@@ -1062,11 +1070,12 @@
             }
             const socket = io(apiUrl, { path: '/ws' });
             window.socket = socket;
-            var lastTimeout = undefined;
-
             socket.on('broadcast', function(data) {
               if (data.type === 'qrcode' && data.content && data.phone) {
-                qrcodes[data.phone] = data.content;
+                qrcodes[data.phone] = {
+                  content: data.content,
+                  ts: Number(data.ts || Date.now())
+                };
               }
               onBroadcast(data);
             });
@@ -1629,6 +1638,10 @@
                 connectToWebSocket(number, qrTimeoutMs);
 
                 const intervalId = setInterval(() => {
+                    if (hasFreshQrForCurrent) {
+                        clearInterval(intervalId);
+                        return;
+                    }
                     fetch(`${apiUrl}/v15.0/${number}`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -1639,9 +1652,13 @@
                         return response.json();
                     })
                     .then(data => {
-                        if (data.status === 'connecting') {
+                        if (data.status === 'connecting' || data.status === 'online') {
                             clearInterval(intervalId);
-                        } else if (attempts < maxAttempts && data.status !== 'connecting') {
+                        } else if (
+                            attempts < maxAttempts &&
+                            !hasFreshQrForCurrent &&
+                            (data.status === 'offline' || data.status === 'disconnected')
+                        ) {
                             attempts++;
                             fetch(`${apiUrl}/v15.0/${number}/register`, {
                                 method: 'POST',
@@ -1669,6 +1686,9 @@
             function connectToWebSocket(phoneNumber, qrTimeoutMs) {
               currentPhoneNumber = phoneNumber
               currentQrTimeOut = qrTimeoutMs
+              hasFreshQrForCurrent = false
+              document.getElementById('qrCodeContainer').innerHTML = '';
+              document.getElementById('qrCodeMessage').textContent = t('qrWait');
               if (!window.socket) {
                 initWebSocket()
               }
@@ -1681,9 +1701,11 @@
                   })
                 }
               }
-              if (qrcodes[phoneNumber]) {
+              const cached = qrcodes[phoneNumber];
+              if (cached && cached.content && (Date.now() - Number(cached.ts || 0)) <= MAX_QR_CACHE_AGE_MS) {
                 const qrcodeDiv = document.getElementById('qrCodeContainer');
-                qrcodeDiv.innerHTML = `<img src="${qrcodes[phoneNumber]}" alt="QR Code">`;
+                qrcodeDiv.innerHTML = `<img src="${cached.content}" alt="QR Code">`;
+                document.getElementById('qrCodeMessage').textContent = t('qrScanBelow');
               }
             }
 
@@ -1691,8 +1713,13 @@
             $('#connectModal').on('hidden.bs.modal', function () {
               currentPhoneNumber = '';
               currentQrTimeOut = 0;
+              hasFreshQrForCurrent = false;
               document.getElementById('qrCodeContainer').innerHTML = '';
               document.getElementById('qrCodeMessage').textContent = t('qrWait');
+              if (lastTimeout) {
+                clearTimeout(lastTimeout);
+                lastTimeout = undefined;
+              }
             });            
         });
         
