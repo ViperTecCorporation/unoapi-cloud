@@ -33,6 +33,7 @@ import {
   MAX_CONNECT_RETRY,
   CLEAN_CONFIG_ON_DISCONNECT,
   VALIDATE_SESSION_NUMBER,
+  QR_POST_LOGIN_SUPPRESS_MS,
 } from '../defaults'
 import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS, ACK_RETRY_ENABLED } from '../defaults'
 import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS, PERIODIC_ASSERT_FORCE, PERIODIC_ASSERT_INCLUDE_GROUPS } from '../defaults'
@@ -642,11 +643,16 @@ export const connect = async ({
   const status: Status = {
     attempt: time,
   }
+  let suppressQrUntil = 0
 
   const onConnectionUpdate = async (event: Partial<ConnectionState>) => {
     logger.debug('onConnectionUpdate connectionType %s ==> %s %s', config.connectionType, phone, JSON.stringify(event))
     // Evita emitir QR code quando a sessão já está efetivamente online/aberta
     if (event.qr && config.connectionType == 'qrcode') {
+      if (suppressQrUntil > Date.now()) {
+        logger.info('Skip QR emission during post-login grace window for %s (remaining=%sms)', phone, suppressQrUntil - Date.now())
+        return
+      }
       const registered = !!sock?.authState?.creds?.registered || !!state?.creds?.me?.id
       const alreadyOnline = await sessionStore.isStatusOnline(phone)
       const isOpen = event.connection === 'open' || event.isOnline === true
@@ -675,6 +681,8 @@ export const connect = async ({
     }
 
     if (event.isNewLogin) {
+      suppressQrUntil = Date.now() + Math.max(0, QR_POST_LOGIN_SUPPRESS_MS)
+      logger.info('New login detected for %s, suppressing QR re-emit for %sms', phone, Math.max(0, QR_POST_LOGIN_SUPPRESS_MS))
       await onNewLogin(phone)
     }
 
@@ -817,6 +825,7 @@ export const connect = async ({
       const message = t('unique')
       return onNotification(message, true)
     } else if (statusCode === DisconnectReason.restartRequired) {
+      suppressQrUntil = Date.now() + Math.max(0, QR_POST_LOGIN_SUPPRESS_MS)
       const message = t('restart')
       await onNotification(message, true)
       await sessionStore.setStatus(phone, 'restart_required')

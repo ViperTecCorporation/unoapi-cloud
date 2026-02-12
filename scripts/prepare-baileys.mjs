@@ -84,12 +84,26 @@ const patchBaileysCompat = (modDir) => {
   })
 
   const patchedReporting = patchFile(reportingUtilsPath, (src) => {
-    if (src.includes('[unoapi-compat] normalize reporting secret')) return src
-    if (!src.includes(`const reportingToken = createHmac('sha256', reportingSecret)`)) return src
-    return src.replace(
-      `const reportingSecret = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);`,
-      `const reportingSecretRaw = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);\n    // [unoapi-compat] normalize reporting secret\n    const reportingSecret = (reportingSecretRaw && typeof reportingSecretRaw?.then === 'function')\n        ? await reportingSecretRaw\n        : reportingSecretRaw;`
-    )
+    let out = src
+    if (out.includes('const generateMsgSecretKey = async')) {
+      out = out.replace(
+        'const generateMsgSecretKey = async (modificationType, origMsgId, origMsgSender, modificationSender, origMsgSecret) => {',
+        'const generateMsgSecretKey = (modificationType, origMsgId, origMsgSender, modificationSender, origMsgSecret) => {'
+      )
+    }
+    if (!out.includes('[unoapi-compat] normalize reporting secret') && out.includes('const reportingSecret = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);')) {
+      out = out.replace(
+        `const reportingSecret = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);`,
+        `const reportingSecretRaw = await generateMsgSecretKey(ENC_SECRET_REPORT_TOKEN, key.id, from, to, msgSecret);\n    // [unoapi-compat] normalize reporting secret\n    const reportingSecret = (reportingSecretRaw && typeof reportingSecretRaw?.then === 'function')\n        ? await reportingSecretRaw\n        : reportingSecretRaw;`
+      )
+    }
+    if (!out.includes('[unoapi-compat] harden reporting token key')) {
+      out = out.replace(
+        `const reportingToken = createHmac('sha256', reportingSecret).update(content).digest().subarray(0, 16);`,
+        `// [unoapi-compat] harden reporting token key\n    const reportingSecretKeyRaw = (reportingSecret && typeof reportingSecret?.then === 'function') ? await reportingSecret : reportingSecret;\n    const reportingSecretKey = Buffer.isBuffer(reportingSecretKeyRaw)\n        ? reportingSecretKeyRaw\n        : Buffer.from(reportingSecretKeyRaw || '');\n    const reportingToken = createHmac('sha256', reportingSecretKey).update(content).digest().subarray(0, 16);`
+      )
+    }
+    return out
   })
 
   if (patchedCrypto || patchedChatUtils || patchedLtHash || patchedReporting) {

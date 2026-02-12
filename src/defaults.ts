@@ -240,6 +240,7 @@ export const EMBEDDED_SIGNUP_APP_SECRET = process.env.EMBEDDED_SIGNUP_APP_SECRET
 export const EMBEDDED_SIGNUP_REDIRECT_URI = process.env.EMBEDDED_SIGNUP_REDIRECT_URI || ''
 export const EMBEDDED_SIGNUP_GRAPH_VERSION = process.env.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0'
 export const QR_TIMEOUT_MS = parseInt(process.env.QR_TIMEOUT_MS || '60000')
+export const QR_POST_LOGIN_SUPPRESS_MS = parseInt(process.env.QR_POST_LOGIN_SUPPRESS_MS || '45000')
 export const STATUS_FAILED_WEBHOOK_URL = process.env.STATUS_FAILED_WEBHOOK_URL || ''
 // Status broadcast behavior
 export const STATUS_ALLOW_LID: boolean = process.env.STATUS_ALLOW_LID === _undefined ? true : process.env.STATUS_ALLOW_LID == 'true'
