@@ -48,18 +48,16 @@ export class PhoneNumberController {
     const token = getAuthHeaderToken(req)
     try {
       const phones = await this.sessionStore.getPhones()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const configs: any[] = []
-      for (let i = 0, j = phones.length; i < j; i++) {
-        const phone = phones[i]
+      const items = await Promise.all(phones.map(async (phone) => {
         const config = await this.getConfig(phone)
-        const store = await config.getStore(phone, config)
-        const { sessionStore } = store
-        const status = config.provider == 'forwarder' ? 'forwarder' : await sessionStore.getStatus(phone)
+        const status = config.provider == 'forwarder' ? 'forwarder' : await this.sessionStore.getStatus(phone)
         if ([UNOAPI_AUTH_TOKEN, config.authToken].includes(token)) {
-          configs.push({ ...config, display_phone_number: phone, status })
+          return { ...config, display_phone_number: phone, status }
         }
-      }
+        return undefined
+      }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const configs: any[] = items.filter((v) => !!v)
       logger.debug('Configs retrieved!')
       return res.status(200).json({ data: configs })
     } catch (e) {

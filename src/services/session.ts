@@ -6,6 +6,10 @@ export interface readData {
   (key: string): Promise<object | undefined>
 }
 
+export interface readManyData {
+  (keys: string[]): Promise<Record<string, object | undefined>>
+}
+
 export interface removeData {
   (key: string): Promise<void>
 }
@@ -15,5 +19,5 @@ export interface getKey {
 }
 
 export interface session {
-  (phone: string): Promise<{ writeData: writeData; readData: readData; removeData: removeData; getKey: getKey }>
+  (phone: string): Promise<{ writeData: writeData; readData: readData; readManyData?: readManyData; removeData: removeData; getKey: getKey }>
 }

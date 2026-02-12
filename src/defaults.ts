@@ -37,6 +37,10 @@ export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
 export const SEND_AUDIO_WAVEFORM =
   process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '97')
+export const UNOAPI_NATIVE_FLOW_BUTTONS: boolean =
+  process.env.UNOAPI_NATIVE_FLOW_BUTTONS == _undefined ? true : process.env.UNOAPI_NATIVE_FLOW_BUTTONS == 'true'
+export const UNOAPI_DEBUG_BAILEYS_LIST_DUMP =
+  process.env.UNOAPI_DEBUG_BAILEYS_LIST_DUMP == _undefined ? false : process.env.UNOAPI_DEBUG_BAILEYS_LIST_DUMP == 'true'
 
 // Convert downloaded audio (e.g., OGG/OGA/OPUS) to MP3 before storing/sending (iOS Safari compatibility)
 export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 = process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? false : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'
@@ -50,7 +54,7 @@ export const WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID = process.env.WEBHOOK_FORWARD_B
 export const WEBHOOK_FORWARD_TOKEN = process.env.WEBHOOK_FORWARD_TOKEN || ''
 export const WEBHOOK_FORWARD_VERSION = process.env.WEBHOOK_FORWARD_VERSION || 'v17.0'
 export const WEBHOOK_FORWARD_URL = process.env.WEBHOOK_FORWARD_URL || 'https://graph.facebook.com'
-export const WEBHOOK_FORWARD_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '360000')
+export const WEBHOOK_FORWARD_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '6000')
 
 // comunication
 export const UNOAPI_URL = process.env.UNOAPI_URL || 'http://localhost:9876'
@@ -58,11 +62,11 @@ export const WEBHOOK_URL_ABSOLUTE = process.env.WEBHOOK_URL_ABSOLUTE || ''
 export const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:9876/webhooks/fake'
 export const WEBHOOK_HEADER = process.env.WEBHOOK_HEADER || 'Authorization'
 export const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || UNOAPI_AUTH_TOKEN || '123abc'
-export const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '360000')
-export const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || '360000')
+export const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '6000')
+export const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || '6000')
 export const CONNECTION_TYPE = process.env.CONNECTION_TYPE || 'qrcode'
 
-export const CONSUMER_TIMEOUT_MS = parseInt(process.env.CONSUMER_TIMEOUT_MS || '360000')
+export const CONSUMER_TIMEOUT_MS = parseInt(process.env.CONSUMER_TIMEOUT_MS || '15000')
 export const WEBHOOK_SEND_NEW_MESSAGES = process.env.WEBHOOK_SEND_NEW_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEW_MESSAGES == 'true'
 export const WEBHOOK_SEND_INCOMING_MESSAGES = process.env.WEBHOOK_SEND_INCOMING_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_INCOMING_MESSAGES == 'true'
 export const WEBHOOK_SEND_GROUP_MESSAGES = process.env.WEBHOOK_SEND_GROUP_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_GROUP_MESSAGES == 'true'
@@ -76,9 +80,36 @@ export const WEBHOOK_SEND_NEWSLETTER_MESSAGES =
   process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == 'true'
 export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
   process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
+export const WEBHOOK_INCLUDE_MEDIA_DATA =
+  process.env.WEBHOOK_INCLUDE_MEDIA_DATA == _undefined ? false : process.env.WEBHOOK_INCLUDE_MEDIA_DATA == 'true'
+export const WEBHOOK_ASYNC =
+  process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
+export const WEBHOOK_ASYNC_MODE = process.env.WEBHOOK_ASYNC_MODE || 'amqp'
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
+// Webhook circuit breaker (fail fast when endpoints are offline)
+export const WEBHOOK_CB_ENABLED =
+  process.env.WEBHOOK_CB_ENABLED == _undefined ? true : process.env.WEBHOOK_CB_ENABLED == 'true'
+export const WEBHOOK_CB_FAILURE_THRESHOLD = parseInt(process.env.WEBHOOK_CB_FAILURE_THRESHOLD || '1')
+export const WEBHOOK_CB_OPEN_MS = parseInt(process.env.WEBHOOK_CB_OPEN_MS || '120000')
+export const WEBHOOK_CB_FAILURE_TTL_MS = parseInt(process.env.WEBHOOK_CB_FAILURE_TTL_MS || '300000')
+export const WEBHOOK_CB_REQUEUE_DELAY_MS = parseInt(process.env.WEBHOOK_CB_REQUEUE_DELAY_MS || '300000')
+export const WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS = parseInt(process.env.WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS || '3600000')
+export const CONTACT_SYNC_ENABLED =
+  process.env.CONTACT_SYNC_ENABLED == _undefined ? false : process.env.CONTACT_SYNC_ENABLED == 'true'
+export const CONTACT_SYNC_INTERVAL_MS = parseInt(process.env.CONTACT_SYNC_INTERVAL_MS || `${8 * 60 * 60 * 1000}`)
+export const CONTACT_SYNC_SCAN_COUNT = parseInt(process.env.CONTACT_SYNC_SCAN_COUNT || '500')
+export const CONTACT_SYNC_PENDING_TTL_SEC = parseInt(process.env.CONTACT_SYNC_PENDING_TTL_SEC || '900')
+export const CONTACT_SYNC_PENDING_POLL_MS = parseInt(process.env.CONTACT_SYNC_PENDING_POLL_MS || '60000')
 export const AMQP_URL = process.env.AMQP_URL || 'amqp://guest:guest@localhost:5672'
 export const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
+// Opcional: força uso de SCAN no redisKeys (se falso, usa KEYS nos prefixos críticos)
+export const REDIS_KEYS_USE_SCAN = process.env.REDIS_KEYS_USE_SCAN === _undefined ? false : process.env.REDIS_KEYS_USE_SCAN === 'true'
+// TTL (ms) para cache local de config por sessao. 0 desabilita TTL (usa apenas invalidacao por pub/sub).
+export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '0')
+// TTLs (ms) para cache local de sessao/auth (0 = somente invalidacao por pub/sub)
+export const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS || '5000')
+export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')
+export const CONNECT_COUNT_CACHE_TTL_MS = parseInt(process.env.CONNECT_COUNT_CACHE_TTL_MS || '2000')
 export const PROXY_URL = process.env.PROXY_URL
 
 // behavior of unoapi
@@ -97,7 +128,7 @@ export const UNOAPI_EXCHANGE_NAME = process.env.UNOAPI_EXCHANGE_NAME || 'unoapi'
 export const UNOAPI_EXCHANGE_BROKER_NAME =`${UNOAPI_EXCHANGE_NAME}.broker`
 export const UNOAPI_EXCHANGE_BRIDGE_NAME = `${UNOAPI_EXCHANGE_NAME}.brigde`
 export const UNOAPI_QUEUE_NAME = process.env.UNOAPI_QUEUE_NAME || 'unoapi'
-export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '1')
+export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '4')
 export const UNOAPI_QUEUE_DELAYED = `${UNOAPI_QUEUE_NAME}.delayed`
 export const UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED = `${UNOAPI_QUEUE_NAME}.webhook.status.failed`
 export const UNOAPI_QUEUE_MEDIA = `${UNOAPI_QUEUE_NAME}.media`
@@ -120,6 +151,8 @@ export const UNOAPI_QUEUE_BULK_WEBHOOK = `${UNOAPI_QUEUE_NAME}.bulk.webhook`
 export const UNOAPI_QUEUE_COMMANDER = `${UNOAPI_QUEUE_NAME}.commander`
 export const UNOAPI_QUEUE_INCOMING = `${UNOAPI_QUEUE_NAME}.incoming`
 export const UNOAPI_QUEUE_TRANSCRIBER = `${UNOAPI_QUEUE_NAME}.transcribe`
+export const RELOAD_PUBLISH_BROKER = process.env.RELOAD_PUBLISH_BROKER === _undefined ? false : process.env.RELOAD_PUBLISH_BROKER == 'true'
+export const RELOAD_BAILEYS_DEBOUNCE_MS = parseInt(process.env.RELOAD_BAILEYS_DEBOUNCE_MS || '15000')
 export const UNOAPI_MESSAGE_RETRY_LIMIT = parseInt(process.env.UNOAPI_MESSAGE_RETRY_LIMIT || '5')
 export const UNOAPI_MESSAGE_RETRY_DELAY = parseInt(process.env.UNOAPI_MESSAGE_RETRY_DELAY || '10000')
 export const UNOAPI_DELAY_BETWEEN_MESSAGES_MS = parseInt(process.env.UNOAPI_DELAY_BETWEEN_MESSAGES_MS || '0')
@@ -141,6 +174,8 @@ export const AUTO_RESTART_MS = parseInt(process.env.AUTO_RESTART_MS || '0')
 export const BASE_STORE = process.env.UNOAPI_BASE_STORE || process.env.BASE_STORE || './data'
 export const AUTO_CONNECT: boolean = process.env.AUTO_CONNECT === _undefined ? true : process.env.AUTO_CONNECT == 'true'
 export const COMPOSING_MESSAGE: boolean = process.env.COMPOSING_MESSAGE === _undefined ? false : process.env.COMPOSING_MESSAGE == 'true'
+export const COEXISTENCE_ENABLED: boolean = process.env.COEXISTENCE_ENABLED === _undefined ? false : process.env.COEXISTENCE_ENABLED == 'true'
+export const COEXISTENCE_WINDOW_SECONDS: number = parseInt(process.env.COEXISTENCE_WINDOW_SECONDS || `${60 * 60 * 24}`)
 export const IGNORE_GROUP_MESSAGES: boolean = process.env.IGNORE_GROUP_MESSAGES == _undefined ? true : process.env.IGNORE_GROUP_MESSAGES == 'true'
 export const IGNORE_NEWSLETTER_MESSAGES: boolean = process.env.IGNORE_NEWSLETTER_MESSAGES == _undefined ? true : process.env.IGNORE_NEWSLETTER_MESSAGES == 'true'
 export const IGNORE_BROADCAST_STATUSES: boolean =
@@ -165,7 +200,7 @@ export const STORAGE_BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || 'unoapi'
 export const STORAGE_ACCESS_KEY_ID = process.env.STORAGE_ACCESS_KEY_ID || 'my-minio'
 export const STORAGE_SECRET_ACCESS_KEY = process.env.STORAGE_SECRET_ACCESS_KEY || '2NVQWHTTT3asdasMgqapGchy6yAMZn'
 export const STORAGE_REGION = process.env.STORAGE_REGION || 'us-east-1'
-export const STORAGE_TIMEOUT_MS = parseInt(process.env.STORAGE_TIMEOUT_MS || '360000')
+export const STORAGE_TIMEOUT_MS = parseInt(process.env.STORAGE_TIMEOUT_MS || '1200000')
 export const STORAGE_ENDPOINT = process.env.STORAGE_ENDPOINT || 'http://localhost:9000'
 export const STORAGE_FORCE_PATH_STYLE: boolean =
   process.env.STORAGE_FORCE_PATH_STYLE === _undefined ? false : process.env.STORAGE_FORCE_PATH_STYLE == 'true'
@@ -174,7 +209,7 @@ export const STORAGE_MAX_ATTEMPTS = parseInt(process.env.STORAGE_MAX_ATTEMPTS ||
 
 // Purga opcional de device-list no watchdog (para forçar reenumeração de devices)
 export const SIGNAL_PURGE_DEVICE_LIST_ENABLED =
-  process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED === _undefined ? true : process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED == 'true'
+  process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED === _undefined ? false : process.env.SIGNAL_PURGE_DEVICE_LIST_ENABLED == 'true'
 // Controla purga de sessões libsignal (session-*) no watchdog. Padrão false para preservar sessões boas
 export const SIGNAL_PURGE_SESSION_ENABLED =
   process.env.SIGNAL_PURGE_SESSION_ENABLED === _undefined ? false : process.env.SIGNAL_PURGE_SESSION_ENABLED == 'true'
@@ -185,6 +220,8 @@ export const SEND_PROFILE_PICTURE: boolean = process.env.SEND_PROFILE_PICTURE ==
 // Force refresh of profile pictures from WhatsApp even if a cached copy exists in storage
 export const PROFILE_PICTURE_FORCE_REFRESH: boolean =
   process.env.PROFILE_PICTURE_FORCE_REFRESH === _undefined ? true : process.env.PROFILE_PICTURE_FORCE_REFRESH == 'true'
+// Tempo mínimo entre atualizações forçadas de foto de perfil (segundos). Padrão 24h.
+export const PROFILE_PICTURE_REFRESH_INTERVAL_SEC = parseInt(process.env.PROFILE_PICTURE_REFRESH_INTERVAL_SEC || `${60 * 60 * 24}`)
 export const IGNORED_CONNECTIONS_NUMBERS = JSON.parse(process.env.IGNORED_CONNECTIONS_NUMBERS || '[]')
 export const IGNORED_TO_NUMBERS = JSON.parse(process.env.IGNORED_TO_NUMBERS || '[]')
 export const CLEAN_CONFIG_ON_DISCONNECT =
@@ -195,10 +232,17 @@ export const CONFIG_SESSION_PHONE_NAME = process.env.CONFIG_SESSION_PHONE_NAME |
 export const MESSAGE_CHECK_WAAPP = process.env.MESSAGE_CHECK_WAAPP || ''
 export const WHATSAPP_VERSION = process.env.WHATSAPP_VERSION ? JSON.parse(process.env.WHATSAPP_VERSION) as WAVersion : undefined
 export const AVAILABLE_LOCALES = JSON.parse(process.env.AVAILABLE_LOCALES || '["en", "pt_BR", "pt"]')
-export const WAVOIP_TOKEN = process.env.WAVOIP_TOKEN || ''
+export const BAILEYS_COUNTRY_CODE = (process.env.BAILEYS_COUNTRY_CODE || 'BR').toUpperCase()
 export const ONLY_HELLO_TEMPLATE: boolean = process.env.ONLY_HELLO_TEMPLATE === _undefined ? false : process.env.ONLY_HELLO_TEMPLATE == 'true'
 export const DEFAULT_BROWSER = [CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME, release()]
+
+// Embedded Signup (WhatsApp Cloud)
+export const EMBEDDED_SIGNUP_APP_ID = process.env.EMBEDDED_SIGNUP_APP_ID || ''
+export const EMBEDDED_SIGNUP_APP_SECRET = process.env.EMBEDDED_SIGNUP_APP_SECRET || ''
+export const EMBEDDED_SIGNUP_REDIRECT_URI = process.env.EMBEDDED_SIGNUP_REDIRECT_URI || ''
+export const EMBEDDED_SIGNUP_GRAPH_VERSION = process.env.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0'
 export const QR_TIMEOUT_MS = parseInt(process.env.QR_TIMEOUT_MS || '60000')
+export const QR_POST_LOGIN_SUPPRESS_MS = parseInt(process.env.QR_POST_LOGIN_SUPPRESS_MS || '45000')
 export const STATUS_FAILED_WEBHOOK_URL = process.env.STATUS_FAILED_WEBHOOK_URL || ''
 // Status broadcast behavior
 export const STATUS_ALLOW_LID: boolean = process.env.STATUS_ALLOW_LID === _undefined ? true : process.env.STATUS_ALLOW_LID == 'true'
@@ -255,6 +299,11 @@ export const RECEIPT_RETRY_ASSERT_MAX_TARGETS = parseInt(process.env.RECEIPT_RET
 
 // JID mapping cache (PN <-> LID)
 export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefined ? true : process.env.JIDMAP_CACHE_ENABLED == 'true'
+// Enable/disable jidmap list endpoint.
+export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? true : process.env.JIDMAP_LIST_ENABLED == 'true'
+// Enable/disable lookups against stored jidmap cache (unoapi-jidmap:*).
+export const JIDMAP_STORED_LOOKUP_ENABLED =
+  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? false : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
 export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
 
 // Self-heal: assert sessions when decrypt stub is detected in inbound messages
@@ -263,7 +312,7 @@ export const SELFHEAL_ASSERT_ON_DECRYPT =
 
 // Periodic session assert (prevent stale e2e causing "Aguardando mensagem")
 export const PERIODIC_ASSERT_ENABLED =
-  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? true : process.env.PERIODIC_ASSERT_ENABLED == 'true'
+  process.env.PERIODIC_ASSERT_ENABLED === _undefined ? false : process.env.PERIODIC_ASSERT_ENABLED == 'true'
 export const PERIODIC_ASSERT_INTERVAL_MS = parseInt(process.env.PERIODIC_ASSERT_INTERVAL_MS || '7200000') // 10 min
 export const PERIODIC_ASSERT_MAX_TARGETS = parseInt(process.env.PERIODIC_ASSERT_MAX_TARGETS || '75')
 export const PERIODIC_ASSERT_RECENT_WINDOW_MS = parseInt(process.env.PERIODIC_ASSERT_RECENT_WINDOW_MS || '3600000') // 60 min
@@ -279,10 +328,19 @@ export const PERIODIC_ASSERT_INCLUDE_GROUPS =
 export const ONE_TO_ONE_PREASSERT_ENABLED =
   process.env.ONE_TO_ONE_PREASSERT_ENABLED === _undefined ? true : process.env.ONE_TO_ONE_PREASSERT_ENABLED == 'true'
 // Cooldown por destinatário (ms). Padrão 120 minutos (7200000 ms)
-export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || '7200000')
+export const ONE_TO_ONE_PREASSERT_COOLDOWN_MS = parseInt(process.env.ONE_TO_ONE_PREASSERT_COOLDOWN_MS || `${0}`)
+// TTL do throttle de preassert 1:1 persistido no Redis (segundos). Padrão 4h.
+export const ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC = parseInt(process.env.ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || `${0}`)
 // Habilita logs/sonda de contagem de chaves após preassert (custo extra de Redis)
 export const ONE_TO_ONE_ASSERT_PROBE_ENABLED =
   process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED === _undefined ? false : process.env.ONE_TO_ONE_ASSERT_PROBE_ENABLED == 'false'
+export const ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST: boolean =
+  process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST === _undefined ? false : process.env.ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST == 'true'
+// Enable Redis Signal session purge before retrying send (watchdog). Default false for performance.
+export const SIGNAL_SESSION_PURGE_ENABLED: boolean =
+  process.env.SIGNAL_SESSION_PURGE_ENABLED === _undefined ? false : process.env.SIGNAL_SESSION_PURGE_ENABLED == 'true'
+export const SIGNAL_CACHE_SAFE_MODE: boolean =
+  process.env.SIGNAL_CACHE_SAFE_MODE === _undefined ? false : process.env.SIGNAL_CACHE_SAFE_MODE == 'true'
 
 // Anti-spam / rate limits (per session)
 // Max messages per minute por sessão (0 = desabilitado)
@@ -309,11 +367,16 @@ export const WEBHOOK_PREFER_PN_OVER_LID: boolean =
   process.env.WEBHOOK_PREFER_PN_OVER_LID === _undefined ? true : process.env.WEBHOOK_PREFER_PN_OVER_LID == 'true'
 
 // Delivery watchdog: tenta recuperar mensagens presas em "sent" sem delivered
-export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? true : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
-export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '45000')
+export const DELIVERY_WATCHDOG_ENABLED = process.env.DELIVERY_WATCHDOG_ENABLED === _undefined ? false : process.env.DELIVERY_WATCHDOG_ENABLED == 'true'
+export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS || '120000')
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
+
+// BR send-order: if enabled, tries 12-digit then 13-digit candidate on send
+export const BR_SEND_ORDER_ENABLED =
+  process.env.BR_SEND_ORDER_ENABLED === _undefined ? false : process.env.BR_SEND_ORDER_ENABLED == 'true'
+
 
 // Endereçamento para conversas 1:1 (envio)
 // 'pn' (padrão): quando possível, envia usando PN; 'lid': força envio usando lid.
@@ -336,13 +399,16 @@ export const LID_RESOLVER_SWEEP_INTERVAL_MS = parseInt(process.env.LID_RESOLVER_
 export const LID_RESOLVER_MAX_PENDING = parseInt(process.env.LID_RESOLVER_MAX_PENDING || '2000')
 
 // Enriquecimento do JIDMAP (PN<->LID) a partir do contact-info
-export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_ENABLED == 'true'
-export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '200')
+export const JIDMAP_ENRICH_ENABLED = process.env.JIDMAP_ENRICH_ENABLED === _undefined ? false : process.env.JIDMAP_ENRICH_ENABLED == 'true'
+export const JIDMAP_ENRICH_PER_SWEEP = parseInt(process.env.JIDMAP_ENRICH_PER_SWEEP || '20')
 // Espelhar periodicamente o cache interno (unoapi-auth:*:lid-mapping-*) no JIDMAP
 export const JIDMAP_ENRICH_AUTH_ENABLED = process.env.JIDMAP_ENRICH_AUTH_ENABLED === _undefined ? true : process.env.JIDMAP_ENRICH_AUTH_ENABLED == 'true'
 
 // Watchdog purge scan batch size (Redis SCAN COUNT per pattern)
-export const WATCHDOG_PURGE_SCAN_COUNT = parseInt(process.env.WATCHDOG_PURGE_SCAN_COUNT || '200')
+export const WATCHDOG_PURGE_SCAN_COUNT = parseInt(process.env.WATCHDOG_PURGE_SCAN_COUNT || '20')
+// Pace background Redis-heavy tasks (ms). Helps avoid CPU spikes under bursts.
+export const WATCHDOG_TASK_MIN_INTERVAL_MS = parseInt(process.env.WATCHDOG_TASK_MIN_INTERVAL_MS || '30000')
+export const JIDMAP_ENRICH_MIN_INTERVAL_MS = parseInt(process.env.JIDMAP_ENRICH_MIN_INTERVAL_MS || '30000')
 
 // Server-ACK retry (assert+resend with same id)
 // Comma-separated delays in ms (e.g., "8000,30000,60000")

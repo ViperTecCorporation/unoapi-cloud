@@ -1,5 +1,5 @@
 import { SessionStore, sessionStatus } from './session_store'
-import { configKey, authKey, redisKeys, getSessionStatus, setSessionStatus, sessionStatusKey, redisGet, getConnectCount, setConnectCount, delAuth, clearConnectCount } from './redis'
+import { configKey, authKey, redisKeys, getSessionStatus, setSessionStatus, sessionStatusKey, redisGet, getConnectCount, setConnectCount, delAuth, clearConnectCount, getAllAuthTokens, addAuthTokensToIndex, getAuthIndexMembers, addAuthKeysToIndex } from './redis'
 import logger from './logger'
 import { MAX_CONNECT_RETRY, MAX_CONNECT_TIME } from '../defaults'
 
@@ -11,7 +11,9 @@ export class SessionStoreRedis extends SessionStore {
     try {
       const pattern = configKey('*')
       const keys = await redisKeys(pattern)
-      return keys.map((key: string) => key.replace(toReplaceConfig, ''))
+      return keys
+        .map((key: string) => key.replace(toReplaceConfig, ''))
+        .filter((phone: string) => phone !== 'auth-token-index')
     } catch (error) {
       logger.error(error, 'Erro on get phones')
       throw error
@@ -20,9 +22,23 @@ export class SessionStoreRedis extends SessionStore {
 
   async getTokens(phone: string): Promise<string[]> {
     try {
-      const pattern = configKey(phone)
-      const keys = await redisKeys(pattern)
-      return Promise.all(keys.map(async (k: string) => JSON.parse(await redisGet(k) || '{}')?.authToken))
+      if (phone.includes('*')) {
+        const tokens = await getAllAuthTokens()
+        if (tokens && tokens.length > 0) return tokens
+        const pattern = configKey(phone)
+        const keys = await redisKeys(pattern)
+        const found = await Promise.all(keys.map(async (k: string) => JSON.parse(await redisGet(k) || '{}')?.authToken))
+        try { await addAuthTokensToIndex(found.filter((t) => !!t)) } catch {}
+        return found
+      }
+      const config = await redisGet(configKey(phone))
+      if (!config) return []
+      const token = JSON.parse(config)?.authToken
+      if (token) {
+        try { await addAuthTokensToIndex([token]) } catch {}
+        return [token]
+      }
+      return []
     } catch (error) {
       logger.error(error, 'Erro on get tokens')
       throw error
@@ -74,19 +90,23 @@ export class SessionStoreRedis extends SessionStore {
 
   async syncConnection(phone: string) {
     logger.info(`Syncing ${phone} lost connection`)
-    if(await this.isStatusRestartRequired(phone)) {
-      logger.info(`Is not lost connection, is restart required ${phone}`)
+    const currentStatus = await this.getStatus(phone)
+    if (['restart_required', 'connecting', 'online'].includes(currentStatus)) {
+      logger.info(`Is not lost connection, status is ${currentStatus} for ${phone}`)
       return
     }
     const aKey = authKey(`${phone}*`)
-    const keys = await redisKeys(aKey)
+    let keys = await getAuthIndexMembers(phone)
+    if (!keys || keys.length === 0) {
+      keys = await redisKeys(aKey)
+      await addAuthKeysToIndex(phone, keys)
+    }
     logger.info(`Found auth ${keys.length} keys for session ${phone}`)
     if (keys.length == 1 && keys[0] == authKey(`${phone}:creds`)) {
       await delAuth(phone)
       await this.setStatus(phone, 'disconnected')
     }
-    const key = sessionStatusKey(phone)
-    if (await redisGet(key) == 'standby' && await this.getConnectCount(phone) < MAX_CONNECT_RETRY) {
+    if (await getSessionStatus(phone) == 'standby' && await this.getConnectCount(phone) < MAX_CONNECT_RETRY) {
       logger.info(`Sync ${phone} standby!`)
       await this.setStatus(phone, 'offline')
     }

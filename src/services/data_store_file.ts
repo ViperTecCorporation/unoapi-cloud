@@ -17,8 +17,9 @@ import { getDataStore, dataStores } from './data_store'
 import { Config } from './config'
 import logger from './logger'
 import NodeCache from 'node-cache'
-import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH } from '../defaults'
+import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH, PROFILE_PICTURE_REFRESH_INTERVAL_SEC } from '../defaults'
 import { JIDMAP_CACHE_ENABLED, JIDMAP_TTL_SECONDS } from '../defaults'
+import { BASE_KEY, redisGet, redisSetAndExpire } from './redis'
 
 export const MEDIA_DIR = './data/medias'
 const HOUR = 60 * 60
@@ -53,6 +54,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   const keys: Map<string, proto.IMessageKey> = new Map()
   const jids: Map<string, string> = new Map()
   const ids: Map<string, string> = new Map()
+  const idsReverse: Map<string, string> = new Map()
   const statuses: Map<string, string> = new Map()
   const medias: Map<string, string> = new Map()
   // Armazena mensagens como base64 de WebMessageInfo para evitar JSON.stringify do WAProto
@@ -101,6 +103,7 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       keys,
       jids,
       ids,
+      idsReverse,
       statuses,
       groups: groups.keys().reduce((acc, key) => {
           acc.set(key, groups.get(key))
@@ -124,6 +127,9 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     })
     json?.ids.entries().forEach(([key, value]) => {
       jids.set(key, value)
+    })
+    json?.idsReverse?.entries?.().forEach(([key, value]) => {
+      idsReverse.set(key, value)
     })
     json?.statuses.entries().forEach(([key, value]) => {
       statuses.set(key, value)
@@ -242,6 +248,18 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     // Se não existe local ou forçar atualização, buscar no WhatsApp e persistir
     if (!localUrl) {
       let remoteUrl: string | undefined
+      // Throttle opcional: evitar fetch frequente (chave com TTL em Redis)
+      const refreshTtl = PROFILE_PICTURE_REFRESH_INTERVAL_SEC || 0
+      const refreshKey = `${BASE_KEY}profile-picture-refresh:${phone}:${preferredJid}`.replace(/[^a-zA-Z0-9:@._-]/g, '_')
+      if (refreshTtl > 0) {
+        try {
+          const recent = await redisGet(refreshKey)
+          if (recent) {
+            logger.info('PROFILE_PICTURE refresh skipped (throttled %ss): %s', refreshTtl, preferredJid)
+            return localUrl
+          }
+        } catch {}
+      }
       try {
         // Ordem de tentativa:
         // - Se entrada for LID: tenta LID primeiro, depois PN
@@ -273,6 +291,12 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
         if (localUrl) {
           logger.info('PROFILE_PICTURE persisted -> local URL: %s', localUrl)
         }
+        if (refreshTtl > 0) {
+          try { await redisSetAndExpire(refreshKey, '1', refreshTtl) } catch {}
+        }
+      } else if (refreshTtl > 0) {
+        // Even on failure, set TTL to avoid tight retry loops.
+        try { await redisSetAndExpire(refreshKey, '1', refreshTtl) } catch {}
       }
     }
     logger.debug('Found %s profile picture for %s (canonical=%s)', localUrl, jid, canonicalPn || '<unknown>')
@@ -303,12 +327,20 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     statuses.set(id, status)
   }
   dataStore.loadStatus = async (id: string) => {
-    return statuses.get(id)
+    const direct = statuses.get(id) || statuses.get(`${phone}-${id}`)
+    if (direct) return direct
+    const providerId = idsReverse.get(`${phone}-${id}`) || idsReverse.get(id)
+    if (providerId) {
+      return statuses.get(providerId) || statuses.get(`${phone}-${providerId}`)
+    }
+    return undefined
   }
 
   dataStore.loadUnoId = async (id: string) =>  ids.get(id) || ids.get(`${phone}-${id}`)
+  dataStore.loadProviderId = async (id: string) => idsReverse.get(`${phone}-${id}`) || idsReverse.get(id)
   dataStore.setUnoId = async (id: string, unoId: string) => {
     ids.set(`${phone}-${id}`, unoId)
+    idsReverse.set(`${phone}-${unoId}`, id)
   }
   dataStore.loadJid = async (phoneOrJid: string, sock: Partial<WASocket>) => {
     /**

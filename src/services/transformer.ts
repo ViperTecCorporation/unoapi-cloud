@@ -5,7 +5,16 @@ import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
 import { SendError } from './send_error'
-import { MESSAGE_CHECK_WAAPP, SEND_AUDIO_MESSAGE_AS_PTT, WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
+import {
+  BASE_URL,
+  MESSAGE_CHECK_WAAPP,
+  SEND_AUDIO_MESSAGE_AS_PTT,
+  UNOAPI_DEBUG_BAILEYS_LIST_DUMP,
+  UNOAPI_NATIVE_FLOW_BUTTONS,
+  WEBHOOK_FORWARD_VERSION,
+  WEBHOOK_PREFER_PN_OVER_LID,
+  WEBHOOK_INCLUDE_MEDIA_DATA,
+} from '../defaults'
 import { t } from '../i18n'
 
 export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
@@ -59,9 +68,15 @@ export const TYPE_MESSAGES_TO_READ = [
   'reactionMessage',
   'locationMessage',
   'liveLocationMessage',
+  'listMessage',
+  'buttonsMessage',
+  'interactiveMessage',
   'listResponseMessage',
+  'buttonsResponseMessage',
+  'interactiveResponseMessage',
   'conversation',
   'ptvMessage',
+  'templateButtonReplyMessage',
 ]
 
 const OTHER_MESSAGES_TO_PROCESS = [
@@ -156,6 +171,7 @@ export const normalizeMessageContent = (
     content?.viewOnceMessage?.message ||
     content?.viewOnceMessageV2Extension?.message ||
     content?.viewOnceMessageV2?.message ||
+    (content as any)?.deviceSentMessage?.message ||
 		content?.documentWithCaptionMessage?.message ||
     // unwrap lottieStickerMessage to inner message (often stickerMessage)
     (content as any)?.lottieStickerMessage?.message ||
@@ -163,6 +179,235 @@ export const normalizeMessageContent = (
     undefined;
   return (content || undefined) as any;
 };
+
+const toArray = <T>(value: T | T[] | undefined): T[] => {
+  if (Array.isArray(value)) return value
+  if (value) return [value]
+  return []
+}
+
+const normalizeTypeList = (raw: any): string[] => {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : `${raw}`.split(',')
+  return list.map((v) => `${v}`.trim().toLowerCase()).filter(Boolean)
+}
+
+const normalizeContactName = (nameObj: any) => {
+  const raw = nameObj || {}
+  const first = `${raw.first_name || raw.firstName || ''}`.trim()
+  const last = `${raw.last_name || raw.lastName || ''}`.trim()
+  const middle = `${raw.middle_name || raw.middleName || ''}`.trim()
+  const prefix = `${raw.prefix || ''}`.trim()
+  const suffix = `${raw.suffix || ''}`.trim()
+  let formatted = `${raw.formatted_name || raw.formattedName || raw.name || ''}`.trim()
+  if (!formatted) {
+    const parts = [prefix, first, middle, last, suffix].filter((p) => p)
+    formatted = parts.join(' ').trim()
+  }
+  if (!formatted) formatted = 'Contact'
+  return { formatted, first, last, middle, prefix, suffix }
+}
+
+const buildContactVcard = (contact: any): string => {
+  const nameParts = normalizeContactName(contact?.name || {})
+  const given = nameParts.first || (!nameParts.first && !nameParts.last ? nameParts.formatted : '')
+  const family = nameParts.last || ''
+  const additional = nameParts.middle || ''
+  const prefix = nameParts.prefix || ''
+  const suffix = nameParts.suffix || ''
+
+  const card = new vCard()
+  card.set('fn', nameParts.formatted)
+  card.set('n', `${family};${given};${additional};${prefix};${suffix}`)
+
+  const org = contact?.org || {}
+  const orgParts: string[] = []
+  if (org.company) orgParts.push(`${org.company}`)
+  if (org.department) orgParts.push(`${org.department}`)
+  if (orgParts.length) {
+    card.set('org', orgParts.join(';'))
+  }
+  if (org.title) {
+    card.set('title', `${org.title}`)
+  }
+
+  const phonesArr = Array.isArray(contact?.phones) ? contact.phones : []
+  if (!phonesArr.length) throw new Error('invalid_contacts_payload: missing phones')
+  let hasPhone = false
+  for (const ph of phonesArr) {
+    const phoneRaw = `${ph?.phone || ph?.wa_id || ''}`.trim()
+    if (!phoneRaw) continue
+    hasPhone = true
+    const waid = `${ph?.wa_id || phoneRaw}`.replace(/\D/g, '')
+    const types = normalizeTypeList(ph?.type)
+    if (!types.length) types.push('cell')
+    if (!types.includes('voice')) types.push('voice')
+    const params: any = { type: types }
+    if (waid) params.waid = waid
+    card.add('tel', phoneRaw, params)
+  }
+  if (!hasPhone) throw new Error('invalid_contacts_payload: missing phones')
+
+  const emailsArr = Array.isArray(contact?.emails) ? contact.emails : []
+  for (const em of emailsArr) {
+    const emailVal = `${em?.email || em?.address || ''}`.trim()
+    if (!emailVal) continue
+    const types = normalizeTypeList(em?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('email', emailVal, params as any)
+  }
+
+  const urlsArr = Array.isArray(contact?.urls) ? contact.urls : []
+  for (const u of urlsArr) {
+    const urlVal = `${u?.url || u?.link || ''}`.trim()
+    if (!urlVal) continue
+    const types = normalizeTypeList(u?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('url', urlVal, params as any)
+  }
+
+  const addrArr = Array.isArray(contact?.addresses) ? contact.addresses : []
+  for (const a of addrArr) {
+    const street = `${a?.street || ''}`.trim()
+    const city = `${a?.city || ''}`.trim()
+    const state = `${a?.state || ''}`.trim()
+    const zip = `${a?.zip || ''}`.trim()
+    const country = `${a?.country || ''}`.trim()
+    if (!street && !city && !state && !zip && !country) continue
+    const adrValue = ['', '', street, city, state, zip, country]
+    const types = normalizeTypeList(a?.type)
+    const params = types.length ? { type: types } : undefined
+    card.add('adr', adrValue as any, params as any)
+  }
+
+  return card.toString('3.0')
+}
+
+const parseInteractiveResponse = (binMessage: any) => {
+  const native = binMessage?.nativeFlowResponseMessage
+  const bodyText = binMessage?.body?.text
+  let params: Record<string, any> | undefined
+  try {
+    if (native?.paramsJson) params = JSON.parse(native.paramsJson)
+  } catch {}
+  const id =
+    params?.id ||
+    params?.button_id ||
+    params?.selected_row_id ||
+    params?.row_id ||
+    params?.selection_id ||
+    params?.list_reply_id
+  const title = params?.title || params?.display_text || params?.text
+  const description = params?.description
+  const name = `${native?.name || ''}`.toLowerCase()
+  const isList = name.includes('list') || name.includes('single_select') || !!params?.row_id || !!params?.selected_row_id
+  const isButton = name.includes('quick_reply') || name.includes('button') || !!params?.button_id || !!params?.id
+  return { id, title, description, isList, isButton, bodyText }
+}
+
+const parseVcardContact = (rawVcard: string): any | undefined => {
+  if (!rawVcard) return undefined
+  const card: any = new vCard().parse(rawVcard.replace(/\r?\n/g, '\r\n'))
+  const fn = card.get('fn')
+  const n = card.get('n')
+  const formatted = fn?.valueOf ? `${fn.valueOf()}`.trim() : ''
+  const parts = n?.valueOf ? `${n.valueOf()}`.split(';') : []
+  const last = `${parts[0] || ''}`.trim()
+  const first = `${parts[1] || ''}`.trim()
+  const middle = `${parts[2] || ''}`.trim()
+  const prefix = `${parts[3] || ''}`.trim()
+  const suffix = `${parts[4] || ''}`.trim()
+  let formattedName = formatted
+  if (!formattedName) {
+    const nameParts = [prefix, first, middle, last, suffix].filter((p) => p)
+    formattedName = nameParts.join(' ').trim()
+  }
+  if (!formattedName) formattedName = 'Contact'
+  const name: any = { formatted_name: formattedName }
+  if (first) name.first_name = first
+  if (last) name.last_name = last
+  if (middle) name.middle_name = middle
+  if (prefix) name.prefix = prefix
+  if (suffix) name.suffix = suffix
+
+  const phones: any[] = []
+  const telProps = toArray(card.get('tel'))
+  for (const tel of telProps) {
+    const phoneVal = tel?.valueOf ? `${tel.valueOf()}`.trim() : ''
+    if (!phoneVal) continue
+    const waid = tel?.waid ? `${tel.waid}`.replace(/\D/g, '') : phoneVal.replace(/\D/g, '')
+    const typeRaw = tel?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const phoneObj: any = { phone: phoneVal }
+    if (waid) phoneObj.wa_id = waid
+    if (type) phoneObj.type = `${type}`.toUpperCase()
+    phones.push(phoneObj)
+  }
+
+  const emails: any[] = []
+  const emailProps = toArray(card.get('email'))
+  for (const em of emailProps) {
+    const emailVal = em?.valueOf ? `${em.valueOf()}`.trim() : ''
+    if (!emailVal) continue
+    const typeRaw = em?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const emailObj: any = { email: emailVal }
+    if (type) emailObj.type = `${type}`.toUpperCase()
+    emails.push(emailObj)
+  }
+
+  const urls: any[] = []
+  const urlProps = toArray(card.get('url'))
+  for (const u of urlProps) {
+    const urlVal = u?.valueOf ? `${u.valueOf()}`.trim() : ''
+    if (!urlVal) continue
+    const typeRaw = u?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const urlObj: any = { url: urlVal }
+    if (type) urlObj.type = `${type}`.toUpperCase()
+    urls.push(urlObj)
+  }
+
+  const addresses: any[] = []
+  const adrProps = toArray(card.get('adr'))
+  for (const a of adrProps) {
+    const adrVal = a?.valueOf ? `${a.valueOf()}` : ''
+    const fields = adrVal.split(';')
+    const street = `${fields[2] || ''}`.trim()
+    const city = `${fields[3] || ''}`.trim()
+    const state = `${fields[4] || ''}`.trim()
+    const zip = `${fields[5] || ''}`.trim()
+    const country = `${fields[6] || ''}`.trim()
+    if (!street && !city && !state && !zip && !country) continue
+    const typeRaw = a?.type
+    const type = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const addrObj: any = { street, city, state, zip, country }
+    if (type) addrObj.type = `${type}`.toUpperCase()
+    addresses.push(addrObj)
+  }
+
+  const orgProp = card.get('org')
+  const titleProp = card.get('title')
+  let orgObj: any = undefined
+  if (orgProp?.valueOf || titleProp?.valueOf) {
+    const orgVal = orgProp?.valueOf ? `${orgProp.valueOf()}` : ''
+    const orgParts = orgVal ? orgVal.split(';') : []
+    const company = `${orgParts[0] || ''}`.trim()
+    const department = `${orgParts[1] || ''}`.trim()
+    const title = titleProp?.valueOf ? `${titleProp.valueOf()}`.trim() : ''
+    orgObj = {}
+    if (company) orgObj.company = company
+    if (department) orgObj.department = department
+    if (title) orgObj.title = title
+  }
+
+  const contact: any = { name, phones }
+  if (emails.length) contact.emails = emails
+  if (urls.length) contact.urls = urls
+  if (addresses.length) contact.addresses = addresses
+  if (orgObj && Object.keys(orgObj).length > 0) contact.org = orgObj
+  return contact
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getBinMessage = (waMessage: WAMessage): { messageType: string; message: any } | undefined => {
@@ -230,53 +475,270 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'text':
       response.text = customMessageCharactersFunction(payload.text.body)
       break
-    case 'interactive':
-      let listMessage = {}
-      if (payload.interactive.header) {
-        listMessage = {
-          title: payload.interactive.header.text,
-          description: payload.interactive.body.text,
-          buttonText: payload.interactive.action.button,
-          footerText: payload.interactive.footer.text,
-          sections: payload.interactive.action.sections.map(
-            (section: { title: string; rows: { title: string; rowId: string; description: string }[] }) => {
+    case 'interactive': {
+      const interactive = payload.interactive || {}
+      const action = interactive.action || {}
+      const header = interactive.header || {}
+      const body = interactive.body || {}
+      const footer = interactive.footer || {}
+      const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
+      const mapButtonsToNativeFlow = (buttons: any[]) =>
+        (buttons || [])
+          .map((button: any) => {
+            if (button.type === 'url' || button.url) {
+              const u = button.url || button
               return {
-                title: section.title,
-                rows: section.rows.map((row: { title: string; rowId: string; description: string }) => {
-                  return {
-                    title: row.title,
-                    rowId: row.rowId,
-                    description: row.description,
-                  }
+                name: 'cta_url',
+                buttonParamsJson: JSON.stringify({
+                  display_text: u.title || 'Abrir',
+                  url: u.link || u.url,
                 }),
               }
-            },
-          ),
-          listType: 2,
-        }
-      } else {
-        listMessage = {
-          title: '',
-          description: payload.interactive.body.text || 'Nenhuma descriçao encontrada',
-          buttonText: 'Selecione',
-          footerText: '',
-          sections: [
-            {
-              title: 'Opcões',
-              rows: payload.interactive.action.buttons.map((button: { reply: { title: string; id: string; description: string } }) => {
-                return {
-                  title: button.reply.title,
-                  rowId: button.reply.id,
-                  description: '',
-                }
+            }
+
+            if (button.type === 'call' || button.call) {
+              const c = button.call || button
+              return {
+                name: 'cta_call',
+                buttonParamsJson: JSON.stringify({
+                  display_text: c.title || 'Ligar',
+                  phone_number: c.phone_number || c.phone,
+                }),
+              }
+            }
+
+            if (button.type === 'cta_copy' || button.copy_code) {
+              const cp = button.copy_code || button
+              return {
+                name: 'cta_copy',
+                buttonParamsJson: JSON.stringify({
+                  display_text: cp.title || 'Copiar',
+                  copy_code: cp.code || cp.copy_code,
+                }),
+              }
+            }
+
+            const r = button.reply || button
+            return {
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({
+                id: r.id || '',
+                display_text: r.title || r.displayText || '',
               }),
-            },
-          ],
-          listType: 2,
+            }
+          })
+          .filter(Boolean)
+
+      if (header.type && header.type !== 'text') {
+        const mediaType = header.type
+        const mediaObj = header[mediaType] || {}
+        const link = mediaObj.link || mediaObj.url
+        if (link) {
+          response[mediaType] = { url: link }
+          if (mediaObj.filename) {
+            response.fileName = mediaObj.filename
+          }
+          try {
+            const tmpPayload: any = { type: mediaType }
+            tmpPayload[mediaType] = { link }
+            const mimetype = getMimetype(tmpPayload)
+            if (mimetype) response.mimetype = mimetype
+          } catch {}
         }
       }
-      response.listMessage = listMessage
+
+      if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = header.text || ''
+        response.buttonText = action.button || 'Selecione'
+        response.sections = action.sections.map((section: any) => ({
+          title: section.title || '',
+          rows: (section.rows || []).map((row: any) => ({
+            rowId: row.rowId || row.id || '',
+            title: row.title || '',
+            description: row.description || '',
+          })),
+        }))
+        break
+      }
+
+      if (interactive.type === 'carousel' || interactive.carousel || action.carousel) {
+        const carousel = interactive.carousel || action.carousel || {}
+        const mapCardActionToButtons = (cardAction: any, cardType?: string) => {
+          const name = cardAction?.name || cardType
+          const params = cardAction?.parameters || cardAction?.params || {}
+          if (name === 'cta_url') {
+            return [
+              {
+                type: 'cta_url',
+                url: {
+                  title: params.display_text || params.title || 'Abrir',
+                  link: params.url || params.link || '',
+                },
+              },
+            ]
+          }
+          if (name === 'cta_call') {
+            return [
+              {
+                type: 'cta_call',
+                call: {
+                  title: params.display_text || params.title || 'Ligar',
+                  phone_number: params.phone_number || params.phone || '',
+                },
+              },
+            ]
+          }
+          if (name === 'cta_copy') {
+            return [
+              {
+                type: 'cta_copy',
+                copy_code: {
+                  title: params.display_text || params.title || 'Copiar',
+                  code: params.copy_code || params.code || '',
+                },
+              },
+            ]
+          }
+          return []
+        }
+        const cards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
+          const cardHeader = card.header || {}
+          const cardBody = card.body || {}
+          const cardFooter = card.footer || {}
+          const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
+          return {
+            header: cardHeader,
+            body: cardBody,
+            footer: cardFooter,
+            buttons: cardButtons,
+            index: card.card_index,
+          }
+        })
+        const listTitle = header.text || body.text || 'Opcoes'
+        const listButtonText = action.button || 'Selecionar'
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.title = listTitle
+        response.buttonText = listButtonText
+        response.sections = cards.map((card: any, idx: number) => {
+          const headerText = card?.header?.text || ''
+          const bodyText = card?.body?.text || ''
+          const sectionTitle = headerText || bodyText || `Opcao ${idx + 1}`
+          const button = Array.isArray(card?.buttons) ? card.buttons[0] : undefined
+          const rowId =
+            (button?.reply?.id || button?.url?.link || button?.call?.phone_number || button?.copy_code?.code ||
+              `carousel_${typeof card.index === 'number' ? card.index : idx}`) as string
+          const rowTitle =
+            button?.reply?.title ||
+            button?.url?.title ||
+            button?.call?.title ||
+            button?.copy_code?.title ||
+            sectionTitle
+          const rowDesc =
+            button?.url?.link ||
+            button?.call?.phone_number ||
+            button?.copy_code?.code ||
+            card?.footer?.text ||
+            ''
+
+          return {
+            title: sectionTitle,
+            rows: [
+              {
+                rowId,
+                title: rowTitle,
+                description: rowDesc,
+              },
+            ],
+          }
+        })
+        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
+          logger.debug(
+            'toBaileys carousel->list dump input=%s output=%s',
+            JSON.stringify({ interactive, action, header, body, footer }),
+            JSON.stringify({
+              text: response.text,
+              title: response.title,
+              footer: response.footer,
+              buttonText: response.buttonText,
+              sections: response.sections,
+            }),
+          )
+        }
+        break
+      }
+
+      if (useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
+        const buttons = mapButtonsToNativeFlow(action.buttons)
+
+        response.interactiveMessage = {
+          body: { text: body.text || '' },
+          footer: footer.text ? { text: footer.text } : undefined,
+          header: header.text
+            ? {
+                type: 4,
+                title: header.text,
+                hasMediaAttachment: false,
+              }
+            : undefined,
+          nativeFlowMessage: {
+            buttons,
+          },
+        }
+
+        break
+      }
+
+      if (!useNativeFlow && action.buttons && Array.isArray(action.buttons) && action.buttons.length > 0) {
+        response.text = body.text || ''
+        response.footer = footer.text || ''
+        response.buttons = action.buttons.map((button: any) => {
+          if (button.type === 'url' || button.url) {
+            const u = button.url || button
+            return {
+              buttonId: u.link || u.url,
+              buttonText: { displayText: u.title || 'Abrir link' },
+              type: 1,
+            }
+          }
+
+          if (button.type === 'call' || button.call) {
+            const c = button.call || button
+            return {
+              buttonId: `call:${c.phone_number || c.phone}`,
+              buttonText: { displayText: c.title || 'Ligar' },
+              type: 1,
+            }
+          }
+
+          const r = button.reply || button
+          return {
+            buttonId: r.id || r.buttonId || '',
+            buttonText: {
+              displayText: r.title || r.displayText || '',
+            },
+            type: 1,
+          }
+        })
+        break
+      }
       break
+    }
+    case 'sticker': {
+      const media: any = (payload && payload[type]) || {}
+      const link: string = (media?.link || '').toString()
+      if (!link || !link.trim()) {
+        throw new SendError(11, `invalid_${type}_payload: missing link`)
+      }
+      let mimetype: string = getMimetype(payload)
+      if (mimetype) {
+        response.mimetype = mimetype
+      }
+      response[type] = { url: link }
+      break
+    }
     case 'image':
     case 'audio':
     case 'document':
@@ -309,26 +771,15 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'contacts': {
       const list: any[] = Array.isArray(payload?.[type]) ? payload[type] : []
       if (!list.length) throw new Error('invalid_contacts_payload: empty list')
-      const first = list[0] || {}
-      const nameObj = first?.name || {}
-      const contactName = nameObj.formatted_name || nameObj.formattedName || nameObj.name || 'Contact'
-      const phonesArr: any[] = Array.isArray(first?.phones) ? first.phones : []
-      if (!phonesArr.length) throw new Error('invalid_contacts_payload: missing phones')
       const contacts: any[] = []
-      for (let index = 0; index < phonesArr.length; index++) {
-        const ph = phonesArr[index] || {}
-        const numberRaw = `${ph.phone || ph.wa_id || ''}`
-        const number = numberRaw || ''
-        const waid = `${ph.wa_id || number}`.replace(/\D/g, '')
-        const vcard =
-          'BEGIN:VCARD\n' +
-          'VERSION:3.0\n' +
-          `N:${contactName}\n` +
-          `TEL;type=CELL;type=VOICE;waid=${waid}:${number}\n` +
-          'END:VCARD'
+      for (const entry of list) {
+        const vcard = buildContactVcard(entry)
         contacts.push({ vcard })
       }
-      const displayName = phonesArr.length > 1 ? `${phonesArr.length} contacts` : contactName
+      const first = list[0] || {}
+      const nameObj = first?.name || {}
+      const contactName = normalizeContactName(nameObj).formatted
+      const displayName = contacts.length > 1 ? `${contacts.length} contacts` : contactName
       response[type] = { displayName, contacts }
       break
     }
@@ -438,6 +889,7 @@ export const getNumberAndId = (payload: any): [string, string] => {
       participant,
       senderLid,
       participantLid,
+      recipientLid,
       // Baileys >=6.8 alt JIDs
       remoteJidAlt,
       participantAlt,
@@ -448,7 +900,7 @@ export const getNumberAndId = (payload: any): [string, string] => {
   } = payload || {}
 
   // Normalize base ID (can be PN or LID)
-  const lid = senderLid || participantLid || participant || participant2 || remoteJid || ''
+  const lid = senderLid || participantLid || recipientLid || participant || participant2 || remoteJid || ''
   const split = `${lid}`.split('@')
   const id = split.length >= 2 ? `${split[0].split(':')[0]}@${split[1]}` : `${lid}`
 
@@ -823,6 +1275,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         return fromBaileysMessageContent(phone, changedPayload, config)
       }
     }
+    // Unwrap device-sent messages (from companion) to inner message
+    const innerDeviceMsg = payload?.message?.deviceSentMessage?.message
+    if (innerDeviceMsg) {
+      const { update: _omitDev, ...restDev } = payload || {}
+      const changedPayload = { ...restDev, message: innerDeviceMsg }
+      return fromBaileysMessageContent(phone, changedPayload, config)
+    }
     // Also unwrap editedMessage wrappers into their inner original message content
     let innerEditedMsg = payload?.message?.editedMessage?.message || payload?.message?.protocolMessage?.editedMessage?.message
     if (innerEditedMsg) {
@@ -897,13 +1356,14 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           {
             profile: (
               () => {
-                // Em eventos de status (update/receipt), não incluir picture
-                // Em novos messages, manter picture (mesmo undefined) para compatibilidade dos testes
+                // Em eventos de status (update/receipt), nao incluir picture
                 const p: any = { name: profileName }
                 const mt = `${messageType || ''}`
                 if (!['update', 'receipt'].includes(mt)) {
-                  // manter a chave 'picture' (pode ser undefined) nos eventos de mensagem
-                  p.picture = payload.profilePicture
+                  const pic = payload.profilePicture
+                  if (typeof pic === 'string' && pic) {
+                    p.picture = pic
+                  }
                 }
                 return p
               }
@@ -990,16 +1450,47 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const mimetype = (rawMime && rawMime.split(';')[0]) || 'application/octet-stream'
         const extension = (mime.extension(mimetype) || 'bin') as string
         const filename = (binMessage && (binMessage as any).fileName) || `${whatsappMessageId}.${extension}`
+        const encodedFilename = encodeURIComponent(filename)
+        const cleanBaseUrl = `${BASE_URL || ''}`.replace(/\/+$/, '')
+        const cleanVersion = `${WEBHOOK_FORWARD_VERSION || ''}`.replace(/^\/+|\/+$/g, '')
+        const mediaUrlRaw: string | undefined = (binMessage && (binMessage as any).url) || undefined
+        const mediaUrl = (() => {
+          const u = `${mediaUrlRaw || ''}`
+          if (!u) return ''
+          if (u.startsWith('data:')) return ''
+          return u
+        })()
+        const downloadUrl = mediaUrl || `${cleanBaseUrl}/${cleanVersion}/download/${phone}/${encodedFilename}`
         if (mediaType == 'pvt') {
           mediaType = mimetype.split('/')[0]
         }
-        message[mediaType] = { 
+        const normalizeSha256 = (v: any): string | undefined => {
+          try {
+            if (!v) return undefined
+            if (typeof v === 'string') return v
+            if (v?.type === 'Buffer' && Array.isArray(v?.data)) {
+              return Buffer.from(v.data).toString('base64')
+            }
+            if (Array.isArray(v)) {
+              return Buffer.from(v as any).toString('base64')
+            }
+            if (v instanceof Uint8Array) {
+              return Buffer.from(v).toString('base64')
+            }
+          } catch {}
+          return undefined
+        }
+        message[mediaType] = {
           caption: binMessage.caption,
           filename,
           mime_type: mimetype,
-          sha256: binMessage.fileSha256,
+          sha256: normalizeSha256((binMessage as any)?.fileSha256),
+          url: downloadUrl,
           // url: binMessage.url && binMessage.url.indexOf('base64') < 0 ? binMessage.url : '',
           id: mediaKey,
+        }
+        if (!WEBHOOK_INCLUDE_MEDIA_DATA && message[mediaType]) {
+          delete message[mediaType].sha256
         }
         message.type = mediaType
         break
@@ -1014,18 +1505,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         for (let i = 0; i < vcards.length; i++) {
           const vcard = vcards[i]
           if (vcard) {
-            const card: vCard = new vCard().parse(vcard.replace(/\r?\n/g, '\r\n'))
-            const contact = {
-              name: {
-                formatted_name: card.get('fn').valueOf(),
-              },
-              phones: [
-                {
-                  phone: card.get('tel').valueOf(),
-                },
-              ],
-            }
-            contacts.push(contact)
+            const contact = parseVcardContact(vcard)
+            if (contact) contacts.push(contact)
           }
         }
         message.contacts = contacts
@@ -1116,6 +1597,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       case 'messageStubType': {
+        const stubParams = Array.isArray((payload as any)?.messageStubParameters)
+          ? (payload as any).messageStubParameters.map((p: any) => `${p}`)
+          : []
+        if (stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')) {
+          message.text = { body: 'Conteúdo de visualização única indisponível aqui. Confira no aparelho celular.' }
+          message.unsupported = { reason: 'view_once_not_available_on_companion' }
+          message.type = 'text'
+          change.value.messages.push(message)
+          return [data, senderPhone, senderId]
+        }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
           (payload as any)?.messageStubParameters &&
@@ -1257,6 +1748,77 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
         break
 
+      case 'templateButtonReplyMessage':
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        message.button = {
+          payload: binMessage?.selectedId,
+          text: binMessage?.selectedDisplayText,
+        }
+        message.type = 'button'
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+
+      case 'buttonsResponseMessage': {
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        const payload = `${binMessage?.selectedButtonId || binMessage?.selectedDisplayText || ''}`
+        const text = `${binMessage?.selectedDisplayText || binMessage?.selectedButtonId || ''}`
+        message.interactive = {
+          type: 'button_reply',
+          button_reply: {
+            id: payload,
+            title: text,
+          },
+        }
+        message.type = 'interactive'
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+      }
+
+      case 'interactiveResponseMessage': {
+        const replyMessageId = binMessage?.contextInfo?.stanzaId
+        const parsed = parseInteractiveResponse(binMessage)
+        if (parsed?.isList && parsed?.id) {
+          message.interactive = {
+            type: 'list_reply',
+            list_reply: {
+              id: `${parsed.id}`,
+              title: `${parsed.title || ''}`,
+              description: `${parsed.description || ''}`,
+            },
+          }
+          message.type = 'interactive'
+        } else if (parsed?.isButton && parsed?.id) {
+          message.interactive = {
+            type: 'button_reply',
+            button_reply: {
+              id: `${parsed.id}`,
+              title: `${parsed.title || ''}`,
+            },
+          }
+          message.type = 'interactive'
+        } else if (parsed?.bodyText) {
+          message.text = { body: `${parsed.bodyText}` }
+          message.type = 'text'
+        }
+        if (replyMessageId) {
+          message.context = {
+            message_id: replyMessageId,
+            id: replyMessageId,
+          }
+        }
+        break
+      }
+
       case 'locationMessage':
       case 'liveLocationMessage':
         const { degreesLatitude, degreesLongitude } = binMessage
@@ -1371,6 +1933,149 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
         message.type = 'text'
         break
+
+      case 'listMessage': {
+        const listMessage: any = binMessage || payload?.message?.listMessage || {}
+        const sections = Array.isArray(listMessage.sections)
+          ? listMessage.sections.map((section: any) => ({
+              title: section.title || '',
+              rows: (section.rows || []).map((row: any) => ({
+                id: row.id || row.rowId || '',
+                title: row.title || '',
+                description: row.description || '',
+              })),
+            }))
+          : []
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'list',
+          header: listMessage.title ? { type: 'text', text: listMessage.title } : undefined,
+          body: { text: listMessage.description || listMessage.text || '' },
+          footer: listMessage.footerText ? { text: listMessage.footerText } : undefined,
+          action: {
+            button: listMessage.buttonText || 'Selecionar',
+            sections,
+          },
+        }
+        break
+      }
+
+      case 'buttonsMessage': {
+        const buttonsMessage: any = binMessage || payload?.message?.buttonsMessage || {}
+        const buttons = Array.isArray(buttonsMessage.buttons)
+          ? buttonsMessage.buttons.map((button: any) => ({
+              type: 'reply',
+              reply: {
+                id: button.buttonId || '',
+                title: button.buttonText?.displayText || '',
+              },
+            }))
+          : []
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button',
+          body: { text: buttonsMessage.contentText || buttonsMessage.text || '' },
+          footer: buttonsMessage.footerText ? { text: buttonsMessage.footerText } : undefined,
+          action: { buttons },
+        }
+        break
+      }
+
+      case 'interactiveMessage': {
+        const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
+        const mapButtonsFromNativeFlow = (nfButtons: any[]) =>
+          Array.isArray(nfButtons)
+            ? nfButtons.map((button: any) => {
+                let params: any = {}
+                try {
+                  params = JSON.parse(button?.buttonParamsJson || '{}')
+                } catch {}
+                if (button?.name === 'cta_url') {
+                  return {
+                    type: 'cta_url',
+                    url: {
+                      title: params.display_text || '',
+                      link: params.url || '',
+                    },
+                  }
+                }
+                if (button?.name === 'cta_call') {
+                  return {
+                    type: 'cta_call',
+                    call: {
+                      title: params.display_text || '',
+                      phone_number: params.phone_number || '',
+                    },
+                  }
+                }
+                if (button?.name === 'cta_copy') {
+                  return {
+                    type: 'cta_copy',
+                    copy_code: {
+                      title: params.display_text || '',
+                      code: params.copy_code || '',
+                    },
+                  }
+                }
+                return {
+                  type: 'reply',
+                  reply: {
+                    id: params.id || '',
+                    title: params.display_text || '',
+                  },
+                }
+              })
+            : []
+
+        if (interactiveMessage?.carouselMessage?.cards?.length) {
+          const cards = interactiveMessage.carouselMessage.cards.map((card: any) => {
+            const header = card?.header || {}
+            let headerObj: any = undefined
+            if (header?.imageMessage?.url) {
+              headerObj = { type: 'image', image: { link: header.imageMessage.url } }
+            } else if (header?.videoMessage?.url) {
+              headerObj = { type: 'video', video: { link: header.videoMessage.url } }
+            } else if (header?.documentMessage?.url) {
+              headerObj = { type: 'document', document: { link: header.documentMessage.url } }
+            } else if (header?.title) {
+              headerObj = { type: 'text', text: header.title }
+            }
+
+            return {
+              header: headerObj,
+              body: { text: card?.body?.text || '' },
+              footer: card?.footer?.text ? { text: card.footer.text } : undefined,
+              action: {
+                buttons: mapButtonsFromNativeFlow(card?.nativeFlowMessage?.buttons || []),
+              },
+            }
+          })
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'carousel',
+            header: interactiveMessage?.header?.title
+              ? { type: 'text', text: interactiveMessage.header.title }
+              : undefined,
+            body: interactiveMessage?.body?.text ? { text: interactiveMessage.body.text } : undefined,
+            footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
+            carousel: { cards },
+          }
+          break
+        }
+        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
+        const buttons = mapButtonsFromNativeFlow(nfButtons)
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button',
+          header: interactiveMessage?.header?.title
+            ? { type: 'text', text: interactiveMessage.header.title }
+            : undefined,
+          body: { text: interactiveMessage?.body?.text || '' },
+          footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
+          action: { buttons },
+        }
+        break
+      }
 
       case 'statusMentionMessage':
         break

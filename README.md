@@ -121,6 +121,84 @@ http://localhost:9876/v15.0/554931978550/messages \
   } 
 }'
 ```
+
+Interactive list (sections)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "list",
+    "header": { "type": "text", "text": "Menu" },
+    "body": { "text": "Escolha uma opcao" },
+    "footer": { "text": "Unoapi" },
+    "action": {
+      "button": "Ver opcoes",
+      "sections": [
+        {
+          "title": "Planos",
+          "rows": [
+            { "id": "plan_basic", "title": "Basico", "description": "R$ 10" },
+            { "id": "plan_pro", "title": "Pro", "description": "R$ 20" }
+          ]
+        }
+      ]
+    }
+  }
+}'
+```
+
+Interactive buttons (quick replies, default when UNOAPI_NATIVE_FLOW_BUTTONS=false)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "body": { "text": "Posso ajudar?" },
+    "action": {
+      "buttons": [
+        { "type": "reply", "reply": { "id": "btn_yes", "title": "Sim" } },
+        { "type": "reply", "reply": { "id": "btn_no", "title": "Nao" } }
+      ]
+    }
+  }
+}'
+```
+
+Interactive buttons (native flow CTA, requires UNOAPI_NATIVE_FLOW_BUTTONS=true)
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "body": { "text": "Acesse ou fale com a equipe" },
+    "action": {
+      "buttons": [
+        { "type": "cta_url", "url": { "title": "Abrir site", "link": "https://unoapi.cloud" } },
+        { "type": "cta_call", "call": { "title": "Ligar", "phone_number": "+5511999999999" } },
+        { "type": "cta_copy", "copy_code": { "title": "Copiar codigo", "code": "ABC-123" } }
+      ]
+    }
+  }
+}'
+```
 To Send a Status
 Requisitos:
 to = 'status@broadcast'
@@ -236,7 +314,8 @@ http://localhost:9876/v15.0/5549988290955/messages \
 ```
 Note: 
 Your number's WhatsApp status privacy must allow delivery to the provided JIDs.
-If you provide an empty JIDList, the status will not be delivered.
+If statusJidList is empty or null and type is image/video, Unoapi auto-fills from Redis contact-info (unoapi-contact-info:<phone>:*).
+If the list is still empty, the status will not be delivered.
 To send a contact
 ![Imagem do WhatsApp de 2025-09-21 à(s) 20 03 33_a199430a](https://github.com/user-attachments/assets/c498de41-b8dc-4368-98b0-737b2fee4735)
 
@@ -330,6 +409,41 @@ http://localhost:9876/v15.0/5549988290955/messages \
   "messaging_product": "whatsapp",
   "status": "read",
   "message_id": "MESSAGE_ID"
+}'
+```
+
+To react to a message
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "reaction",
+  "reaction": {
+    "message_id": "MESSAGE_ID",
+    "emoji": "👍"
+  }
+}'
+```
+
+To send a sticker (PNG/JPG/GIF are auto-converted to WEBP)
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/5549988290955/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "sticker",
+  "sticker": {
+    "link": "https://example.com/sticker.png"
+  }
 }'
 ```
 
@@ -552,7 +666,7 @@ Create a `.env`file and put configuration if you need change default value:
 This a general env:
 
 ```env
-CONSUMER_TIMEOUT_MS=miliseconds in timeout for consume job, default is 30000
+CONSUMER_TIMEOUT_MS=miliseconds in timeout for consume job, default is 15000
 AVAILABLE_LOCALES=default is `["en", "pt_BR", "pt"]`
 DEFAULT_LOCALE=locale for notifications status, now possibile is en, pt_BR and pt, default is en, to add new, use docker volume for exempla `/app/dist/src/locales/custom.json` and add `custom` in `AVAILABLE_LOCALES`
 ONLY_HELLO_TEMPLATE=true sets hello template as the only default template, default false.
@@ -576,6 +690,7 @@ CONFIG_SESSION_PHONE_NAME=Chrome Browser Name = Chrome | Firefox | Edge | Opera 
 WHATSAPP_VERSION=Version of whatsapp, default to local Baileys version. Format is `[2, 3000, 1019810866]`
 VALIDATE_SESSION_NUMBER=validate the number in session and config is equals, default true
 OPENAI_API_KEY=openai api key to transcribe audio
+UNOAPI_NATIVE_FLOW_BUTTONS=enable native flow buttons (cta_url/cta_call/cta_copy). Default false for compatibility.
 SEND_AUDIO_MESSAGE_AS_PTT=false flag outgoing audio messages as PTT (voice note) without forced conversion
 CONVERT_AUDIO_TO_PTT=false actually convert audio to OGG/Opus via ffmpeg when sending as PTT; defaults to SEND_AUDIO_MESSAGE_AS_PTT when unset
 ```
@@ -606,7 +721,26 @@ WEBHOOK_URL_ABSOLUTE=the webhook absolute url, not use this if already use WEBHO
 WEBHOOK_URL=the webhook url, this config attribute put phone number on the end, no use if use WEBHOOK_URL_ABSOLUTE
 WEBHOOK_TOKEN=the webhook header token
 WEBHOOK_HEADER=the webhook header name
-WEBHOOK_TIMEOUT_MS=webhook request timeout, default 5000 ms
+WEBHOOK_TIMEOUT_MS=webhook request timeout, default 6000 ms
+WEBHOOK_ASYNC=true to send webhooks in background (fire-and-forget), default true
+WEBHOOK_ASYNC_MODE=amqp to enqueue webhooks in RabbitMQ even in cloud mode; requires AMQP_URL, default amqp
+WEBHOOK_CB_ENABLED=true enable webhook circuit breaker to avoid backlog when endpoint is offline, default true
+WEBHOOK_CB_FAILURE_THRESHOLD=number of failures within window to open circuit, default 1
+WEBHOOK_CB_OPEN_MS=how long to keep the circuit open (skip sends), default 120000
+WEBHOOK_CB_FAILURE_TTL_MS=failure counter window in ms, default 300000
+WEBHOOK_CB_REQUEUE_DELAY_MS=delay (ms) used to requeue when circuit is open, default 300000
+WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS=local CB map cleanup interval (ms), default 3600000
+
+Example (circuit breaker):
+```env
+WEBHOOK_CB_ENABLED=true
+WEBHOOK_CB_FAILURE_THRESHOLD=1
+WEBHOOK_CB_FAILURE_TTL_MS=300000
+WEBHOOK_CB_OPEN_MS=120000
+WEBHOOK_CB_REQUEUE_DELAY_MS=300000
+WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS=3600000
+```
+WEBHOOK_INCLUDE_MEDIA_DATA=false to avoid sending binary/base64 media data in webhook payloads; keeps url/filename, default false
 WEBHOOK_SEND_NEW_MESSAGES=true, send new messages to webhook, caution with this, messages will be duplicated, default is false
 WEBHOOK_SEND_GROUP_MESSAGES=true, send group messages to webhook, default is true
 WEBHOOK_SEND_OUTGOING_MESSAGES=true, send outgoing messages to webhook, default is true
@@ -640,7 +774,7 @@ WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID=the business account id of whatsapp cloud ap
 WEBHOOK_FORWARD_TOKEN=the token of whatsapp cloud api, default is empty
 WEBHOOK_FORWARD_VERSION=the version of whatsapp cloud api, default is v17.0
 WEBHOOK_FORWARD_URL=the url of whatsapp cloud api, default is https://graph.facebook.com
-WEBHOOK_FORWARD_TIMEOUT_MS=the timeout for request to whatsapp cloud api, default is 360000
+WEBHOOK_FORWARD_TIMEOUT_MS=the timeout for request to whatsapp cloud api, default is 6000
 VALIDATE_MEDIA_LINK_BEFORE_SEND=false validate media link with HEAD before sending media (image, document, video, audio)
 ```
 
@@ -671,7 +805,6 @@ The `.env` can be save one config, but on redis use different webhook by session
       "url": "http://localhost:3000/whatsapp/webhook",
       "token": "kslflkhlkwq",
       "header": "api_access_token",
-      "sendGroupMessages": false,
       "sendGroupMessages": false,
       "sendNewMessages": false,
     }
@@ -952,8 +1085,8 @@ SEND_AUDIO_WAVEFORM=true
 AUDIO_WAVEFORM_SAMPLES=85
 
 # timeouts (ms)
-WEBHOOK_TIMEOUT_MS=360000
-FETCH_TIMEOUT_MS=360000
+WEBHOOK_TIMEOUT_MS=6000
+FETCH_TIMEOUT_MS=6000
 ```
 
 Notes:

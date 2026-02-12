@@ -12,6 +12,11 @@ export default class Security {
   }
 
   public async run(req: Request, res: Response, next: NextFunction) {
+    // Allow embedded signup endpoints without auth (public)
+    try {
+      const path = req.path || ''
+      if (path.startsWith('/embedded')) return next()
+    } catch {}
     const phone = req.params.phone || '*'
     logger.debug('Verifing client authentication...')
     if (UNOAPI_AUTH_TOKEN) {
@@ -32,6 +37,10 @@ export default class Security {
         })
       } else {
         logger.debug(`Retrieved http token ${httpAuthToken}`)
+        if (httpAuthToken === UNOAPI_AUTH_TOKEN) {
+          logger.debug('Authenticated by UNOAPI_AUTH_TOKEN')
+          return next()
+        }
         const tokens = await this.sessionStore.getTokens(phone)
         logger.debug(`Retrieved auth token ${httpAuthToken}`)
         const allTokens = [UNOAPI_AUTH_TOKEN, ...tokens]

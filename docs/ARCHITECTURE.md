@@ -94,7 +94,7 @@ Large-group heuristics
   - After the limit, the message goes to the dead‑letter queue.
 - Timeouts and delays
   - Per‑webhook HTTP timeout: `webhook.timeoutMs` (AbortSignal timeout).
-  - Consumer global timeout: `CONSUMER_TIMEOUT_MS` (default 360000ms).
+  - Consumer global timeout: `CONSUMER_TIMEOUT_MS` (default 15000ms).
   - Retry delay: fixed 60s (consumer path) using the delayed exchange.
 - Failure notification
   - If `NOTIFY_FAILED_MESSAGES=true`, a diagnostic text is sent to the session number with stack/error details when a message exhausts retries.

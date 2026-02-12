@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
@@ -79,11 +79,28 @@ export class ListenerBaileys implements Listener {
       // Não propagar notificações internas como mensagens para webhooks
       return
     }
+    const getFilterMessageType = (m: any) => {
+      // Prefer normalized content to catch wrappers (ephemeral/viewOnce/deviceSent)
+      try {
+        const normalized = normalizeMessageContent(m?.message)
+        const mt = getMessageType({ message: normalized })
+        if (mt) return mt
+      } catch {}
+      try {
+        const inner =
+          m?.message?.deviceSentMessage?.message ||
+          m?.update?.message?.deviceSentMessage?.message
+        if (inner) return getMessageType({ message: inner })
+      } catch {}
+      return getMessageType(m)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filteredMessages = messages.filter((m: any) => {
+      const mt = getFilterMessageType(m)
       return (
         m?.key?.remoteJid &&
-        (['qrcode', 'status'].includes(type) || (!config.shouldIgnoreJid(m.key.remoteJid) && !config.shouldIgnoreKey(m.key, getMessageType(m))))
+        (['qrcode', 'status'].includes(type) ||
+          (!config.shouldIgnoreJid(m.key.remoteJid) && !config.shouldIgnoreKey(m.key, mt)))
       )
     })
     logger.debug('%s filtereds messages/updates of %s', messages.length - filteredMessages.length, messages.length)
@@ -100,6 +117,12 @@ export class ListenerBaileys implements Listener {
     }
     let i: WAMessage = message as WAMessage
     let messageType = getMessageType(message)
+    if (messageType && ['listMessage', 'buttonsMessage', 'interactiveMessage'].includes(messageType)) {
+      try {
+        const k: any = (i as any)?.key || {}
+        logger.info('INTERACTIVE in: jid=%s id=%s type=%s fromMe=%s', k?.remoteJid, k?.id, messageType, k?.fromMe)
+      } catch {}
+    }
     logger.debug(`messageType %s...`, messageType)
     // Deduplicação leve para mensagens (não afeta 'update'/'receipt')
     try {
@@ -129,6 +152,25 @@ export class ListenerBaileys implements Listener {
     } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
+    const shouldSkipMediaPersist = (m: WAMessage) => {
+      try {
+        const msgType = getMessageType(m as any)
+        const protocolType = (m as any)?.message?.protocolMessage?.type
+        if (msgType === 'protocolMessage' || protocolType === 'HISTORY_SYNC_NOTIFICATION' || protocolType === 'APP_STATE_SYNC_KEY_SHARE') {
+          return true
+        }
+        const bin = getBinMessage(m as any)
+        const media: any = bin?.message
+        if (!media) return false
+        const hasMediaKey = !!media.mediaKey
+        const hasDirectPath = !!media.directPath
+        const url = `${media.url || ''}`
+        const hasHttpUrlOnly = !!url && /^https?:\/\//i.test(url) && !hasMediaKey && !hasDirectPath
+        const isQrCaption = `${media.caption || ''}`.toLowerCase().includes('read the qr code')
+        if (hasHttpUrlOnly || isQrCaption) return true
+      } catch {}
+      return false
+    }
     // Se o evento vier como 'update' mas contiver conteúdo de mensagem (caso comum em upsert/notify),
     // preferimos tratar como mensagem real para não suprimir o webhook.
     try {
@@ -144,17 +186,27 @@ export class ListenerBaileys implements Listener {
     if (messageType && !['update', 'receipt'].includes(messageType)) {
       i = await config.getMessageMetadata(i)
       if (i.key && i.key) {
-        const idUno = uuid()
         const idBaileys = i.key.id!
+        let idUno = await store?.dataStore.loadUnoId(idBaileys)
+        if (!idUno) {
+          idUno = uuid()
+          logger.debug('Generated new unoapi id %s for %s', idUno, idBaileys)
+        } else {
+          logger.debug('Reusing unoapi id %s for %s', idUno, idBaileys)
+        }
         await store?.dataStore.setUnoId(idBaileys, idUno)
         await store?.dataStore.setKey(idUno, i.key)
         await store?.dataStore.setKey(idBaileys, i.key)
         await store.dataStore.setMessage(i.key.remoteJid!, i)
         i.key.id = idUno
         if (isSaveMedia(i)) {
-          logger.debug(`Saving media...`)
-          i = await store?.mediaStore.saveMedia(i)
-          logger.debug(`Saved media!`)
+          if (shouldSkipMediaPersist(i)) {
+            logger.debug('Skipping media persistence for system/non-downloadable payload id=%s', i?.key?.id)
+          } else {
+            logger.debug(`Saving media...`)
+            i = await store?.mediaStore.saveMedia(i)
+            logger.debug(`Saved media!`)
+          }
         }
       }
     } else if (messageType === 'update') {
@@ -393,6 +445,20 @@ export class ListenerBaileys implements Listener {
       }
     }
     if (data) {
+
+      try {
+        const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
+        const m = Array.isArray(v.messages) ? v.messages[0] : undefined
+        if (m?.type === 'interactive') {
+          logger.info(
+            'INTERACTIVE out: from=%s to=%s subtype=%s id=%s',
+            m.from || '<none>',
+            m.to || '<none>',
+            m?.interactive?.type || '<none>',
+            m?.id || '<none>',
+          )
+        }
+      } catch {}
       // Guardar contra regressão/duplicata de status (não enviar 'sent' após 'delivered' e nem duplicar)
       try {
         const change = (data as any)?.entry?.[0]?.changes?.[0]?.value

@@ -3,10 +3,120 @@ import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
-import { WEBHOOK_PREFER_PN_OVER_LID } from '../defaults'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
 import { PublishOption } from '../amqp'
+import { isWebhookCircuitOpen, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
+
+class WebhookCircuitOpenError extends Error {
+  public code = 'WEBHOOK_CB_OPEN'
+  public delayMs: number
+  constructor(message: string, delayMs: number) {
+    super(message)
+    this.delayMs = delayMs
+  }
+}
+// Ajusta payload para schema Cloud API estrito (Typebot)
+const normalizePayloadForTypebot = (payload: any, phone: string) => {
+  try {
+    const data = JSON.parse(JSON.stringify(payload))
+    const value = data?.entry?.[0]?.changes?.[0]?.value
+    if (value?.messages && Array.isArray(value.messages)) {
+      const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'document', 'sticker', 'ptv'])
+      value.messages = value.messages.map((m: any) => {
+        const mm = { ...m }
+        // Descartar tipos nÇœo suportados pelo schema Typebot (ex.: call)
+        if (mm.type && !allowedTypes.has(mm.type)) {
+          logger.debug('TYPEBOT normalize: dropping unsupported message type %s', mm.type)
+          return null
+        }
+        const mediaTypes = ['image', 'video', 'audio', 'document', 'sticker', 'ptv']
+        for (const mt of mediaTypes) {
+          if (mm[mt]) {
+            const media = { ...mm[mt] }
+            const rawId = `${media.id || ''}`
+            const cleanUuid = rawId.includes('/') ? rawId.split('/').pop() : rawId
+            // Preservar phone no id para poder resolver download: formata phone-uuid
+            media.id = cleanUuid ? `${phone}-${cleanUuid}` : (rawId || '')
+            if (media.filename !== undefined) delete media.filename
+            if (media.url !== undefined) delete media.url
+            if (media.sha256 !== undefined) delete media.sha256
+            if (media.caption === null) delete media.caption
+            // sha256 deve ser string
+            try {
+              const v = media.sha256
+              if (v && typeof v !== 'string') {
+                media.sha256 = Buffer.isBuffer(v) ? v.toString('base64') : Buffer.from(v).toString('base64')
+              }
+            } catch { media.sha256 = undefined }
+            mm[mt] = media
+          }
+        }
+        // Forçar id de mensagem apenas como uuid (sem phone/)
+        try {
+          const raw = `${mm.id || ''}`
+          if (raw.includes('/')) mm.id = raw.split('/').pop()
+        } catch {}
+        return mm
+      }).filter(Boolean)
+    }
+    if (value?.contacts && Array.isArray(value.contacts)) {
+      value.contacts = value.contacts.map((c: any) => {
+        const cc = { ...c }
+        try {
+          if (cc.profile && cc.profile.picture !== undefined) {
+            delete cc.profile.picture
+          }
+        } catch {}
+        return cc
+      })
+    }
+    if (value?.statuses && Array.isArray(value.statuses)) {
+      value.statuses = value.statuses.map((s: any) => {
+        const ss = { ...s }
+        // id apenas o uuid (sem phone/)
+        try {
+          const raw = `${ss.id || ''}`
+          if (raw.includes('/')) ss.id = raw.split('/').pop()
+        } catch {}
+        // timestamp como string
+        try {
+          if (typeof ss.timestamp !== 'string') ss.timestamp = `${ss.timestamp || ''}`
+        } catch {}
+        // recipient_id somente dígitos
+        try {
+          if (typeof ss.recipient_id === 'string') ss.recipient_id = ss.recipient_id.replace(/\D/g, '')
+        } catch {}
+        // errors: manter apenas code/title/message/error_data
+        try {
+          if (Array.isArray(ss.errors)) {
+            ss.errors = ss.errors.map((e: any) => {
+              const out: any = {}
+              if (typeof e?.code !== 'undefined') out.code = e.code
+              if (typeof e?.title !== 'undefined') out.title = e.title
+              if (typeof e?.message !== 'undefined') out.message = e.message
+              const details =
+                (e?.error_data && e.error_data.details) ||
+                e?.message ||
+                e?.title ||
+                ''
+              if (details) {
+                out.error_data = { details: `${details}` }
+              }
+              return out
+            })
+          }
+        } catch {}
+        return ss
+      })
+    }
+    return data
+  } catch (e) {
+    logger.warn(e as any, 'Unable to normalize payload for typebot (session=%s)', phone)
+    return payload
+  }
+}
 
 export class OutgoingCloudApi implements Outgoing {
   private getConfig: getConfig
@@ -26,11 +136,38 @@ export class OutgoingCloudApi implements Outgoing {
 
   public async send(phone: string, message: object) {
     const config = await this.getConfig(phone)
+    if (WEBHOOK_ASYNC) {
+      config.webhooks.forEach((w) => {
+        this.sendHttp(phone, w, message).catch((error) => {
+          logger.error('WEBHOOK_ASYNC: send failed (phone=%s webhook=%s)', phone, w?.id || '<none>')
+          logger.error(error)
+        })
+      })
+      return
+    }
     const promises = config.webhooks.map(async (w) => this.sendHttp(phone, w, message))
     await Promise.all(promises)
   }
 
-  public async sendHttp(phone: string, webhook: Webhook, message: object, _options: Partial<PublishOption> = {}) {
+  public async sendHttp(phone: string, webhook: Webhook, message: any, _options: Partial<PublishOption> = {}) {
+    const cbEnabled = !!WEBHOOK_CB_ENABLED && WEBHOOK_CB_FAILURE_THRESHOLD > 0 && WEBHOOK_CB_OPEN_MS > 0
+    const cbId = (webhook && (webhook.id || webhook.url || webhook.urlAbsolute)) ? `${webhook.id || webhook.url || webhook.urlAbsolute}` : 'default'
+    const cbKey = `${phone}:${cbId}`
+    const now = Date.now()
+    if (cbEnabled) {
+      let open = false
+      try {
+        open = process.env.REDIS_URL
+          ? await isWebhookCircuitOpen(phone, cbId)
+          : isCircuitOpenLocal(cbKey, now)
+      } catch {}
+      if (open) {
+        logger.warn('WEBHOOK_CB open: skipping send (phone=%s webhook=%s)', phone, cbId)
+        throw new WebhookCircuitOpenError(`WEBHOOK_CB open for ${cbId}`, this.cbRequeueDelayMs())
+      }
+    }
+    // Clone to avoid cross-webhook mutations
+    try { message = JSON.parse(JSON.stringify(message)) } catch {}
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)
@@ -300,6 +437,10 @@ export class OutgoingCloudApi implements Outgoing {
         } catch {}
       }
     } catch {}
+    // Aplicar schema Typebot (Cloud API estrito) se habilitado no webhook
+    if (webhook.typebot) {
+      message = normalizePayloadForTypebot(message, phone)
+    }
     const body = JSON.stringify(message)
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
@@ -316,6 +457,19 @@ export class OutgoingCloudApi implements Outgoing {
         url = `${webhook.url}/${phone}`
       }
     } catch {}
+    try {
+      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
+      const m = Array.isArray(v.messages) ? v.messages[0] : undefined
+      if (m?.type === 'interactive') {
+        logger.info(
+          'INTERACTIVE webhook: id=%s to=%s subtype=%s url=%s',
+          m?.id || '<none>',
+          m?.to || '<none>',
+          m?.interactive?.type || '<none>',
+          url,
+        )
+      }
+    } catch {}
     logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
     let response: Response
     try {
@@ -327,11 +481,118 @@ export class OutgoingCloudApi implements Outgoing {
     } catch (error) {
       logger.error('Error on send to url %s with headers %s and body %s', url, JSON.stringify(headers), body)
       logger.error(error)
+      if (cbEnabled) {
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any)
+        if (opened) {
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+        }
+      }
       throw error
     }
     logger.debug('Response: %s', response?.status)
     if (!response?.ok) {
-      throw await response?.text()
+      const errText = await response?.text()
+      const err = new Error(`Webhook response ${response?.status} ${response?.statusText}: ${errText}`)
+      if (cbEnabled) {
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err)
+        if (opened) {
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+        }
+      }
+      throw err
     }
+    if (cbEnabled) {
+      try {
+        if (process.env.REDIS_URL) {
+          await closeWebhookCircuit(phone, cbId)
+        } else {
+          resetCircuitLocal(cbKey)
+        }
+      } catch {}
+    }
+  }
+
+  private cbRequeueDelayMs() {
+    return WEBHOOK_CB_REQUEUE_DELAY_MS || WEBHOOK_CB_OPEN_MS || 120000
+  }
+
+  private async handleCircuitFailure(phone: string, cbId: string, cbKey: string, error: any): Promise<boolean> {
+    try {
+      const threshold = WEBHOOK_CB_FAILURE_THRESHOLD || 1
+      const openMs = WEBHOOK_CB_OPEN_MS || 120000
+      const ttlMs = WEBHOOK_CB_FAILURE_TTL_MS || openMs
+      const count = process.env.REDIS_URL
+        ? await bumpWebhookCircuitFailure(phone, cbId, ttlMs)
+        : bumpCircuitFailureLocal(cbKey, ttlMs)
+      if (count >= threshold) {
+        if (process.env.REDIS_URL) {
+          await openWebhookCircuit(phone, cbId, openMs)
+        } else {
+          openCircuitLocal(cbKey, openMs)
+        }
+        logger.warn('WEBHOOK_CB opened (phone=%s webhook=%s count=%s openMs=%s)', phone, cbId, count, openMs)
+        return true
+      } else {
+        logger.warn('WEBHOOK_CB failure (phone=%s webhook=%s count=%s/%s)', phone, cbId, count, threshold)
+        try { logger.warn(error as any, 'WEBHOOK_CB send failed (phone=%s webhook=%s)', phone, cbId) } catch {}
+        return false
+      }
+    } catch (e) {
+      logger.warn(e as any, 'WEBHOOK_CB failure handler error (phone=%s webhook=%s)', phone, cbId)
+      try { logger.warn(error as any, 'WEBHOOK_CB original error (phone=%s webhook=%s)', phone, cbId) } catch {}
+      // If the CB handler fails, fall back to the original error path (no circuit open)
+      return false
+    }
+  }
+}
+
+const cbOpenUntil: Map<string, number> = new Map()
+const cbFailState: Map<string, { count: number; exp: number }> = new Map()
+let cbLastCleanup = 0
+const CB_CLEANUP_INTERVAL_MS = WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS || 60 * 60 * 1000
+
+const isCircuitOpenLocal = (key: string, now: number) => {
+  maybeCleanupLocalCircuit(now)
+  const until = cbOpenUntil.get(key)
+  if (!until) return false
+  if (now >= until) {
+    cbOpenUntil.delete(key)
+    return false
+  }
+  return true
+}
+
+const openCircuitLocal = (key: string, openMs: number) => {
+  maybeCleanupLocalCircuit(Date.now())
+  cbOpenUntil.set(key, Date.now() + Math.max(1, openMs || 0))
+}
+
+const resetCircuitLocal = (key: string) => {
+  maybeCleanupLocalCircuit(Date.now())
+  cbOpenUntil.delete(key)
+  cbFailState.delete(key)
+}
+
+const bumpCircuitFailureLocal = (key: string, ttlMs: number): number => {
+  const now = Date.now()
+  maybeCleanupLocalCircuit(now)
+  const ttl = Math.max(1, ttlMs || 0)
+  const current = cbFailState.get(key)
+  if (!current || now >= current.exp) {
+    cbFailState.set(key, { count: 1, exp: now + ttl })
+    return 1
+  }
+  current.count += 1
+  return current.count
+}
+
+const maybeCleanupLocalCircuit = (now: number) => {
+  if (now - cbLastCleanup < CB_CLEANUP_INTERVAL_MS) return
+  cbLastCleanup = now
+  for (const [key, until] of cbOpenUntil) {
+    if (now >= until) cbOpenUntil.delete(key)
+  }
+  for (const [key, st] of cbFailState) {
+    if (now >= st.exp) cbFailState.delete(key)
   }
 }

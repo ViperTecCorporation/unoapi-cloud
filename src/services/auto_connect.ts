@@ -21,6 +21,21 @@ export const autoConnect = async (
       try {
         const config = await getConfig(phone)
         if (config.provider && !['forwarder', 'baileys'].includes(config.provider)) {
+          continue
+        }
+        if (config.server && config.server !== UNOAPI_SERVER_NAME) {
+          continue
+        }
+        await sessionStore.setStatus(phone, 'offline')
+      } catch (error) {
+        logger.warn(error, `Error on reset session status ${phone}`)
+      }
+    }
+    for (let i = 0, j = phones.length; i < j; i++) {
+      const phone = phones[i]
+      try {
+        const config = await getConfig(phone)
+        if (config.provider && !['forwarder', 'baileys'].includes(config.provider)) {
           logger.info(`Ignore connecting phone ${phone} provider ${config.provider}...`)
           continue;
         }
@@ -35,13 +50,9 @@ export const autoConnect = async (
         }
         logger.info(`Auto connecting phone ${phone}...`)
         try {
-          const store = await config.getStore(phone, config)
-          const { sessionStore } = store
-          if (await sessionStore.isStatusConnecting(phone) || await sessionStore.isStatusOnline(phone)) {
-            logger.info(`Update session status to auto connect ${phone}...`)
-            await sessionStore.setStatus(phone, 'offline')
-          }
-          getClient({ phone, listener, getConfig, onNewLogin })
+          void getClient({ phone, listener, getConfig, onNewLogin }).catch((error) => {
+            logger.error(error, `Error on async auto connect phone ${phone}`)
+          })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
           if (e instanceof ConnectionInProgress) {

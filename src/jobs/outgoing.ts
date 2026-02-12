@@ -13,12 +13,27 @@ import { extractDestinyPhone, isAudioMessage, isIncomingMessage, TYPE_MESSAGES_M
 import logger from '../services/logger'
 import { getConfig } from '../services/config'
 import { isUpdateMessage, isFailedStatus } from '../services/transformer'
+import { getConfig as getRedisConfig } from '../services/redis'
 
 const  dUntil: Map<string, number> = new Map()
-const  dVerified: Map<string, boolean> = new Map()
+const  dVerified: Map<string, number> = new Map()
+const VERIFIED_TTL_MS = 24 * 60 * 60 * 1000
 
 const sleep = (ms) => {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const cleanDelayState = (now: number) => {
+  for (const [key, ts] of dVerified) {
+    if (now - ts > VERIFIED_TTL_MS) {
+      dVerified.delete(key)
+    }
+  }
+  for (const [key, next] of dUntil) {
+    if (now - next > VERIFIED_TTL_MS) {
+      dUntil.delete(key)
+    }
+  }
 }
 
 const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, payload) => {
@@ -26,6 +41,8 @@ const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, pa
  
   if (to) {
     const key = `${phone}:${to}`
+    const now = Date.now()
+    cleanDelayState(now)
     if (!dVerified.get(key)) {
       let nextMessageTime = dUntil.get(key)
       const epochMS: number = Math.floor(Date.now());
@@ -40,7 +57,7 @@ const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_WEBHOOK_MS ? async (phone, pa
           await sleep(thisMessageDelay)
         } else {
           logger.debug('Key %s doesn\'t need more delays', key)
-          dVerified.set(key, true);
+          dVerified.set(key, now);
           dUntil.delete(key);
         }
       } 
@@ -58,6 +75,12 @@ export class OutgoingJob {
   }
 
   async consume(phone: string, data: object) {
+    const persistedConfig = await getRedisConfig(phone)
+    if (!persistedConfig) {
+      logger.warn('Dropping outgoing job for %s because session config was not found in redis', phone)
+      return
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = { ...data as any }
     const payload: any = a.payload

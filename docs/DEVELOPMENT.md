@@ -38,6 +38,10 @@ POST /v15.0/{phone}/messages
 }
 ```
 
+Note:
+- If statusJidList is empty or null and type is image/video, Unoapi auto-fills from Redis contact-info keys (unoapi-contact-info:<phone>:*).
+- If the list is still empty, no relay happens.
+
 Response augments Cloud API with:
 
 ```
@@ -45,6 +49,35 @@ Response augments Cloud API with:
   ...,
   "status_skipped": ["5511..."],
   "status_recipients": 123
+}
+```
+
+## Reaction Example
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "5511999999999",
+  "type": "reaction",
+  "reaction": {
+    "message_id": "MESSAGE_ID",
+    "emoji": "👍"
+  }
+}
+```
+
+## Sticker Example
+
+PNG/JPG/GIF are auto-converted to WEBP before sending.
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "5511999999999",
+  "type": "sticker",
+  "sticker": {
+    "link": "https://example.com/sticker.png"
+  }
 }
 ```
 

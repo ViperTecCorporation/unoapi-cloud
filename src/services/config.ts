@@ -28,6 +28,7 @@ export type Webhook = {
   sendIncomingMessages: boolean
   sendTranscribeAudio: boolean
   addToBlackListOnOutgoingMessageWithTtl: number | undefined
+  typebot?: boolean
 }
 
 export type WebhookForward = {
@@ -82,9 +83,12 @@ export type Config = {
   provider: 'baileys' | 'forwarder' | undefined
   server:  string | undefined
   connectionType: connectionType
-  wavoipToken:  string | undefined
+  baileysCountryCode: string
   useRedis: boolean
   useS3: boolean
+  // Coexistência Web + Meta
+  coexistenceEnabled: boolean
+  coexistenceWindowSeconds: number
   qrTimeoutMs: number
   label: string
   overrideWebhooks: boolean
@@ -150,7 +154,8 @@ export const defaultConfig: Config = {
       sendUpdateMessages: true,
       sendIncomingMessages: true,
       sendTranscribeAudio: false,
-      addToBlackListOnOutgoingMessageWithTtl: undefined
+      addToBlackListOnOutgoingMessageWithTtl: undefined,
+      typebot: false,
     },
   ],
   webhookForward: {},
@@ -164,9 +169,11 @@ export const defaultConfig: Config = {
   provider: undefined,
   server: undefined,
   connectionType: 'qrcode',
-  wavoipToken: '',
+  baileysCountryCode: 'BR',
   useRedis: false,
   useS3: false,
+  coexistenceEnabled: false,
+  coexistenceWindowSeconds: 24 * 60 * 60,
   qrTimeoutMs: 60000,
   label: '',
   overrideWebhooks: false,

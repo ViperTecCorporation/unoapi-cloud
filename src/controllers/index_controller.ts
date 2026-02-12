@@ -23,15 +23,22 @@ class IndexController {
     logger.debug('socket params %s', JSON.stringify(req.params))
     logger.debug('socket body %s', JSON.stringify(req.body))
     try {
-      // use __filename to support CommonJS output as configured by the build
+      // Avoid package "exports" subpath issues by checking known files directly.
       const reqr = createRequire(__filename as unknown as string)
-      const clientPath = reqr.resolve('socket.io-client/dist/socket.io.min.js')
-      res.type('application/javascript')
-      return res.sendFile(clientPath)
-    } catch (e) {
-      logger.error(e, 'Socket.io client not found; redirecting to CDN')
-      return res.redirect(302, 'https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js')
-    }
+      const base = path.dirname(reqr.resolve('socket.io-client/package.json'))
+      const candidates = [
+        path.join(base, 'dist', 'socket.io.min.js'),
+        path.join(base, 'dist', 'socket.io.js'),
+      ]
+      const found = candidates.find((p) => fs.existsSync(p))
+      if (found) {
+        res.type('application/javascript')
+        return res.sendFile(found)
+      }
+    } catch {}
+
+    logger.warn('Socket.io client local asset not found; redirecting to CDN')
+    return res.redirect(302, 'https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js')
   }
 
   public docs(req: Request, res: Response) {

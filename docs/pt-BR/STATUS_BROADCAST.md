@@ -8,6 +8,10 @@ Detalha como o Unoapi lida com Stories (Status) via Baileys e as proteções par
 - `type` é um tipo de conteúdo suportado (text, image, video, ...)
 - `options.statusJidList = [números | JIDs]` — lista de destinatários para relay após o envio inicial
 
+Auto-preenchimento (image/video apenas):
+- Se statusJidList estiver vazio ou nulo e type for image/video, Unoapi preenche via Redis contact-info (unoapi-contact-info:<phone>:*).
+- Isso ocorre antes da normalização; se a lista continuar vazia, não faz relayMessage.
+
 ## Validação e Normalização
 
 Implementado em `src/services/socket.ts` no caminho `send()` para `status@broadcast`:

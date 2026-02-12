@@ -6,6 +6,10 @@ import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
 
 export class RegistrationController {
+  private static readonly REGISTER_DEBOUNCE_MS = 15000
+  private static readonly inFlightByPhone: Set<string> = new Set()
+  private static readonly lastRegisterAtByPhone: Map<string, number> = new Map()
+
   private getConfig: getConfig
   private logout: Logout
   private reload: Reload
@@ -25,7 +29,30 @@ export class RegistrationController {
     const { phone } = req.params
     try {
       await setConfig(phone, req.body)
+      const now = Date.now()
+      const last = RegistrationController.lastRegisterAtByPhone.get(phone) || 0
+      const inFlight = RegistrationController.inFlightByPhone.has(phone)
+      const inDebounceWindow = (now - last) < RegistrationController.REGISTER_DEBOUNCE_MS
+
+      if (inFlight || inDebounceWindow) {
+        logger.warn(
+          'register suppressed for %s (inFlight=%s debounceMs=%s)',
+          phone,
+          inFlight,
+          Math.max(0, RegistrationController.REGISTER_DEBOUNCE_MS - (now - last))
+        )
+        const config = await this.getConfig(phone)
+        return res.status(202).json({ ...config, registerSuppressed: true })
+      }
+
+      RegistrationController.inFlightByPhone.add(phone)
+      RegistrationController.lastRegisterAtByPhone.set(phone, now)
       this.reload.run(phone)
+        .catch((err) => logger.error(`register reload failed for ${phone}: ${err.message}`))
+        .finally(() => {
+          RegistrationController.inFlightByPhone.delete(phone)
+        })
+
       const config = await this.getConfig(phone)
       return res.status(200).json(config)
     } catch (e) {

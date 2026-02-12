@@ -41,6 +41,7 @@ export type DataStore  = {
   getGroupMetada: (jid: string) => Promise<GroupMetadata | undefined>
   loadGroupMetada: (jid: string, sock: Partial<WASocket>) => Promise<GroupMetadata | undefined>
   loadUnoId: (id: string) => Promise<string | undefined>
+  loadProviderId: (id: string) => Promise<string | undefined>
   setStatus: (id: string, status: MessageStatus) => Promise<void>
   loadStatus: (id: string) => Promise<string | undefined>
   getJid: (phone: string) => Promise<string | undefined>

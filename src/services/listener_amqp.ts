@@ -15,11 +15,21 @@ const priorities = {
 }
 
 const delay = new Map<string, number>()
+const HISTORY_DELAY_TTL_MS = 5 * 60 * 1000
+
+const pruneDelayMap = (now: number) => {
+  for (const [key, ts] of delay) {
+    if (now - ts > HISTORY_DELAY_TTL_MS) {
+      delay.delete(key)
+    }
+  }
+}
 
 const delays = {
   'qrcode': _ => 0,
   'status': _ => 0,
   'history': (phone: string) => {
+    pruneDelayMap(Date.now())
     const current = delay.get(phone)
     if (current) {
       delay.set(phone, current + 1000)

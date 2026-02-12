@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { BASE_KEY, redisKeys, redisGet, getPnForLid, getLidForPn } from '../services/redis'
+import { JIDMAP_LIST_ENABLED } from '../defaults'
 
 const isDigits = (s?: string) => typeof s === 'string' && /^\d+$/.test(s)
 
@@ -7,6 +8,9 @@ export class JidMapController {
   // GET /:version/:phone/jidmap
   async list(req: Request, res: Response) {
     try {
+      if (!JIDMAP_LIST_ENABLED) {
+        return res.status(403).json({ error: 'jidmap list disabled' })
+      }
       const session = req.params.phone
       const scope = `${(req.query.scope || 'session')}`.toLowerCase() // session | global
       const base = scope === 'global' ? `${BASE_KEY}jidmap:global:` : `${BASE_KEY}jidmap:${session}:`

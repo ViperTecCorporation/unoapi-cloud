@@ -34,8 +34,17 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   const mediaStore: MediaStore = {} as MediaStore
   mediaStore.type = 'file'
 
-  mediaStore.getFilePath = (phone: string, mediaId: string, mimeType: string) => {
-    const extension = mime.extension(mimeType)
+  mediaStore.getFilePath = (phone: string, mediaId: string, mimeType: string, fileName?: string) => {
+    let extension = mime.extension(mimeType) as string | false
+    if (!extension && fileName) {
+      const baseName = `${fileName}`.split(/[\\/]/).pop() || ''
+      const dot = baseName.lastIndexOf('.')
+      if (dot > 0 && dot < baseName.length - 1) {
+        const ext = baseName.slice(dot + 1).toLowerCase()
+        if (/^[a-z0-9]{1,10}$/.test(ext)) extension = ext
+      }
+    }
+    if (!extension) extension = 'bin'
     return `${phone}/${mediaId}.${extension}`
   }
 
@@ -48,7 +57,12 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         convertToMp3 = true
       }
     }
-    const filePath = mediaStore.getFilePath(phone, message.id, convertToMp3 ? 'audio/mpeg' : inMime)
+    const filePath = mediaStore.getFilePath(
+      phone,
+      message.id,
+      convertToMp3 ? 'audio/mpeg' : inMime,
+      message[message.type].filename,
+    )
     const url = `${config.webhookForward.url}/${config.webhookForward.version}/${message[message.type].id}`
     const { buffer } = await mediaToBuffer(url, config.webhookForward.token!, config.webhookForward?.timeoutMs || 0)
     const outBuffer = convertToMp3 ? await convertBufferToMp3(buffer) : buffer
@@ -157,17 +171,18 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     }
     const tryDownload = async (ctx: any) => {
       const mediaUrl = ctx?.message?.url || initial?.message?.url
-      if (!ctx || !ctx.message || !mediaUrl) {
+      const directPath = ctx?.message?.directPath || initial?.message?.directPath
+      if (!ctx || !ctx.message || (!mediaUrl && !directPath)) {
         throw new Error('Missing media context to download media')
       }
-      if (mediaUrl.indexOf('base64') >= 0) {
+      if (mediaUrl && mediaUrl.indexOf('base64') >= 0) {
         const base64 = mediaUrl.split(',')[1]
         return Buffer.from(base64, 'base64')
       }
       const content: any = {
         mediaKey: ctx?.message?.mediaKey,
-        directPath: ctx?.message?.directPath,
-        url: `https://mmg.whatsapp.net${ctx?.message?.directPath}`,
+        directPath,
+        url: directPath ? `https://mmg.whatsapp.net${directPath}` : mediaUrl,
         fileEncSha256: ctx?.message?.fileEncSha256,
         fileSha256: ctx?.message?.fileSha256,
         mediaKeyTimestamp: ctx?.message?.mediaKeyTimestamp,
@@ -243,12 +258,19 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       logger.warn(e as any, 'Failed to convert audio to MP3; storing original')
       outBuffer = buffer
     }
-    const filePath = mediaStore.getFilePath(phone, waMessage.key.id!, chosenMime)
+    const filePath = mediaStore.getFilePath(
+      phone,
+      waMessage.key.id!,
+      chosenMime,
+      (binMessage as any)?.message?.fileName,
+    )
     logger.debug('Saving buffer %s...', filePath)
     await mediaStore.saveMediaBuffer(filePath, outBuffer)
     logger.debug('Saved buffer %s!', filePath)
     const mediaId = waMessage.key.id
     const mimeType = mime.lookup(filePath)
+    // Gerar link direto (7 dias) usando o backend de storage (S3 gera presigned)
+    const downloadUrl = await mediaStore.getFileUrl(filePath, 60 * 60 * 24 * 7)
     const payload = {
       messaging_product: 'whatsapp',
       mime_type: mimeType,
@@ -256,9 +278,17 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       file_size: binMessage?.message?.fileLength,
       id: `${phone}/${mediaId}`,
       filename: (chosenMime === 'audio/mpeg' ? filePath : (binMessage?.message?.fileName || filePath)),
+      url: downloadUrl,
     }
     const dataStore = await getDataStore(phone, config)
     await dataStore.setMediaPayload(mediaId!, payload)
+    // Propagar a URL para o payload da mensagem (webhook)
+    try {
+      const type = initial?.messageType && mapMediaType[initial.messageType]
+      if (type && (waMessage as any)?.message?.[initial.messageType]) {
+        ;(waMessage as any).message[initial.messageType].url = downloadUrl
+      }
+    } catch {}
     return waMessage
   }
 
@@ -308,7 +338,16 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   mediaStore.getMedia = async (baseUrl: string, mediaId: string) => {
     const dataStore = await getDataStore(phone, config)
     const mediaPayload = await dataStore.loadMediaPayload(mediaId!)
-    const filePath = mediaStore.getFilePath(phone, mediaId!, mediaPayload.mime_type!)
+    if (!mediaPayload) {
+      logger.debug('media getMedia not found: %s', mediaId)
+      return undefined
+    }
+    const mimeType = mediaPayload?.mime_type || mediaPayload?.content_type
+    if (!mimeType) {
+      logger.debug('media getMedia missing mime_type: %s', mediaId)
+      return undefined
+    }
+    const filePath = mediaStore.getFilePath(phone, mediaId!, mimeType, mediaPayload?.filename)
     const url = await mediaStore.getDownloadUrl(baseUrl, filePath)
     const payload = {
       ...mediaPayload,

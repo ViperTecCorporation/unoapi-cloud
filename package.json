@@ -1,6 +1,6 @@
 {
   "name": "unoapi-cloud",
-  "version": "3.0.0-beta-165",
+  "version": "3.0.34",
   "description": "Unoapi Cloud Fork Viper Tec baileys 7",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -79,17 +79,18 @@
   },
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
-    "@aws-sdk/client-s3": "^3.598.0",
-    "@aws-sdk/s3-request-presigner": "^3.598.0",
+    "@aws-sdk/client-s3": "3.893.0",
+    "@aws-sdk/lib-storage": "3.893.0",
+    "@aws-sdk/s3-request-presigner": "3.893.0",
     "@google-cloud/text-to-speech": "^5.2.0",
     "@redis/client": "^1.5.14",
     "@sentry/node": "^9.29.0",
+    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#b62cb12c2ceb1cc5eeb3431c6a67e60709111a93",
     "amqplib": "^0.10.8",
-    "axios": "^1.7.7",
-    "audio2textjs": "^1.0.5",
     "audio-decode": "^2.2.3",
+    "audio2textjs": "^1.0.5",
     "awesome-phonenumber": "^6.8.0",
-    "@whiskeysockets/baileys": "7.0.0-rc.9",
+    "axios": "^1.7.7",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "i18n": "^0.15.1",
@@ -111,8 +112,7 @@
     "uuid": "^9.0.1",
     "vcf": "^2.1.2",
     "xlsx": "^0.18.5",
-    "yaml": "^2.7.0",
-    "voice-calls-baileys": "file:vendor/voice-calls-baileys"
+    "yaml": "^2.7.0"
   },
   "engines": {
     "node": ">= 24.x"
@@ -120,6 +120,6 @@
   "resolutions": {
     "libsignal": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
     "@whiskeysockets/libsignal-node": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
-    "@whiskeysockets/baileys": "7.0.0-rc.9"
+    "@whiskeysockets/baileys": "github:ViperTecCorporation/Baileys#b62cb12c2ceb1cc5eeb3431c6a67e60709111a93"
   }
 }

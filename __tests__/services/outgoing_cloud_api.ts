@@ -1,17 +1,16 @@
 import { mock } from 'jest-mock-extended'
 jest.mock('../../src/services/blacklist')
 jest.mock('node-fetch')
-import { OutgoingCloudApi } from '../../src/services/outgoing_cloud_api'
-import { Outgoing } from '../../src/services/outgoing'
+import type { Outgoing } from '../../src/services/outgoing'
 import { Store, getStore } from '../../src/services/store'
-import fetch, { Response } from 'node-fetch'
+import type fetchType from 'node-fetch'
 import { DataStore } from '../../src/services/data_store'
 import { MediaStore } from '../../src/services/media_store'
 import { Config, getConfig, defaultConfig, getMessageMetadataDefault, Webhook } from '../../src/services/config'
 import logger from '../../src/services/logger'
 import { isInBlacklistInMemory, addToBlacklistInMemory, isInBlacklist } from '../../src/services/blacklist'
 
-const mockFetch = fetch as jest.MockedFunction<typeof fetch>
+let mockFetch: jest.MockedFunction<typeof fetchType>
 const addToBlacklistMock = addToBlacklistInMemory as jest.MockedFunction<typeof addToBlacklistInMemory>
 const webhook = mock<Webhook>()
 
@@ -24,11 +23,18 @@ const url = 'http://example.com'
 let phone: string | undefined
 let wa_id: string | undefined
 let service: Outgoing
+let OutgoingCloudApiClass: typeof import('../../src/services/outgoing_cloud_api').OutgoingCloudApi
 
 describe('service outgoing whatsapp cloud api', () => {
   let textPayload: any, outgoingPayload: any, updatePayload: any
 
   beforeEach(() => {
+    process.env.WEBHOOK_ASYNC = 'false'
+    jest.resetModules()
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ;({ OutgoingCloudApi: OutgoingCloudApiClass } = require('../../src/services/outgoing_cloud_api'))
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    mockFetch = require('node-fetch') as jest.MockedFunction<typeof fetchType>
     config = defaultConfig
     config.ignoreGroupMessages = true
     webhook.timeoutMs = 1
@@ -46,7 +52,7 @@ describe('service outgoing whatsapp cloud api', () => {
     isInBlacklistMock = jest.fn()
     phone = `${new Date().getTime() / 4}`
     wa_id = `${new Date().getTime() / 2}`
-    service = new OutgoingCloudApi(getConfig, isInBlacklistMock, addToBlacklistMock)
+    service = new OutgoingCloudApiClass(getConfig, isInBlacklistMock, addToBlacklistMock)
     textPayload = {
       text: {
         body: 'test'
@@ -90,12 +96,11 @@ describe('service outgoing whatsapp cloud api', () => {
     const mockUrl = `${url}/${phone}`
     logger.debug(`Mock url ${mockUrl}`)
     mockFetch.mockReset()
-    expect(fetch).toHaveBeenCalledTimes(0)
-    const response = new Response('ok', { status: 200 })
-    response.ok = true
+    expect(mockFetch).toHaveBeenCalledTimes(0)
+    const response = { ok: true, status: 200, text: async () => 'ok' } as any
     mockFetch.mockResolvedValue(response)
     await service.send(phone!, textPayload)
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
   test('not sendHttp in webhook when is in blacklist', async () => {

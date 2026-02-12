@@ -25,7 +25,6 @@ import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { useVoiceCallsBaileys } from 'voice-calls-baileys/lib/services/transport.model'
 import { 
   DEFAULT_BROWSER,
   LOG_LEVEL,
@@ -34,21 +33,30 @@ import {
   MAX_CONNECT_RETRY,
   CLEAN_CONFIG_ON_DISCONNECT,
   VALIDATE_SESSION_NUMBER,
+  QR_POST_LOGIN_SUPPRESS_MS,
 } from '../defaults'
 import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS, ACK_RETRY_ENABLED } from '../defaults'
 import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS, PERIODIC_ASSERT_FORCE, PERIODIC_ASSERT_INCLUDE_GROUPS } from '../defaults'
-import { ONE_TO_ONE_ADDRESSING_MODE } from '../defaults'
+import { ONE_TO_ONE_ADDRESSING_MODE, BR_SEND_ORDER_ENABLED } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromContactInfo, enrichJidMapFromAuthLidCache } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
 import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP, JIDMAP_ENRICH_AUTH_ENABLED } from '../defaults'
+import { SIGNAL_SESSION_PURGE_ENABLED } from '../defaults'
 import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
-import { ONE_TO_ONE_PREASSERT_ENABLED, ONE_TO_ONE_PREASSERT_COOLDOWN_MS, ONE_TO_ONE_ASSERT_PROBE_ENABLED } from '../defaults'
+import {
+  ONE_TO_ONE_PREASSERT_ENABLED,
+  ONE_TO_ONE_PREASSERT_COOLDOWN_MS,
+  ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
+  ONE_TO_ONE_ASSERT_PROBE_ENABLED,
+  ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST,
+  SIGNAL_CACHE_SAFE_MODE,
+} from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
@@ -303,7 +311,6 @@ export const connect = async ({
     // No mesmo timer do LID resolver: enriquecer JIDMAP a partir do contact-info (leve, com limite por varredura)
     try {
       if ((config as any)?.useRedis && JIDMAP_ENRICH_ENABLED) {
-        await enrichJidMapFromContactInfo(phone, Math.max(50, JIDMAP_ENRICH_PER_SWEEP || 200))
       }
     } catch {}
     // Também espelhar o cache interno do Baileys (unoapi-auth:*:lid-mapping-*) para o JIDMAP
@@ -439,7 +446,8 @@ export const connect = async ({
     scheduleNext()
   }
 
-  const purgeSignalSessionsFor = async (toJid: string) => {
+  const purgeSignalSessionsFor = async (toJid: string, forceDeviceList = false) => {
+    if (SIGNAL_CACHE_SAFE_MODE) return
     try {
       const ids: string[] = []
       const pn = (() => { try { return jidNormalizedUser(toJid) } catch { return undefined } })()
@@ -472,9 +480,11 @@ export const connect = async ({
         }
       } catch {}
       // Redis-backed sessions
-      if ((config as any)?.useRedis) {
-        try { await delSignalSessionsForJids(phone, ids) } catch {}
-      } else {
+        if ((config as any)?.useRedis) {
+          if (SIGNAL_SESSION_PURGE_ENABLED) {
+            try { await delSignalSessionsForJids(phone, ids, { forceDeviceList }) } catch {}
+          }
+        } else {
         // File-backed sessions: remove session-<addr>* files
         try {
           const dir = `${SESSION_DIR}/${phone}`
@@ -491,7 +501,7 @@ export const connect = async ({
   }
 
   const scheduleDeliveryWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
-    try { if (!DELIVERY_WATCHDOG_ENABLED) return } catch { return }
+    try { if (!DELIVERY_WATCHDOG_ENABLED || SIGNAL_CACHE_SAFE_MODE) return } catch { return }
     try { if (!messageId) return } catch { return }
     // Skip groups unless explicitly enabled
     try { if (typeof to === 'string' && to.endsWith('@g.us') && !DELIVERY_WATCHDOG_GROUPS) return } catch {}
@@ -507,7 +517,8 @@ export const connect = async ({
           if (!pendingDeliveryWatch.has(messageId)) return
           try { logger.info('DELIVERY watch: firing attempt %s/%s for id=%s to=%s', entry.attempt + 1, maxAttempts, messageId, to) } catch {}
           // Force: purge current signal sessions for target and assert again
-          try { await purgeSignalSessionsFor(to) } catch {}
+          // Purge device-list as well to force fresh device enumeration (multi-device "Aguardando" fix)
+          try { await purgeSignalSessionsFor(to, true) } catch {}
           // Re-assert (cover PN/LID + self) and resend same id without userDevices cache
           try {
             const set = new Set<string>()
@@ -632,11 +643,16 @@ export const connect = async ({
   const status: Status = {
     attempt: time,
   }
+  let suppressQrUntil = 0
 
   const onConnectionUpdate = async (event: Partial<ConnectionState>) => {
     logger.debug('onConnectionUpdate connectionType %s ==> %s %s', config.connectionType, phone, JSON.stringify(event))
     // Evita emitir QR code quando a sessão já está efetivamente online/aberta
     if (event.qr && config.connectionType == 'qrcode') {
+      if (suppressQrUntil > Date.now()) {
+        logger.info('Skip QR emission during post-login grace window for %s (remaining=%sms)', phone, suppressQrUntil - Date.now())
+        return
+      }
       const registered = !!sock?.authState?.creds?.registered || !!state?.creds?.me?.id
       const alreadyOnline = await sessionStore.isStatusOnline(phone)
       const isOpen = event.connection === 'open' || event.isOnline === true
@@ -646,7 +662,15 @@ export const connect = async ({
           logger.debug(message)
           await onNotification(message, true)
           status.attempt = 1
-          return logout()
+          const registered = !!sock?.authState?.creds?.registered || !!state?.creds?.me?.id
+          const isOpen = event.connection === 'open' || event.isOnline === true
+          const alreadyOnline = await sessionStore.isStatusOnline(phone)
+          if (registered || isOpen || alreadyOnline) {
+            logger.info('Skip attempts_exceeded cleanup; session already open %s', phone)
+            return
+          }
+          await sessionStore.setStatus(phone, 'offline')
+          return
         } else {
           logger.debug('QRCode generate... %s of %s', status.attempt, attempts)
           return onQrCode(event.qr, status.attempt++, attempts)
@@ -657,8 +681,9 @@ export const connect = async ({
     }
 
     if (event.isNewLogin) {
+      suppressQrUntil = Date.now() + Math.max(0, QR_POST_LOGIN_SUPPRESS_MS)
+      logger.info('New login detected for %s, suppressing QR re-emit for %sms', phone, Math.max(0, QR_POST_LOGIN_SUPPRESS_MS))
       await onNewLogin(phone)
-      await sessionStore.setStatus(phone, 'online')
     }
 
     if (event.receivedPendingNotifications) {
@@ -666,7 +691,6 @@ export const connect = async ({
     }
 
     if (event.isOnline) {
-      await sessionStore.setStatus(phone, 'online')
       await onNotification(t('online_session'), true)
     }
     
@@ -676,6 +700,10 @@ export const connect = async ({
         break
         
         case 'close':
+        try {
+          const statusCode = (event as any)?.lastDisconnect?.error?.output?.statusCode
+          logger.warn('connection.update close for %s (status=%s)', phone, statusCode)
+        } catch {}
         await onClose(event)
         break
 
@@ -769,18 +797,20 @@ export const connect = async ({
   const onClose = async (payload: any) => {
     // Limpar timer do assert periódico ao desconectar
     try { if (periodicAssertTimer) { clearInterval(periodicAssertTimer); periodicAssertTimer = undefined; logger.debug('PERIODIC_ASSERT: timer cleared on close') } } catch {}
+    const { lastDisconnect } = payload || {}
+    const statusCode = lastDisconnect?.error?.output?.statusCode
     if (await sessionStore.isStatusOffline(phone)) {
       logger.warn('Already Offline %s', phone)
       sock = undefined
       return
     }
-    if (await sessionStore.isStatusDisconnect(phone)) {
+    // Durante o pareamento é comum receber 515 logo após persistências/reloads.
+    // Não bloquear esse caso com "Already Disconnected", pois precisa reconectar.
+    if (await sessionStore.isStatusDisconnect(phone) && statusCode !== DisconnectReason.restartRequired) {
       logger.warn('Already Disconnected %s', phone)
       sock = undefined
       return
     }
-    const { lastDisconnect } = payload
-    const statusCode = lastDisconnect?.error?.output?.statusCode
     logger.info(`${phone} disconnected with status: ${statusCode}`)
     if ([DisconnectReason.loggedOut, 403].includes(statusCode)) {
       status.attempt = 1
@@ -795,11 +825,18 @@ export const connect = async ({
       const message = t('unique')
       return onNotification(message, true)
     } else if (statusCode === DisconnectReason.restartRequired) {
+      suppressQrUntil = Date.now() + Math.max(0, QR_POST_LOGIN_SUPPRESS_MS)
       const message = t('restart')
       await onNotification(message, true)
       await sessionStore.setStatus(phone, 'restart_required')
+      logger.warn('%s received restartRequired (515), closing socket and triggering reconnect', phone)
       await close()
-      return onReconnect(1)
+      try {
+        return await onReconnect(1)
+      } catch (e) {
+        logger.error(e as any, 'onReconnect failed after restartRequired for %s; fallback reconnect()', phone)
+        return reconnect(statusCode)
+      }
     } else if (statusCode === DisconnectReason.badSession && config.proxyUrl && lastDisconnect?.error?.data?.options?.command?.connect) {
       const message = t('server_error', config.proxyUrl)
       await onNotification(message, true)
@@ -808,7 +845,7 @@ export const connect = async ({
       const message = t('closed', statusCode, detail)
       await onNotification(message, true)
     }
-    return reconnect()
+    return reconnect(statusCode)
   }
 
   const getMessage = async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> => {
@@ -1215,7 +1252,27 @@ export const connect = async ({
     }
   } catch {}
 
-  const reconnect = async () => {
+  const reconnect = async (lastStatusCode?: number) => {
+    if (config.useRedis) {
+      try {
+        const key = configKey(phone)
+        const sessionConfig = await redisGet(key)
+        if (!sessionConfig) {
+          logger.warn('%s reconnect skipped: redis session config not found (%s)', phone, key)
+          status.attempt = 1
+          await close()
+          await sessionStore.setStatus(phone, 'disconnected')
+          return
+        }
+      } catch (error) {
+        logger.warn(error as any, '%s reconnect skipped: failed to verify redis session config', phone)
+        status.attempt = 1
+        await close()
+        await sessionStore.setStatus(phone, 'disconnected')
+        return
+      }
+    }
+
     logger.info(`${phone} reconnecting`, status.attempt)
     if (status.attempt > attempts) {
       const message =  t('attempts_exceeded', attempts)
@@ -1223,6 +1280,17 @@ export const connect = async ({
       status.attempt = 1
       return close()
     } else {
+      // Stream 503 bursts happen in waves; backoff avoids reconnect storms.
+      if (lastStatusCode === 503) {
+        const attemptIndex = Math.max(0, (status.attempt || 1) - 1)
+        const base = Math.max(800, config.retryRequestDelayMs || 1000)
+        const exp = Math.min(6, attemptIndex)
+        const backoff = Math.min(60000, base * Math.pow(2, exp))
+        const jitter = Math.floor(Math.random() * 700)
+        const waitMs = backoff + jitter
+        logger.warn('%s reconnect backoff for 503: waiting %sms (attempt=%s)', phone, waitMs, status.attempt)
+        try { await delay(waitMs) } catch {}
+      }
       const message =  t('connecting_attemps', status.attempt, attempts)
       await onNotification(message, false)
       await close()
@@ -1331,12 +1399,21 @@ export const connect = async ({
   ) => {
     await validateStatus()
     // Prefer LID for 1:1 when possível; manter grupos inalterados
-    let idCandidate = to
-    let id = isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate
+    const forceRemoteJid = options?.forceRemoteJid
+    const skipBrSendOrder = options?.skipBrSendOrder
+    let idCandidate = forceRemoteJid || to
+    let id = forceRemoteJid ? idCandidate : (isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate)
+    try {
+      logger.debug('1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s skipBrSendOrder=%s brSendOrder=%s', to, idCandidate, id || '<none>', !!forceRemoteJid, !!skipBrSendOrder, !!BR_SEND_ORDER_ENABLED)
+    } catch {}
     // BR send-order: tentar 12 dígitos primeiro; se não existir, tentar 13. Webhooks permanecem 13.
     // Quando o input vier como LID, e o modo 1:1 for 'pn', usar o PN resolvido via exists() para aplicar a regra.
     try {
-      let raw = ensurePn(idCandidate)
+      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
+        // Reactions (and similar) require the exact remote key JID.
+        // Do not apply BR heuristics to the destination.
+      } else {
+        let raw = ensurePn(idCandidate)
       try {
         if ((!raw || raw.length === 0) && ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
           raw = ensurePn(`${id || ''}`)
@@ -1376,12 +1453,15 @@ export const connect = async ({
           id = chosen
         }
       }
+      }
     } catch {}
     // preferAddressingMode declarado acima
     // BR 9º dígito: só preferir LID quando o modo 1:1 NÃO for 'pn'.
     // Em modo 'pn', mantemos PN para evitar enviar via LID.
     try {
-      if (ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
+        // Skip BR guard when disabled or explicitly bypassed.
+      } else if (ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
         const inDigits = `${idCandidate}`.replace(/\D/g, '')
         const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
         if (
@@ -1463,7 +1543,22 @@ export const connect = async ({
         try { if (isLidUser(id)) cdKey = jidNormalizedUser(id) } catch {}
         const now = Date.now()
         const last = lastOneToOneAssertAt.get(cdKey) || 0
-        const doPreassert = ONE_TO_ONE_PREASSERT_ENABLED && (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
+        // Throttle persistente opcional: guarda o último preassert em Redis
+        let redisAllow = true
+        const redisTtlSec = ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC || 0
+        let redisKey = ''
+        if (redisTtlSec > 0) {
+          try {
+            redisKey = `${BASE_KEY}preassert:1to1:${phone}:${cdKey}`.replace(/[^a-zA-Z0-9:@._-]/g, '_')
+            const existing = await redisGet(redisKey)
+            if (existing) redisAllow = false
+          } catch {}
+        }
+        const doPreassert =
+          ONE_TO_ONE_PREASSERT_ENABLED &&
+          !SIGNAL_CACHE_SAFE_MODE &&
+          redisAllow &&
+          (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()
         set.add(id)
         try {
@@ -1511,8 +1606,15 @@ export const connect = async ({
         } catch {}
         const targets = Array.from(set)
         if (doPreassert && targets.length) {
+          // Opcional: forçar refresh da lista de devices antes do assert (evitar cache desatualizado)
+          if (ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
+            try { await purgeSignalSessionsFor(id, true) } catch {}
+          }
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
+          if (redisTtlSec > 0 && redisKey) {
+            try { await redisSetAndExpire(redisKey, '1', redisTtlSec) } catch {}
+          }
           logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
           try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
         } else {
@@ -1956,9 +2058,12 @@ export const connect = async ({
     // Prefer LID if mapped; otherwise, use the WA-resolved JID (even if 12-digit for BR).
     // Apply BR send-order for call rejection: try 12-digit first (onWhatsApp), then fallback to 13-digit.
     let target = callFrom
+    const targetIsLid = typeof target === 'string' && isLidUser(target)
     try {
-      // If a plain number was provided, resolve via onWhatsApp with BR 12→13 preference before falling back
-      if (typeof target === 'string' && target.indexOf('@') < 0) {
+      if (targetIsLid) {
+        logger.debug('CALL_REJECT: preserving LID %s for rejectCall', target)
+      // If a plain number was provided, resolve via onWhatsApp with BR 12?13 preference before falling back
+      } else if (typeof target === 'string' && target.indexOf('@') < 0) {
         try {
           const raw = ensurePn(target)
           if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
@@ -2021,37 +2126,39 @@ export const connect = async ({
           }
         } catch {}
       }
-      // BR mismatch guard (13 input vs 12 resolved): respeitar modo 1:1
-      try {
-        const inDigits = `${callFrom}`.replace(/\D/g, '')
-        const outDigits = `${target || ''}`.split('@')[0].replace(/\D/g, '')
-        const isBr13in = inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9'
-        const isBr12out = outDigits.startsWith('55') && outDigits.length === 12
-        if (isBr13in && isBr12out) {
-          // Se ONE_TO_ONE_ADDRESSING_MODE for 'lid', pode preferir LID; caso contrário, manter PN
-          if (ONE_TO_ONE_ADDRESSING_MODE === 'lid') {
-            try {
-              const lid = await (dataStore as any).getLidForPn?.(phone, target as any)
-              if (lid && typeof lid === 'string') {
-                logger.warn('BR_GUARD(rejectCall): prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
-                target = lid
-              } else {
-                logger.warn('BR_GUARD(rejectCall): keeping WA JID %s (input=%s); no LID mapping', target, inDigits)
-              }
-            } catch {}
-          } else {
-            // Modo PN: não alternar para LID; manter PN (incluindo candidato 12 dígitos)
-            logger.debug('BR_GUARD(rejectCall): ONE_TO_ONE_ADDRESSING_MODE=pn, mantendo PN %s', target)
+      // BR mismatch guard (13 input vs 12 resolved): respeitar modo 1:1. Se j? veio LID, mantenha LID.
+      if (!targetIsLid) {
+        try {
+          const inDigits = `${callFrom}`.replace(/\D/g, '')
+          const outDigits = `${target || ''}`.split('@')[0].replace(/\D/g, '')
+          const isBr13in = inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9'
+          const isBr12out = outDigits.startsWith('55') && outDigits.length === 12
+          if (isBr13in && isBr12out) {
+            // Se ONE_TO_ONE_ADDRESSING_MODE for 'lid', pode preferir LID; caso contr?rio, manter PN
+            if (ONE_TO_ONE_ADDRESSING_MODE === 'lid') {
+              try {
+                const lid = await (dataStore as any).getLidForPn?.(phone, target as any)
+                if (lid && typeof lid === 'string') {
+                  logger.warn('BR_GUARD(rejectCall): prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
+                  target = lid
+                } else {
+                  logger.warn('BR_GUARD(rejectCall): keeping WA JID %s (input=%s); no LID mapping', target, inDigits)
+                }
+              } catch {}
+            } else {
+              // Modo PN: n?o alternar para LID; manter PN (incluindo candidato 12 d?gitos)
+              logger.debug('BR_GUARD(rejectCall): ONE_TO_ONE_ADDRESSING_MODE=pn, mantendo PN %s', target)
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     } catch {}
-    // Preassert de sessões para rejeitar chamada com chaves atualizadas
+    // Preassert de sess?es para rejeitar chamada com chaves atualizadas
     try {
       const set = new Set<string>()
       if (typeof target === 'string' && target) set.add(target)
       try { if (isLidUser(target)) set.add(jidNormalizedUser(target)) } catch {}
-      // BR: incluir candidato alternativo (12↔13) quando alvo for PN JID
+      // BR: incluir candidato alternativo (12"13) quando alvo for PN JID
       try {
         if (typeof target === 'string' && target.endsWith('@s.whatsapp.net')) {
           const digits = ensurePn(target)
@@ -2107,10 +2214,6 @@ export const connect = async ({
 
   const connect = async () => {
     await sessionStore.syncConnection(phone)
-    if (await sessionStore.isStatusConnecting(phone)) {
-      logger.warn('Already Connecting %s', phone)
-      return
-    }
     if (await sessionStore.isStatusOnline(phone)) {
       logger.warn('Already Connected %s', phone)
       return
@@ -2151,12 +2254,27 @@ export const connect = async ({
       agent,
       fetchAgent,
       qrTimeout: config.qrTimeoutMs,
+      countryCode: `${(config as any).baileysCountryCode || 'BR'}`.toUpperCase(),
     }
     if (whatsappVersion) {
       socketConfig.version = whatsappVersion
     } else {
       try {
-        const { version } = await fetchLatestWaWebVersion()
+        const fetchVer: any = fetchLatestWaWebVersion as any
+        let version: number[] | undefined
+        try {
+          const res = await fetchVer({
+            headers: {
+              'sec-fetch-site': 'none',
+              'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            }
+          })
+          version = res?.version || res
+        } catch {
+          const res = await fetchVer()
+          version = res?.version || res
+        }
+        if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
         socketConfig.version = version
         logger.debug('Using latest WA Web version %s', JSON.stringify(version))
       } catch (e) {
@@ -2168,7 +2286,7 @@ export const connect = async ({
       socketConfig.browser = Browsers.ubuntu('Chrome')
     } else {
       if (!config.ignoreHistoryMessages) {
-        browser = Browsers.ubuntu('Desktop')
+        browser = Browsers.ubuntu('Chrome')
       }
       // Evita aviso deprecatado; QR é tratado via connection.update
       socketConfig.printQRInTerminal = false
@@ -2248,17 +2366,9 @@ export const connect = async ({
           throw error
         }
       }
-      if (config.wavoipToken) {
-        try {
-          useVoiceCallsBaileys(config.wavoipToken, sock as any, 'close', true)
-        } catch (e) {
-          logger.warn(e, 'Ignore voice-calls-baileys error')
-        }
-      }
       // Start background LID->PN resolver loop
       try { ensureLidResolverTimer() } catch {}
       // Enriquecer JIDMAP a partir de contact-info (quando Redis habilitado)
-      try { if ((config as any)?.useRedis) setTimeout(() => { enrichJidMapFromContactInfo(phone).catch(() => undefined) }, 0) } catch {}
       return true
     }
     return false
@@ -2271,5 +2381,3 @@ export const connect = async ({
 
   return { event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
 }
-
-

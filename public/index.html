@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unoapi Cloud — Manager</title>
+    <script src="/embedded/config.js"></script>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- DataTables CSS -->
@@ -20,6 +21,7 @@
         document.write('<' + 'script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js" crossorigin="anonymous"><' + '/script>')
       }
     </script>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
     <style>
         :root { --bg:#0b0c0f; --fg:#e6e6e6; --muted:#9aa0a6; --link:#8ab4f8; --card:#15171c; --border:#222; --rowAlt:#12141a; }
         body[data-theme="light"] { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --link:#1d4ed8; --card:#f3f4f6; --border:#e5e7eb; --rowAlt:#eef2f7; }
@@ -289,6 +291,7 @@
     </style>
 </head>
 <body>
+    <div id="fb-root"></div>
     <script>
       function setTheme(theme) {
         document.body.setAttribute('data-theme', theme);
@@ -325,7 +328,7 @@
           sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
           notifyFailures: 'Notify Failures', sendTyping: 'Send "Typing"', sendReactionAsReply: 'Send Reaction As Reply', ignoreOwnMessages: 'Ignore Own Messages', ignoreYourselfMessages: 'Ignore Yourself Messages', autoConnect: 'Auto Connect', ignoreBroadcastMessages: 'Ignore Broadcast Lists',
           whId: 'ID', whIdPh: 'Webhook ID', whUrlAbs: 'Absolute URL', whUrlAbsPh: 'Webhook Absolute URL', whToken: 'Token', whTokenPh: 'Webhook Token', whHeader: 'Header', whHeaderPh: 'Webhook Header',
-          whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', remove: 'Remove',
+          whSendNew: 'Send New Messages', whSendGroup: 'Send Group Messages', whSendNewsletter: 'Send Newsletter Messages', whSendOutgoing: 'Send Outgoing Messages', whSendIncoming: 'Send Incoming Messages', whSendUpdate: 'Send Message Updates', whSendTranscribe: 'Send Audio Transcription', whAddBlacklist: 'Add to blacklist when there is an outgoing message for X seconds', whTypebot: 'Typebot payload (Cloud API strict)', remove: 'Remove',
           btnEdit: 'Edit', btnConnect: 'Connect', btnDelete: 'Delete', btnTest: 'Test',
           confirmDelete: 'Are you sure you want to delete this session?',
           apiNoQr: 'API did not generate the QR Code.', tokenNotFound: 'Token not found.',
@@ -341,7 +344,24 @@
           groqApiTranscribeModelLabel: 'Groq Transcribe Model',
           groqApiTranscribeModelPh: 'e.g. whisper-large-v3',
           groqApiBaseUrlLabel: 'Groq API Base URL',
-          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1',
+          coexistenceEnabled: 'Enable Web + Meta coexistence',
+          coexistenceWindow: 'Coexistence window (seconds)',
+          coexistenceWindowPh: '86400 = 24h',
+          forwardUrlLabel: 'Cloud API Base URL',
+          forwardUrlPh: 'https://graph.facebook.com',
+          forwardVersionLabel: 'Cloud API Version',
+          forwardVersionPh: 'v17.0',
+          forwardPhoneIdLabel: 'Cloud phone_number_id',
+          forwardPhoneIdPh: 'phone_number_id',
+          forwardTokenLabel: 'Cloud API Token',
+          forwardTokenPh: 'Bearer ...',
+          forwardBusinessIdLabel: 'Business Account ID (optional)',
+          forwardBusinessIdPh: 'business_account_id',
+          forwardHelper: 'Use WhatsApp Cloud Embedded Signup to fetch token and phone_number_id.',
+          forwardImport: 'Import Embedded return',
+          forwardLaunch: 'Start Embedded Signup',
+          forwardUpdated: 'Cloud data updated. Review and save.'
         },
         'pt-BR': {
           langLabel: 'Idioma:',
@@ -371,7 +391,7 @@
           sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
           notifyFailures: 'Notificar Falhas', sendTyping: 'Enviar "Digitando"', sendReactionAsReply: 'Enviar Reação Como Resposta', ignoreOwnMessages: 'Ignorar Mensagens Próprias', ignoreYourselfMessages: 'Ignorar Suas Mensagens', autoConnect: 'Conexão Automática', ignoreBroadcastMessages: 'Ignorar Listas de Transmissão',
           whId: 'ID', whIdPh: 'ID do Webhook', whUrlAbs: 'URL Absoluta', whUrlAbsPh: 'URL Absoluta do Webhook', whToken: 'Token', whTokenPh: 'Token do Webhook', whHeader: 'Header', whHeaderPh: 'Header do Webhook',
-          whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', remove: 'Remover',
+          whSendNew: 'Enviar Novas Mensagens', whSendGroup: 'Enviar Mensagens de Grupos', whSendNewsletter: 'Enviar Mensagens de Newsletter', whSendOutgoing: 'Enviar Mensagens de Saída', whSendIncoming: 'Enviar Mensagens de Entrada', whSendUpdate: 'Enviar Atualização de Mensagens', whSendTranscribe: 'Enviar Transcrição de Áudio', whAddBlacklist: 'Adicionar ao blacklist quando houver mensagem de saída por X segundos', whTypebot: 'Payload Typebot (schema Cloud API)', remove: 'Remover',
           btnEdit: 'Editar', btnConnect: 'Conectar', btnDelete: 'Deletar', btnTest: 'Testar',
           confirmDelete: 'Tem certeza que deseja deletar essa sessão?',
           apiNoQr: 'API não gerou o QRCODE.', tokenNotFound: 'Token não encontrado.',
@@ -387,20 +407,131 @@
           groqApiTranscribeModelLabel: 'Modelo de Transcrição (Groq)',
           groqApiTranscribeModelPh: 'ex.: whisper-large-v3',
           groqApiBaseUrlLabel: 'URL Base da API Groq',
-          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1'
+          groqApiBaseUrlPh: 'https://api.groq.com/openai/v1',
+          coexistenceEnabled: 'Ativar coexistência Web + Meta',
+          coexistenceWindow: 'Janela de coexistência (segundos)',
+          coexistenceWindowPh: '86400 = 24h',
+          forwardUrlLabel: 'URL Base Cloud API',
+          forwardUrlPh: 'https://graph.facebook.com',
+          forwardVersionLabel: 'Versão Cloud API',
+          forwardVersionPh: 'v17.0',
+          forwardPhoneIdLabel: 'Cloud phone_number_id',
+          forwardPhoneIdPh: 'phone_number_id',
+          forwardTokenLabel: 'Token Cloud API',
+          forwardTokenPh: 'Bearer ...',
+          forwardBusinessIdLabel: 'Business Account ID (opcional)',
+          forwardBusinessIdPh: 'business_account_id',
+          forwardHelper: 'Use o Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.',
+          forwardImport: 'Importar retorno do Embedded',
+          forwardLaunch: 'Iniciar Embedded Signup',
+          forwardUpdated: 'Dados de Cloud atualizados. Revise e salve.'
         }
       };
       function t(key){ var d=I18N[currentLang]||I18N['en']; return d[key]||key }
+      // Inicializa FB SDK assim que carregar (se appId estiver configurado)
+      window.fbAsyncInit = function() {
+        try {
+          const appId = window.EMBEDDED_SIGNUP_APP_ID || ''
+          if (!appId) return
+          FB.init({ appId, xfbml: true, version: window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0' })
+        } catch (e) { console.warn('FB init failed', e) }
+      }
       function applyI18n(){
         document.querySelectorAll('[data-i18n]').forEach(function(el){ el.textContent = t(el.getAttribute('data-i18n')) })
         document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){ el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))) })
         document.querySelectorAll('[data-i18n-title]').forEach(function(el){ el.setAttribute('title', t(el.getAttribute('data-i18n-title'))) })
       }
+      // Embedded signup helpers: expect appId from window.EMBEDDED_SIGNUP_APP_ID or data attribute on body
+      const EMBEDDED_APP_ID = window.EMBEDDED_SIGNUP_APP_ID || document.body.getAttribute('data-embedded-app-id') || '';
+      const EMBEDDED_REDIRECT_URI = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+      function parseEmbeddedFromUrl() {
+        try {
+          const params = new URLSearchParams(window.location.search || '');
+          const phoneId = params.get('wa_phone_id');
+          const wabaId = params.get('wa_waba_id');
+          const token = params.get('wa_token');
+          const version = params.get('wa_version') || 'v17.0';
+          if (phoneId || token) {
+            return { phoneId, wabaId, token, version };
+          }
+        } catch {}
+        return undefined;
+      }
+      function storeEmbeddedPayload() {
+        const payload = parseEmbeddedFromUrl();
+        if (payload) {
+          localStorage.setItem('embeddedSignupPayload', JSON.stringify(payload));
+        }
+        return payload;
+      }
+      function consumeEmbeddedPayload() {
+        try {
+          const raw = localStorage.getItem('embeddedSignupPayload');
+          if (!raw) return undefined;
+          const data = JSON.parse(raw);
+          return data;
+        } catch { return undefined; }
+      }
+      function applyEmbeddedToForm(showAlert) {
+        const payload = consumeEmbeddedPayload();
+        if (!payload) return;
+        if (payload.phoneId) { $('#webhookForwardPhoneNumberId').val(payload.phoneId); }
+        if (payload.token) { $('#webhookForwardToken').val(payload.token); }
+        if (payload.wabaId) { $('#webhookForwardBusinessAccountId').val(payload.wabaId); }
+        if (payload.version) { $('#webhookForwardVersion').val(payload.version); }
+        // Ao importar, já marca coexistência ativa e janela padrão
+        try { $('#coexistenceEnabled').prop('checked', true); } catch {}
+        try {
+          const curr = Number($('#coexistenceWindowSeconds').val() || 0);
+          if (!curr) $('#coexistenceWindowSeconds').val(86400);
+        } catch {}
+        if (showAlert) {
+          $('#embeddedSuccess').removeClass('d-none');
+        }
+      }
       (function() {
         const saved = (localStorage.getItem('unoapi_docs_theme') || '').toLowerCase();
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         setTheme(saved || (prefersDark ? 'dark' : 'light'));
+        // Armazena retorno do Embedded se vier via querystring
+        storeEmbeddedPayload();
         window.addEventListener('DOMContentLoaded', function() {
+          // Embedded helpers: mostrar appId e bind do botão de importação
+        try {
+          if (EMBEDDED_APP_ID) {
+            const el = document.getElementById('embeddedAppIdDisplay');
+            if (el) { el.textContent = `appId: ${EMBEDDED_APP_ID}`; }
+          }
+        } catch {}
+        try {
+          const btn = document.getElementById('importEmbeddedBtn');
+          if (btn) {
+            btn.addEventListener('click', function() {
+              const payload = consumeEmbeddedPayload();
+              if (!payload) {
+                alert('Nenhum retorno do Embedded encontrado nesta aba. Conclua o fluxo ou abra pelo link de retorno.');
+                return;
+              }
+              applyEmbeddedToForm(true);
+            });
+          }
+          const launch = document.getElementById('launchEmbeddedBtn');
+          if (launch) {
+            launch.addEventListener('click', function() {
+              console.log('Embedded launch clicked');
+              const redirect = window.EMBEDDED_SIGNUP_REDIRECT_URI || '';
+              const appId = window.EMBEDDED_SIGNUP_APP_ID || '';
+              if (!appId || !redirect) {
+                alert('Configure EMBEDDED_SIGNUP_APP_ID e EMBEDDED_SIGNUP_REDIRECT_URI.');
+                return;
+              }
+              const version = window.EMBEDDED_SIGNUP_GRAPH_VERSION || 'v24.0';
+              const scope = encodeURIComponent('whatsapp_business_messaging,whatsapp_business_management,business_management');
+              const fallback = `https://www.facebook.com/${version}/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&state=embedded_signup&scope=${scope}`;
+              window.open(fallback, 'embeddedSignup', 'width=800,height=700,resizable=yes,scrollbars=yes');
+            });
+          }
+        } catch {}
           function reinitDataTableLang() {
             if (window.$ && window.$.fn && window.$.fn.dataTable && window.$.fn.dataTable.isDataTable('#sessionsTable')) {
               try { $('#sessionsTable').DataTable().destroy(); } catch {}
@@ -586,6 +717,39 @@
                                 <label for="proxyUrl" class="form-label" data-i18n="proxyUrlLabel">Proxy URL (Restart Unoapi after change)</label>
                                 <input type="text" class="form-control" id="proxyUrl" name="proxyUrl" placeholder="Ex: socks5://user:pass@host:port" data-i18n-placeholder="proxyUrlPh">
                             </div>
+                            <div class="col-12">
+                              <div class="alert alert-secondary py-2">
+                                <div><strong>Cloud / Embedded Signup</strong></div>
+                                <div style="font-size: 13px;">
+                                  <span data-i18n="forwardHelper">Use Embedded Signup do WhatsApp Cloud para obter token e phone_number_id.</span>
+                                  <span id="embeddedAppIdDisplay"></span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-secondary mt-2" id="launchEmbeddedBtn" data-i18n="forwardLaunch">Iniciar Embedded Signup</button>
+                                <button type="button" class="btn btn-sm btn-primary mt-2" id="importEmbeddedBtn" data-i18n="forwardImport">Importar retorno do Embedded</button>
+                                <div class="alert alert-success mt-2 d-none" id="embeddedSuccess" role="alert" data-i18n="forwardUpdated">Dados de Cloud atualizados. Confira antes de salvar.</div>
+                                <div id="embeddedWidgetContainer" class="mt-2" style="min-height:80px;"></div>
+                              </div>
+                            </div>
+                            <div class="col-12 col-md-12 col-lg-6">
+                                <label for="webhookForwardUrl" class="form-label" data-i18n="forwardUrlLabel">Cloud API Base URL</label>
+                                <input type="text" class="form-control" id="webhookForwardUrl" name="webhookForwardUrl" placeholder="https://graph.facebook.com" data-i18n-placeholder="forwardUrlPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardVersion" class="form-label" data-i18n="forwardVersionLabel">Cloud API Version</label>
+                                <input type="text" class="form-control" id="webhookForwardVersion" name="webhookForwardVersion" placeholder="v17.0" data-i18n-placeholder="forwardVersionPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardPhoneNumberId" class="form-label" data-i18n="forwardPhoneIdLabel">Cloud phone_number_id</label>
+                                <input type="text" class="form-control" id="webhookForwardPhoneNumberId" name="webhookForwardPhoneNumberId" placeholder="phone_number_id" data-i18n-placeholder="forwardPhoneIdPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardToken" class="form-label" data-i18n="forwardTokenLabel">Cloud API Token</label>
+                                <input type="text" class="form-control" id="webhookForwardToken" name="webhookForwardToken" placeholder="Bearer ..." data-i18n-placeholder="forwardTokenPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="webhookForwardBusinessAccountId" class="form-label" data-i18n="forwardBusinessIdLabel">Business Account ID (optional)</label>
+                                <input type="text" class="form-control" id="webhookForwardBusinessAccountId" name="webhookForwardBusinessAccountId" placeholder="business_account_id" data-i18n-placeholder="forwardBusinessIdPh">
+                            </div>
                             <div class="col-12 col-md-12 col-lg-6">
                               <label for="rejectCalls" class="form-label" data-i18n="rejectCallsLabel">Message when rejecting calls</label>
                               <textarea class="form-control" id="rejectCalls" name="rejectCalls" placeholder="Leave blank to not auto-reject calls" data-i18n-placeholder="rejectCallsPh" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
@@ -688,17 +852,28 @@
                                 <label for="ignoreYourselfMessages" class="form-label" data-i18n="ignoreYourselfMessages">Ignore Yourself Messages</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
-                                <label class="switch">
-                                    <input type="checkbox" id="autoConnect" name="autoConnect" checked>
-                                    <span class="slider round"></span>
-                                </label>
-                                <label for="autoConnect" class="form-label" data-i18n="autoConnect">Auto Connect</label>
+                              <label class="switch">
+                                  <input type="checkbox" id="autoConnect" name="autoConnect" checked>
+                                  <span class="slider round"></span>
+                              </label>
+                              <label for="autoConnect" class="form-label" data-i18n="autoConnect">Auto Connect</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
-                                <label class="switch">
-                                    <input type="checkbox" id="ignoreBroadcastMessages" name="ignoreBroadcastMessages" checked>
-                                    <span class="slider round"></span>
-                                </label>
+                              <label class="switch">
+                                  <input type="checkbox" id="coexistenceEnabled" name="coexistenceEnabled">
+                                  <span class="slider round"></span>
+                              </label>
+                              <label for="coexistenceEnabled" class="form-label" data-i18n="coexistenceEnabled">Enable Web + Meta coexistence</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label for="coexistenceWindowSeconds" class="form-label" data-i18n="coexistenceWindow">Coexistence window (seconds)</label>
+                                <input type="number" min="0" class="form-control" id="coexistenceWindowSeconds" placeholder="86400" data-i18n-placeholder="coexistenceWindowPh">
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                              <label class="switch">
+                                  <input type="checkbox" id="ignoreBroadcastMessages" name="ignoreBroadcastMessages" checked>
+                                  <span class="slider round"></span>
+                              </label>
                                 <label for="ignoreBroadcastMessages" class="form-label" data-i18n="ignoreBroadcastMessages">Ignore Broadcast Lists</label>
                             </div>
                             <!-- Anti-spam / Rate Limits -->
@@ -765,6 +940,10 @@
                                     <input type="checkbox" class="webhook-sendTranscribeAudio">
                                     <span class="slider round"></span>
                                 </label>
+                                <div class="form-check mt-2">
+                                  <input class="form-check-input webhook-typebot" type="checkbox">
+                                  <label class="form-check-label" data-i18n="whTypebot">Typebot payload (Cloud API strict)</label>
+                                </div>
                                 <label for="addToBlackListOnOutgoingMessageWithTtl" class="form-label">Adicionar ao blacklits quando ouver uma mensagem de saida por X segundos</label>
                                 <label>
                                     <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" class="form-control">
@@ -837,15 +1016,25 @@
         const tokenKey = "whatsappApiToken";
 
         const qrcodes = {};
-        let currentPhoneNumber = ''
-        let currentQrTimeOut = ''
-        let lastTimeout = undefined
+        const MAX_QR_CACHE_AGE_MS = 30000;
+        let currentPhoneNumber = '';
+        let currentQrTimeOut = 0;
+        let lastTimeout = undefined;
+        let hasFreshQrForCurrent = false;
+        const DEFAULT_QR_TIMEOUT_MS = 60000;
+        const getActiveToken = () => (localStorage.getItem(tokenKey) || ($('#tokenInput').val() || '').trim());
         
         const onBroadcast = function(data) {
           if (data.phone == currentPhoneNumber) {
             const qrcodeDiv = document.getElementById('qrCodeContainer');
             const statusDiv = document.getElementById('qrCodeMessage');
             if (data.type === 'qrcode' && data.content) {
+                const ts = Number(data.ts || Date.now());
+                if (Date.now() - ts > MAX_QR_CACHE_AGE_MS) {
+                  statusDiv.textContent = t('qrWaitingNew');
+                  return;
+                }
+                hasFreshQrForCurrent = true;
                 // Exibe o QR Code
                 qrcodeDiv.innerHTML = `<img src="${data.content}" alt="QR Code">`;
                 statusDiv.textContent = t('qrScanBelow');
@@ -854,8 +1043,8 @@
                   clearTimeout(lastTimeout);
                 }
                 lastTimeout = setTimeout(function() {
-                  qrcodeDiv.innerHTML = t('qrWaitingNew');
-                  qrcodeDiv.textContent = '';
+                  qrcodeDiv.innerHTML = '';
+                  statusDiv.textContent = t('qrWaitingNew');
                 }, timeoutMs);
             } else if (data.type === 'status' && data.content) {
                 if (data.content.toLowerCase().indexOf('connected with')  !== -1) {
@@ -865,7 +1054,7 @@
                     console.log("QRCODE EXCEEDED")
                     qrcodeDiv.innerHTML = '';
                     statusDiv.textContent = 'Generating new QRCode/PairingCode...';
-                    attemptRegister(phoneNumber, localStorage.getItem(tokenKey));
+                    attemptRegister(currentPhoneNumber, getActiveToken());
                 } else {
                     qrcodeDiv.innerHTML = ''
                     statusDiv.textContent = `Status: ${data.content}`;
@@ -882,11 +1071,12 @@
             }
             const socket = io(apiUrl, { path: '/ws' });
             window.socket = socket;
-            var lastTimeout = undefined;
-
             socket.on('broadcast', function(data) {
               if (data.type === 'qrcode' && data.content && data.phone) {
-                qrcodes[data.phone] = data.content;
+                qrcodes[data.phone] = {
+                  content: data.content,
+                  ts: Number(data.ts || Date.now())
+                };
               }
               onBroadcast(data);
             });
@@ -1193,10 +1383,19 @@
                 $('#composingMessage').prop('checked', session.composingMessage);
                 $('#sendReactionAsReply').prop('checked', session.sendReactionAsReply);
                 $('#autoConnect').prop('checked', session.autoConnect);
+                try { $('#coexistenceEnabled').prop('checked', !!session.coexistenceEnabled); } catch {}
+                try { $('#coexistenceWindowSeconds').val(session.coexistenceWindowSeconds ?? 86400); } catch {}
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
                 $('#connectionType').val(session.connectionType);
                 $('#proxyUrl').val(session.proxyUrl);
+                try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
+                try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '') } catch {}
+                try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
+                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '') } catch {}
                 $('#server').val(session.server);
+                // Se houver payload do Embedded guardado, aplica e mantém alerta visível
+                applyEmbeddedToForm(true);
                 // Rate limits (anti-spam)
                 try {
                   $('#rateLimitGlobalPerMinute').val(session.rateLimitGlobalPerMinute ?? 0);
@@ -1222,7 +1421,7 @@
                                 <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
-                                    <span class="slider round"></span>
+                                <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendGroupMessages\" class=\"form-label\" data-i18n=\"whSendGroup\">Send Group Messages</label>
                                 <label class="switch">
@@ -1250,13 +1449,17 @@
                                     <span class="slider round"></span>
                                 </label>
                                 <label for=\"sendTranscribeAudio\" class=\"form-label\" data-i18n=\"whSendTranscribe\">Send Audio Transcription</label>
-                                <label class="switch">
-                                    <input type="checkbox" class="webhook-sendTranscribeAudio" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
-                                    <span class="slider round"></span>
+                                <label class=\"switch\">
+                                    <input type=\"checkbox\" class=\"webhook-sendTranscribeAudio\" ${webhook.sendTranscribeAudio ? 'checked' : ''}>
+                                    <span class=\"slider round\"></span>
                                 </label>
+                                <div class=\"form-check mt-2\">
+                                  <input class=\"form-check-input webhook-typebot\" type=\"checkbox\" ${webhook.typebot ? 'checked' : ''}>
+                                  <label class=\"form-check-label\" data-i18n=\"whTypebot\">Typebot payload (Cloud API strict)</label>
+                                </div>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type="text" class="webhook-addToBlackListOnOutgoingMessageWithTtl" value="${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}" class="form-control">
+                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}\" class=\"form-control\">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
@@ -1297,9 +1500,18 @@
                         composingMessage: $('#composingMessage').is(':checked'),
                         sendReactionAsReply: $('#sendReactionAsReply').is(':checked'),
                         autoConnect: $('#autoConnect').is(':checked'),
+                        coexistenceEnabled: $('#coexistenceEnabled').is(':checked'),
+                        coexistenceWindowSeconds: Number($('#coexistenceWindowSeconds').val() || 86400),
                         ignoreBroadcastMessages: $('#ignoreBroadcastMessages').is(':checked'),
                         connectionType: $('#connectionType').val(),
                         proxyUrl: $('#proxyUrl').val(),
+                        webhookForward: {
+                          url: $('#webhookForwardUrl').val(),
+                          version: $('#webhookForwardVersion').val(),
+                          phoneNumberId: $('#webhookForwardPhoneNumberId').val(),
+                          token: $('#webhookForwardToken').val(),
+                          businessAccountId: $('#webhookForwardBusinessAccountId').val(),
+                        },
                         server: $('#server').val(),
                         // rate limits
                         rateLimitGlobalPerMinute: Number($('#rateLimitGlobalPerMinute').val() || 0),
@@ -1321,11 +1533,14 @@
                             sendIncomingMessages: $(this).find('.webhook-sendIncomingMessages').is(':checked'),
                             sendUpdateMessages: $(this).find('.webhook-sendUpdateMessages').is(':checked'),
                             sendTranscribeAudio: $(this).find('.webhook-sendTranscribeAudio').is(':checked'),
+                            typebot: $(this).find('.webhook-typebot').is(':checked'),
                             addToBlackListOnOutgoingMessageWithTtl: $(this).find('.webhook-addToBlackListOnOutgoingMessageWithTtl').val(),
                         };
-                        sessionData.webhooks.push(webhook);
+                    sessionData.webhooks.push(webhook);
                     });
                     sessionData.overrideWebhooks = true
+                    // Se usou Embedded, limpamos o payload para não reaplicar na próxima sessão
+                    localStorage.removeItem('embeddedSignupPayload');
                     fetch(`${apiUrl}/v15.0/${number}/register`, {
                         method: 'POST',
                         headers: {
@@ -1351,23 +1566,33 @@
             //connectButton
             $(document).on('click', '.connect-btn', function () {
                 const number = $(this).data('number');
-                const token = localStorage.getItem(tokenKey);
+                const token = getActiveToken();
+                const connectModalEl = document.getElementById('connectModal');
+                const connectModal = bootstrap.Modal.getOrCreateInstance(connectModalEl);
+                connectModal.show();
 
                 if (token) {
+                    // Subscribe immediately so we do not lose the first QR event.
+                    connectToWebSocket(number, DEFAULT_QR_TIMEOUT_MS);
                     fetch(`${apiUrl}/v15.0/${number}`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
                         }
                     })
                     .then(response => {
-                        if (!response.ok) throw new Error(t('errorInvalid'));
+                        if (!response.ok) {
+                            if (response.status === 401 || response.status === 403) {
+                                throw new Error(t('errorInvalid'));
+                            }
+                            throw new Error(`HTTP ${response.status}`);
+                        }
                         return response.json();
                     })
                     .then(data => {
                         if (data.status === 'offline' || data.status === 'disconnected') {
                             attemptRegister(number, token);
                         } else if (data.status === 'connecting') {
-                            connectToWebSocket(number, data.qrTimeoutMs);
+                            connectToWebSocket(number, data.qrTimeoutMs || DEFAULT_QR_TIMEOUT_MS);
                         } else if (data.status === 'online') {
                             document.getElementById('qrCodeContainer').innerHTML = '';
                             document.getElementById('qrCodeMessage').textContent = t('connected');
@@ -1376,6 +1601,10 @@
                         }
                     })
                     .catch(error => {
+                        if (`${error?.message || ''}` === t('errorInvalid')) {
+                          localStorage.removeItem(tokenKey);
+                          $('#errorMessage').removeClass('d-none');
+                        }
                         console.error("Erro ao verificar status:", error);
                     });
                 } else {
@@ -1385,6 +1614,10 @@
 
             // init qrcode and confirm
             function attemptRegister(number, token) {
+                if (!number || !token) {
+                  console.error('attemptRegister sem número/token');
+                  return;
+                }
                 fetch(`${apiUrl}/v15.0/${number}/register`, {
                     method: 'POST',
                     headers: {
@@ -1411,6 +1644,10 @@
                 connectToWebSocket(number, qrTimeoutMs);
 
                 const intervalId = setInterval(() => {
+                    if (hasFreshQrForCurrent) {
+                        clearInterval(intervalId);
+                        return;
+                    }
                     fetch(`${apiUrl}/v15.0/${number}`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -1421,9 +1658,13 @@
                         return response.json();
                     })
                     .then(data => {
-                        if (data.status === 'connecting') {
+                        if (data.status === 'connecting' || data.status === 'online') {
                             clearInterval(intervalId);
-                        } else if (attempts < maxAttempts && data.status !== 'connecting') {
+                        } else if (
+                            attempts < maxAttempts &&
+                            !hasFreshQrForCurrent &&
+                            (data.status === 'offline' || data.status === 'disconnected')
+                        ) {
                             attempts++;
                             fetch(`${apiUrl}/v15.0/${number}/register`, {
                                 method: 'POST',
@@ -1450,19 +1691,41 @@
             // conect to websocket 
             function connectToWebSocket(phoneNumber, qrTimeoutMs) {
               currentPhoneNumber = phoneNumber
-              currentQrTimeOut = qrTimeoutMs
-              if (qrcodes[phoneNumber]) {
+              currentQrTimeOut = qrTimeoutMs || DEFAULT_QR_TIMEOUT_MS
+              hasFreshQrForCurrent = false
+              document.getElementById('qrCodeContainer').innerHTML = '';
+              document.getElementById('qrCodeMessage').textContent = t('qrWait');
+              if (!window.socket) {
+                initWebSocket()
+              }
+              if (window.socket) {
+                if (window.socket.connected) {
+                  window.socket.emit('subscribe_qr', { phone: phoneNumber })
+                } else {
+                  window.socket.once('connect', function() {
+                    window.socket.emit('subscribe_qr', { phone: phoneNumber })
+                  })
+                }
+              }
+              const cached = qrcodes[phoneNumber];
+              if (cached && cached.content && (Date.now() - Number(cached.ts || 0)) <= MAX_QR_CACHE_AGE_MS) {
                 const qrcodeDiv = document.getElementById('qrCodeContainer');
-                qrcodeDiv.innerHTML = `<img src="${qrcodes[phoneNumber]}" alt="QR Code">`;
+                qrcodeDiv.innerHTML = `<img src="${cached.content}" alt="QR Code">`;
+                document.getElementById('qrCodeMessage').textContent = t('qrScanBelow');
               }
             }
 
             // disconnect websocket on modal close
             $('#connectModal').on('hidden.bs.modal', function () {
-              currentPhoneNumber = ''
-              currentQrTimeOut = ''
+              currentPhoneNumber = '';
+              currentQrTimeOut = 0;
+              hasFreshQrForCurrent = false;
               document.getElementById('qrCodeContainer').innerHTML = '';
-                    document.getElementById('qrCodeMessage').textContent = t('qrWait');
+              document.getElementById('qrCodeMessage').textContent = t('qrWait');
+              if (lastTimeout) {
+                clearTimeout(lastTimeout);
+                lastTimeout = undefined;
+              }
             });            
         });
         
@@ -1516,3 +1779,5 @@
     </script>
 </body>
 </html>
+
+

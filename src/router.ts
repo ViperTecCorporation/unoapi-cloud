@@ -1,4 +1,5 @@
-import { Router } from 'express'
+import express, { Router } from 'express'
+import path from 'path'
 import { Incoming } from './services/incoming'
 import { Outgoing } from './services/outgoing'
 import { getConfig } from './services/config'
@@ -30,6 +31,7 @@ import { ContactDummy } from './services/contact_dummy'
 import { middlewareNext } from './services/middleware_next'
 import { TimerController } from './controllers/timer_controller'
 import { PreflightController } from './controllers/preflight_controller'
+import { EmbeddedController } from './controllers/embedded_controller'
 
 
 export const router = (
@@ -60,14 +62,18 @@ export const router = (
   const blacklistController = new BlacklistController(addToBlacklist)
   const contactsController = new ContactsController(contact)
   const preflightController = new PreflightController(getConfig, contact)
+  const embeddedController = new EmbeddedController()
   const pairingCodeController = new PairingCodeController(getConfig, incoming)
   const connectController = new ConnectController(reload)
   const timerController = new TimerController()
 
 
-  // Webhook for forward connection
+  // Webhook (Cloud API) roteado por phone_number_id
+  router.post('/webhooks/whatsapp', webhookController.whatsappNoParam.bind(webhookController))
+  router.get('/webhooks/whatsapp', webhookController.whatsappVerifyNoParam.bind(webhookController))
+  // Compat: rota antiga por sessão (mantida para testes/compatibilidade)
   router.post('/webhooks/whatsapp/:phone', webhookController.whatsapp.bind(webhookController))
-  router.get('/webhooks/whatsapp/:phone', middleware, webhookController.whatsappVerify.bind(webhookController))
+  router.get('/webhooks/whatsapp/:phone', webhookController.whatsappVerify.bind(webhookController))
 
   // for default webhook
   const webhookFakeController = new WebhookFakeController()
@@ -86,9 +92,18 @@ export const router = (
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)
   router.get('/docs/*', indexController.docsFile)
   router.get('/logos/*', indexController.logos)
+  // Embedded Signup helpers (precisa ficar antes das rotas parametrizadas)
+  router.get('/embedded/config.js', embeddedController.configJs.bind(embeddedController))
+  router.post('/embedded/exchange', express.json(), embeddedController.exchange.bind(embeddedController))
+  router.get('/embedded-callback.html', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'embedded-callback.html')))
+  // Alias para evitar rota errada (config.js)
+  router.get('/config.js', embeddedController.configJs.bind(embeddedController))
+  router.get('/:version/config.js', embeddedController.configJs.bind(embeddedController))
   router.get('/connect/:phone', connectController.index.bind(connectController))
   router.get('/ping', indexController.ping)
   router.get('/:version/debug_token', indexController.debugToken)
+  // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)
+  router.get('/:version/:media_id(\\d+-[A-Za-z0-9_-]+)', middleware, mediaController.typebot.bind(mediaController))
   router.get('/sessions', middleware, phoneNumberController.list.bind(phoneNumberController))
   router.get('/sessions/:phone', sessionController.index.bind(sessionController))
   router.post('/:phone/contacts', middleware, contactsController.post.bind(contactsController))
