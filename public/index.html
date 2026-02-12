@@ -1021,6 +1021,7 @@
         let currentQrTimeOut = 0;
         let lastTimeout = undefined;
         let hasFreshQrForCurrent = false;
+        const DEFAULT_QR_TIMEOUT_MS = 60000;
         const getActiveToken = () => (localStorage.getItem(tokenKey) || ($('#tokenInput').val() || '').trim());
         
         const onBroadcast = function(data) {
@@ -1566,8 +1567,13 @@
             $(document).on('click', '.connect-btn', function () {
                 const number = $(this).data('number');
                 const token = getActiveToken();
+                const connectModalEl = document.getElementById('connectModal');
+                const connectModal = bootstrap.Modal.getOrCreateInstance(connectModalEl);
+                connectModal.show();
 
                 if (token) {
+                    // Subscribe immediately so we do not lose the first QR event.
+                    connectToWebSocket(number, DEFAULT_QR_TIMEOUT_MS);
                     fetch(`${apiUrl}/v15.0/${number}`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -1586,7 +1592,7 @@
                         if (data.status === 'offline' || data.status === 'disconnected') {
                             attemptRegister(number, token);
                         } else if (data.status === 'connecting') {
-                            connectToWebSocket(number, data.qrTimeoutMs);
+                            connectToWebSocket(number, data.qrTimeoutMs || DEFAULT_QR_TIMEOUT_MS);
                         } else if (data.status === 'online') {
                             document.getElementById('qrCodeContainer').innerHTML = '';
                             document.getElementById('qrCodeMessage').textContent = t('connected');
@@ -1685,7 +1691,7 @@
             // conect to websocket 
             function connectToWebSocket(phoneNumber, qrTimeoutMs) {
               currentPhoneNumber = phoneNumber
-              currentQrTimeOut = qrTimeoutMs
+              currentQrTimeOut = qrTimeoutMs || DEFAULT_QR_TIMEOUT_MS
               hasFreshQrForCurrent = false
               document.getElementById('qrCodeContainer').innerHTML = '';
               document.getElementById('qrCodeMessage').textContent = t('qrWait');
