@@ -29,6 +29,9 @@ import {
   DEFAULT_BROWSER,
   LOG_LEVEL,
   CONNECTING_TIMEOUT_MS,
+  BAILEYS_IDLE_RECONNECT_ENABLED,
+  BAILEYS_IDLE_RECONNECT_MS,
+  BAILEYS_IDLE_RECONNECT_CHECK_MS,
   MAX_CONNECT_TIME,
   MAX_CONNECT_RETRY,
   CLEAN_CONFIG_ON_DISCONNECT,
@@ -204,6 +207,12 @@ export const connect = async ({
   const recentContacts = new Map<string, number>()
   // Handle do timer do assert periódico
   let periodicAssertTimer: NodeJS.Timeout | undefined
+  let idleReconnectTimer: NodeJS.Timeout | undefined
+  let idleReconnectInProgress = false
+  let lastSocketActivityAt = Date.now()
+  const touchSocketActivity = () => {
+    lastSocketActivityAt = Date.now()
+  }
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
@@ -513,8 +522,16 @@ export const connect = async ({
       const delayMs = Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)
       if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
       entry.timer = setTimeout(async () => {
+        let shouldConsumeAttempt = true
         try {
           if (!pendingDeliveryWatch.has(messageId)) return
+          // Avoid concurrent resend flows for the same message:
+          // if ACK retry is still active, defer delivery watchdog attempt.
+          if (pendingAckResend.has(messageId)) {
+            shouldConsumeAttempt = false
+            try { logger.debug('DELIVERY watch: deferred because ACK retry is still pending for id=%s', messageId) } catch {}
+            return
+          }
           try { logger.info('DELIVERY watch: firing attempt %s/%s for id=%s to=%s', entry.attempt + 1, maxAttempts, messageId, to) } catch {}
           // Force: purge current signal sessions for target and assert again
           // Purge device-list as well to force fresh device enumeration (multi-device "Aguardando" fix)
@@ -594,7 +611,9 @@ export const connect = async ({
           const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
           try { await sock?.sendMessage(targetTo, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, targetTo) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
         } finally {
-          entry.attempt += 1
+          if (shouldConsumeAttempt) {
+            entry.attempt += 1
+          }
           if (entry.attempt < maxAttempts) scheduleNext()
           else {
             try { if (entry.timer) clearTimeout(entry.timer) } catch {}
@@ -646,6 +665,7 @@ export const connect = async ({
   let suppressQrUntil = 0
 
   const onConnectionUpdate = async (event: Partial<ConnectionState>) => {
+    touchSocketActivity()
     logger.debug('onConnectionUpdate connectionType %s ==> %s %s', config.connectionType, phone, JSON.stringify(event))
     // Evita emitir QR code quando a sessão já está efetivamente online/aberta
     if (event.qr && config.connectionType == 'qrcode') {
@@ -743,6 +763,7 @@ export const connect = async ({
   }
 
   const onOpen = async () => {
+    touchSocketActivity()
     status.attempt = 1
     await sessionStore.setStatus(phone, 'online')
     logger.info(`${phone} connected`)
@@ -791,12 +812,40 @@ export const connect = async ({
         }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
       }
     } catch {}
+    try {
+      if (BAILEYS_IDLE_RECONNECT_ENABLED && BAILEYS_IDLE_RECONNECT_MS > 0 && BAILEYS_IDLE_RECONNECT_CHECK_MS > 0 && !idleReconnectTimer) {
+        idleReconnectTimer = setInterval(async () => {
+          try {
+            if (idleReconnectInProgress) return
+            if (!sock) return
+            if (!await sessionStore.isStatusOnline(phone)) return
+            const idleMs = Date.now() - lastSocketActivityAt
+            if (idleMs < BAILEYS_IDLE_RECONNECT_MS) return
+            idleReconnectInProgress = true
+            touchSocketActivity()
+            logger.warn('%s idle watchdog: no socket activity for %sms (threshold=%sms), forcing reconnect', phone, idleMs, BAILEYS_IDLE_RECONNECT_MS)
+            await close()
+            try {
+              await onReconnect(1)
+            } catch (e) {
+              logger.error(e as any, 'Idle watchdog reconnect failed for %s; fallback reconnect()', phone)
+              await reconnect()
+            }
+          } catch (e) {
+            logger.warn(e as any, 'Ignore idle watchdog error for %s', phone)
+          } finally {
+            idleReconnectInProgress = false
+          }
+        }, BAILEYS_IDLE_RECONNECT_CHECK_MS) as unknown as NodeJS.Timeout
+      }
+    } catch {}
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onClose = async (payload: any) => {
     // Limpar timer do assert periódico ao desconectar
     try { if (periodicAssertTimer) { clearInterval(periodicAssertTimer); periodicAssertTimer = undefined; logger.debug('PERIODIC_ASSERT: timer cleared on close') } } catch {}
+    try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined; logger.debug('IDLE_WATCHDOG: timer cleared on close') } } catch {}
     const { lastDisconnect } = payload || {}
     const statusCode = lastDisconnect?.error?.output?.statusCode
     if (await sessionStore.isStatusOffline(phone)) {
@@ -1301,6 +1350,7 @@ export const connect = async ({
   const close = async () => {
     logger.info(`${phone} close`)
     try { if (lidResolverTimer) { clearInterval(lidResolverTimer); lidResolverTimer = undefined } } catch {}
+    try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined } } catch {}
     EVENTS.forEach((e: any) => {
       try {
         sock?.ev?.removeAllListeners(e)
@@ -2343,6 +2393,9 @@ export const connect = async ({
       event('connection.update', onConnectionUpdate)
       event('creds.update', verifyAndSaveCreds)
       sock.ev.process(async(events) => {
+        if (events && Object.keys(events).length) {
+          touchSocketActivity()
+        }
         const keys = Object.keys(events)
         for(const i in keys) {
           const key = keys[i]

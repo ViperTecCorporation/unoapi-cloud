@@ -115,6 +115,10 @@ export const PROXY_URL = process.env.PROXY_URL
 // behavior of unoapi
 export const UNOAPI_SERVER_NAME = process.env.UNOAPI_SERVER_NAME || 'server_1'
 export const CONNECTING_TIMEOUT_MS = parseInt(process.env.CONNECTING_TIMEOUT_MS || '180000')
+export const BAILEYS_IDLE_RECONNECT_ENABLED =
+  process.env.BAILEYS_IDLE_RECONNECT_ENABLED === _undefined ? false : process.env.BAILEYS_IDLE_RECONNECT_ENABLED == 'true'
+export const BAILEYS_IDLE_RECONNECT_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_MS || `${30 * 60 * 1000}`)
+export const BAILEYS_IDLE_RECONNECT_CHECK_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_CHECK_MS || '60000')
 export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_REQUEST_DELAY || process.env.UNOAPI_RETRY_REQUEST_DELAY_MS || '5000')
 // export const QR_TIMEOUT = parseInt(process.env.QR_TIMEOUT || '30000')
 // export const SLEEP_TIME = parseInt(process.env.SLEEP_TIME || '5000')
@@ -421,7 +425,7 @@ export const ACK_RETRY_DELAYS_MS: number[] = (() => {
 // Optional hard cap for attempts; if set lower than delays length, it limits retries
 export const ACK_RETRY_MAX_ATTEMPTS: number = parseInt(process.env.ACK_RETRY_MAX_ATTEMPTS || '0') || 0
 // Enable/disable ACK-retry scheduling entirely (default true)
-export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? false : process.env.ACK_RETRY_ENABLED == 'false'
+export const ACK_RETRY_ENABLED: boolean = process.env.ACK_RETRY_ENABLED === _undefined ? false : process.env.ACK_RETRY_ENABLED == 'true'
 
 // Media send retry (ex.: presigned URL 403 enquanto objeto não ficou disponível)
 export const MEDIA_RETRY_ENABLED: boolean =
