@@ -71,12 +71,13 @@ describe('service client baileys', () => {
   const status: Status = { attempt: 0 }
 
   beforeEach(async () => {
+    mockConnect.mockReset()
     phone = `${new Date().getMilliseconds()}`
     listener = mock<Listener>()
     incoming = mock<Incoming>()
     dataStore = mock<DataStore>()
     sessionStore = mock<SessionStore>()
-    close = mock<close>()
+    close = mockFn<close>()
     store = mock<Store>()
     store.dataStore = dataStore
     store.sessionStore = sessionStore
@@ -156,6 +157,55 @@ describe('service client baileys', () => {
     await client.connect(0)
     const response = await client.send(payload, {})
     expect(response.error.entry.length).toBe(1)
+  })
+
+  test('retry stale send once after reconnect without duplicating first attempt', async () => {
+    const to = `${new Date().getMilliseconds()}`
+    const payload = { to, type: 'text', text: { body: 'retry after reconnect' } }
+    const firstSend = mockFn<sendMessage>().mockRejectedValue({
+      message: 'Send failed due to stale connection; safe to retry after reconnect',
+      data: {
+        retryAfterReconnect: true,
+        retriable: true,
+        retryableSend: {
+          targetJid: `${to}@s.whatsapp.net`,
+          fullMessage: {
+            message: {
+              conversation: 'retry after reconnect',
+            },
+          },
+          relayOptions: {
+            messageId: 'retryable-msg-id',
+          },
+        },
+      },
+    })
+    const secondSend = mockFn<sendMessage>().mockResolvedValue({
+      key: { id: 'resent-id', remoteJid: `${to}@s.whatsapp.net` },
+      message: { conversation: 'retry after reconnect' },
+    } as any)
+    const firstClose = mockFn<close>()
+    const secondClose = mockFn<close>()
+    mockConnect
+      .mockResolvedValueOnce({ event, status, send: firstSend, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close: firstClose, logout })
+      .mockResolvedValueOnce({ event, status, send: secondSend, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close: secondClose, logout })
+
+    await client.connect(0)
+    const response: Response = await client.send(payload, {})
+
+    expect(firstSend).toHaveBeenCalledTimes(1)
+    expect(firstClose).toHaveBeenCalledTimes(1)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+    expect(secondSend).toHaveBeenCalledTimes(1)
+    expect(secondSend).toHaveBeenCalledWith(
+      `${to}@s.whatsapp.net`,
+      { conversation: 'retry after reconnect' },
+      expect.objectContaining({
+        messageId: 'retryable-msg-id',
+        __staleReconnectRetried: true,
+      }),
+    )
+    expect(response.ok.messages[0].id).toBe('resent-id')
   })
 
   test('call disconnect', async () => {

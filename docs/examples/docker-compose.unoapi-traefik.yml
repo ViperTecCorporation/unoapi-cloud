@@ -5,7 +5,8 @@ version: "3.9"
 
 services:
   unoapi:
-    image: ghcr.io/viperteccorporation/unoapi-cloud:3.0.0-beta-160
+    image: clairton/unoapi-cloud:2.8
+    entrypoint: ["yarn", "cloud"]
     container_name: unoapi
     depends_on:
       - unoapi-redis
@@ -14,14 +15,14 @@ services:
       HTTP_PROTOCOL: "https"
       BASE_URL: "https://unoapi.seu-dominio.com"
       UNOAPI_AUTH_TOKEN: "seu_token_aleatorio"
-
-      WEBHOOK_URL: "https://seu-chatwoot.exemplo.com/webhooks/whatsapp"
-      WEBHOOK_TOKEN: "seu_webhook_token"
-      WEBHOOK_HEADER: "Authorization"
+      #opcional
+      #WEBHOOK_URL: "https://seu-chatwoot.exemplo.com/webhooks/whatsapp"
+      #WEBHOOK_TOKEN: "seu_webhook_token"
+      #WEBHOOK_HEADER: "Authorization"
 
       AMQP_URL: "amqp://seu_usuario_rabbit:seu_password_rabbit@unoapi-rabbitmq:5672"
       REDIS_URL: "redis://:sua_senha_redis@unoapi-redis:6379"
-
+      #se nao definir vai usar storage em arquivos no volume
       STORAGE_BUCKET_NAME: "seu_bucket_unoapi"
       STORAGE_ACCESS_KEY_ID: "seu_usuario_s3"
       STORAGE_SECRET_ACCESS_KEY: "sua_senha_s3"
@@ -46,8 +47,9 @@ services:
       AUTO_CONNECT: "true"
       CLEAN_CONFIG_ON_DISCONNECT: "true"
 
-      HISTORY_MAX_AGE_DAYS: "1"
-      DOWNLOAD_AUDIO_CONVERT_TO_MP3: "true"
+      #envs não disponivel no projeto oficial
+      #HISTORY_MAX_AGE_DAYS: "1"
+      #DOWNLOAD_AUDIO_CONVERT_TO_MP3: "true"
 
     labels:
       - "traefik.enable=true"
@@ -63,7 +65,7 @@ services:
       - proxy   # network externa onde o Traefik está
 
   unoapi-rabbitmq:
-    image: rabbitmq:4.0.9-management-alpine
+    image: rabbitmq:4.2.2-management-alpine
     container_name: unoapi-rabbitmq
     hostname: unoapi-rabbitmq
     restart: always

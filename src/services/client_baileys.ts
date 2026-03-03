@@ -33,6 +33,7 @@ import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
+import { getRetryableStaleSendPayload, isRetryableStaleSendError } from './error_utils'
 
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
@@ -125,6 +126,20 @@ const existsDefault: exists = async (_jid: string) => {
 const logoutDefault: logout = async () => {}
 
 const closeDefault = async () => logger.info(`Close connection`)
+
+const buildSendOkResponse = (to: string, keyId: string) => ({
+  messaging_product: 'whatsapp',
+  contacts: [
+    {
+      wa_id: jidToPhoneNumber(to, ''),
+    },
+  ],
+  messages: [
+    {
+      id: keyId,
+    },
+  ],
+})
 
 export class ClientBaileys implements Client {
   /**
@@ -1298,6 +1313,25 @@ export class ClientBaileys implements Client {
       }
     } catch (ee) {
       let e = ee
+      if (isRetryableStaleSendError(e) && !(options as any)?.__staleReconnectRetried) {
+        const retryPayload = getRetryableStaleSendPayload(e)
+        if (retryPayload?.targetJid) {
+          logger.warn('Retrying stale send after reconnect for %s to %s', this.phone, retryPayload.targetJid)
+          await this.close()
+          await this.connect(1)
+          const retryMessage = retryPayload.fullMessage?.message || toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+          const retryOptions = { ...(retryPayload.relayOptions || {}), __staleReconnectRetried: true }
+          const response = await this.sendMessage(retryPayload.targetJid, retryMessage as any, retryOptions)
+          if (response) {
+            const key = response.key
+            await this.store?.dataStore?.setKey(key.id, key)
+            await this.store?.dataStore?.setMessage(key.remoteJid, response)
+            const ok = buildSendOkResponse(to, key.id)
+            const r: Response = { ok }
+            return r
+          }
+        }
+      }
       if (ee.message == 'Media upload failed on all hosts') {
         const link = payload[type] && payload[type].link
         if (link) {
