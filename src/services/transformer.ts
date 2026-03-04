@@ -1983,6 +1983,27 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'interactiveMessage': {
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
+        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
+        for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
+          let params: any = {}
+          try {
+            params = JSON.parse(button?.buttonParamsJson || '{}')
+          } catch {}
+          const paymentSetting = Array.isArray(params?.payment_settings) ? params.payment_settings[0] : undefined
+          if (!paymentSetting || !['pix_dynamic_code', 'pix_static_code'].includes(paymentSetting?.type)) continue
+          const paymentData = paymentSetting[paymentSetting.type] || {}
+          const merchantName = paymentData?.merchant_name
+          const keyType = paymentData?.key_type
+          const keyValue = paymentData?.key
+          if (!merchantName || !keyType || !keyValue) continue
+          message.type = 'text'
+          message.text = {
+            body: `*${merchantName}*\nChave PIX tipo *${keyType}*: ${keyValue}`,
+          }
+          break
+        }
+        if (message.type === 'text') break
+
         const mapButtonsFromNativeFlow = (nfButtons: any[]) =>
           Array.isArray(nfButtons)
             ? nfButtons.map((button: any) => {
@@ -2062,7 +2083,6 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           }
           break
         }
-        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
         const buttons = mapButtonsFromNativeFlow(nfButtons)
         message.type = 'interactive'
         message.interactive = {
