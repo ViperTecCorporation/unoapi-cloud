@@ -1,7 +1,6 @@
 import makeWASocket, {
   DisconnectReason,
   WABrowserDescription,
-  fetchLatestBaileysVersion,
   WAMessageKey,
   delay,
   proto,
@@ -176,6 +175,7 @@ export const connect = async ({
     }
   })()
   const whatsappVersion = config.whatsappVersion
+  let resolvedWhatsappVersion = whatsappVersion
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
   // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid").
@@ -767,8 +767,13 @@ export const connect = async ({
     status.attempt = 1
     await sessionStore.setStatus(phone, 'online')
     logger.info(`${phone} connected`)
-    const { version } = await fetchLatestBaileysVersion()
-    const message = t('connected', phone, whatsappVersion ? whatsappVersion.join('.') : 'auto', version.join('.'), new Date().toUTCString())
+    const message = t(
+      'connected',
+      phone,
+      resolvedWhatsappVersion ? resolvedWhatsappVersion.join('.') : 'auto',
+      resolvedWhatsappVersion ? resolvedWhatsappVersion.join('.') : 'auto',
+      new Date().toUTCString(),
+    )
     await onNotification(message, false)
     // (Re)iniciar timer do assert periódico ao ficar online
     try {
@@ -2308,6 +2313,7 @@ export const connect = async ({
     }
     if (whatsappVersion) {
       socketConfig.version = whatsappVersion
+      resolvedWhatsappVersion = whatsappVersion
     } else {
       try {
         const fetchVer: any = fetchLatestWaWebVersion as any
@@ -2326,6 +2332,7 @@ export const connect = async ({
         }
         if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
         socketConfig.version = version
+        resolvedWhatsappVersion = version as any
         logger.debug('Using latest WA Web version %s', JSON.stringify(version))
       } catch (e) {
         logger.warn(e as any, 'Failed to fetch WA Web version; using default')
