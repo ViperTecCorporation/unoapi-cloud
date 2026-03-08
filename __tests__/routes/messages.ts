@@ -12,6 +12,11 @@ import { OnNewLogin } from '../../src/services/socket'
 import { addToBlacklist } from '../../src/services/blacklist'
 import { Reload } from '../../src/services/reload'
 import { Logout } from '../../src/services/logout'
+
+jest.mock('../../src/services/rate_limit', () => ({
+  allowSend: jest.fn().mockResolvedValue({ allowed: true }),
+}))
+
 const addToBlacklist = mock<addToBlacklist>()
 
 const sessionStore = mock<SessionStore>()
