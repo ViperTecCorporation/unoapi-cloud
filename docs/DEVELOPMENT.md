@@ -24,6 +24,47 @@
 - Send Message: `POST /v15.0/{phone}/messages` (Cloud API shape).
 - Contacts validation (standalone): `POST /{phone}/contacts`.
 
+## Group Mentions in Text
+
+For `POST /v15.0/{phone}/messages` with `type: "text"` and `to` ending with `@g.us`:
+
+- `@all` or `@todos` in `text.body`:
+  - sets `mentionAll=true` before sending to Baileys
+  - removes only `@all`/`@todos` from final text
+- `@<valid_phone>` in `text.body`:
+  - auto-populates `mentions[]` (normalized to `@s.whatsapp.net`)
+  - keeps phone mention text in `body`
+- When combined (`@phones` + `@all/@todos`), both are applied.
+
+Examples:
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "120363012345678@g.us",
+  "type": "text",
+  "text": { "body": "Aviso @todos" }
+}
+```
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "120363012345678@g.us",
+  "type": "text",
+  "text": { "body": "Oi @5566996269251 e @5566996222471" }
+}
+```
+
+```
+POST /v15.0/{phone}/messages
+{
+  "to": "120363012345678@g.us",
+  "type": "text",
+  "text": { "body": "Oi @5566996269251, @5566996222471 @all" }
+}
+```
+
 ## Status/Broadcast Testing
 
 Example (image Story):

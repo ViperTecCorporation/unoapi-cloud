@@ -381,6 +381,47 @@ http://localhost:9876/v15.0/5549988290955/messages \
 }'
 ```
 
+Group mention helpers (`to` ending with `@g.us`):
+
+- `@all` or `@todos` in `text.body` enables `mentionAll=true` automatically and removes only the token from the final text.
+- `@<valid_phone>` in `text.body` is auto-added to `mentions[]` (normalized to `@s.whatsapp.net`) and remains in the text.
+- If both are present, both rules apply (`mentions[]` + `mentionAll=true`).
+
+Examples:
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Aviso @todos"
+  }
+}
+```
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Oi @5566996269251 e @5566996222471"
+  }
+}
+```
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Oi @5566996269251, @5566996222471 @all"
+  }
+}
+```
+
 To send a message to lid
 
 ```sh

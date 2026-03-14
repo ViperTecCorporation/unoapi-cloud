@@ -1361,6 +1361,98 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent text with mentionAll', async () => {
+    const body = `hello ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentionAll: true,
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text with mentions normalize numbers to jid', async () => {
+    const body = `hello @all ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentions: ['554999999999', '  15551234567  ', '5511999999999@s.whatsapp.net'],
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentions: ['554999999999@s.whatsapp.net', '15551234567@s.whatsapp.net', '5511999999999@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentionAll from @todos/@all on group', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Aviso @todos para equipe e @all hoje',
+      },
+    }
+    const output = {
+      text: 'Aviso para equipe e hoje',
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentions from @phone on body', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Oi @5566996269251 e @5566996222471',
+      },
+    }
+    const output = {
+      text: 'Oi @5566996269251 e @5566996222471',
+      mentions: ['5566996269251@s.whatsapp.net', '5566996222471@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentions from @phone and mentionAll from @all/@todos', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Oi @5566996269251, @5566996222471 @todos',
+      },
+    }
+    const output = {
+      text: 'Oi @5566996269251, @5566996222471',
+      mentions: ['5566996269251@s.whatsapp.net', '5566996222471@s.whatsapp.net'],
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text does not auto mentionAll outside group', async () => {
+    const input = {
+      to: '5511999999999@s.whatsapp.net',
+      type: 'text',
+      text: {
+        body: 'Aviso @todos para equipe e @all hoje',
+      },
+    }
+    const output = {
+      text: 'Aviso @todos para equipe e @all hoje',
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
   test('toBaileysMessageContent sticker', async () => {
     const link = `${new Date().getTime()}.png`
     const input = {

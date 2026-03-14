@@ -471,9 +471,39 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
   const { type } = payload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response: any = {}
+  const isGroupTarget = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
+  const rawTextBody = `${payload?.text?.body || ''}`
+  const hasMentionAllToken = isGroupTarget && /(^|\s)@(todos|all)\b/i.test(rawTextBody)
+  const bodyMentionNumbers = Array.from(
+    new Set(
+      Array.from(rawTextBody.matchAll(/@(\d{8,20})\b/g))
+        .map((match) => `${match?.[1] || ''}`.trim())
+        .filter((digits) => !!digits && isValidPhoneNumber(digits))
+    )
+  )
+  const stripMentionAllToken = (value: string) =>
+    value
+      .replace(/(^|\s)@(todos|all)\b/gi, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .trim()
+  const mentionAll = hasMentionAllToken || payload?.mentionAll === true || payload?.text?.mentionAll === true
+  const rawMentions = Array.isArray(payload?.mentions)
+    ? payload.mentions
+    : (Array.isArray(payload?.text?.mentions) ? payload.text.mentions : [])
+  const mentions = [...rawMentions, ...bodyMentionNumbers]
+    .map((value: unknown) => `${value ?? ''}`.trim())
+    .filter((value: string) => !!value)
+    .map((value: string) => value.includes('@') ? value : phoneNumberToJid(value))
+  const mentionsUnique = Array.from(new Set(mentions))
   switch (type) {
     case 'text':
-      response.text = customMessageCharactersFunction(payload.text.body)
+      response.text = customMessageCharactersFunction(
+        hasMentionAllToken
+          ? stripMentionAllToken(rawTextBody)
+          : rawTextBody
+      )
       break
     case 'interactive': {
       const interactive = payload.interactive || {}
@@ -789,6 +819,12 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
 
     default:
       throw new Error(`Unknow message type ${type}`)
+  }
+  if (mentionsUnique.length) {
+    response.mentions = mentionsUnique
+  }
+  if (mentionAll) {
+    response.mentionAll = true
   }
   return response
 }

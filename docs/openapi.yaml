@@ -133,6 +133,22 @@ paths:
                   type: text
                   text:
                     body: "Olá do Unoapi Cloud!"
+              textGroupMentionAll:
+                summary: Texto em grupo com @all/@todos
+                value:
+                  messaging_product: whatsapp
+                  to: "120363012345678@g.us"
+                  type: text
+                  text:
+                    body: "Aviso @todos"
+              textGroupMentions:
+                summary: Texto em grupo com @telefone
+                value:
+                  messaging_product: whatsapp
+                  to: "120363012345678@g.us"
+                  type: text
+                  text:
+                    body: "Oi @5566996269251 e @5566996222471"
               image:
                 summary: Imagem por link
                 value:
@@ -662,6 +678,20 @@ components:
               type: object
               properties:
                 body: { type: string }
+                mentionAll:
+                  type: boolean
+                  description: 'Opcional. Se true, encaminha mentionAll ao Baileys. Em grupos, `@all`/`@todos` no body também ativa automaticamente.'
+                mentions:
+                  type: array
+                  items: { type: string }
+                  description: 'Opcional. Lista de números ou JIDs para menção. Em grupos, `@<telefone_valido>` no body também é extraído automaticamente.'
+            mentionAll:
+              type: boolean
+              description: 'Atalho opcional equivalente a text.mentionAll'
+            mentions:
+              type: array
+              items: { type: string }
+              description: 'Atalho opcional equivalente a text.mentions'
 
     MessageImage:
       allOf:
