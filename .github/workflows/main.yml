@@ -16,6 +16,7 @@ permissions:
 
 env:
   DOCKER_PLATFORMS: linux/amd64,linux/arm64/v8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   test:
