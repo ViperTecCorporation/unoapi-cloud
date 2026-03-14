@@ -826,6 +826,24 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
   if (mentionAll) {
     response.mentionAll = true
   }
+  try {
+    if (type === 'text' || mentionsUnique.length || mentionAll || hasMentionAllToken) {
+      const outText = `${(response as any)?.text || ''}`
+      logger.info(
+        'MENTION_OUT to=%s type=%s isGroup=%s hasToken=%s mentionAll=%s rawMentions=%s bodyMentions=%s finalMentions=%s inText="%s" outText="%s"',
+        `${payload?.to || '<none>'}`,
+        `${type || '<none>'}`,
+        isGroupTarget,
+        hasMentionAllToken,
+        mentionAll,
+        JSON.stringify(rawMentions || []),
+        JSON.stringify(bodyMentionNumbers || []),
+        JSON.stringify(mentionsUnique || []),
+        rawTextBody.slice(0, 200),
+        outText.slice(0, 200),
+      )
+    }
+  } catch {}
   return response
 }
 

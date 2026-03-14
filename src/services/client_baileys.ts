@@ -1045,7 +1045,26 @@ export class ClientBaileys implements Client {
                 }
               }
             }
+            try {
+              logger.info(
+                'MENTION_IN payload to=%s type=%s mentionAll=%s mentions=%s body="%s"',
+                `${payload?.to || '<none>'}`,
+                `${payload?.type || '<none>'}`,
+                !!(payload?.mentionAll || payload?.text?.mentionAll),
+                JSON.stringify(payload?.mentions || payload?.text?.mentions || []),
+                `${payload?.text?.body || ''}`.slice(0, 200),
+              )
+            } catch {}
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+            try {
+              logger.info(
+                'MENTION_SEND content to=%s mentionAll=%s mentions=%s text="%s"',
+                `${payload?.to || '<none>'}`,
+                !!(content as any)?.mentionAll,
+                JSON.stringify((content as any)?.mentions || []),
+                `${(content as any)?.text || ''}`.slice(0, 200),
+              )
+            } catch {}
             if (CONVERT_AUDIO_MESSAGE_TO_OGG && content.audio && content.ptt) {
               try {
                 const url = content.audio?.url
