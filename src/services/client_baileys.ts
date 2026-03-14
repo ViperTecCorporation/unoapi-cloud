@@ -149,10 +149,24 @@ export class ClientBaileys implements Client {
       const inputMentions: string[] = Array.isArray(content?.mentions) ? content.mentions : []
       const mentionAll = !!content?.mentionAll
       if (!inputMentions.length && !mentionAll) return
+      if (mentionAll) {
+        if (Array.isArray(content?.mentions) && content.mentions.length) {
+          logger.info(
+            'MENTION_UNO_REMAP req=%s to=%s mentionAll=%s participants=%s before=%s after=%s',
+            requestId,
+            targetTo,
+            true,
+            0,
+            JSON.stringify(inputMentions),
+            JSON.stringify([]),
+          )
+        }
+        delete content.mentions
+        return
+      }
 
       let participants: any[] = []
       const lidsByPn = new Map<string, string>()
-      const participantMentions: string[] = []
       try {
         const gm = await this.fetchGroupMetadata(targetTo)
         participants = Array.isArray((gm as any)?.participants) ? (gm as any).participants : []
@@ -169,13 +183,10 @@ export class ClientBaileys implements Client {
             (rawA && isPnUser(rawA as any) && (jidNormalizedUser(rawA as any) as string)) ||
             (rawB && isPnUser(rawB as any) && (jidNormalizedUser(rawB as any) as string)) ||
             ''
-          if (lidJid) participantMentions.push(lidJid)
           if (pnJid && lidJid) {
             lidsByPn.set(pnJid, lidJid)
             const pnDigits = ensurePn(pnJid)
             if (pnDigits) lidsByPn.set(phoneNumberToJid(pnDigits), lidJid)
-          } else if (pnJid) {
-            participantMentions.push(pnJid)
           }
         }
       } catch (e) {
@@ -214,10 +225,6 @@ export class ClientBaileys implements Client {
       }
 
       const remapped = [...remappedExplicit]
-      if (mentionAll && participantMentions.length) {
-        remapped.push(...participantMentions)
-      }
-
       const selfUsers = new Set<string>()
       try {
         const meId = `${this.store?.state?.creds?.me?.id || ''}`.trim()
@@ -1353,38 +1360,11 @@ export class ClientBaileys implements Client {
                 logger.debug('baileys list send content')
               }
             }
-            response = await this.sendMessage(
-              targetTo,
-              {
-                forward: {
-                  key: {
-                    remoteJid: jidToPhoneNumber(jidNormalizedUser(this.store?.state.creds.me?.id)),
-                    fromMe: true,
-                  },
-                  message: {
-                    ...content,
-                  },
-                },
-              },
-              messageOptions,
-            )
-            if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
-              try {
-                logger.debug(
-                  'baileys list send forward=%s',
-                  JSON.stringify({
-                    forward: {
-                      key: {
-                        remoteJid: jidToPhoneNumber(jidNormalizedUser(this.store?.state.creds.me?.id)),
-                        fromMe: true,
-                      },
-                      message: content,
-                    },
-                  }),
-                )
-              } catch {
-                logger.debug('baileys list send forward')
-              }
+            const trySendOnce = async () => this.sendMessage(targetTo, content, messageOptions)
+            try {
+              response = await trySendOnce()
+            } catch (firstErr) {
+              throw firstErr
             }
           } else {
             // Envio com retry para mídia: em caso de erro de link (11), aguardamos e tentamos de novo
