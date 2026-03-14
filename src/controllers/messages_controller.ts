@@ -33,6 +33,7 @@ curl -X  POST \
 // https://developers.facebook.com/docs/whatsapp/cloud-api/guides/mark-message-as-read
 
 import { Request, Response } from 'express'
+import { randomUUID } from 'crypto'
 import { Response as ResponseUno } from '../services/response'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
@@ -86,8 +87,14 @@ export class MessagesController {
     logger.debug('%s body %s', this.endpoint, JSON.stringify(req.body))
     const { phone } = req.params
     const payload: any = req.body
+    const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
+    const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
+    payload._requestId = requestId
     try {
       const options: any = { endpoint: this.endpoint }
+      options.requestId = requestId
+      res.setHeader('x-request-id', requestId)
+      logger.info('messages requestId=%s phone=%s to=%s type=%s', requestId, phone, `${payload?.to || ''}`, `${payload?.type || ''}`)
       const bodyOptions = (payload && payload.options) || {}
       const rawTo = `${payload?.to || ''}`.trim().toLowerCase()
       const rawType = `${payload?.type || ''}`.trim().toLowerCase()
@@ -150,6 +157,7 @@ export class MessagesController {
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
+      try { res.setHeader('x-request-id', requestId) } catch {}
       return res.status(400).json({ status: 'error', message: e.message })
     }
   }

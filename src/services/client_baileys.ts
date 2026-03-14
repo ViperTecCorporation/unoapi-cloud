@@ -142,24 +142,51 @@ const buildSendOkResponse = (to: string, keyId: string) => ({
 })
 
 export class ClientBaileys implements Client {
-  private async remapMentionsToLidForGroup(targetTo: string, content: any) {
+  private async remapMentionsToLidForGroup(targetTo: string, content: any, payload?: any) {
     try {
       if (!targetTo || !isJidGroup(targetTo)) return
+      const requestId = `${payload?._requestId || payload?.requestId || '<none>'}`
       const inputMentions: string[] = Array.isArray(content?.mentions) ? content.mentions : []
-      if (!inputMentions.length) return
+      const mentionAll = !!content?.mentionAll
+      if (!inputMentions.length && !mentionAll) return
 
-      const remapped: string[] = []
-      for (const raw of inputMentions) {
-        const mention = `${raw || ''}`.trim()
-        if (!mention) continue
-
-        // Keep LID mentions as-is.
-        if (isLidUser(mention as any)) {
-          remapped.push(jidNormalizedUser(mention as any) as string)
-          continue
+      let participants: any[] = []
+      const lidsByPn = new Map<string, string>()
+      const participantMentions: string[] = []
+      try {
+        const gm = await this.fetchGroupMetadata(targetTo)
+        participants = Array.isArray((gm as any)?.participants) ? (gm as any).participants : []
+        for (const p of participants) {
+          const rawLid = `${p?.lid || ''}`.trim()
+          const rawA = `${p?.id || ''}`.trim()
+          const rawB = `${p?.jid || ''}`.trim()
+          const lidJid =
+            (rawLid && isLidUser(rawLid as any) && (jidNormalizedUser(rawLid as any) as string)) ||
+            (rawA && isLidUser(rawA as any) && (jidNormalizedUser(rawA as any) as string)) ||
+            (rawB && isLidUser(rawB as any) && (jidNormalizedUser(rawB as any) as string)) ||
+            ''
+          const pnJid =
+            (rawA && isPnUser(rawA as any) && (jidNormalizedUser(rawA as any) as string)) ||
+            (rawB && isPnUser(rawB as any) && (jidNormalizedUser(rawB as any) as string)) ||
+            ''
+          if (lidJid) participantMentions.push(lidJid)
+          if (pnJid && lidJid) {
+            lidsByPn.set(pnJid, lidJid)
+            const pnDigits = ensurePn(pnJid)
+            if (pnDigits) lidsByPn.set(phoneNumberToJid(pnDigits), lidJid)
+          } else if (pnJid) {
+            participantMentions.push(pnJid)
+          }
         }
+      } catch (e) {
+        logger.debug(e as any, 'Ignore groupMetadata mention fallback error for %s', targetTo)
+      }
 
-        // Normalize mention to PN JID first.
+      const resolveMention = async (rawMention: string) => {
+        const mention = `${rawMention || ''}`.trim()
+        if (!mention) return ''
+        if (isLidUser(mention as any)) return jidNormalizedUser(mention as any) as string
+
         let pnJid = ''
         if (isPnUser(mention as any)) {
           pnJid = jidNormalizedUser(mention as any) as string
@@ -168,25 +195,52 @@ export class ClientBaileys implements Client {
           if (pn) pnJid = phoneNumberToJid(pn)
         }
 
-        if (!pnJid) {
-          remapped.push(mention)
-          continue
-        }
+        if (!pnJid) return mention
 
         let lidJid: string | undefined
         try {
           lidJid = await this.store?.dataStore?.getLidForPn?.(this.phone, pnJid)
         } catch {}
-        remapped.push(lidJid && isLidUser(lidJid as any) ? (jidNormalizedUser(lidJid as any) as string) : pnJid)
+        if (!lidJid) lidJid = lidsByPn.get(pnJid)
+        return lidJid && isLidUser(lidJid as any) ? (jidNormalizedUser(lidJid as any) as string) : pnJid
       }
 
-      const unique = Array.from(new Set(remapped.filter(Boolean)))
+      const remapped = (await Promise.all(inputMentions.map(resolveMention))).filter(Boolean)
+      if (mentionAll && participantMentions.length) {
+        remapped.push(...participantMentions)
+      }
+
+      const selfUsers = new Set<string>()
+      try {
+        const meId = `${this.store?.state?.creds?.me?.id || ''}`.trim()
+        if (meId) selfUsers.add((jidNormalizedUser(meId as any) as string).split('@')[0])
+      } catch {}
+      try {
+        const meLid = `${(this.store as any)?.state?.creds?.me?.lid || ''}`.trim()
+        if (meLid) selfUsers.add((jidNormalizedUser(meLid as any) as string).split('@')[0])
+      } catch {}
+      try {
+        selfUsers.add(ensurePn(this.phone))
+      } catch {}
+
+      const unique = Array.from(new Set(remapped.filter(Boolean))).filter((jid) => {
+        try {
+          const user = `${jidNormalizedUser(jid as any)}`.split('@')[0]
+          return !!user && !selfUsers.has(user)
+        } catch {
+          return true
+        }
+      })
+
       const changed = unique.length !== inputMentions.length || unique.some((m, i) => m !== inputMentions[i])
       if (changed) {
         content.mentions = unique
         logger.info(
-          'MENTION_UNO_REMAP to=%s before=%s after=%s',
+          'MENTION_UNO_REMAP req=%s to=%s mentionAll=%s participants=%s before=%s after=%s',
+          requestId,
           targetTo,
+          mentionAll,
+          participants.length,
           JSON.stringify(inputMentions),
           JSON.stringify(unique),
         )
@@ -1100,8 +1154,10 @@ export class ClientBaileys implements Client {
               }
             }
             try {
+              const requestId = `${payload?._requestId || payload?.requestId || '<none>'}`
               logger.info(
-                'MENTION_IN payload to=%s type=%s mentionAll=%s mentions=%s body="%s"',
+                'MENTION_IN req=%s payload to=%s type=%s mentionAll=%s mentions=%s body="%s"',
+                requestId,
                 `${payload?.to || '<none>'}`,
                 `${payload?.type || '<none>'}`,
                 !!(payload?.mentionAll || payload?.text?.mentionAll),
@@ -1110,10 +1166,12 @@ export class ClientBaileys implements Client {
               )
             } catch {}
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
-            await this.remapMentionsToLidForGroup(targetTo, content as any)
+            await this.remapMentionsToLidForGroup(targetTo, content as any, payload)
             try {
+              const requestId = `${payload?._requestId || payload?.requestId || '<none>'}`
               logger.info(
-                'MENTION_SEND content to=%s mentionAll=%s mentions=%s text="%s"',
+                'MENTION_SEND req=%s content to=%s mentionAll=%s mentions=%s text="%s"',
+                requestId,
                 `${payload?.to || '<none>'}`,
                 !!(content as any)?.mentionAll,
                 JSON.stringify((content as any)?.mentions || []),
@@ -1333,7 +1391,9 @@ export class ClientBaileys implements Client {
           if (response) {
             // Evita JSON.stringify no WAProto (pode disparar Long.toString com this incorreto)
             try {
+              const requestId = `${payload?._requestId || payload?.requestId || '<none>'}`
               const summary = {
+                requestId,
                 key: {
                   id: (response as any)?.key?.id,
                   remoteJid: (response as any)?.key?.remoteJid,
@@ -1346,11 +1406,12 @@ export class ClientBaileys implements Client {
                 messageTimestamp: (response as any)?.messageTimestamp,
                 status: (response as any)?.status,
               }
-              logger.debug('Sent to baileys %s', JSON.stringify(summary))
+              logger.info('SEND_OK %s', JSON.stringify(summary))
             } catch {
               try {
-                logger.debug('Sent to baileys (jid=%s id=%s)', (response as any)?.key?.remoteJid, (response as any)?.key?.id)
-              } catch { logger.debug('Sent to baileys') }
+                const requestId = `${payload?._requestId || payload?.requestId || '<none>'}`
+                logger.info('SEND_OK req=%s (jid=%s id=%s)', requestId, (response as any)?.key?.remoteJid, (response as any)?.key?.id)
+              } catch { logger.info('SEND_OK') }
             }
             const key = response.key
             await this.store?.dataStore?.setKey(key.id, key)

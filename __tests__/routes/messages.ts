@@ -57,7 +57,17 @@ describe('messages routes', () => {
     jest.spyOn(incoming, 'send').mockReturnValue(p)
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)
     expect(res.status).toEqual(200)
-    expect(sendSpy).toHaveBeenCalledWith(phone, json, { endpoint: 'messages' })
+    expect(sendSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        ...json,
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        requestId: expect.any(String),
+      }),
+    )
   })
 
   test('whatsapp with 400 status', async () => {
