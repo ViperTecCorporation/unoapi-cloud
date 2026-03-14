@@ -526,6 +526,13 @@ const contactSyncPendingKey = (phone: string) => {
   return `${BASE_KEY}contact-sync:pending:${phone}`
 }
 
+const pollStateKey = (phone: string, jid: string, pollId: string) => {
+  return `${BASE_KEY}poll-state:${phone}:${jid}:${pollId}`
+}
+const statusMediaKey = (phone: string, statusId: string) => {
+  return `${BASE_KEY}status-media:${phone}:${statusId}`
+}
+
 export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
@@ -1146,6 +1153,30 @@ export const setContactSyncPending = async (phone: string, ttlSec: number) => {
   if (!process.env.REDIS_URL) return undefined
   const key = contactSyncPendingKey(phone)
   return redisSetAndExpire(key, '1', ttlSec)
+}
+
+export const getPollState = async (phone: string, jid: string, pollId: string): Promise<any | undefined> => {
+  const key = pollStateKey(phone, jid, pollId)
+  const raw = await redisGet(key)
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+export const setPollState = async (phone: string, jid: string, pollId: string, value: any) => {
+  const key = pollStateKey(phone, jid, pollId)
+  return redisSetAndExpire(key, JSON.stringify(value || {}), DATA_TTL)
+}
+
+export const getStatusMediaState = async (phone: string, statusId: string): Promise<any | undefined> => {
+  const key = statusMediaKey(phone, statusId)
+  const raw = await redisGet(key)
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+export const setStatusMediaState = async (phone: string, statusId: string, value: any, ttlSec = 86400) => {
+  const key = statusMediaKey(phone, statusId)
+  return redisSetAndExpire(key, JSON.stringify(value || {}), ttlSec)
 }
 
 export const delContactSyncPending = async (phone: string) => {
