@@ -142,6 +142,60 @@ const buildSendOkResponse = (to: string, keyId: string) => ({
 })
 
 export class ClientBaileys implements Client {
+  private async remapMentionsToLidForGroup(targetTo: string, content: any) {
+    try {
+      if (!targetTo || !isJidGroup(targetTo)) return
+      const inputMentions: string[] = Array.isArray(content?.mentions) ? content.mentions : []
+      if (!inputMentions.length) return
+
+      const remapped: string[] = []
+      for (const raw of inputMentions) {
+        const mention = `${raw || ''}`.trim()
+        if (!mention) continue
+
+        // Keep LID mentions as-is.
+        if (isLidUser(mention as any)) {
+          remapped.push(jidNormalizedUser(mention as any) as string)
+          continue
+        }
+
+        // Normalize mention to PN JID first.
+        let pnJid = ''
+        if (isPnUser(mention as any)) {
+          pnJid = jidNormalizedUser(mention as any) as string
+        } else {
+          const pn = ensurePn(mention.startsWith('@') ? mention.slice(1) : mention)
+          if (pn) pnJid = phoneNumberToJid(pn)
+        }
+
+        if (!pnJid) {
+          remapped.push(mention)
+          continue
+        }
+
+        let lidJid: string | undefined
+        try {
+          lidJid = await this.store?.dataStore?.getLidForPn?.(this.phone, pnJid)
+        } catch {}
+        remapped.push(lidJid && isLidUser(lidJid as any) ? (jidNormalizedUser(lidJid as any) as string) : pnJid)
+      }
+
+      const unique = Array.from(new Set(remapped.filter(Boolean)))
+      const changed = unique.length !== inputMentions.length || unique.some((m, i) => m !== inputMentions[i])
+      if (changed) {
+        content.mentions = unique
+        logger.info(
+          'MENTION_UNO_REMAP to=%s before=%s after=%s',
+          targetTo,
+          JSON.stringify(inputMentions),
+          JSON.stringify(unique),
+        )
+      }
+    } catch (e) {
+      logger.debug(e as any, 'Ignore mention remap error for %s', targetTo)
+    }
+  }
+
   /**
    * High-level client that wraps Baileys send/receive operations for a single phone session.
    *
@@ -1056,6 +1110,7 @@ export class ClientBaileys implements Client {
               )
             } catch {}
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+            await this.remapMentionsToLidForGroup(targetTo, content as any)
             try {
               logger.info(
                 'MENTION_SEND content to=%s mentionAll=%s mentions=%s text="%s"',

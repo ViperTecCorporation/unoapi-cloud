@@ -2,6 +2,11 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  globals: {
+    'ts-jest': {
+      diagnostics: false,
+    },
+  },
   moduleNameMapper: {
     '^baileys$': '<rootDir>/test-setup/baileys.mock.ts',
     '^baileys/lib/Utils/logger$': '<rootDir>/test-setup/baileys-logger.mock.ts',
