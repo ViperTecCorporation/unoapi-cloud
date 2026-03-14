@@ -439,6 +439,42 @@ http://localhost:9876/v15.0/5549988290955/messages \
 }'
 ```
 
+Group cache endpoints (participants by session):
+
+```sh
+curl -i -X GET \
+http://localhost:9876/v15.0/5549988290955/groups \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1'
+```
+
+```sh
+curl -i -X GET \
+http://localhost:9876/v15.0/5549988290955/groups/120363040468224422@g.us/participants \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1'
+```
+
+Participants response includes:
+- `jid`: participant identifier (`5566...` for PN contacts, `...@lid` for LID contacts)
+- `name`: participant name when available in contact cache
+
+Example response:
+
+```json
+{
+  "phone": "5549988290955",
+  "group": {
+    "jid": "120363040468224422@g.us",
+    "subject": "Equipe"
+  },
+  "participants": [
+    { "jid": "5566996269251", "name": "Fulano" },
+    { "jid": "123456789012345@lid", "name": "Ciclano" }
+  ]
+}
+```
+
 To mark message as read
 
 ```sh

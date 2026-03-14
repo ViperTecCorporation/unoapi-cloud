@@ -32,6 +32,7 @@ import { middlewareNext } from './services/middleware_next'
 import { TimerController } from './controllers/timer_controller'
 import { PreflightController } from './controllers/preflight_controller'
 import { EmbeddedController } from './controllers/embedded_controller'
+import { GroupsController } from './controllers/groups_controller'
 
 
 export const router = (
@@ -62,6 +63,7 @@ export const router = (
   const blacklistController = new BlacklistController(addToBlacklist)
   const contactsController = new ContactsController(contact)
   const preflightController = new PreflightController(getConfig, contact)
+  const groupsController = new GroupsController()
   const embeddedController = new EmbeddedController()
   const pairingCodeController = new PairingCodeController(getConfig, incoming)
   const connectController = new ConnectController(reload)
@@ -123,6 +125,8 @@ export const router = (
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
   router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
+  router.get('/:version/:phone/groups', middleware, groupsController.list.bind(groupsController))
+  router.get('/:version/:phone/groups/:groupId/participants', middleware, groupsController.participants.bind(groupsController))
   router.post('/:version/:phone/marketing_messages', middleware, marketingMessagesController.index.bind(marketingMessagesController))
   router.get('/:version/:phone/:media_id', middleware, mediaController.index.bind(mediaController))
   router.get('/:version/download/:phone/:file', middleware, mediaController.download.bind(mediaController))

@@ -312,6 +312,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error400'
 
+  /v15.0/{phone}/groups:
+    get:
+      summary: Listar grupos em cache da sessão
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Lista de grupos em cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupsListResponse'
+
+  /v15.0/{phone}/groups/{groupId}/participants:
+    get:
+      summary: Listar participantes de um grupo em cache
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+          description: 'Aceita 1203... ou 1203...@g.us'
+      responses:
+        '200':
+          description: Participantes do grupo em cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupParticipantsResponse'
+        '404':
+          description: Grupo não encontrado em cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+
   /v15.0/{phone}/{media_id}:
     get:
       summary: Obter metadados e URL temporária de mídia
@@ -955,6 +993,36 @@ components:
         notes:
           type: array
           items: { type: string }
+
+    GroupsListResponse:
+      type: object
+      properties:
+        phone: { type: string }
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              jid: { type: string }
+              subject: { type: string }
+              participantsCount: { type: integer }
+
+    GroupParticipantsResponse:
+      type: object
+      properties:
+        phone: { type: string }
+        group:
+          type: object
+          properties:
+            jid: { type: string }
+            subject: { type: string }
+        participants:
+          type: array
+          items:
+            type: object
+            properties:
+              jid: { type: string, description: 'Identificador do participante: PN em dígitos (sem @s.whatsapp.net) ou @lid' }
+              name: { type: string, description: 'Nome no cache de contatos quando disponível' }
 
     WebhookStatusFailed:
       description: Payload de falha enviado ao webhook (fora da resposta HTTP)

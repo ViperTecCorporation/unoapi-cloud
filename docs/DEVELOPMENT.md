@@ -23,6 +23,29 @@
 - Session UI: `GET /session/{phone}` → QR code + pairing/config UI via Socket.IO.
 - Send Message: `POST /v15.0/{phone}/messages` (Cloud API shape).
 - Contacts validation (standalone): `POST /{phone}/contacts`.
+- Group cache list: `GET /v15.0/{phone}/groups`.
+- Group participants: `GET /v15.0/{phone}/groups/{groupId}/participants`.
+
+## Group Cache Endpoints
+
+List cached groups for a session:
+
+```
+GET /v15.0/{phone}/groups
+```
+
+Get participants from a cached group:
+
+```
+GET /v15.0/{phone}/groups/{groupId}/participants
+```
+
+Notes:
+- `groupId` accepts both `1203...` and `1203...@g.us` (normalized internally).
+- Participant payload returns `jid` and `name`.
+- For PN contacts, `jid` is returned as digits only (without `@s.whatsapp.net`).
+- `name` is resolved from contact cache with PN/LID fallback mapping.
+- If the group is not cached in Redis, response is `404`.
 
 ## Group Mentions in Text
 
