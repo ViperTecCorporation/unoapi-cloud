@@ -165,6 +165,9 @@ try {
     const cfg = JSON.parse(readFileSync(tsconfigBuild, 'utf8'))
     cfg.compilerOptions = cfg.compilerOptions || {}
     cfg.compilerOptions.declaration = false
+    // TS5069: declarationMap exige declaration/composite.
+    // Como desativamos declaration no build local, desativamos declarationMap tambem.
+    cfg.compilerOptions.declarationMap = false
     cfg.compilerOptions.skipLibCheck = true
     cfg.compilerOptions.strict = false
     cfg.compilerOptions.noEmitOnError = false

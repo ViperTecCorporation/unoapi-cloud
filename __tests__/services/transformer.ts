@@ -1388,7 +1388,7 @@ describe('service transformer', () => {
     }
     const output = {
       text: body,
-      mentions: ['554999999999@s.whatsapp.net', '15551234567@s.whatsapp.net', '5511999999999@s.whatsapp.net'],
+      mentions: ['5549999999999@s.whatsapp.net', '15551234567@s.whatsapp.net', '5511999999999@s.whatsapp.net'],
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
