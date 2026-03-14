@@ -381,6 +381,47 @@ http://localhost:9876/v15.0/5549988290955/messages \
 }'
 ```
 
+Group mention helpers (`to` ending with `@g.us`):
+
+- `@all` or `@todos` in `text.body` enables `mentionAll=true` automatically and removes only the token from the final text.
+- `@<valid_phone>` in `text.body` is auto-added to `mentions[]` (normalized to `@s.whatsapp.net`) and remains in the text.
+- If both are present, both rules apply (`mentions[]` + `mentionAll=true`).
+
+Examples:
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Aviso @todos"
+  }
+}
+```
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Oi @5566996269251 e @5566996222471"
+  }
+}
+```
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "120363040468224422@g.us",
+  "type": "text",
+  "text": {
+    "body": "Oi @5566996269251, @5566996222471 @all"
+  }
+}
+```
+
 To send a message to lid
 
 ```sh
@@ -396,6 +437,42 @@ http://localhost:9876/v15.0/5549988290955/messages \
     "body": "hello"
   }
 }'
+```
+
+Group cache endpoints (participants by session):
+
+```sh
+curl -i -X GET \
+http://localhost:9876/v15.0/5549988290955/groups \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1'
+```
+
+```sh
+curl -i -X GET \
+http://localhost:9876/v15.0/5549988290955/groups/120363040468224422@g.us/participants \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1'
+```
+
+Participants response includes:
+- `jid`: participant identifier (`5566...` for PN contacts, `...@lid` for LID contacts)
+- `name`: participant name when available in contact cache
+
+Example response:
+
+```json
+{
+  "phone": "5549988290955",
+  "group": {
+    "jid": "120363040468224422@g.us",
+    "subject": "Equipe"
+  },
+  "participants": [
+    { "jid": "5566996269251", "name": "Fulano" },
+    { "jid": "123456789012345@lid", "name": "Ciclano" }
+  ]
+}
 ```
 
 To mark message as read

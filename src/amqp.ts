@@ -20,6 +20,7 @@ import {
 import logger from './services/logger'
 import { version } from '../package.json'
 import { extractDestinyPhone } from './services/transformer'
+import { isTransientInfraError } from './services/error_utils'
 
 const withTimeout = (millis, error, promise) => {
   let timeoutPid
@@ -43,6 +44,8 @@ export const queueDelayedName = (queue: string) => `${queue}.delayed`
 let amqpChannelModel: ChannelModel | undefined
 let amqpChannel: Channel | undefined
 let amqpConnection: Connection | undefined
+const AMQP_CONNECT_MAX_RETRIES = parseInt(process.env.AMQP_CONNECT_MAX_RETRIES || '30')
+const AMQP_CONNECT_RETRY_DELAY_MS = parseInt(process.env.AMQP_CONNECT_RETRY_DELAY_MS || '2000')
 
 type QueueObject = {
   queueMain: Replies.AssertQueue
@@ -110,9 +113,32 @@ const consumerId = (exchange: string, queue: string, routingKey: string) => `${e
 
 export const amqpConnect = async (amqpUrl = AMQP_URL) => {
   if (!amqpChannelModel) {
-    logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
-    amqpChannelModel = await connect(amqpUrl)
-    amqpConnection = amqpChannelModel.connection
+    let attempt = 0
+    let lastError: unknown
+    while (!amqpChannelModel && attempt < AMQP_CONNECT_MAX_RETRIES) {
+      attempt += 1
+      try {
+        logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
+        amqpChannelModel = await connect(amqpUrl)
+        amqpConnection = amqpChannelModel.connection
+      } catch (error) {
+        lastError = error
+        if (!isTransientInfraError(error) || attempt >= AMQP_CONNECT_MAX_RETRIES) {
+          throw error
+        }
+        logger.warn(
+          error as any,
+          'Transient RabbitMQ connection failure on attempt %d/%d, retrying in %d ms',
+          attempt,
+          AMQP_CONNECT_MAX_RETRIES,
+          AMQP_CONNECT_RETRY_DELAY_MS
+        )
+        await new Promise((resolve) => setTimeout(resolve, AMQP_CONNECT_RETRY_DELAY_MS))
+      }
+    }
+    if (!amqpChannelModel && lastError) {
+      throw lastError
+    }
   } else {
     logger.info(`Already connected RabbitMQ!`)
   }

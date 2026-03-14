@@ -20,6 +20,7 @@ import {
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
+import { isTransientInfraError } from './error_utils'
 
 export const BASE_KEY = 'unoapi-'
 
@@ -35,6 +36,8 @@ let subscriberStarting = false
 const redisTaskQueues: Map<string, Promise<any>> = new Map()
 const redisTaskLastRun: Map<string, number> = new Map()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const REDIS_CONNECT_MAX_RETRIES = parseInt(process.env.REDIS_CONNECT_MAX_RETRIES || '30')
+const REDIS_CONNECT_RETRY_DELAY_MS = parseInt(process.env.REDIS_CONNECT_RETRY_DELAY_MS || '2000')
 // Health-check flags/intervals
 let redisHealthStarted = false
 const REDIS_HEALTH_INTERVAL_MS = 15_000
@@ -111,11 +114,34 @@ export const getRedis = async (redisUrl = REDIS_URL) => {
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {
-  logger.info(`Connecting redis at ${redisUrl}....`)
-  const redisClient = await createClient({ url: redisUrl })
-  await redisClient.connect()
-  logger.info(`Connected redis!`)
-  return redisClient
+  let attempt = 0
+  let lastError: unknown
+
+  while (attempt < REDIS_CONNECT_MAX_RETRIES) {
+    attempt += 1
+    try {
+      logger.info(`Connecting redis at ${redisUrl}....`)
+      const redisClient = await createClient({ url: redisUrl })
+      await redisClient.connect()
+      logger.info(`Connected redis!`)
+      return redisClient
+    } catch (error) {
+      lastError = error
+      if (!isTransientInfraError(error) || attempt >= REDIS_CONNECT_MAX_RETRIES) {
+        throw error
+      }
+      logger.warn(
+        error as any,
+        'Transient redis connection failure on attempt %d/%d, retrying in %d ms',
+        attempt,
+        REDIS_CONNECT_MAX_RETRIES,
+        REDIS_CONNECT_RETRY_DELAY_MS
+      )
+      await sleep(REDIS_CONNECT_RETRY_DELAY_MS)
+    }
+  }
+
+  throw lastError
 }
 
 const CONFIG_UPDATE_CHANNEL = `${BASE_KEY}config:update`

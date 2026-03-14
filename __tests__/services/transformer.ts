@@ -481,6 +481,444 @@ describe('service transformer', () => {
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
   })
 
+  test('fromBaileysMessageContent with pix key', async () => {
+    const phoneNumer = '5549998360838'
+    const remotePhoneNumer = '554988290955'
+    const normalizedRemotePhoneNumer = '5549988290955'
+    const remoteJid = `${remotePhoneNumer}@s.whatsapp.net`
+    const key = `${new Date().getTime()}`
+    const keyType = `key.${new Date().getTime()}`
+    const id = `wa.${new Date().getTime()}`
+    const merchantName = `Mary ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const body = `*${merchantName}*\nChave PIX tipo *${keyType}*: ${key}`
+    const input = {
+      key: {
+        remoteJid, fromMe: false, id
+      },
+      message: {
+        interactiveMessage: {
+          nativeFlowMessage: {
+            buttons: [
+              {
+                name: 'payment_info',
+                buttonParamsJson: JSON.stringify({
+                  payment_settings: [
+                    {
+                      type:'pix_static_code',
+                      pix_static_code: {
+                        merchant_name: merchantName,
+                        key,
+                        key_type: keyType
+                      }
+                    }
+                  ]
+                })
+              }
+            ]
+          }
+        }
+      },
+      pushName: merchantName,
+      messageTimestamp,
+    }
+    const output = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phoneNumer,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
+                messages: [
+                  {
+                    from: normalizedRemotePhoneNumer,
+                    id,
+                    timestamp: messageTimestamp,
+                    text: { body },
+                    type: 'text',
+                  },
+                ],
+                contacts: [{ profile: { name: merchantName }, wa_id: normalizedRemotePhoneNumer }],
+                statuses: [],
+                errors: [],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent with templateMessage url button', async () => {
+    const phoneNumer = '5549998360838'
+    const remotePhoneNumer = '554988290955'
+    const normalizedRemotePhoneNumer = '5549988290955'
+    const remoteJid = `${remotePhoneNumer}@s.whatsapp.net`
+    const id = `wa.${new Date().getTime()}`
+    const pushName = `Mary ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id,
+      },
+      message: {
+        templateMessage: {
+          hydratedTemplate: {
+            hydratedContentText: 'Quero falar com voce',
+            hydratedFooterText: 'Rodape',
+            hydratedButtons: [
+              {
+                urlButton: {
+                  displayText: 'Leia mais',
+                  url: 'https://example.com',
+                },
+              },
+            ],
+          },
+        },
+      },
+      pushName,
+      messageTimestamp,
+    }
+    const output = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phoneNumer,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: phoneNumer, phone_number_id: phoneNumer },
+                messages: [
+                  {
+                    from: normalizedRemotePhoneNumer,
+                    id,
+                    timestamp: messageTimestamp,
+                    type: 'interactive',
+                    interactive: {
+                      type: 'button',
+                      body: { text: 'Quero falar com voce' },
+                      footer: { text: 'Rodape' },
+                      action: {
+                        buttons: [
+                          {
+                            type: 'cta_url',
+                            url: {
+                              title: 'Leia mais',
+                              link: 'https://example.com',
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                contacts: [{ profile: { name: pushName }, wa_id: normalizedRemotePhoneNumer }],
+                statuses: [],
+                errors: [],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent with groupInviteMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        groupInviteMessage: {
+          groupName: 'Grupo Teste',
+          inviteCode: 'ABC123',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Convite de grupo*')
+    expect(m.text.body).toContain('https://chat.whatsapp.com/ABC123')
+  })
+
+  test('fromBaileysMessageContent with orderMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        orderMessage: {
+          itemCount: 2,
+          currencyCode: 'BRL',
+          totalAmount1000: 123450,
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Pedido recebido*')
+    expect(m.text.body).toContain('Itens: 2')
+  })
+
+  test('fromBaileysMessageContent with pollCreationMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        pollCreationMessage: {
+          name: 'Qual opção?',
+          options: [{ optionName: 'A' }, { optionName: 'B' }],
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Enquete*')
+    expect(m.text.body).toContain('A | B')
+  })
+
+  test('fromBaileysMessageContent with eventMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        eventMessage: {
+          name: 'Reunião Comercial',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Evento*')
+    expect(m.text.body).toContain('Reunião Comercial')
+  })
+
+  test('fromBaileysMessageContent with requestPhoneNumberMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        requestPhoneNumberMessage: {},
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('Solicitação de número de telefone')
+  })
+
+  test('fromBaileysMessageContent with newsletterAdminInviteMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        newsletterAdminInviteMessage: {
+          newsletterName: 'Canal Oficial',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('Convite de administrador de canal')
+    expect(m.text.body).toContain('Canal Oficial')
+  })
+
+  test('fromBaileysMessageContent with questionMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        questionMessage: {
+          message: {
+            conversation: 'Qual seu produto?'
+          },
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Pergunta*')
+    expect(m.text.body).toContain('Qual seu produto?')
+  })
+
+  test('fromBaileysMessageContent with questionResponseMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        questionResponseMessage: {
+          text: 'Meu produto é X',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Resposta de pergunta*')
+    expect(m.text.body).toContain('Meu produto é X')
+  })
+
+  test('fromBaileysMessageContent with statusQuestionAnswerMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        statusQuestionAnswerMessage: {
+          text: 'Resposta no status',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Resposta de pergunta de status*')
+    expect(m.text.body).toContain('Resposta no status')
+  })
+
+  test('fromBaileysMessageContent with callLogMesssage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        callLogMesssage: {
+          isVideo: true,
+          callOutcome: 'MISSED',
+          durationSecs: 12,
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Registro de chamada*')
+    expect(m.text.body).toContain('Tipo: vídeo')
+  })
+
+  test('fromBaileysMessageContent with pollResultSnapshotMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        pollResultSnapshotMessage: {
+          name: 'Enquete X',
+          pollVotes: [
+            { optionName: 'A', optionVoteCount: 2 },
+            { optionName: 'B', optionVoteCount: 1 },
+          ],
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Resultado de enquete*')
+    expect(m.text.body).toContain('A: 2')
+  })
+
+  test('fromBaileysMessageContent with statusQuotedMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        statusQuotedMessage: {
+          type: 'QUESTION_ANSWER',
+          text: 'Status citado texto',
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Status citado*')
+    expect(m.text.body).toContain('Status citado texto')
+  })
+
+  test('fromBaileysMessageContent with statusAddYours', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteJid = '554988290955@s.whatsapp.net'
+    const id = `wa.${new Date().getTime()}`
+    const input = {
+      key: { remoteJid, fromMe: false, id },
+      message: {
+        statusAddYours: {
+          message: {
+            conversation: 'Adicione o seu',
+          },
+        },
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('text')
+    expect(m.text.body).toContain('*Status Add Yours*')
+    expect(m.text.body).toContain('Adicione o seu')
+  })
+
   test('fromBaileysMessageContent with quoted', async () => {
     const phoneNumer = '5549998360838'
     const remotePhoneNumer = '554988290955'
@@ -1288,6 +1726,113 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent text with mentionAll', async () => {
+    const body = `hello ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentionAll: true,
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text with mentions normalize numbers to jid', async () => {
+    const body = `hello @all ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentions: ['554999999999', '  15551234567  ', '5511999999999@s.whatsapp.net'],
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentions: ['5549999999999@s.whatsapp.net', '15551234567@s.whatsapp.net', '5511999999999@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text with mentions normalize @number to jid', async () => {
+    const body = `hello ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentions: ['@5566996269251', ' @15551234567 '],
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentions: ['5566996269251@s.whatsapp.net', '15551234567@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentionAll from @todos/@all on group', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Aviso @todos para equipe e @all hoje',
+      },
+    }
+    const output = {
+      text: 'Aviso para equipe e hoje',
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentions from @phone on body', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Oi @5566996269251 e @5566996222471',
+      },
+    }
+    const output = {
+      text: 'Oi @5566996269251 e @5566996222471',
+      mentions: ['5566996269251@s.whatsapp.net', '5566996222471@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text auto mentions from @phone and mentionAll from @all/@todos', async () => {
+    const input = {
+      to: '120363012345678@g.us',
+      type: 'text',
+      text: {
+        body: 'Oi @5566996269251, @5566996222471 @todos',
+      },
+    }
+    const output = {
+      text: 'Oi @5566996269251, @5566996222471',
+      mentionAll: true,
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent text does not auto mentionAll outside group', async () => {
+    const input = {
+      to: '5511999999999@s.whatsapp.net',
+      type: 'text',
+      text: {
+        body: 'Aviso @todos para equipe e @all hoje',
+      },
+    }
+    const output = {
+      text: 'Aviso @todos para equipe e @all hoje',
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
   test('toBaileysMessageContent sticker', async () => {
     const link = `${new Date().getTime()}.png`
     const input = {
@@ -1485,6 +2030,76 @@ describe('service transformer', () => {
       ],
       text: 'your-text-message-content',
       title: 'Title',
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent interactive carousel', async () => {
+    const input = {
+      type: 'interactive',
+      interactive: {
+        type: 'carousel',
+        body: {
+          text: 'Escolha um card',
+        },
+        footer: {
+          text: 'Cloud UnoApi',
+        },
+        action: {
+          carousel: {
+            cards: [
+              {
+                header: {
+                  type: 'image',
+                  image: {
+                    link: 'https://example.com/card-1.jpg',
+                  },
+                },
+                body: {
+                  text: 'Card 1',
+                },
+                footer: {
+                  text: 'Footer 1',
+                },
+                action: {
+                  buttons: [
+                    {
+                      type: 'reply',
+                      reply: {
+                        id: 'card_1',
+                        title: 'Selecionar',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    }
+    const output = {
+      interactiveMessage: {
+        body: { text: 'Escolha um card' },
+        footer: { text: 'Cloud UnoApi' },
+        carouselMessage: {
+          cards: [
+            {
+              header: { imageMessage: { url: 'https://example.com/card-1.jpg' } },
+              body: { text: 'Card 1' },
+              footer: { text: 'Footer 1' },
+              nativeFlowMessage: {
+                buttons: [
+                  {
+                    name: 'quick_reply',
+                    buttonParamsJson: '{"id":"card_1","display_text":"Selecionar"}',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })

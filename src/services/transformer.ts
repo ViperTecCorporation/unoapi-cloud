@@ -77,6 +77,29 @@ export const TYPE_MESSAGES_TO_READ = [
   'conversation',
   'ptvMessage',
   'templateButtonReplyMessage',
+  'templateMessage',
+  'groupInviteMessage',
+  'orderMessage',
+  'pollCreationMessage',
+  'pollCreationMessageV2',
+  'pollCreationMessageV3',
+  'pollCreationMessageV5',
+  'pollUpdateMessage',
+  'eventMessage',
+  'scheduledCallCreationMessage',
+  'scheduledCallEditMessage',
+  'requestPhoneNumberMessage',
+  'newsletterAdminInviteMessage',
+  'newsletterFollowerInviteMessageV2',
+  'questionMessage',
+  'questionResponseMessage',
+  'questionReplyMessage',
+  'statusQuestionAnswerMessage',
+  'callLogMesssage',
+  'pollResultSnapshotMessage',
+  'pollResultSnapshotMessageV3',
+  'statusQuotedMessage',
+  'statusAddYours',
 ]
 
 const OTHER_MESSAGES_TO_PROCESS = [
@@ -471,9 +494,50 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
   const { type } = payload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response: any = {}
+  const isGroupTarget = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
+  const rawTextBody = `${payload?.text?.body || ''}`
+  const hasMentionAllToken = isGroupTarget && /(^|\s)@(todos|all)\b/i.test(rawTextBody)
+  const bodyMentionNumbers = Array.from(
+    new Set(
+      Array.from(rawTextBody.matchAll(/@(\d{8,20})\b/g))
+        .map((match) => `${match?.[1] || ''}`.trim())
+        .filter((digits) => !!digits && isValidPhoneNumber(digits))
+    )
+  )
+  const stripMentionAllToken = (value: string) =>
+    value
+      .replace(/(^|\s)@(todos|all)\b/gi, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .trim()
+  const mentionAll = hasMentionAllToken || payload?.mentionAll === true || payload?.text?.mentionAll === true
+  const rawMentions = Array.isArray(payload?.mentions)
+    ? payload.mentions
+    : (Array.isArray(payload?.text?.mentions) ? payload.text.mentions : [])
+  const normalizeMentionToJid = (value: unknown): string => {
+    const raw = `${value ?? ''}`.trim()
+    if (!raw) return ''
+    // Keep explicit JIDs as-is.
+    if (/@(s\.whatsapp\.net|lid|hosted\.lid)$/i.test(raw)) {
+      return raw
+    }
+    // Accept mentions in @<digits> format from UNO payloads.
+    const maybeDigits = raw.startsWith('@') ? raw.slice(1) : raw
+    const pn = ensurePn(maybeDigits)
+    return pn ? phoneNumberToJid(pn) : ''
+  }
+  const mentions = [...rawMentions, ...bodyMentionNumbers]
+    .map((value: unknown) => normalizeMentionToJid(value))
+    .filter((value: string) => !!value)
+  const mentionsUnique = Array.from(new Set(mentions))
   switch (type) {
     case 'text':
-      response.text = customMessageCharactersFunction(payload.text.body)
+      response.text = customMessageCharactersFunction(
+        hasMentionAllToken
+          ? stripMentionAllToken(rawTextBody)
+          : rawTextBody
+      )
       break
     case 'interactive': {
       const interactive = payload.interactive || {}
@@ -608,62 +672,55 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           const cardBody = card.body || {}
           const cardFooter = card.footer || {}
           const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
+          const mapCardHeaderToProto = (h: any) => {
+            const headerType = `${h?.type || ''}`.toLowerCase()
+            const image = h?.image || {}
+            const video = h?.video || {}
+            const document = h?.document || {}
+            const imageLink = image.link || image.url
+            const videoLink = video.link || video.url
+            const documentLink = document.link || document.url
+            if (headerType === 'image' && imageLink) return { imageMessage: { url: imageLink } }
+            if (headerType === 'video' && videoLink) return { videoMessage: { url: videoLink } }
+            if (headerType === 'document' && documentLink) {
+              return { documentMessage: { url: documentLink, fileName: document.filename || document.fileName } }
+            }
+            if (h?.text) {
+              return { type: 4, title: h.text, hasMediaAttachment: false }
+            }
+            return undefined
+          }
+          const mappedHeader = mapCardHeaderToProto(cardHeader)
+          const mappedButtons = mapButtonsToNativeFlow(cardButtons)
           return {
-            header: cardHeader,
-            body: cardBody,
-            footer: cardFooter,
-            buttons: cardButtons,
-            index: card.card_index,
+            ...(mappedHeader ? { header: mappedHeader } : {}),
+            body: { text: cardBody?.text || '' },
+            ...(cardFooter?.text ? { footer: { text: cardFooter.text } } : {}),
+            nativeFlowMessage: {
+              buttons: mappedButtons,
+            },
           }
         })
-        const listTitle = header.text || body.text || 'Opcoes'
-        const listButtonText = action.button || 'Selecionar'
-        response.text = body.text || ''
-        response.footer = footer.text || ''
-        response.title = listTitle
-        response.buttonText = listButtonText
-        response.sections = cards.map((card: any, idx: number) => {
-          const headerText = card?.header?.text || ''
-          const bodyText = card?.body?.text || ''
-          const sectionTitle = headerText || bodyText || `Opcao ${idx + 1}`
-          const button = Array.isArray(card?.buttons) ? card.buttons[0] : undefined
-          const rowId =
-            (button?.reply?.id || button?.url?.link || button?.call?.phone_number || button?.copy_code?.code ||
-              `carousel_${typeof card.index === 'number' ? card.index : idx}`) as string
-          const rowTitle =
-            button?.reply?.title ||
-            button?.url?.title ||
-            button?.call?.title ||
-            button?.copy_code?.title ||
-            sectionTitle
-          const rowDesc =
-            button?.url?.link ||
-            button?.call?.phone_number ||
-            button?.copy_code?.code ||
-            card?.footer?.text ||
-            ''
-
-          return {
-            title: sectionTitle,
-            rows: [
-              {
-                rowId,
-                title: rowTitle,
-                description: rowDesc,
-              },
-            ],
-          }
-        })
+        response.interactiveMessage = {
+          body: { text: body.text || '' },
+          footer: footer.text ? { text: footer.text } : undefined,
+          header: header.text
+            ? {
+                type: 4,
+                title: header.text,
+                hasMediaAttachment: false,
+              }
+            : undefined,
+          carouselMessage: {
+            cards,
+          },
+        }
         if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
           logger.debug(
-            'toBaileys carousel->list dump input=%s output=%s',
+            'toBaileys carousel->interactive dump input=%s output=%s',
             JSON.stringify({ interactive, action, header, body, footer }),
             JSON.stringify({
-              text: response.text,
-              title: response.title,
-              footer: response.footer,
-              buttonText: response.buttonText,
-              sections: response.sections,
+              interactiveMessage: response.interactiveMessage,
             }),
           )
         }
@@ -790,6 +847,30 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     default:
       throw new Error(`Unknow message type ${type}`)
   }
+  if (mentionsUnique.length && !mentionAll) {
+    response.mentions = mentionsUnique
+  }
+  if (mentionAll) {
+    response.mentionAll = true
+  }
+  try {
+    if (type === 'text' || mentionsUnique.length || mentionAll || hasMentionAllToken) {
+      const outText = `${(response as any)?.text || ''}`
+      logger.info(
+        'MENTION_OUT to=%s type=%s isGroup=%s hasToken=%s mentionAll=%s rawMentions=%s bodyMentions=%s finalMentions=%s inText="%s" outText="%s"',
+        `${payload?.to || '<none>'}`,
+        `${type || '<none>'}`,
+        isGroupTarget,
+        hasMentionAllToken,
+        mentionAll,
+        JSON.stringify(rawMentions || []),
+        JSON.stringify(bodyMentionNumbers || []),
+        JSON.stringify(mentionsUnique || []),
+        rawTextBody.slice(0, 200),
+        outText.slice(0, 200),
+      )
+    }
+  } catch {}
   return response
 }
 
@@ -1981,8 +2062,83 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         break
       }
 
+      case 'templateMessage': {
+        const templateMessage: any = binMessage || payload?.message?.templateMessage || {}
+        const hydrated =
+          templateMessage?.hydratedTemplate ||
+          templateMessage?.fourRowTemplate ||
+          templateMessage?.hydratedFourRowTemplate ||
+          {}
+        const hydratedButtons = Array.isArray(hydrated?.hydratedButtons) ? hydrated.hydratedButtons : []
+        const buttons = hydratedButtons
+          .map((button: any) => {
+            if (button?.quickReplyButton) {
+              return {
+                type: 'reply',
+                reply: {
+                  id: button.quickReplyButton.id || '',
+                  title: button.quickReplyButton.displayText || '',
+                },
+              }
+            }
+            if (button?.urlButton) {
+              return {
+                type: 'cta_url',
+                url: {
+                  title: button.urlButton.displayText || '',
+                  link: button.urlButton.url || '',
+                },
+              }
+            }
+            if (button?.callButton) {
+              return {
+                type: 'cta_call',
+                call: {
+                  title: button.callButton.displayText || '',
+                  phone_number: button.callButton.phoneNumber || '',
+                },
+              }
+            }
+            return null
+          })
+          .filter(Boolean)
+
+        message.type = 'interactive'
+        message.interactive = {
+          type: 'button',
+          header: hydrated?.hydratedTitleText
+            ? { type: 'text', text: hydrated.hydratedTitleText }
+            : undefined,
+          body: { text: hydrated?.hydratedContentText || '' },
+          footer: hydrated?.hydratedFooterText ? { text: hydrated.hydratedFooterText } : undefined,
+          action: { buttons },
+        }
+        break
+      }
+
       case 'interactiveMessage': {
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
+        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
+        for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
+          let params: any = {}
+          try {
+            params = JSON.parse(button?.buttonParamsJson || '{}')
+          } catch {}
+          const paymentSetting = Array.isArray(params?.payment_settings) ? params.payment_settings[0] : undefined
+          if (!paymentSetting || !['pix_dynamic_code', 'pix_static_code'].includes(paymentSetting?.type)) continue
+          const paymentData = paymentSetting[paymentSetting.type] || {}
+          const merchantName = paymentData?.merchant_name
+          const keyType = paymentData?.key_type
+          const keyValue = paymentData?.key
+          if (!merchantName || !keyType || !keyValue) continue
+          message.type = 'text'
+          message.text = {
+            body: `*${merchantName}*\nChave PIX tipo *${keyType}*: ${keyValue}`,
+          }
+          break
+        }
+        if (message.type === 'text') break
+
         const mapButtonsFromNativeFlow = (nfButtons: any[]) =>
           Array.isArray(nfButtons)
             ? nfButtons.map((button: any) => {
@@ -2062,7 +2218,6 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           }
           break
         }
-        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
         const buttons = mapButtonsFromNativeFlow(nfButtons)
         message.type = 'interactive'
         message.interactive = {
@@ -2074,6 +2229,168 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
           action: { buttons },
         }
+        break
+      }
+
+      case 'groupInviteMessage': {
+        const invite: any = binMessage || payload?.message?.groupInviteMessage || {}
+        const subject = invite?.groupName || invite?.groupJid || 'Grupo'
+        const code = invite?.inviteCode || ''
+        const inviteUrl = code ? `https://chat.whatsapp.com/${code}` : ''
+        const lines = [`*Convite de grupo*: ${subject}`]
+        if (inviteUrl) lines.push(inviteUrl)
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'orderMessage': {
+        const order: any = binMessage || payload?.message?.orderMessage || {}
+        const itemCount = Number(order?.itemCount || 0)
+        const currency = `${order?.currencyCode || ''}`.trim()
+        const amount1000 = Number(order?.totalAmount1000 || 0)
+        const amount = Number.isFinite(amount1000) ? (amount1000 / 1000).toFixed(2) : ''
+        const summary = [
+          '*Pedido recebido*',
+          itemCount > 0 ? `Itens: ${itemCount}` : '',
+          currency && amount ? `Total: ${currency} ${amount}` : '',
+        ].filter(Boolean).join('\n')
+        message.type = 'text'
+        message.text = { body: summary || 'Pedido recebido' }
+        break
+      }
+
+      case 'pollCreationMessage':
+      case 'pollCreationMessageV2':
+      case 'pollCreationMessageV3':
+      case 'pollCreationMessageV5': {
+        const poll: any = binMessage || payload?.message?.[messageType] || {}
+        const name = `${poll?.name || ''}`.trim()
+        const options = Array.isArray(poll?.options) ? poll.options.map((o: any) => `${o?.optionName || ''}`.trim()).filter(Boolean) : []
+        const lines = [`*Enquete*: ${name || 'sem título'}`]
+        if (options.length) lines.push(`Opções: ${options.join(' | ')}`)
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'pollUpdateMessage': {
+        message.type = 'text'
+        message.text = { body: '*Atualização de enquete*' }
+        break
+      }
+
+      case 'eventMessage':
+      case 'scheduledCallCreationMessage':
+      case 'scheduledCallEditMessage': {
+        const eventData: any = binMessage || payload?.message?.[messageType] || {}
+        const title = `${eventData?.name || eventData?.title || eventData?.description || ''}`.trim()
+        const label = messageType === 'eventMessage' ? 'Evento' : 'Chamada agendada'
+        const lines = [`*${label}*`]
+        if (title) lines.push(title)
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'requestPhoneNumberMessage': {
+        message.type = 'text'
+        message.text = { body: '*Solicitação de número de telefone*' }
+        break
+      }
+
+      case 'newsletterAdminInviteMessage':
+      case 'newsletterFollowerInviteMessageV2': {
+        const invite: any = binMessage || payload?.message?.[messageType] || {}
+        const title = `${invite?.newsletterName || invite?.name || invite?.newsletterJid || ''}`.trim()
+        const label = messageType === 'newsletterAdminInviteMessage'
+          ? 'Convite de administrador de canal'
+          : 'Convite para seguir canal'
+        const lines = [`*${label}*`]
+        if (title) lines.push(title)
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'questionMessage':
+      case 'questionReplyMessage': {
+        const fp: any = binMessage || payload?.message?.[messageType] || {}
+        const inner: any = fp?.message || {}
+        const text =
+          `${inner?.conversation || inner?.extendedTextMessage?.text || inner?.questionResponseMessage?.text || ''}`.trim()
+        const label = messageType === 'questionMessage' ? 'Pergunta' : 'Resposta de pergunta'
+        message.type = 'text'
+        message.text = { body: text ? `*${label}*\n${text}` : `*${label}*` }
+        break
+      }
+
+      case 'questionResponseMessage': {
+        const questionResponse: any = binMessage || payload?.message?.questionResponseMessage || {}
+        const text = `${questionResponse?.text || ''}`.trim()
+        message.type = 'text'
+        message.text = { body: text ? `*Resposta de pergunta*\n${text}` : '*Resposta de pergunta*' }
+        break
+      }
+
+      case 'statusQuestionAnswerMessage': {
+        const statusAnswer: any = binMessage || payload?.message?.statusQuestionAnswerMessage || {}
+        const text = `${statusAnswer?.text || ''}`.trim()
+        message.type = 'text'
+        message.text = { body: text ? `*Resposta de pergunta de status*\n${text}` : '*Resposta de pergunta de status*' }
+        break
+      }
+
+      case 'callLogMesssage': {
+        const callLog: any = binMessage || payload?.message?.callLogMesssage || {}
+        const duration = Number(callLog?.durationSecs || 0)
+        const mode = callLog?.isVideo ? 'vídeo' : 'voz'
+        const outcome = `${callLog?.callOutcome || 'UNKNOWN'}`.trim()
+        const lines = [
+          '*Registro de chamada*',
+          `Tipo: ${mode}`,
+          `Resultado: ${outcome}`,
+          duration > 0 ? `Duração: ${duration}s` : '',
+        ].filter(Boolean)
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'pollResultSnapshotMessage':
+      case 'pollResultSnapshotMessageV3': {
+        const pollSnapshot: any = binMessage || payload?.message?.[messageType] || {}
+        const pollName = `${pollSnapshot?.name || ''}`.trim()
+        const votes = Array.isArray(pollSnapshot?.pollVotes)
+          ? pollSnapshot.pollVotes
+              .map((vote: any) => {
+                const name = `${vote?.optionName || ''}`.trim()
+                const count = Number(vote?.optionVoteCount || 0)
+                return name ? `${name}: ${count}` : ''
+              })
+              .filter(Boolean)
+          : []
+        const lines = [`*Resultado de enquete*${pollName ? `: ${pollName}` : ''}`]
+        if (votes.length) lines.push(votes.join(' | '))
+        message.type = 'text'
+        message.text = { body: lines.join('\n') }
+        break
+      }
+
+      case 'statusQuotedMessage': {
+        const statusQuoted: any = binMessage || payload?.message?.statusQuotedMessage || {}
+        const text = `${statusQuoted?.text || ''}`.trim()
+        message.type = 'text'
+        message.text = { body: text ? `*Status citado*\n${text}` : '*Status citado*' }
+        break
+      }
+
+      case 'statusAddYours': {
+        const fp: any = binMessage || payload?.message?.statusAddYours || {}
+        const inner: any = fp?.message || {}
+        const text = `${inner?.conversation || inner?.extendedTextMessage?.text || ''}`.trim()
+        message.type = 'text'
+        message.text = { body: text ? `*Status Add Yours*\n${text}` : '*Status Add Yours*' }
         break
       }
 

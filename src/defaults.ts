@@ -307,8 +307,9 @@ export const JIDMAP_CACHE_ENABLED = process.env.JIDMAP_CACHE_ENABLED === _undefi
 export const JIDMAP_LIST_ENABLED = process.env.JIDMAP_LIST_ENABLED === _undefined ? true : process.env.JIDMAP_LIST_ENABLED == 'true'
 // Enable/disable lookups against stored jidmap cache (unoapi-jidmap:*).
 export const JIDMAP_STORED_LOOKUP_ENABLED =
-  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? false : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
-export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '604800') // 7 days
+  process.env.JIDMAP_STORED_LOOKUP_ENABLED === _undefined ? true : process.env.JIDMAP_STORED_LOOKUP_ENABLED == 'true'
+// 0 or negative => do not expire mappings
+export const JIDMAP_TTL_SECONDS = parseInt(process.env.JIDMAP_TTL_SECONDS || '0')
 
 // Self-heal: assert sessions when decrypt stub is detected in inbound messages
 export const SELFHEAL_ASSERT_ON_DECRYPT =

@@ -21,6 +21,31 @@ export const isTransientBaileysError = (reason: any): boolean => {
   }
 }
 
+export const isTransientInfraError = (reason: any): boolean => {
+  try {
+    const err = reason || {}
+    const code = `${err.code || err.errno || ''}`.toUpperCase()
+    const msg = `${(err && (err.message || err.msg || err.toString?.())) || ''}`.toLowerCase()
+
+    if (['EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH'].includes(code)) {
+      return true
+    }
+
+    if (code === 'ENOTFOUND') {
+      return msg.includes('redis') || msg.includes('rabbitmq') || msg.includes('amqp')
+    }
+
+    if (msg.includes('getaddrinfo eai_again')) return true
+    if (msg.includes('temporary failure in name resolution')) return true
+    if (msg.includes('connection refused')) return true
+    if (msg.includes('timed out')) return true
+
+    return false
+  } catch {
+    return false
+  }
+}
+
 const getBaileysErrorData = (reason: any) => {
   return reason?.data || reason?.output?.payload?.data || reason?.output?.data
 }

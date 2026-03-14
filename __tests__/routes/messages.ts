@@ -12,6 +12,11 @@ import { OnNewLogin } from '../../src/services/socket'
 import { addToBlacklist } from '../../src/services/blacklist'
 import { Reload } from '../../src/services/reload'
 import { Logout } from '../../src/services/logout'
+
+jest.mock('../../src/services/rate_limit', () => ({
+  allowSend: jest.fn().mockResolvedValue({ allowed: true }),
+}))
+
 const addToBlacklist = mock<addToBlacklist>()
 
 const sessionStore = mock<SessionStore>()
@@ -52,7 +57,17 @@ describe('messages routes', () => {
     jest.spyOn(incoming, 'send').mockReturnValue(p)
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)
     expect(res.status).toEqual(200)
-    expect(sendSpy).toHaveBeenCalledWith(phone, json, { endpoint: 'messages' })
+    expect(sendSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        ...json,
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        requestId: expect.any(String),
+      }),
+    )
   })
 
   test('whatsapp with 400 status', async () => {
