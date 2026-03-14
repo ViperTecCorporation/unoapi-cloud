@@ -116,10 +116,10 @@ export class ListenerBaileys implements Listener {
           }
         } catch {}
       }
-      const phone = `${jidToPhoneNumber(voterJid, '').replace('+', '') || ''}`.trim()
-      if (displayName && phone) return `${displayName} (${phone})`
+      const phoneDigits = `${jidToPhoneNumber(voterJid, '').replace('+', '') || ''}`.trim()
+      if (displayName && phoneDigits) return `${displayName} (${phoneDigits})`
       if (displayName) return displayName
-      if (phone) return phone
+      if (phoneDigits) return phoneDigits
       return `${voterJid || ''}`.split('@')[0]
     } catch {
       return `${voterJid || ''}`.split('@')[0]
@@ -286,7 +286,7 @@ export class ListenerBaileys implements Listener {
   ): Promise<any | undefined> {
     try {
       const normalized = getBinMessage(message as any)
-      const currentStanza = `${normalized?.contextInfo?.stanzaId || ''}`.trim()
+      const currentStanza = `${normalized?.message?.contextInfo?.stanzaId || ''}`.trim()
       const candidates = new Set<string>()
       if (rawStanzaId) candidates.add(`${rawStanzaId}`.trim())
       if (currentStanza) candidates.add(currentStanza)
