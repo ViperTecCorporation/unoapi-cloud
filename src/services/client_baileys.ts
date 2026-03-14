@@ -205,7 +205,15 @@ export class ClientBaileys implements Client {
         return lidJid && isLidUser(lidJid as any) ? (jidNormalizedUser(lidJid as any) as string) : pnJid
       }
 
-      const remapped = (await Promise.all(inputMentions.map(resolveMention))).filter(Boolean)
+      const remappedExplicit = (await Promise.all(inputMentions.map(resolveMention))).filter(Boolean)
+      const explicitUsers = new Set<string>()
+      for (const jid of remappedExplicit) {
+        try {
+          explicitUsers.add(`${jidNormalizedUser(jid as any)}`.split('@')[0])
+        } catch {}
+      }
+
+      const remapped = [...remappedExplicit]
       if (mentionAll && participantMentions.length) {
         remapped.push(...participantMentions)
       }
@@ -226,7 +234,9 @@ export class ClientBaileys implements Client {
       const unique = Array.from(new Set(remapped.filter(Boolean))).filter((jid) => {
         try {
           const user = `${jidNormalizedUser(jid as any)}`.split('@')[0]
-          return !!user && !selfUsers.has(user)
+          if (!user) return false
+          if (!selfUsers.has(user)) return true
+          return explicitUsers.has(user)
         } catch {
           return true
         }
