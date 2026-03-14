@@ -492,10 +492,21 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
   const rawMentions = Array.isArray(payload?.mentions)
     ? payload.mentions
     : (Array.isArray(payload?.text?.mentions) ? payload.text.mentions : [])
+  const normalizeMentionToJid = (value: unknown): string => {
+    const raw = `${value ?? ''}`.trim()
+    if (!raw) return ''
+    // Keep explicit JIDs as-is.
+    if (/@(s\.whatsapp\.net|lid|hosted\.lid)$/i.test(raw)) {
+      return raw
+    }
+    // Accept mentions in @<digits> format from UNO payloads.
+    const maybeDigits = raw.startsWith('@') ? raw.slice(1) : raw
+    const pn = ensurePn(maybeDigits)
+    return pn ? phoneNumberToJid(pn) : ''
+  }
   const mentions = [...rawMentions, ...bodyMentionNumbers]
-    .map((value: unknown) => `${value ?? ''}`.trim())
+    .map((value: unknown) => normalizeMentionToJid(value))
     .filter((value: string) => !!value)
-    .map((value: string) => value.includes('@') ? value : phoneNumberToJid(value))
   const mentionsUnique = Array.from(new Set(mentions))
   switch (type) {
     case 'text':

@@ -1393,6 +1393,22 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent text with mentions normalize @number to jid', async () => {
+    const body = `hello ${new Date().getTime()}`
+    const input = {
+      type: 'text',
+      mentions: ['@5566996269251', ' @15551234567 '],
+      text: {
+        body,
+      },
+    }
+    const output = {
+      text: body,
+      mentions: ['5566996269251@s.whatsapp.net', '15551234567@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
   test('toBaileysMessageContent text auto mentionAll from @todos/@all on group', async () => {
     const input = {
       to: '120363012345678@g.us',
