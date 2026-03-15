@@ -18,6 +18,10 @@ const POLL_CREATION_TYPES = new Set([
   'pollCreationMessageV3',
   'pollCreationMessageV5',
 ])
+const POLL_SNAPSHOT_TYPES = new Set([
+  'pollResultSnapshotMessage',
+  'pollResultSnapshotMessageV3',
+])
 const STATUS_MEDIA_TYPES = new Set([
   'imageMessage',
   'videoMessage',
@@ -93,6 +97,58 @@ export class ListenerBaileys implements Listener {
       await setPollState(phone, remoteJid, pollId, state)
     } catch (e) {
       logger.warn(e as any, 'Failed to persist poll creation state')
+    }
+  }
+
+  private async savePollSnapshotState(phone: string, message: WAMessage, messageType: string) {
+    try {
+      if (!POLL_SNAPSHOT_TYPES.has(messageType)) return
+      const payload: any = (message as any)?.message?.[messageType] || {}
+      const context = payload?.contextInfo || {}
+      const pollId = `${context?.stanzaId || ''}`.trim()
+      const remoteJid = `${(message as any)?.key?.remoteJid || ''}`.trim()
+      if (!pollId || !remoteJid) return
+      const pollName = `${payload?.name || ''}`.trim()
+      const pollVotes = Array.isArray(payload?.pollVotes) ? payload.pollVotes : []
+      const snapshotCounts = pollVotes.reduce((acc: Record<string, number>, vote: any) => {
+        const name = `${vote?.optionName || ''}`.trim()
+        if (!name) return acc
+        const count = Number(vote?.optionVoteCount || 0)
+        acc[this.pollOptionHash(name)] = Number.isFinite(count) && count > 0 ? count : 0
+        return acc
+      }, {})
+      if (!Object.keys(snapshotCounts).length) return
+      const existing = await getPollState(phone, remoteJid, pollId)
+      const mergedOptions: Record<string, string> = { ...(existing?.options || {}) }
+      for (const vote of pollVotes) {
+        const name = `${vote?.optionName || ''}`.trim()
+        if (!name) continue
+        const hash = this.pollOptionHash(name)
+        if (!mergedOptions[hash]) mergedOptions[hash] = name
+      }
+      const state = {
+        ...(existing || {}),
+        pollId,
+        remoteJid,
+        pollName: pollName || `${existing?.pollName || ''}`.trim(),
+        options: mergedOptions,
+        voters: existing?.voters || {},
+        snapshotCounts,
+        snapshotTotal: Object.values(snapshotCounts).reduce((sum: number, n: any) => sum + (Number(n) || 0), 0),
+        snapshotUpdatedAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      await setPollState(phone, remoteJid, pollId, state)
+      logger.info(
+        'Poll snapshot persisted phone=%s remoteJid=%s pollId=%s options=%s total=%s',
+        phone,
+        remoteJid,
+        pollId,
+        Object.keys(snapshotCounts).length,
+        state.snapshotTotal || 0,
+      )
+    } catch (e) {
+      logger.warn(e as any, 'Failed to persist poll snapshot state')
     }
   }
 
@@ -178,7 +234,7 @@ export class ListenerBaileys implements Listener {
       state.updatedAt = Date.now()
       await setPollState(phone, remoteJid, pollId, state)
 
-      const optionHashes = Object.keys(state.options)
+      let optionHashes = Object.keys(state.options || {})
       const counts = optionHashes.reduce((acc: Record<string, number>, h: string) => {
         acc[h] = 0
         return acc
@@ -189,10 +245,32 @@ export class ListenerBaileys implements Listener {
           counts[hash] = (counts[hash] || 0) + 1
         }
       }
-      const totalVotes = voters.length
-      const optionLines = optionHashes.map((hash) => `- ${state.options[hash]}: ${counts[hash] || 0}`)
+      let totalVotes = voters.length
+      let usedSnapshot = false
+      const snapshotCounts = state?.snapshotCounts || {}
+      if (totalVotes === 0 && Object.keys(snapshotCounts).length) {
+        usedSnapshot = true
+        for (const [hash, count] of Object.entries(snapshotCounts)) {
+          counts[hash] = Number(count) || 0
+        }
+        optionHashes = Array.from(new Set([...optionHashes, ...Object.keys(snapshotCounts)]))
+        totalVotes = optionHashes.reduce((sum, hash) => sum + (counts[hash] || 0), 0)
+      }
+      if (usedSnapshot) {
+        logger.info(
+          'Poll summary using snapshot fallback phone=%s remoteJid=%s pollId=%s totalVotes=%s',
+          phone,
+          remoteJid,
+          pollId,
+          totalVotes,
+        )
+      }
+      const optionLines = optionHashes.map((hash) => `- ${(state.options && state.options[hash]) ? state.options[hash] : hash}: ${counts[hash] || 0}`)
       const voterLabels = await Promise.all(voters.map(async ([jid]) => this.resolvePollVoterLabel(phone, store, jid)))
       const voterLines = voterLabels.filter(Boolean).map((label) => `- ${label}`)
+      if (!voterLines.length) {
+        voterLines.push(usedSnapshot ? '- Snapshot sem lista nominal de votantes' : '- Ninguem ainda')
+      }
       const lines = [
         `*Resultado de enquete*${state.pollName ? `: ${state.pollName}` : ''}`,
         `Total de votos: ${totalVotes}`,
@@ -526,6 +604,9 @@ export class ListenerBaileys implements Listener {
 
     try {
       await this.savePollCreationState(phone, store, i, messageType || '')
+    } catch {}
+    try {
+      await this.savePollSnapshotState(phone, i, messageType || '')
     } catch {}
     try {
       await this.cacheOwnStatusMedia(phone, store, i, messageType || '', originalBaileysMessageId)
