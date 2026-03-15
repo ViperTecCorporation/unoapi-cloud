@@ -325,6 +325,7 @@
           ignoreGroupMessages: 'Ignore Group Messages', ignoreNewsletterMessages: 'Ignore Newsletter Messages', ignoreHistoryMessages: 'Ignore Message History',
           readOnReceipt: 'Mark as read on receive',
           readOnReply: 'Mark as read on reply',
+          markOnlineOnConnect: 'Mark online on connect',
           sendProfilePicture: 'Send Profile Picture', ignoreStatuses: 'Ignore Status', sendConnStatus: 'Send Connection Status',
           notifyFailures: 'Notify Failures', sendTyping: 'Send "Typing"', sendReactionAsReply: 'Send Reaction As Reply', ignoreOwnMessages: 'Ignore Own Messages', ignoreYourselfMessages: 'Ignore Yourself Messages', autoConnect: 'Auto Connect', ignoreBroadcastMessages: 'Ignore Broadcast Lists',
           whId: 'ID', whIdPh: 'Webhook ID', whUrlAbs: 'Absolute URL', whUrlAbsPh: 'Webhook Absolute URL', whToken: 'Token', whTokenPh: 'Webhook Token', whHeader: 'Header', whHeaderPh: 'Webhook Header',
@@ -388,6 +389,7 @@
           ignoreGroupMessages: 'Ignorar Mensagens de Grupo', ignoreNewsletterMessages: 'Ignorar Mensagens de Newsletter', ignoreHistoryMessages: 'Ignorar Histórico de Mensagens',
           readOnReceipt: 'Ler a mensagem ao receber',
           readOnReply: 'Ler a mensagem ao responder',
+          markOnlineOnConnect: 'Marcar online ao conectar',
           sendProfilePicture: 'Enviar Foto de Perfil', ignoreStatuses: 'Ignorar Status', sendConnStatus: 'Enviar Status da Conexão',
           notifyFailures: 'Notificar Falhas', sendTyping: 'Enviar "Digitando"', sendReactionAsReply: 'Enviar Reação Como Resposta', ignoreOwnMessages: 'Ignorar Mensagens Próprias', ignoreYourselfMessages: 'Ignorar Suas Mensagens', autoConnect: 'Conexão Automática', ignoreBroadcastMessages: 'Ignorar Listas de Transmissão',
           whId: 'ID', whIdPh: 'ID do Webhook', whUrlAbs: 'URL Absoluta', whUrlAbsPh: 'URL Absoluta do Webhook', whToken: 'Token', whTokenPh: 'Token do Webhook', whHeader: 'Header', whHeaderPh: 'Header do Webhook',
@@ -794,6 +796,13 @@
                                     <span class="slider round"></span>
                                 </label>
                                 <label for="readOnReply" class="form-label" data-i18n="readOnReply">Mark as read on reply</label>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                <label class="switch">
+                                    <input type="checkbox" id="markOnlineOnConnect" name="markOnlineOnConnect" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                                <label for="markOnlineOnConnect" class="form-label" data-i18n="markOnlineOnConnect">Mark online on connect</label>
                             </div>
                             <div class="col-12 col-md-6 col-lg-6 col-xl-4 col-xxl-3">
                                 <label class="switch">
@@ -1374,6 +1383,7 @@
                 $('#ignoreHistoryMessages').prop('checked', session.ignoreHistoryMessages);
                 $('#readOnReceipt').prop('checked', session.readOnReceipt);
                 try { $('#readOnReply').prop('checked', !!session.readOnReply); } catch {}
+                try { $('#markOnlineOnConnect').prop('checked', session.markOnlineOnConnect !== false); } catch {}
                 $('#sendProfilePicture').prop('checked', session.sendProfilePicture);
                 $('#ignoreOwnMessages').prop('checked', session.ignoreOwnMessages);
                 $('#ignoreYourselfMessages').prop('checked', session.ignoreYourselfMessages);
@@ -1491,6 +1501,7 @@
                         ignoreHistoryMessages: $('#ignoreHistoryMessages').is(':checked'),
                         readOnReceipt: $('#readOnReceipt').is(':checked'),
                         readOnReply: $('#readOnReply').is(':checked'),
+                        markOnlineOnConnect: $('#markOnlineOnConnect').is(':checked'),
                         sendProfilePicture: $('#sendProfilePicture').is(':checked'),
                         ignoreOwnMessages: $('#ignoreOwnMessages').is(':checked'),
                         ignoreYourselfMessages: $('#ignoreYourselfMessages').is(':checked'),

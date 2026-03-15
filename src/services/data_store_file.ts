@@ -435,6 +435,27 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       } catch (e) {
         logger.error(e, `Error on check if ${phoneOrJid} has whatsapp`)
         try {
+          const isRateOverlimit = `${(e as any)?.message || ''}`.includes('rate-overlimit')
+            || Number((e as any)?.data) === 429
+          if (isRateOverlimit) {
+            // Fallback otimista para não bloquear envio quando USync/onWhatsApp é rate-limited.
+            // Prioriza cache já resolvido, depois LID, depois normalização para PN JID.
+            if (jid && isIndividualJid(jid)) {
+              logger.warn('rate-overlimit on onWhatsApp for %s; using cached jid %s', `${phoneOrJid}`, `${jid}`)
+              return jid
+            }
+            if (lid && isIndividualJid(lid)) {
+              logger.warn('rate-overlimit on onWhatsApp for %s; using lid fallback %s', `${phoneOrJid}`, `${lid}`)
+              await dataStore.setJid(phoneOrJid, lid)
+              return lid
+            }
+            if (isIndividualJid(phoneOrJid)) {
+              const fallbackJid = phoneOrJid.includes('@') ? phoneOrJid : phoneNumberToJid(phoneOrJid)
+              logger.warn('rate-overlimit on onWhatsApp for %s; using optimistic fallback %s', `${phoneOrJid}`, `${fallbackJid}`)
+              await dataStore.setJid(phoneOrJid, fallbackJid)
+              return fallbackJid
+            }
+          }
           if (jidToPhoneNumber(phone) === jidToPhoneNumber(phoneOrJid)) {
             jid = phoneNumberToJid(phone)
             logger.info(`${phone} is the phone connection ${phone} returning ${jid}`)
