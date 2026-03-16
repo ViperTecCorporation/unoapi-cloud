@@ -220,7 +220,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     } catch {}
     return direct
   }
-  store.setTemplates = async (templates: string) => {
+  store.setTemplates = async (templates: object[]) => {
     return setTemplates(phone, templates)
   }
   store.loadTemplates = async () => {
