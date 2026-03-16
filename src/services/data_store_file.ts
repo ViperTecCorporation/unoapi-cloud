@@ -35,20 +35,6 @@ export const getDataStoreFile: getDataStore = async (phone: string, config: Conf
   return dataStores.get(phone) as DataStore
 }
 
-const deepMerge = (obj1, obj2) => {
-  const result = { ...obj1 };
-  for (let key in obj2) {
-    if (obj2.hasOwnProperty(key)) {
-      if (obj2[key] instanceof Object && obj1[key] instanceof Object) {
-        result[key] = deepMerge(obj1[key], obj2[key]);
-      } else {
-        result[key] = obj2[key];
-      }
-    }
-  }
-  return result;
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> => {
   const keys: Map<string, proto.IMessageKey> = new Map()
@@ -670,17 +656,13 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       logger.info(`Already empty session phone %s dir %s`, phone, sessionDir)
     }
   }
-  dataStore.setTemplates = async (templates: string) => {
+  dataStore.setTemplates = async (templates: any) => {
     const sessionDir = `${SESSION_DIR}/${phone}`
     const templateFile = `${sessionDir}/templates.json`
-    let newTemplates = templates
     if (!existsSync(sessionDir)) {
       mkdirSync(sessionDir, { recursive: true })
-    } else {
-      const currentTemplates = dataStore.loadTemplates()
-      newTemplates = deepMerge(currentTemplates, templates)
     }
-    return writeFileSync(templateFile, JSON.stringify(newTemplates))
+    return writeFileSync(templateFile, JSON.stringify(templates))
   }
   dataStore.loadTemplates = async () => {
     const templateFile = `${SESSION_DIR}/${phone}/templates.json`

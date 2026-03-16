@@ -822,30 +822,20 @@ export const getTemplates = async (phone: string) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setTemplates = async (phone: string, value: any) => {
-  const { id } = value
-  if (!id) {
-    throw new Error(`New template has no ID or an invalid format`);
-  }
-  const current = (await getTemplates(phone)) || {}
   const key = templateKey(phone)
-  var config = value
-  if (Object.keys(current).length !== 0) {
-    if ('id' in current) {
-      if (current.id !== id) {
-        config = []
-        config.push(current)
-        config.push(value)
-      }
-    } else {
-      config = []
-      current.forEach(element => {
-        if (element.id !== id) {
-          config.push(element)
-        }
-      });
-      config.push(value)
+  let config = value
+
+  if (!Array.isArray(value)) {
+    const { id } = value || {}
+    if (!id) {
+      throw new Error(`New template has no ID or an invalid format`)
     }
+    const current = (await getTemplates(phone)) || []
+    const currentList = Array.isArray(current) ? current : [current]
+    config = currentList.filter((template: any) => template.id !== id)
+    config.push(value)
   }
+
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
   return config
 }

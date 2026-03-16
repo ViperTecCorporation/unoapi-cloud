@@ -25,6 +25,8 @@ const logout = mock<Logout>()
 
 const loadTemplates = jest.spyOn(dataStore, 'loadTemplates')
 loadTemplates.mockResolvedValue([])
+const setTemplates = jest.spyOn(dataStore, 'setTemplates')
+setTemplates.mockResolvedValue()
 const getStore = jest.spyOn(config, 'getStore')
 getStore.mockResolvedValue(store)
 store.dataStore = dataStore
@@ -40,5 +42,28 @@ describe('templates routes', () => {
     const app: App = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklist, reload, logout)
     const res = await request(app.server).get('/v15.0/123/message_templates')
     expect(res.status).toEqual(200)
+  })
+
+  test('save template', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const app: App = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklist, reload, logout)
+    const res = await request(app.server)
+      .post('/v15.0/123/templates')
+      .send({ id: 1, name: 'hello' })
+
+    expect(res.status).toEqual(200)
+    expect(setTemplates).toHaveBeenCalledWith([{ id: 1, name: 'hello' }])
+  })
+
+  test('delete template by id', async () => {
+    loadTemplates.mockResolvedValueOnce([{ id: 1, name: 'hello' }, { id: 2, name: 'other' }])
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const app: App = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklist, reload, logout)
+    const res = await request(app.server).delete('/v15.0/123/templates/1')
+
+    expect(res.status).toEqual(200)
+    expect(setTemplates).toHaveBeenCalledWith([{ id: 2, name: 'other' }])
   })
 })
