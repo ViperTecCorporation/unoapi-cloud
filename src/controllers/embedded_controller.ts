@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import fetch from 'node-fetch'
 import { EMBEDDED_SIGNUP_APP_ID, EMBEDDED_SIGNUP_APP_SECRET, EMBEDDED_SIGNUP_REDIRECT_URI, EMBEDDED_SIGNUP_GRAPH_VERSION } from '../defaults'
 import logger from '../services/logger'
+import { issueEmbeddedAccessToken } from '../services/embedded_tokens'
 
 export class EmbeddedController {
   public async configJs(_req: Request, res: Response) {
@@ -72,6 +73,21 @@ export class EmbeddedController {
     } catch (e) {
       logger.error(e as any, 'embedded exchange error')
       return res.status(500).json({ error: 'internal_error' })
+    }
+  }
+
+  public async oauthAccessToken(req: Request, res: Response) {
+    try {
+      const code = `${(req.query as any)?.code || ''}`.trim()
+      if (!code) return res.status(400).json({ error: { message: 'missing_code', type: 'OAuthException', code: 100 } })
+      const accessToken = issueEmbeddedAccessToken(code)
+      return res.status(200).json({
+        access_token: accessToken,
+        token_type: 'bearer',
+      })
+    } catch (e) {
+      logger.error(e as any, 'embedded oauth access_token error')
+      return res.status(500).json({ error: { message: 'internal_error', type: 'OAuthException', code: 1 } })
     }
   }
 }

@@ -10,6 +10,11 @@ servers:
   - url: /
 security:
   - ApiToken: []
+tags:
+  - name: Odoo
+    description: Endpoints and payloads used by Odoo connector compatibility.
+  - name: Embedded
+    description: Endpoints used by WhatsApp Embedded/Chatwoot-like onboarding flows.
 
 paths:
   /ping:
@@ -34,6 +39,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/SessionsList'
 
+  /sessions/meta/mappings:
+    get:
+      summary: Mapeamentos Meta resolvidos por sessão (admin)
+      description: Lista `session_phone`, `phone_number_id` e `business_account_id` já resolvidos para suporte.
+      tags: [Odoo]
+      responses:
+        '200':
+          description: Lista de mapeamentos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        session_phone: { type: string, example: "5566996269251" }
+                        phone_number_id: { type: string, example: "5566996269251" }
+                        business_account_id: { type: string, example: "154253852486255" }
+
   /sessions/{phone}:
     get:
       summary: UI de sessão (QR/Config)
@@ -50,6 +77,7 @@ paths:
   /v15.0/{phone}:
     get:
       summary: Status e configuração da sessão
+      tags: [Odoo]
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       responses:
@@ -60,9 +88,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/PhoneInfo'
 
+  /v15.0/debug_token:
+    get:
+      summary: Validar token (Graph-like)
+      tags: [Odoo, Embedded]
+      parameters:
+        - in: query
+          name: input_token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Estrutura compatível com Graph debug_token
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v15.0/me/whatsapp_business_accounts:
+    get:
+      summary: Listar WABA IDs visíveis para o token
+      tags: [Odoo, Embedded]
+      responses:
+        '200':
+          description: Lista de contas WhatsApp Business
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+
+  /v15.0/oauth/access_token:
+    get:
+      summary: Embedded-like token exchange
+      tags: [Embedded]
+      parameters:
+        - name: client_id
+          in: query
+          schema: { type: string }
+        - name: client_secret
+          in: query
+          schema: { type: string }
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Access token payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, example: bearer }
+
+  /v15.0/{business_account_id}/subscribed_apps:
+    get:
+      summary: List subscribed app status (compat)
+      tags: [Embedded]
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Compatibility payload
+    post:
+      summary: Subscribe app callback (compat)
+      tags: [Embedded]
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Success
+    delete:
+      summary: Unsubscribe app callback (compat)
+      tags: [Embedded]
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      responses:
+        '200':
+          description: Success
+
   /v15.0/{phone}/phone_numbers:
     get:
       summary: Listar conexões/telefones gerenciados
+      tags: [Odoo]
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       responses:
@@ -73,9 +192,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/SessionsList'
 
+  /v15.0/{business_account_id}/phone_numbers:
+    get:
+      summary: Listar phone numbers por business account id (alias Graph)
+      tags: [Odoo, Embedded]
+      parameters:
+        - in: path
+          name: business_account_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de phone numbers
+          content:
+            application/json:
+              schema:
+                type: object
+
   /v15.0/{phone}/message_templates:
     get:
       summary: Listar templates
+      tags: [Odoo]
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       responses:
@@ -91,10 +229,75 @@ paths:
                     items:
                       type: object
 
+  /v15.0/{business_account_id}/message_templates:
+    get:
+      summary: Listar templates por business account id (alias Graph)
+      tags: [Odoo, Embedded]
+      parameters:
+        - in: path
+          name: business_account_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Templates disponíveis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+    post:
+      summary: Criar/listar templates por business account id (alias Graph)
+      tags: [Odoo, Embedded]
+      parameters:
+        - in: path
+          name: business_account_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Resultado do template endpoint
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v15.0/{business_account_id}/message_templates/{templateId}:
+    delete:
+      summary: Remover template por business account id (alias Graph)
+      tags: [Odoo, Embedded]
+      parameters:
+        - in: path
+          name: business_account_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: templateId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resultado de remoção
+
   /v15.0/{phone}/templates:
     post:
       summary: (Compat) Listar templates
       description: Compatível com o Cloud API; neste projeto retorna a lista local/forward.
+      tags: [Odoo]
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       responses:
@@ -113,6 +316,7 @@ paths:
   /v15.0/{phone}/messages:
     post:
       summary: Enviar mensagem (WhatsApp Cloud shape)
+      tags: [Odoo]
       description: |
         - Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.
         - Suporta opções de broadcast/status: `options.statusJidList` ou `statusJidList` (atalho).
@@ -353,6 +557,7 @@ paths:
   /v15.0/{phone}/{media_id}:
     get:
       summary: Obter metadados e URL temporária de mídia
+      tags: [Odoo]
       parameters:
         - $ref: '#/components/parameters/PhonePath'
         - in: path

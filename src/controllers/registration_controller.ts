@@ -4,6 +4,7 @@ import { setConfig } from '../services/redis'
 import logger from '../services/logger'
 import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
+import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 
 export class RegistrationController {
   private static readonly REGISTER_DEBOUNCE_MS = 15000
@@ -28,32 +29,33 @@ export class RegistrationController {
     logger.debug('register query %s', JSON.stringify(req.query))
     const { phone } = req.params
     try {
-      await setConfig(phone, req.body)
+      const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+      await setConfig(sessionPhone, req.body)
       const now = Date.now()
-      const last = RegistrationController.lastRegisterAtByPhone.get(phone) || 0
-      const inFlight = RegistrationController.inFlightByPhone.has(phone)
+      const last = RegistrationController.lastRegisterAtByPhone.get(sessionPhone) || 0
+      const inFlight = RegistrationController.inFlightByPhone.has(sessionPhone)
       const inDebounceWindow = (now - last) < RegistrationController.REGISTER_DEBOUNCE_MS
 
       if (inFlight || inDebounceWindow) {
         logger.warn(
           'register suppressed for %s (inFlight=%s debounceMs=%s)',
-          phone,
+          sessionPhone,
           inFlight,
           Math.max(0, RegistrationController.REGISTER_DEBOUNCE_MS - (now - last))
         )
-        const config = await this.getConfig(phone)
+        const config = await this.getConfig(sessionPhone)
         return res.status(202).json({ ...config, registerSuppressed: true })
       }
 
-      RegistrationController.inFlightByPhone.add(phone)
-      RegistrationController.lastRegisterAtByPhone.set(phone, now)
-      this.reload.run(phone)
-        .catch((err) => logger.error(`register reload failed for ${phone}: ${err.message}`))
+      RegistrationController.inFlightByPhone.add(sessionPhone)
+      RegistrationController.lastRegisterAtByPhone.set(sessionPhone, now)
+      this.reload.run(sessionPhone)
+        .catch((err) => logger.error(`register reload failed for ${sessionPhone}: ${err.message}`))
         .finally(() => {
-          RegistrationController.inFlightByPhone.delete(phone)
+          RegistrationController.inFlightByPhone.delete(sessionPhone)
         })
 
-      const config = await this.getConfig(phone)
+      const config = await this.getConfig(sessionPhone)
       return res.status(200).json(config)
     } catch (e) {
       return res.status(400).json({ status: 'error', message: `${phone} could not create, error: ${e.message}` })
@@ -67,7 +69,8 @@ export class RegistrationController {
     logger.debug('deregister body %s', JSON.stringify(req.body))
     logger.debug('deregister query %s', JSON.stringify(req.query))
     const { phone } = req.params
-    await this.logout.run(phone)
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    await this.logout.run(sessionPhone)
     return res.status(204).send()
   }
 }

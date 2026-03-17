@@ -1,14 +1,41 @@
-import { Request, Response } from 'express'
+import { NextFunction, Request, Response } from 'express'
 import { getConfig } from '../services/config'
 import logger from '../services/logger'
+import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
+import { SessionStore } from '../services/session_store'
+import { sendGraphError } from '../services/graph_error'
 
 export class MediaController {
   private baseUrl: string
   private getConfig: getConfig
+  private sessionStore: SessionStore
 
-  constructor(baseUrl: string, getConfig: getConfig) {
+  constructor(baseUrl: string, getConfig: getConfig, sessionStore: SessionStore) {
     this.baseUrl = baseUrl
     this.getConfig = getConfig
+    this.sessionStore = sessionStore
+  }
+
+  public async indexNoPhone(req: Request, res: Response, next: NextFunction) {
+    logger.debug('media index (no phone) method %s', req.method)
+    logger.debug('media index (no phone) params %s', JSON.stringify(req.params))
+    const mediaId = `${req.params.media_id || ''}`.trim()
+    if (!mediaId) return next()
+    try {
+      const phones = await this.sessionStore.getPhones()
+      for (const phone of phones) {
+        try {
+          const config = await this.getConfig(phone)
+          const store = await config.getStore(phone, config)
+          const { mediaStore } = store
+          const mediaResult = await mediaStore.getMedia(this.baseUrl, mediaId)
+          if (mediaResult) return res.status(200).json(mediaResult)
+        } catch {}
+      }
+      return next()
+    } catch {
+      return next()
+    }
   }
 
   public async index(req: Request, res: Response) {
@@ -17,8 +44,9 @@ export class MediaController {
     logger.debug('media index params %s', JSON.stringify(req.params))
     logger.debug('media index body %s', JSON.stringify(req.body))
     const { phone, media_id: mediaId } = req.params
-    const config = await this.getConfig(phone)
-    const store = await config.getStore(phone, config)
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    const config = await this.getConfig(sessionPhone)
+    const store = await config.getStore(sessionPhone, config)
     const { mediaStore } = store
     const mediaResult = await mediaStore.getMedia(this.baseUrl, mediaId)
     if (mediaResult) {
@@ -26,7 +54,7 @@ export class MediaController {
       return res.status(200).json(mediaResult)
     } else {
       logger.debug('media index response 404')
-      return res.sendStatus(404)
+      return sendGraphError(res, 404, '(#100) Unsupported get request. Object with ID does not exist', { code: 100, type: 'GraphMethodException' })
     }
   }
 
@@ -77,7 +105,7 @@ export class MediaController {
       return res.status(200).json(response)
     } catch (e) {
       logger.warn(e as any, 'media typebot error %s', raw)
-      return res.sendStatus(500)
+      return sendGraphError(res, 500, 'internal_error', { code: 131016, type: 'GraphMethodException' })
     }
   }
 
@@ -87,9 +115,10 @@ export class MediaController {
     logger.debug('media download params %s', JSON.stringify(req.params))
     logger.debug('media download body %s', JSON.stringify(req.body))
     const { phone, file } = req.params
-    const config = await this.getConfig(phone)
-    const store = await config.getStore(phone, config)
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    const config = await this.getConfig(sessionPhone)
+    const store = await config.getStore(sessionPhone, config)
     const { mediaStore } = store
-    return mediaStore.downloadMedia(res, `${phone}/${file}`)
+    return mediaStore.downloadMedia(res, `${sessionPhone}/${file}`)
   }
 }

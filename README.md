@@ -684,6 +684,8 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 - Development: see `docs/DEVELOPMENT.md`
 - Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
 - Environment variables: see `docs/ENVIRONMENT.md` (PT-BR: `docs/pt-BR/AMBIENTE.md`)
+- Odoo compatibility: see `docs/COMPAT_ODOO.md` (PT-BR: `docs/pt-BR/COMPAT_ODOO.md`)
+- WhatsApp Embedded compatibility: see `docs/WHATSAPP_EMBEDDED.md` (PT-BR: `docs/pt-BR/WHATSAPP_EMBEDDED.md`)
 - Changelog: see `CHANGELOG.md` (PT-BR: `docs/pt-BR/CHANGELOG.md`)
 - In the browser: open `http://localhost:9876/docs/`
   - OpenAPI viewer: `http://localhost:9876/docs/openapi.html` (serves `docs/openapi.yaml`)

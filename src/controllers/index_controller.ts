@@ -4,6 +4,8 @@ import { createRequire } from 'module'
 import fs from 'fs'
 import path from 'path'
 import YAML from 'yaml'
+import { UNOAPI_AUTH_TOKEN } from '../defaults'
+import { getAllAuthTokens } from '../services/redis'
 
 class IndexController {
 
@@ -110,20 +112,38 @@ class IndexController {
     return res.status(200).send('pong!')
   }
 
-  public debugToken(req: Request, res: Response) {
+  public async debugToken(req: Request, res: Response) {
     logger.debug('debug token method %s', JSON.stringify(req.method))
     logger.debug('debug token headers %s', JSON.stringify(req.headers))
     logger.debug('debug token params %s', JSON.stringify(req.params))
     logger.debug('debug token query %s', JSON.stringify(req.query))
     logger.debug('debug token body %s', JSON.stringify(req.body))
+    const inputToken = `${(req.query as any)?.input_token || (req.query as any)?.access_token || ''}`.trim()
+    const appId = `${process.env.EMBEDDED_SIGNUP_APP_ID || 'unoapi'}`
+    const scopes = ['whatsapp_business_management', 'whatsapp_business_messaging']
+    let isValid = false
+    try {
+      const validTokens = new Set<string>()
+      if (UNOAPI_AUTH_TOKEN) validTokens.add(UNOAPI_AUTH_TOKEN)
+      try {
+        const redisTokens = await getAllAuthTokens()
+        redisTokens.forEach((t) => t && validTokens.add(`${t}`))
+      } catch {}
+      // Keep backward compatibility: when no known token source exists, respond valid.
+      if (!inputToken && validTokens.size === 0) {
+        isValid = true
+      } else if (inputToken) {
+        isValid = validTokens.has(inputToken)
+      }
+    } catch {}
     res.set('Content-Type', 'application/json')
     return res.status(200).send({
       data: {
-        is_valid: true,
-        app_id: 'unoapi',
+        is_valid: isValid,
+        app_id: appId,
         application: 'unoapi',
-        expires_at: 0,
-        scopes: ['whatsapp_business_management', 'whatsapp_business_messaging'],
+        expires_at: isValid ? Math.floor(Date.now() / 1000) + 86400 : 0,
+        scopes: isValid ? scopes : [],
       },
     })
   }

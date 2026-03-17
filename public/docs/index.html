@@ -99,6 +99,8 @@
         navEnvironment: 'Environment',
         navChangelog: 'Changelog',
         navTranscription: 'Audio Transcription',
+        navCompat: 'Odoo/Graph Compatibility',
+        navEmbedded: 'WhatsApp Embedded',
         h2Architecture: 'Architecture Overview',
         h2Development: 'Development Guide',
         h2Environment: 'Environment Variables',
@@ -106,6 +108,8 @@
         h2Status: 'Status/Broadcast',
         h2Changelog: 'Changelog',
         h2Transcription: 'Audio Transcription',
+        h2Compat: 'Odoo/Graph Compatibility',
+        h2Embedded: 'WhatsApp Embedded',
       },
       'pt-BR': {
         langLabel: 'Idioma:',
@@ -119,20 +123,32 @@
         navOpenapiSwagger: 'OpenAPI (Swagger UI)',
         navEnvironment: 'Ambiente',
         navChangelog: 'Histórico de Mudanças',
+        navCompat: 'Compatibilidade Odoo/Graph',
+        navEmbedded: 'WhatsApp Embedded',
         h2Architecture: 'Visão de Arquitetura',
         h2Development: 'Guia de Desenvolvimento',
         h2Environment: 'Variáveis de Ambiente',
         h2Install: 'Guia de Instalação',
         h2Status: 'Status/Transmissão',
         h2Changelog: 'Histórico de Mudanças',
+        h2Compat: 'Compatibilidade Odoo/Graph',
+        h2Embedded: 'WhatsApp Embedded',
       }
     }
     // Ensure dynamic keys for new sections exist in both locales
     try {
       I18N['en'].navTranscription = I18N['en'].navTranscription || 'Audio Transcription';
       I18N['en'].h2Transcription = I18N['en'].h2Transcription || 'Audio Transcription';
+      I18N['en'].navCompat = I18N['en'].navCompat || 'Odoo/Graph Compatibility';
+      I18N['en'].h2Compat = I18N['en'].h2Compat || 'Odoo/Graph Compatibility';
+      I18N['en'].navEmbedded = I18N['en'].navEmbedded || 'WhatsApp Embedded';
+      I18N['en'].h2Embedded = I18N['en'].h2Embedded || 'WhatsApp Embedded';
       I18N['pt-BR'].navTranscription = I18N['pt-BR'].navTranscription || 'Transcrição de Áudio';
       I18N['pt-BR'].h2Transcription = I18N['pt-BR'].h2Transcription || 'Transcrição de Áudio';
+      I18N['pt-BR'].navCompat = I18N['pt-BR'].navCompat || 'Compatibilidade Odoo/Graph';
+      I18N['pt-BR'].h2Compat = I18N['pt-BR'].h2Compat || 'Compatibilidade Odoo/Graph';
+      I18N['pt-BR'].navEmbedded = I18N['pt-BR'].navEmbedded || 'WhatsApp Embedded';
+      I18N['pt-BR'].h2Embedded = I18N['pt-BR'].h2Embedded || 'WhatsApp Embedded';
     } catch {}
     function t(key){ const d = I18N[currentLang] || I18N['en']; return d[key] || key }
     function applyStaticI18n(){
@@ -200,6 +216,8 @@
         load('install-content', '/docs/pt-BR/INSTALACAO.md');
         load('changelog-content', '/docs/pt-BR/CHANGELOG.md');
         load('transcription-content', '/docs/pt-BR/TRANSCRICAO_AUDIO.md');
+        load('compat-content', '/docs/pt-BR/COMPAT_ODOO.md');
+        load('embedded-content', '/docs/pt-BR/WHATSAPP_EMBEDDED.md');
       } else {
         load('arch', '/docs/ARCHITECTURE.md');
         load('dev', '/docs/DEVELOPMENT.md');
@@ -209,6 +227,8 @@
         load('install-content', '/docs/INSTALLATION.md');
         load('changelog-content', '/CHANGELOG.md');
         load('transcription-content', '/docs/TRANSCRIPTION_AUDIO.md');
+        load('compat-content', '/docs/COMPAT_ODOO.md');
+        load('embedded-content', '/docs/WHATSAPP_EMBEDDED.md');
       }
       applyStaticI18n()
     }
@@ -272,6 +292,8 @@
         <a href="#development" data-i18n="navDevelopment">Development Guide</a>
         <a href="#status" data-i18n="navStatus">Status/Broadcast</a>
         <a href="#transcription" data-i18n="navTranscription">Audio Transcription</a>
+        <a href="#compat" data-i18n="navCompat">Odoo/Graph Compatibility</a>
+        <a href="#embedded" data-i18n="navEmbedded">WhatsApp Embedded</a>
         <a href="#install" data-i18n="navInstall">Installation Guide</a>
         <a href="/docs/openapi.html" data-i18n="navOpenapiRedoc">OpenAPI (Redoc)</a>
         <a href="/docs/swagger.html" data-i18n="navOpenapiSwagger">OpenAPI (Swagger UI)</a>
@@ -329,6 +351,14 @@
         <article id="transcription">
           <h2 data-i18n="h2Transcription">Audio Transcription</h2>
           <div id="transcription-content"></div>
+        </article>
+        <article id="compat">
+          <h2 data-i18n="h2Compat">Odoo/Graph Compatibility</h2>
+          <div id="compat-content"></div>
+        </article>
+        <article id="embedded">
+          <h2 data-i18n="h2Embedded">WhatsApp Embedded</h2>
+          <div id="embedded-content"></div>
         </article>
         <article id="changelog">
           <h2 data-i18n="h2Changelog">Changelog</h2>

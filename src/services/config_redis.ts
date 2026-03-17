@@ -1,11 +1,13 @@
 import { getConfig, Config, configs } from './config'
 import { getConfig as getConfigCache, subscribeConfigUpdates } from './redis'
+import { setBusinessAccountIdMapping } from './redis'
 import { getStoreRedis } from './store_redis'
 import { getStoreFile } from './store_file'
 import logger from './logger'
 import { getConfigByEnv } from './config_by_env'
 import { MessageFilter } from './message_filter'
 import { CONFIG_CACHE_TTL_MS } from '../defaults'
+import { generateBusinessAccountId } from './meta_ids'
 
 const configCacheTs: Map<string, number> = new Map()
 let configSubReady = false
@@ -90,6 +92,17 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
 
     config.server = config.server || 'server_1'
     config.provider = config.provider || 'baileys'
+    try {
+      const fwd: any = (config as any).webhookForward || {}
+      if (!`${fwd?.businessAccountId || ''}`.trim()) {
+        fwd.businessAccountId = generateBusinessAccountId(phone, `${fwd?.phoneNumberId || phone}`)
+        ;(config as any).webhookForward = fwd
+        logger.info('Auto-generated businessAccountId for session %s', phone)
+      }
+      if (`${fwd?.businessAccountId || ''}`.trim()) {
+        await setBusinessAccountIdMapping(phone, `${fwd.businessAccountId}`)
+      }
+    } catch {}
     // Enforce session-level storage flags when using Redis-backed config
     // Avoid sessions coming with useRedis/useS3=false due to stale values in unoapi-config
     config.useRedis = true
