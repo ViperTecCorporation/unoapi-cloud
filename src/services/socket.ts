@@ -2300,6 +2300,7 @@ export const connect = async ({
     const socketConfig: UserFacingSocketConfig = {
       auth: state,
       logger: loggerBaileys,
+      markOnlineOnConnect: config.markOnlineOnConnect !== false,
       syncFullHistory: !config.ignoreHistoryMessages,
       getMessage,
       shouldIgnoreJid: config.shouldIgnoreJid,

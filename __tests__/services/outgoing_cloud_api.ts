@@ -165,4 +165,65 @@ describe('service outgoing whatsapp cloud api', () => {
     await service.sendHttp(phone!, w as Webhook, outgoingPayload, {})
     expect(addToBlacklistMock).toHaveBeenCalledWith(phone!, w.id, wa_id, ttl)
   })
+
+  test('adapt status reply media for chatwoot preserving text and adding media message', async () => {
+    const response = { ok: true, status: 200, text: async () => 'ok' } as any
+    mockFetch.mockReset()
+    mockFetch.mockResolvedValue(response)
+    const chatwootWebhook = {
+      id: 'cw',
+      url: 'https://chatwoot.local/webhooks/whatsapp',
+      sendIncomingMessages: true,
+      sendOutgoingMessages: true,
+      sendGroupMessages: true,
+      sendUpdateMessages: true,
+      sendNewsletterMessages: true,
+    } as Webhook
+    const statusReplyPayload: any = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                contacts: [{ wa_id: '5566999999999' }],
+                metadata: { display_phone_number: phone },
+                messages: [
+                  {
+                    from: '5566999999999',
+                    id: 'MSG1',
+                    type: 'text',
+                    text: { body: 'resposta ao status' },
+                    context: {
+                      status: {
+                        id: 'STATUS1',
+                        type: 'imageMessage',
+                        media: {
+                          url: 'https://files.local/status.jpg',
+                          mime_type: 'image/jpeg',
+                          file_name: 'status.jpg',
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await service.sendHttp(phone!, chatwootWebhook, statusReplyPayload, {})
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const callArgs: any = mockFetch.mock.calls[0]
+    const body = JSON.parse(callArgs[1].body)
+    const msgs = body?.entry?.[0]?.changes?.[0]?.value?.messages || []
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].type).toBe('text')
+    expect(msgs[0].text?.body).toBe('resposta ao status')
+    expect(msgs[1].type).toBe('image')
+    expect(msgs[1].image?.url).toBe('https://files.local/status.jpg')
+    expect(msgs[1].image?.caption).toBe('resposta ao status')
+  })
 })

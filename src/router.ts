@@ -123,6 +123,7 @@ export const router = (
     router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
   } catch {}
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
+  router.delete('/:version/:phone/templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
   router.post('/:version/:phone/messages', middleware, messagesController.index.bind(messagesController))
   router.post('/:version/:phone/preflight/status', middleware, preflightController.status.bind(preflightController))
   router.get('/:version/:phone/groups', middleware, groupsController.list.bind(groupsController))

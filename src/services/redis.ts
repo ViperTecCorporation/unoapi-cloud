@@ -526,6 +526,13 @@ const contactSyncPendingKey = (phone: string) => {
   return `${BASE_KEY}contact-sync:pending:${phone}`
 }
 
+const pollStateKey = (phone: string, jid: string, pollId: string) => {
+  return `${BASE_KEY}poll-state:${phone}:${jid}:${pollId}`
+}
+const statusMediaKey = (phone: string, statusId: string) => {
+  return `${BASE_KEY}status-media:${phone}:${statusId}`
+}
+
 export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
@@ -815,30 +822,20 @@ export const getTemplates = async (phone: string) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const setTemplates = async (phone: string, value: any) => {
-  const { id } = value
-  if (!id) {
-    throw new Error(`New template has no ID or an invalid format`);
-  }
-  const current = (await getTemplates(phone)) || {}
   const key = templateKey(phone)
-  var config = value
-  if (Object.keys(current).length !== 0) {
-    if ('id' in current) {
-      if (current.id !== id) {
-        config = []
-        config.push(current)
-        config.push(value)
-      }
-    } else {
-      config = []
-      current.forEach(element => {
-        if (element.id !== id) {
-          config.push(element)
-        }
-      });
-      config.push(value)
+  let config = value
+
+  if (!Array.isArray(value)) {
+    const { id } = value || {}
+    if (!id) {
+      throw new Error(`New template has no ID or an invalid format`)
     }
+    const current = (await getTemplates(phone)) || []
+    const currentList = Array.isArray(current) ? current : [current]
+    config = currentList.filter((template: any) => template.id !== id)
+    config.push(value)
   }
+
   await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
   return config
 }
@@ -1146,6 +1143,30 @@ export const setContactSyncPending = async (phone: string, ttlSec: number) => {
   if (!process.env.REDIS_URL) return undefined
   const key = contactSyncPendingKey(phone)
   return redisSetAndExpire(key, '1', ttlSec)
+}
+
+export const getPollState = async (phone: string, jid: string, pollId: string): Promise<any | undefined> => {
+  const key = pollStateKey(phone, jid, pollId)
+  const raw = await redisGet(key)
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+export const setPollState = async (phone: string, jid: string, pollId: string, value: any) => {
+  const key = pollStateKey(phone, jid, pollId)
+  return redisSetAndExpire(key, JSON.stringify(value || {}), DATA_TTL)
+}
+
+export const getStatusMediaState = async (phone: string, statusId: string): Promise<any | undefined> => {
+  const key = statusMediaKey(phone, statusId)
+  const raw = await redisGet(key)
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+export const setStatusMediaState = async (phone: string, statusId: string, value: any, ttlSec = 86400) => {
+  const key = statusMediaKey(phone, statusId)
+  return redisSetAndExpire(key, JSON.stringify(value || {}), ttlSec)
 }
 
 export const delContactSyncPending = async (phone: string) => {

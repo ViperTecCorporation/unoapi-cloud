@@ -17,6 +17,66 @@ class WebhookCircuitOpenError extends Error {
     this.delayMs = delayMs
   }
 }
+
+const isChatwootWebhook = (webhook: Webhook) => {
+  const u1 = `${webhook?.url || ''}`.toLowerCase()
+  const u2 = `${webhook?.urlAbsolute || ''}`.toLowerCase()
+  const hasChatwoot = u1.includes('chatwoot') || u2.includes('chatwoot')
+  const hasWhatsWebhook = u1.includes('/webhooks/whatsapp') || u2.includes('/webhooks/whatsapp')
+  return hasChatwoot || hasWhatsWebhook
+}
+
+const mapStatusMediaTypeToCloud = (rawType?: string, mimeType?: string) => {
+  const t = `${rawType || ''}`
+  if (t === 'imageMessage' || t === 'image') return 'image'
+  if (t === 'videoMessage' || t === 'video' || t === 'ptvMessage' || t === 'ptv') return 'video'
+  if (t === 'audioMessage' || t === 'audio') return 'audio'
+  if (t === 'documentMessage' || t === 'document') return 'document'
+  if (t === 'stickerMessage' || t === 'sticker') return 'sticker'
+  const m = `${mimeType || ''}`.toLowerCase()
+  if (m.startsWith('image/')) return 'image'
+  if (m.startsWith('video/')) return 'video'
+  if (m.startsWith('audio/')) return 'audio'
+  if (m.includes('pdf') || m.startsWith('application/')) return 'document'
+  return undefined
+}
+
+const adaptStatusReplyMediaForChatwoot = (message: any) => {
+  try {
+    const value = message?.entry?.[0]?.changes?.[0]?.value
+    if (!Array.isArray(value?.messages) || !value.messages.length) return message
+    const patched: any[] = []
+    for (const original of value.messages) {
+      patched.push(original)
+      const contextStatus = original?.context?.status
+      const media = contextStatus?.media
+      const mediaUrl = `${media?.url || ''}`.trim()
+      const originalType = `${original?.type || ''}`.trim()
+      if (!mediaUrl || originalType !== 'text') continue
+      const cloudType = mapStatusMediaTypeToCloud(contextStatus?.type, media?.mime_type)
+      if (!cloudType) continue
+      const mediaMessage: any = JSON.parse(JSON.stringify(original))
+      const baseId = `${original?.id || contextStatus?.id || ''}`.trim()
+      mediaMessage.id = baseId ? `${baseId}-status-media` : `${Date.now()}-status-media`
+      mediaMessage.type = cloudType
+      const replyText = `${original?.text?.body || ''}`.trim()
+      const mediaPayload: any = {
+        id: `${contextStatus?.id || mediaMessage.id || ''}`.trim(),
+        url: mediaUrl,
+      }
+      if (replyText) mediaPayload.caption = replyText
+      if (media?.mime_type) mediaPayload.mime_type = `${media.mime_type}`
+      if (media?.file_name) mediaPayload.filename = `${media.file_name}`
+      mediaMessage[cloudType] = mediaPayload
+      try { delete mediaMessage.text } catch {}
+      patched.push(mediaMessage)
+    }
+    value.messages = patched
+  } catch (e) {
+    logger.warn(e as any, 'Unable to adapt status reply media for Chatwoot')
+  }
+  return message
+}
 // Ajusta payload para schema Cloud API estrito (Typebot)
 const normalizePayloadForTypebot = (payload: any, phone: string) => {
   try {
@@ -199,6 +259,9 @@ export class OutgoingCloudApi implements Outgoing {
     if (!webhook.sendIncomingMessages) {
       logger.info(`Session phone %s webhook %s configured to not send incoming message for this webhook`, phone, webhook.id)
       return
+    }
+    if (isChatwootWebhook(webhook)) {
+      message = adaptStatusReplyMediaForChatwoot(message)
     }
     const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
     // Garantir que contacts[*].wa_id nunca venha vazio: usar recipient_id ou from como fallback

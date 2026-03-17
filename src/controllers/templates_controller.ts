@@ -29,7 +29,34 @@ export class TemplatesController {
     logger.debug('message_templates body %s', JSON.stringify(req.body))
     logger.debug('message_templates query %s', JSON.stringify(req.query))
 
-    return this.loadTemplates(req, res)
+    return this.saveTemplate(req, res)
+  }
+
+  public async destroy(req: Request, res: Response) {
+    logger.debug('delete_template method %s', JSON.stringify(req.method))
+    logger.debug('delete_template headers %s', JSON.stringify(req.headers))
+    logger.debug('delete_template params %s', JSON.stringify(req.params))
+    logger.debug('delete_template body %s', JSON.stringify(req.body))
+    logger.debug('delete_template query %s', JSON.stringify(req.query))
+
+    const { phone, templateId } = req.params
+    try {
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const templates = await store.dataStore.loadTemplates()
+      const filtered = templates.filter((template: any) => {
+        return `${template?.id}` !== `${templateId}` && `${template?.name}` !== `${templateId}`
+      })
+
+      if (filtered.length === templates.length) {
+        return res.status(404).json({ status: 'error', message: `template ${templateId} not found` })
+      }
+
+      await store.dataStore.setTemplates(filtered)
+      return res.status(200).json({ status: 'success', data: filtered })
+    } catch (e) {
+      return res.status(400).json({ status: 'error', message: `${phone} could not delete template, error: ${e.message}` })
+    }
   }
 
   private async loadTemplates(req: Request, res: Response) {
@@ -59,6 +86,31 @@ export class TemplatesController {
         return res.status(200).json({ data: templates })
       }
 
+    } catch (e) {
+      return res.status(400).json({ status: 'error', message: `${phone} could not create template, error: ${e.message}` })
+    }
+  }
+
+  private async saveTemplate(req: Request, res: Response) {
+    const { phone } = req.params
+    const template = req.body
+
+    try {
+      if (!template || typeof template !== 'object' || Array.isArray(template)) {
+        return res.status(400).json({ status: 'error', message: 'template body must be a JSON object' })
+      }
+      if (!template.id) {
+        return res.status(400).json({ status: 'error', message: 'template id is required' })
+      }
+
+      const config = await this.getConfig(phone)
+      const store = await config.getStore(phone, config)
+      const templates = await store.dataStore.loadTemplates()
+      const nextTemplates = templates.filter((current: any) => `${current?.id}` !== `${template.id}`)
+      nextTemplates.push(template)
+
+      await store.dataStore.setTemplates(nextTemplates)
+      return res.status(200).json({ status: 'success', data: template })
     } catch (e) {
       return res.status(400).json({ status: 'error', message: `${phone} could not create template, error: ${e.message}` })
     }

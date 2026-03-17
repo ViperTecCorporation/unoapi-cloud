@@ -8,8 +8,28 @@ import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/b
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
 import { v1 as uuid } from 'uuid'
+import { createHash } from 'crypto'
+import { getPollState, setPollState, getStatusMediaState, setStatusMediaState } from './redis'
 
 const  delays: Map<String, number> = new Map()
+const POLL_CREATION_TYPES = new Set([
+  'pollCreationMessage',
+  'pollCreationMessageV2',
+  'pollCreationMessageV3',
+  'pollCreationMessageV5',
+])
+const POLL_SNAPSHOT_TYPES = new Set([
+  'pollResultSnapshotMessage',
+  'pollResultSnapshotMessageV3',
+])
+const STATUS_MEDIA_TYPES = new Set([
+  'imageMessage',
+  'videoMessage',
+  'audioMessage',
+  'documentMessage',
+  'stickerMessage',
+])
+const STATUS_MEDIA_TTL_SEC = 24 * 60 * 60
 
 const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS && UNOAPI_DELAY_BETWEEN_MESSAGES_MS ? async (phone, to) => {
   if (to) { 
@@ -39,6 +59,346 @@ export class ListenerBaileys implements Listener {
     this.outgoing = outgoing
     this.getConfig = getConfig
     this.broadcast = broadcast
+  }
+
+  private pollOptionHash(name: string) {
+    return createHash('sha256').update(Buffer.from(name || '')).digest().toString()
+  }
+
+  private async savePollCreationState(phone: string, store: any, message: WAMessage, messageType: string) {
+    try {
+      if (!POLL_CREATION_TYPES.has(messageType)) return
+      const payload: any = (message as any)?.message?.[messageType] || {}
+      const options = Array.isArray(payload?.options) ? payload.options : []
+      if (!options.length) return
+      const pollName = `${payload?.name || ''}`.trim()
+      const remoteJid = `${(message as any)?.key?.remoteJid || ''}`
+      if (!remoteJid) return
+      let pollId = `${(message as any)?.key?.id || ''}`
+      if (!pollId) return
+      try {
+        const providerId = await store?.dataStore?.loadProviderId?.(pollId)
+        if (providerId) pollId = providerId
+      } catch {}
+      const state = {
+        pollId,
+        remoteJid,
+        pollName,
+        options: options.reduce((acc: Record<string, string>, option: any) => {
+          const name = `${option?.optionName || ''}`.trim()
+          if (!name) return acc
+          acc[this.pollOptionHash(name)] = name
+          return acc
+        }, {}),
+        voters: {},
+        updatedAt: Date.now(),
+      }
+      if (!Object.keys(state.options).length) return
+      await setPollState(phone, remoteJid, pollId, state)
+    } catch (e) {
+      logger.warn(e as any, 'Failed to persist poll creation state')
+    }
+  }
+
+  private async savePollSnapshotState(phone: string, message: WAMessage, messageType: string) {
+    try {
+      if (!POLL_SNAPSHOT_TYPES.has(messageType)) return
+      const payload: any = (message as any)?.message?.[messageType] || {}
+      const context = payload?.contextInfo || {}
+      const pollId = `${context?.stanzaId || ''}`.trim()
+      const remoteJid = `${(message as any)?.key?.remoteJid || ''}`.trim()
+      if (!pollId || !remoteJid) return
+      const pollName = `${payload?.name || ''}`.trim()
+      const pollVotes = Array.isArray(payload?.pollVotes) ? payload.pollVotes : []
+      const snapshotCounts = pollVotes.reduce((acc: Record<string, number>, vote: any) => {
+        const name = `${vote?.optionName || ''}`.trim()
+        if (!name) return acc
+        const count = Number(vote?.optionVoteCount || 0)
+        acc[this.pollOptionHash(name)] = Number.isFinite(count) && count > 0 ? count : 0
+        return acc
+      }, {})
+      if (!Object.keys(snapshotCounts).length) return
+      const existing = await getPollState(phone, remoteJid, pollId)
+      const mergedOptions: Record<string, string> = { ...(existing?.options || {}) }
+      for (const vote of pollVotes) {
+        const name = `${vote?.optionName || ''}`.trim()
+        if (!name) continue
+        const hash = this.pollOptionHash(name)
+        if (!mergedOptions[hash]) mergedOptions[hash] = name
+      }
+      const state = {
+        ...(existing || {}),
+        pollId,
+        remoteJid,
+        pollName: pollName || `${existing?.pollName || ''}`.trim(),
+        options: mergedOptions,
+        voters: existing?.voters || {},
+        snapshotCounts,
+        snapshotTotal: Object.values(snapshotCounts).reduce((sum: number, n: any) => sum + (Number(n) || 0), 0),
+        snapshotUpdatedAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      await setPollState(phone, remoteJid, pollId, state)
+      logger.info(
+        'Poll snapshot persisted phone=%s remoteJid=%s pollId=%s options=%s total=%s',
+        phone,
+        remoteJid,
+        pollId,
+        Object.keys(snapshotCounts).length,
+        state.snapshotTotal || 0,
+      )
+    } catch (e) {
+      logger.warn(e as any, 'Failed to persist poll snapshot state')
+    }
+  }
+
+  private async resolvePollVoterLabel(phone: string, store: any, voterJid: string) {
+    try {
+      let displayName = ''
+      try {
+        const info = await store?.dataStore?.getContactInfo?.(voterJid)
+        displayName = `${info?.name || ''}`.trim()
+      } catch {}
+      if (!displayName) {
+        try {
+          displayName = `${await store?.dataStore?.getContactName?.(voterJid) || ''}`.trim()
+        } catch {}
+      }
+      if (!displayName && voterJid.endsWith('@lid')) {
+        try {
+          const mappedPn = await store?.dataStore?.getPnForLid?.(phone, voterJid)
+          if (mappedPn) {
+            displayName = `${await store?.dataStore?.getContactName?.(mappedPn) || ''}`.trim()
+          }
+        } catch {}
+      }
+      const phoneDigits = `${jidToPhoneNumber(voterJid, '').replace('+', '') || ''}`.trim()
+      if (displayName && phoneDigits) return `${displayName} (${phoneDigits})`
+      if (displayName) return displayName
+      if (phoneDigits) return phoneDigits
+      return `${voterJid || ''}`.split('@')[0]
+    } catch {
+      return `${voterJid || ''}`.split('@')[0]
+    }
+  }
+
+  private async buildPollUpdateSummary(phone: string, store: any, message: WAMessage): Promise<string | undefined> {
+    try {
+      const pollUpdate: any = (message as any)?.message?.pollUpdateMessage || {}
+      const pollKey: any = pollUpdate?.pollCreationMessageKey || {}
+      const pollId = `${pollKey?.id || ''}`.trim()
+      let remoteJid = `${pollKey?.remoteJid || (message as any)?.key?.remoteJid || ''}`.trim()
+      if (!pollId || !remoteJid) return undefined
+      try { remoteJid = jidNormalizedUser(remoteJid as any) as string } catch {}
+
+      let state: any = await getPollState(phone, remoteJid, pollId)
+      if (!state) {
+        const pollMessage: any = await store?.dataStore?.loadMessage?.(remoteJid, pollId)
+        const creation = pollMessage?.message?.pollCreationMessage
+          || pollMessage?.message?.pollCreationMessageV2
+          || pollMessage?.message?.pollCreationMessageV3
+          || pollMessage?.message?.pollCreationMessageV5
+        const options = Array.isArray(creation?.options) ? creation.options : []
+        state = {
+          pollId,
+          remoteJid,
+          pollName: `${creation?.name || ''}`.trim(),
+          options: options.reduce((acc: Record<string, string>, option: any) => {
+            const name = `${option?.optionName || ''}`.trim()
+            if (!name) return acc
+            acc[this.pollOptionHash(name)] = name
+            return acc
+          }, {}),
+          voters: {},
+          updatedAt: Date.now(),
+        }
+      }
+      if (!state || !state.options || !Object.keys(state.options).length) return undefined
+
+      const voterJidRaw = `${(message as any)?.key?.participant || (message as any)?.key?.remoteJid || ''}`.trim()
+      if (!voterJidRaw) return undefined
+      let voterJid = voterJidRaw
+      try { voterJid = jidNormalizedUser(voterJidRaw as any) as string } catch {}
+
+      const selected = Array.isArray(pollUpdate?.vote?.selectedOptions) ? pollUpdate.vote.selectedOptions : []
+      const selectedHashes = selected
+        .map((v: any) => (v?.toString ? v.toString() : `${v || ''}`))
+        .filter((v: string) => !!v)
+
+      state.voters = state.voters || {}
+      if (selectedHashes.length) {
+        state.voters[voterJid] = selectedHashes
+      } else {
+        delete state.voters[voterJid]
+      }
+      state.updatedAt = Date.now()
+      await setPollState(phone, remoteJid, pollId, state)
+
+      let optionHashes = Object.keys(state.options || {})
+      const counts = optionHashes.reduce((acc: Record<string, number>, h: string) => {
+        acc[h] = 0
+        return acc
+      }, {})
+      const voters = Object.entries(state.voters || {}) as Array<[string, string[]]>
+      for (const [, hashes] of voters) {
+        for (const hash of hashes || []) {
+          counts[hash] = (counts[hash] || 0) + 1
+        }
+      }
+      let totalVotes = voters.length
+      let usedSnapshot = false
+      const snapshotCounts = state?.snapshotCounts || {}
+      if (totalVotes === 0 && Object.keys(snapshotCounts).length) {
+        usedSnapshot = true
+        for (const [hash, count] of Object.entries(snapshotCounts)) {
+          counts[hash] = Number(count) || 0
+        }
+        optionHashes = Array.from(new Set([...optionHashes, ...Object.keys(snapshotCounts)]))
+        totalVotes = optionHashes.reduce((sum, hash) => sum + (counts[hash] || 0), 0)
+      }
+      if (usedSnapshot) {
+        logger.info(
+          'Poll summary using snapshot fallback phone=%s remoteJid=%s pollId=%s totalVotes=%s',
+          phone,
+          remoteJid,
+          pollId,
+          totalVotes,
+        )
+      }
+      const optionLines = optionHashes.map((hash) => `- ${(state.options && state.options[hash]) ? state.options[hash] : hash}: ${counts[hash] || 0}`)
+      const voterLabels = await Promise.all(voters.map(async ([jid]) => this.resolvePollVoterLabel(phone, store, jid)))
+      const voterLines = voterLabels.filter(Boolean).map((label) => `- ${label}`)
+      if (!voterLines.length) {
+        voterLines.push(usedSnapshot ? '- Snapshot sem lista nominal de votantes' : '- Ninguem ainda')
+      }
+      const lines = [
+        `*Resultado de enquete*${state.pollName ? `: ${state.pollName}` : ''}`,
+        `Total de votos: ${totalVotes}`,
+        ...optionLines,
+        'Votaram:',
+        ...(voterLines.length ? voterLines : ['- Ninguém ainda']),
+      ]
+      return lines.join('\n')
+    } catch (e) {
+      logger.warn(e as any, 'Failed to build poll update summary')
+      return undefined
+    }
+  }
+
+  private async cacheOwnStatusMedia(
+    phone: string,
+    store: any,
+    message: WAMessage,
+    messageType: string,
+    originalBaileysId?: string,
+  ) {
+    try {
+      const key: any = (message as any)?.key || {}
+      const remoteJid = `${key?.remoteJid || ''}`
+      const fromMe = !!key?.fromMe
+      if (remoteJid !== 'status@broadcast' || !fromMe) return
+      if (!STATUS_MEDIA_TYPES.has(`${messageType || ''}`)) return
+      const media: any = getBinMessage(message as any)?.message || (message as any)?.message?.[messageType] || {}
+      const mediaUrl = `${media?.url || ''}`.trim()
+      if (!mediaUrl) return
+      const currentId = `${key?.id || ''}`.trim()
+      if (!currentId) return
+      let providerId = ''
+      try { providerId = `${await store?.dataStore?.loadProviderId?.(currentId) || ''}`.trim() } catch {}
+      if (!providerId) providerId = `${originalBaileysId || ''}`.trim() || currentId
+      const state = {
+        id: providerId,
+        type: messageType,
+        url: mediaUrl,
+        mimeType: `${media?.mimetype || ''}`.trim(),
+        fileName: `${media?.fileName || ''}`.trim(),
+        caption: `${media?.caption || ''}`.trim(),
+        timestamp: Number((message as any)?.messageTimestamp || Math.floor(Date.now() / 1000)),
+      }
+      await setStatusMediaState(phone, providerId, state, STATUS_MEDIA_TTL_SEC)
+      if (currentId && currentId !== providerId) {
+        await setStatusMediaState(phone, currentId, state, STATUS_MEDIA_TTL_SEC)
+      }
+      try { logger.info('STATUS_MEDIA cached id=%s type=%s url=%s', providerId, messageType, mediaUrl) } catch {}
+    } catch (e) {
+      logger.warn(e as any, 'Failed to cache own status media')
+    }
+  }
+
+  private async resolveStatusMediaById(phone: string, store: any, statusId: string): Promise<any | undefined> {
+    if (!statusId) return undefined
+    let state = await getStatusMediaState(phone, statusId)
+    if (!state) return undefined
+    if (state?.url) return state
+    try {
+      const statusMessage: any = await store?.dataStore?.loadMessage?.('status@broadcast', statusId)
+      if (statusMessage && isSaveMedia(statusMessage)) {
+        const enriched = await store?.mediaStore?.saveMedia?.(statusMessage)
+        const mt = getMessageType(enriched as any)
+        const media: any = (mt && (enriched as any)?.message?.[mt]) || getBinMessage(enriched as any)?.message || {}
+        const mediaUrl = `${media?.url || ''}`.trim()
+        if (mediaUrl) {
+          state = {
+            ...state,
+            type: state?.type || mt,
+            url: mediaUrl,
+            mimeType: state?.mimeType || `${media?.mimetype || ''}`.trim(),
+            fileName: state?.fileName || `${media?.fileName || ''}`.trim(),
+            caption: state?.caption || `${media?.caption || ''}`.trim(),
+          }
+          await setStatusMediaState(phone, statusId, state, STATUS_MEDIA_TTL_SEC)
+          return state
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Failed to hydrate status media for %s', statusId)
+    }
+    return state
+  }
+
+  private async buildStatusReplyContext(
+    phone: string,
+    store: any,
+    message: WAMessage,
+    rawStanzaId?: string,
+  ): Promise<any | undefined> {
+    try {
+      const normalized = getBinMessage(message as any)
+      const currentStanza = `${normalized?.message?.contextInfo?.stanzaId || ''}`.trim()
+      const candidates = new Set<string>()
+      if (rawStanzaId) candidates.add(`${rawStanzaId}`.trim())
+      if (currentStanza) candidates.add(currentStanza)
+      for (const baseId of Array.from(candidates).filter(Boolean)) {
+        const ids = new Set<string>([baseId])
+        try {
+          const uno = await store?.dataStore?.loadUnoId?.(baseId)
+          if (uno) ids.add(`${uno}`)
+        } catch {}
+        try {
+          const provider = await store?.dataStore?.loadProviderId?.(baseId)
+          if (provider) ids.add(`${provider}`)
+        } catch {}
+        for (const id of Array.from(ids).filter(Boolean)) {
+          const state = await this.resolveStatusMediaById(phone, store, id)
+          if (state?.url) {
+            return {
+              id: `${state?.id || id}`,
+              type: `${state?.type || ''}`,
+              caption: `${state?.caption || ''}`,
+              timestamp: state?.timestamp,
+              media: {
+                url: `${state?.url || ''}`,
+                mime_type: `${state?.mimeType || ''}`,
+                file_name: `${state?.fileName || ''}`,
+              },
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logger.warn(e as any, 'Failed to build status reply context')
+    }
+    return undefined
   }
 
   async process(phone: string, messages: object[], type: eventType) {
@@ -116,6 +476,7 @@ export class ListenerBaileys implements Listener {
       logger.debug('Listener receive message')
     }
     let i: WAMessage = message as WAMessage
+    const originalBaileysMessageId = `${(message as any)?.key?.id || ''}`.trim()
     let messageType = getMessageType(message)
     if (messageType && ['listMessage', 'buttonsMessage', 'interactiveMessage'].includes(messageType)) {
       try {
@@ -240,6 +601,16 @@ export class ListenerBaileys implements Listener {
         i.key.id = idUno
       }
     }
+
+    try {
+      await this.savePollCreationState(phone, store, i, messageType || '')
+    } catch {}
+    try {
+      await this.savePollSnapshotState(phone, i, messageType || '')
+    } catch {}
+    try {
+      await this.cacheOwnStatusMedia(phone, store, i, messageType || '', originalBaileysMessageId)
+    } catch {}
     // receipt: map provider id -> UNO id to keep status correlation
     if (messageType === 'receipt' && key?.id) {
       try {
@@ -266,6 +637,7 @@ export class ListenerBaileys implements Listener {
     // quoted
     const binMessage = messageType && i.message && i.message[messageType]
     const stanzaId = binMessage?.contextInfo?.stanzaId
+    const rawStanzaId = `${stanzaId || ''}`.trim()
     if (messageType && i.message && stanzaId) {
       const unoStanzaId = await store.dataStore.loadUnoId(stanzaId)
       if (unoStanzaId) {
@@ -445,6 +817,33 @@ export class ListenerBaileys implements Listener {
       }
     }
     if (data) {
+      try {
+        if (messageType === 'pollUpdateMessage') {
+          const summary = await this.buildPollUpdateSummary(phone, store, i)
+          if (summary) {
+            const m = (data as any)?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+            if (m) {
+              m.type = 'text'
+              m.text = { body: summary }
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Failed to enrich poll update webhook payload')
+      }
+      try {
+        const statusContext = await this.buildStatusReplyContext(phone, store, i, rawStanzaId)
+        if (statusContext) {
+          const m = (data as any)?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+          if (m) {
+            m.context = m.context || {}
+            m.context.status = statusContext
+            try { logger.info('STATUS_REPLY enriched with status media id=%s', statusContext?.id || '<none>') } catch {}
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Failed to enrich status reply webhook payload')
+      }
 
       try {
         const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}

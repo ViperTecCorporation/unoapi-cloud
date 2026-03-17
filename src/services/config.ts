@@ -52,6 +52,7 @@ export type Config = {
   groupOnlyDeliveredStatus: boolean
   readOnReceipt: boolean
   readOnReply: boolean
+  markOnlineOnConnect: boolean
   ignoreHistoryMessages: boolean
   ignoreYourselfMessages: boolean
   ignoreOwnMessages: boolean
@@ -118,6 +119,7 @@ export const defaultConfig: Config = {
   groupOnlyDeliveredStatus: true,
   readOnReceipt: false,
   readOnReply: false,
+  markOnlineOnConnect: true,
   ignoreHistoryMessages: true,
   ignoreOwnMessages: true,
   ignoreYourselfMessages: true,
