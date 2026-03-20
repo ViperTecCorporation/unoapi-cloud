@@ -831,7 +831,8 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const contacts: any[] = []
       for (const entry of list) {
         const vcard = buildContactVcard(entry)
-        contacts.push({ vcard })
+        const displayName = normalizeContactName(entry?.name || {}).formatted
+        contacts.push({ displayName, vcard })
       }
       const first = list[0] || {}
       const nameObj = first?.name || {}

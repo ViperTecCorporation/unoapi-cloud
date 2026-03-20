@@ -1700,7 +1700,7 @@ describe('service transformer', () => {
       + `N:;${displayName};;;\r\n`
       + `TEL;TYPE=CELL,VOICE;WAID=${wa_id}:${phone}\r\n`
       + 'END:VCARD'
-    const output = { contacts: { displayName, contacts: [{ vcard }] } }
+    const output = { contacts: { displayName, contacts: [{ displayName, vcard }] } }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
