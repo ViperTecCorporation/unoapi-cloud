@@ -21,6 +21,7 @@ import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
 import { isTransientInfraError } from './error_utils'
+import { generateBusinessAccountId } from './meta_ids'
 
 export const BASE_KEY = 'unoapi-'
 
@@ -884,6 +885,13 @@ export const setConfig = async (phone: string, value: any) => {
   })
   value.webhooks = updatedWebooks
   const config = { ...currentConfig, ...value }
+  try {
+    const fwd: any = (config as any).webhookForward || {}
+    if (!`${fwd?.businessAccountId || ''}`.trim()) {
+      fwd.businessAccountId = generateBusinessAccountId(phone, `${fwd?.phoneNumberId || phone}`)
+      ;(config as any).webhookForward = fwd
+    }
+  } catch {}
   // Enforce per-session storage flags to avoid false overrides via templates/UI
   // Since this setter persists to Redis, sessions using Redis must have useRedis/useS3 true
   try { (config as any).useRedis = true } catch {}
@@ -906,6 +914,10 @@ export const setConfig = async (phone: string, value: any) => {
     const phoneNumberId = (config as any)?.webhookForward?.phoneNumberId
     if (phoneNumberId) {
       await setPhoneNumberIdMapping(phone, phoneNumberId)
+    }
+    const businessAccountId = (config as any)?.webhookForward?.businessAccountId
+    if (businessAccountId) {
+      await setBusinessAccountIdMapping(phone, businessAccountId)
     }
   } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
   configs.delete(phone)
@@ -1420,6 +1432,7 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session
 const phoneNumberIdKey = (id: string) => `${BASE_KEY}meta:phone_number_id:${id}`
+const businessAccountIdKey = (id: string) => `${BASE_KEY}meta:business_account_id:${id}`
 export const setPhoneNumberIdMapping = async (phone: string, phoneNumberId: string) => {
   if (!phoneNumberId) return
   try {
@@ -1434,6 +1447,23 @@ export const getPhoneByPhoneNumberId = async (phoneNumberId: string) => {
     return await redisGet(phoneNumberIdKey(phoneNumberId))
   } catch (e) {
     logger.warn(e as any, 'Failed to get phone by phoneNumberId')
+    return undefined
+  }
+}
+export const setBusinessAccountIdMapping = async (phone: string, businessAccountId: string) => {
+  if (!businessAccountId) return
+  try {
+    await redisSetAndExpire(businessAccountIdKey(businessAccountId), phone, SESSION_TTL >= 0 ? SESSION_TTL : DATA_TTL)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to set businessAccountId mapping')
+  }
+}
+export const getPhoneByBusinessAccountId = async (businessAccountId: string) => {
+  if (!businessAccountId) return undefined
+  try {
+    return await redisGet(businessAccountIdKey(businessAccountId))
+  } catch (e) {
+    logger.warn(e as any, 'Failed to get phone by businessAccountId')
     return undefined
   }
 }

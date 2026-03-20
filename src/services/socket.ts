@@ -2332,8 +2332,13 @@ export const connect = async ({
           version = res?.version || res
         }
         if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
-        socketConfig.version = version
-        resolvedWhatsappVersion = version as any
+        const normalizedVersion: [number, number, number] = [
+          Number(version[0]),
+          Number(version[1]),
+          Number(version[2]),
+        ]
+        socketConfig.version = normalizedVersion
+        resolvedWhatsappVersion = normalizedVersion
         logger.debug('Using latest WA Web version %s', JSON.stringify(version))
       } catch (e) {
         logger.warn(e as any, 'Failed to fetch WA Web version; using default')

@@ -1368,6 +1368,8 @@
 
             //Edit form for session number
             function populateEditForm(session) {
+                const sessionPhone = `${session?.display_phone_number || ''}`.trim();
+                const fallbackPhoneNumberId = sessionPhone;
                 $('#label').val(session.label);
                 $('#authToken').val(session.authToken);
                 $('#wavoipToken').val(session.wavoipToken);
@@ -1400,7 +1402,7 @@
                 $('#proxyUrl').val(session.proxyUrl);
                 try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
                 try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
-                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '') } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || fallbackPhoneNumberId || '') } catch {}
                 try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
                 try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '') } catch {}
                 $('#server').val(session.server);
@@ -1485,6 +1487,9 @@
                 const number = $('#editModal').data('number');
 
                 if (token && number) {
+                    const normalizedPhone = `${number || ''}`.replace(/\D/g, '');
+                    const phoneNumberIdValue = `${$('#webhookForwardPhoneNumberId').val() || ''}`.trim() || normalizedPhone;
+                    const businessAccountIdValue = `${$('#webhookForwardBusinessAccountId').val() || ''}`.trim();
                     const sessionData = {
                         label: $('#label').val(),
                         authToken: $('#authToken').val(),
@@ -1519,9 +1524,9 @@
                         webhookForward: {
                           url: $('#webhookForwardUrl').val(),
                           version: $('#webhookForwardVersion').val(),
-                          phoneNumberId: $('#webhookForwardPhoneNumberId').val(),
+                          phoneNumberId: phoneNumberIdValue,
                           token: $('#webhookForwardToken').val(),
-                          businessAccountId: $('#webhookForwardBusinessAccountId').val(),
+                          businessAccountId: businessAccountIdValue,
                         },
                         server: $('#server').val(),
                         // rate limits
