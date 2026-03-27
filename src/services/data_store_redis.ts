@@ -186,8 +186,6 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       if (pnJid) { try { await redisSetContactInfo(phone, pnJid, merged) } catch {} }
       if (lidJid) { try { await redisSetContactInfo(phone, lidJid, merged) } catch {} }
       if (!pnJid && !lidJid) { try { await redisSetContactInfo(phone, raw, merged) } catch {} }
-      // Reflect PN<->LID mapping when both present
-      try { if (JIDMAP_CACHE_ENABLED && pnJid && lidJid) { await redisSetJidMapping(phone, pnJid, lidJid) } } catch {}
     } catch {}
     return
   }
@@ -343,14 +341,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         const info = typeof raw === 'string' ? JSON.parse(raw) : raw
         // Prefer explicit PN JID
         if (info?.pnJid) {
-          try { await redisSetJidMapping(sessionPhone, info.pnJid, lidJid) } catch {}
           return info.pnJid
         }
         // Or digits-only PN -> convert to JID
         if (info?.pn) {
           try {
             const pnJid = toRawPnJid(`${info.pn}`)
-            try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
             return pnJid
           } catch {}
         }
@@ -383,7 +379,6 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       if (raw) {
         const info = typeof raw === 'string' ? JSON.parse(raw) : raw
         if (info?.lidJid) {
-          try { await redisSetJidMapping(sessionPhone, keyJid, info.lidJid) } catch {}
           return info.lidJid
         }
       }
@@ -391,8 +386,10 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     return undefined
   }
   store.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
-    if (!JIDMAP_CACHE_ENABLED) return
-    try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
+    void sessionPhone
+    void pnJid
+    void lidJid
+    return
   }
   return store
 }

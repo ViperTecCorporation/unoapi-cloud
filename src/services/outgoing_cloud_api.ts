@@ -434,8 +434,6 @@ export class OutgoingCloudApi implements Outgoing {
         if (name && typeof name === 'string' && name.trim()) info.name = name
         try { if (pnJid) await ds?.setContactInfo?.(pnJid, info) } catch {}
         try { if (lidJid) await ds?.setContactInfo?.(lidJid, info) } catch {}
-        // Refletir tambÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©m no mapa PN<->LID quando ambos existirem
-        if (pnJid && lidJid) { try { await ds?.setJidMapping?.(phone, pnJid, lidJid) } catch {} }
       }
       if (Array.isArray(v.contacts)) {
         for (const c of v.contacts) {

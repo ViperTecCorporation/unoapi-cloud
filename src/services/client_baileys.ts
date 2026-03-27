@@ -564,11 +564,9 @@ export class ClientBaileys implements Client {
                     } else {
                       info.pnJid = j
                       try { info.pn = jidToRawPhoneNumber(j, '').replace('+','') } catch {}
-                      // Se houver LID mapeado para este PN, persiste também
                       try {
                         const lid = await store.dataStore.getLidForPn?.(this.phone, j)
                         if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                          await store.dataStore.setJidMapping?.(this.phone, j, lid)
                           if (!info.lidJid) info.lidJid = lid
                         }
                       } catch {}
@@ -704,7 +702,6 @@ export class ClientBaileys implements Client {
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
                     if (!info.lidJid) info.lidJid = lid
                   }
                 } catch {}
@@ -747,7 +744,6 @@ export class ClientBaileys implements Client {
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
                     if (!info.lidJid) info.lidJid = lid
                   }
                 } catch {}
@@ -801,10 +797,7 @@ export class ClientBaileys implements Client {
                 else if (isLidUser(j1) && isPnUser(j2)) { pnJid = j2; lidJid = j1 }
               } catch {}
               if (pnJid && lidJid) {
-                try {
-                  await store.dataStore.setJidMapping?.(this.phone, pnJid, lidJid)
-                  try { logger.info('lid-mapping.persist %s: %s <-> %s', this.phone, pnJid, lidJid) } catch {}
-                } catch (e) { logger.debug(e as any, 'lid-mapping.persist failed for %s: %s <-> %s', this.phone, pnJid, lidJid) }
+                try { logger.info('lid-mapping.observed %s: %s <-> %s', this.phone, pnJid, lidJid) } catch {}
               }
             } catch {}
           }
@@ -1911,7 +1904,6 @@ export class ClientBaileys implements Client {
           // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.senderPn = pnJid
-            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
           }
         }
         if (k?.participant && isLidUser(k.participant)) {
@@ -1946,7 +1938,6 @@ export class ClientBaileys implements Client {
           // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.participantPn = pnJid
-            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
           }
         }
       } catch (e) {

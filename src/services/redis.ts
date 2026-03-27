@@ -149,7 +149,7 @@ const isSemverLt = (a?: string, b?: string): boolean => {
 const clearGlobalJidMapOnLegacyUpgrade = async (): Promise<void> => {
   const currentVersion = `${appVersion || ''}`.trim()
   const previousVersion = `${await redisGet(appVersionKey()) || ''}`.trim()
-  const targetVersion = '3.0.56'
+  const targetVersion = '3.0.57'
   try {
     logger.info('Startup migration check: previous=%s current=%s target=%s', previousVersion || '<none>', currentVersion || '<none>', targetVersion)
   } catch {}
