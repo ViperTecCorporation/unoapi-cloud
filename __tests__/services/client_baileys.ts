@@ -67,6 +67,7 @@ describe('service client baileys', () => {
   let getConfig: getConfig
   let config: Config
   let close: close
+  let eventHandlers: Record<string, Function>
 
   const status: Status = { attempt: 0 }
 
@@ -76,6 +77,7 @@ describe('service client baileys', () => {
     listener = mock<Listener>()
     incoming = mock<Incoming>()
     dataStore = mock<DataStore>()
+    dataStore.loadUnoId.mockImplementation(async (id: string) => `uno-${id}`)
     sessionStore = mock<SessionStore>()
     close = mockFn<close>()
     store = mock<Store>()
@@ -83,7 +85,7 @@ describe('service client baileys', () => {
     store.sessionStore = sessionStore
     config = defaultConfig
     config.ignoreGroupMessages = true
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    eventHandlers = {}
     getConfig = async (_phone: string) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       config.getStore = async (_phone: string) => {
@@ -99,7 +101,11 @@ describe('service client baileys', () => {
     logout = mockFn<logout>()
     fetchImageUrl = mockFn<fetchImageUrl>()
     fetchGroupMetadata = mockFn<fetchGroupMetadata>()
-    mockConnect.mockResolvedValue({ event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout })
+    const capturedEvent = (name, callback) => {
+      eventHandlers[name] = callback
+      return event(name, callback)
+    }
+    mockConnect.mockResolvedValue({ event: capturedEvent as any, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout })
   })
 
   test('call send with unknown status', async () => {
@@ -133,7 +139,7 @@ describe('service client baileys', () => {
     await client.connect(0)
     const response: Response = await client.send(payload, {})
     expect(send).toHaveBeenCalledTimes(1)
-    expect(response.ok.messages[0].id).toBe(id)
+    expect(response.ok.messages[0].id).toBe(`uno-${id}`)
   })
 
   test('call send with message type unknown', async () => {
@@ -205,7 +211,7 @@ describe('service client baileys', () => {
         __staleReconnectRetried: true,
       }),
     )
-    expect(response.ok.messages[0].id).toBe('resent-id')
+    expect(response.ok.messages[0].id).toBe('uno-resent-id')
   })
 
   test('call disconnect', async () => {
@@ -228,6 +234,38 @@ describe('service client baileys', () => {
     await client.connect(0)
     const response: Response = await client.send(payload, {})
     expect(send).toHaveBeenCalledTimes(1)
-    expect(response.ok.messages[0].id).toBe(id)
+    expect(response.ok.messages[0].id).toBe(`uno-${id}`)
+  })
+
+  test('call ringing rejects using callerPn when available', async () => {
+    config.rejectCalls = 'Nao posso atender agora'
+    await client.connect(0)
+
+    await eventHandlers.call?.([
+      {
+        from: '123456789012345@lid',
+        callerPn: '556696923653@s.whatsapp.net',
+        id: 'call-1',
+        status: 'ringing',
+      },
+    ])
+
+    expect(rejectCall).toHaveBeenCalledWith('call-1', '556696923653@s.whatsapp.net')
+    expect(send).toHaveBeenCalledWith('556696923653@s.whatsapp.net', { text: config.rejectCalls }, {})
+  })
+
+  test('call ringing falls back to from when callerPn is absent', async () => {
+    config.rejectCalls = 'Nao posso atender agora'
+    await client.connect(0)
+
+    await eventHandlers.call?.([
+      {
+        from: '5566996923653@s.whatsapp.net',
+        id: 'call-2',
+        status: 'ringing',
+      },
+    ])
+
+    expect(rejectCall).toHaveBeenCalledWith('call-2', '5566996923653@s.whatsapp.net')
   })
 })

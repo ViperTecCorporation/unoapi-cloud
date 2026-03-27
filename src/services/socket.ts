@@ -20,7 +20,7 @@ import makeWASocket, {
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'
-import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
+import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid, ensurePn, normalizeTransportJid } from './transformer'
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -1216,7 +1216,7 @@ export const connect = async ({
                 return out
               }
               const all = collectJids(u).map((j) => {
-                try { return jidNormalizedUser(j) } catch { return j }
+                try { return normalizeTransportJid(j) } catch { return j }
               })
               let pn: string | undefined
               let lid: string | undefined
@@ -1224,13 +1224,6 @@ export const connect = async ({
                 try {
                   if (!pn && isPnUser(j as any)) pn = j
                   if (!lid && isLidUser(j as any)) lid = j
-                } catch {}
-              }
-              // Fallback: se só houver LID, derivar PN via jidNormalizedUser
-              if (!pn && lid) {
-                try {
-                  const cand = jidNormalizedUser(lid)
-                  if (cand && isPnUser(cand as any)) pn = cand as any
                 } catch {}
               }
               if (pn && lid) {
@@ -2318,7 +2311,7 @@ export const connect = async ({
     } else {
       try {
         const fetchVer: any = fetchLatestWaWebVersion as any
-        let version: number[] | undefined
+        let version: [number, number, number] | number[] | undefined
         try {
           const res = await fetchVer({
             headers: {
@@ -2332,9 +2325,10 @@ export const connect = async ({
           version = res?.version || res
         }
         if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
-        socketConfig.version = version
-        resolvedWhatsappVersion = version as any
-        logger.debug('Using latest WA Web version %s', JSON.stringify(version))
+        const normalizedVersion: [number, number, number] = [version[0], version[1], version[2]]
+        socketConfig.version = normalizedVersion
+        resolvedWhatsappVersion = normalizedVersion as any
+        logger.debug('Using latest WA Web version %s', JSON.stringify(normalizedVersion))
       } catch (e) {
         logger.warn(e as any, 'Failed to fetch WA Web version; using default')
       }

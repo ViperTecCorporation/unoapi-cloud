@@ -907,6 +907,39 @@ export const phoneNumberToJid = (phoneNumber: string) => {
   }
 }
 
+// Converte PN/JID para PN JID de transporte sem heurística extra (ex.: sem inserir 9º dígito BR).
+// Deve ser usado para caches internos/JIDMAP, preservando o valor como chega do Baileys.
+export const toRawPnJid = (value?: string): string => {
+  const raw = `${value || ''}`.trim()
+  if (!raw) return ''
+  if (raw.includes('@s.whatsapp.net')) {
+    return `${raw.split('@')[0].split(':')[0].replace(/\D/g, '')}@s.whatsapp.net`
+  }
+  if (raw.includes('@')) return raw
+  const digits = raw.replace(/\D/g, '')
+  return digits ? `${digits}@s.whatsapp.net` : ''
+}
+
+// Extrai apenas os dígitos do identificador sem aplicar a regra BR do 9º dígito.
+// Para LID, não tenta inferir PN.
+export const jidToRawPhoneNumber = (value: any, plus = '+'): string => {
+  const raw = `${value || ''}`.trim()
+  if (!raw) return ''
+  if (raw.includes('@') && !raw.endsWith('@s.whatsapp.net')) return ''
+  const number = raw.split('@')[0].split(':')[0].replace(/\D/g, '')
+  return number ? `${plus}${number}` : ''
+}
+
+// Normaliza JID apenas no formato de transporte: remove sufixo de device sem reescrever o PN.
+export const normalizeTransportJid = (jid?: string): string => {
+  const raw = `${jid || ''}`.trim()
+  if (!raw) return ''
+  if (raw.endsWith('@s.whatsapp.net')) return toRawPnJid(raw)
+  if (raw.endsWith('@lid')) return `${raw.split('@')[0].split(':')[0].replace(/\D/g, '')}@lid`
+  if (raw.includes('@')) return formatJid(raw)
+  return raw
+}
+
 export const isIndividualJid = (jid: string) => {
   // Treat PN and LID JIDs (or raw numbers) as individual (not group/newsletter)
   const isIndividual = isPnUser(jid as any) || isLidUser(jid as any) || jid.indexOf('@') < 0
@@ -2433,10 +2466,17 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         ensurePn((payload as any)?.participantAlt) ||
         ''
       )
+      let conversationId = chatJid
+      try {
+        const normalizedConversationId = normalizeUserOrGroupIdForWebhook(chatJid)
+        if (normalizedConversationId) conversationId = normalizedConversationId
+      } catch {}
+      if (!conversationId || `${conversationId}` === `${phone}`.replace('+', '')) {
+        if (recipientPn) conversationId = recipientPn
+      }
       const state: any = {
         conversation: {
-          // Mantém compatibilidade: usar o JID da conversa (ex.: +1111@s.whatsapp.net)
-          id: chatJid,
+          id: conversationId,
           // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
         },
         id: messageId,

@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig } from './config'
 import logger from './logger'
-import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
+import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, jidToRawPhoneNumber, formatJid, isValidPhoneNumber } from './transformer'
 import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
@@ -403,7 +403,7 @@ export class OutgoingCloudApi implements Outgoing {
         try { return formatJid(j) } catch { return j }
       }
       const ensurePnDigits = (pnJid?: string) => {
-        try { return pnJid ? jidToPhoneNumber(pnJid, '').replace('+','') : '' } catch { return '' }
+        try { return pnJid ? jidToRawPhoneNumber(pnJid, '').replace('+','') : '' } catch { return '' }
       }
       const enrichOne = async (id?: string, name?: string) => {
         const raw = `${id || ''}`

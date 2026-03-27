@@ -21,6 +21,7 @@ import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
 import { isTransientInfraError } from './error_utils'
+import { version as appVersion } from '../../package.json'
 
 export const BASE_KEY = 'unoapi-'
 
@@ -42,6 +43,7 @@ const REDIS_CONNECT_RETRY_DELAY_MS = parseInt(process.env.REDIS_CONNECT_RETRY_DE
 let redisHealthStarted = false
 const REDIS_HEALTH_INTERVAL_MS = 15_000
 const REDIS_PING_WARN_MS = 200
+let startupMigrationsDone = false
 const isCacheValid = (ts: number, ttlMs: number) => ttlMs <= 0 || (Date.now() - ts) <= ttlMs
 const authCache: Map<string, { value: string | null, ts: number }> = new Map()
 const sessionStatusCache: Map<string, { value: string | null, ts: number }> = new Map()
@@ -106,11 +108,86 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
       } catch {}
     }
   }
+  if (client && !startupMigrationsDone) {
+    startupMigrationsDone = true
+    try {
+      await runStartupRedisMigrations()
+    } catch (e) {
+      logger.warn(e as any, 'Redis startup migrations failed')
+    }
+  }
   return client
 }
 
 export const getRedis = async (redisUrl = REDIS_URL) => {
   return await startRedis(redisUrl)
+}
+
+const appVersionKey = () => `${BASE_KEY}app:version:last`
+const appMigrationLockKey = (name: string) => `${BASE_KEY}app:migration:${name}:lock`
+
+const parseSemverLike = (raw?: string): [number, number, number] => {
+  const cleaned = `${raw || ''}`.trim().replace(/^v/i, '').split('-')[0]
+  const parts = cleaned.split('.').map((p) => parseInt(p, 10))
+  return [
+    Number.isFinite(parts[0]) ? parts[0] : 0,
+    Number.isFinite(parts[1]) ? parts[1] : 0,
+    Number.isFinite(parts[2]) ? parts[2] : 0,
+  ]
+}
+
+const isSemverLt = (a?: string, b?: string): boolean => {
+  const av = parseSemverLike(a)
+  const bv = parseSemverLike(b)
+  for (let i = 0; i < 3; i += 1) {
+    if (av[i] < bv[i]) return true
+    if (av[i] > bv[i]) return false
+  }
+  return false
+}
+
+const clearGlobalJidMapOnLegacyUpgrade = async (): Promise<void> => {
+  const currentVersion = `${appVersion || ''}`.trim()
+  const previousVersion = `${await redisGet(appVersionKey()) || ''}`.trim()
+  const targetVersion = '3.0.56'
+  try {
+    logger.info('Startup migration check: previous=%s current=%s target=%s', previousVersion || '<none>', currentVersion || '<none>', targetVersion)
+  } catch {}
+  if (!previousVersion) {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+    return
+  }
+  if (!isSemverLt(previousVersion, targetVersion)) {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+    return
+  }
+  const lockKey = appMigrationLockKey(`clear-global-jidmap-before-${targetVersion}`)
+  const acquired = await redisSetIfNotExists(lockKey, currentVersion || '1', 600)
+  if (!acquired) {
+    try {
+      await redisSet(appVersionKey(), currentVersion)
+    } catch {}
+    return
+  }
+  try {
+    const keys = await redisScanSome(`${BASE_KEY}jidmap:global:*`, 100000)
+    let deleted = 0
+    for (const key of keys || []) {
+      try {
+        await redisDel(key)
+        deleted += 1
+      } catch {}
+    }
+    try {
+      logger.warn('Startup migration: cleared %s global jidmap key(s) due to upgrade from %s to %s', deleted, previousVersion, currentVersion)
+    } catch {}
+  } finally {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+  }
+}
+
+const runStartupRedisMigrations = async (): Promise<void> => {
+  await clearGlobalJidMapOnLegacyUpgrade()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {

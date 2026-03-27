@@ -782,6 +782,21 @@ export class ListenerBaileys implements Listener {
       const state = data?.entry[0]?.changes[0]?.value?.statuses?.[0] || {}
       try {
         if (state?.id && state?.status) {
+          try {
+            const keyId = `${i?.key?.id || ''}`.trim()
+            if (keyId) {
+              state.id = keyId
+              try { (data as any).entry[0].changes[0].value.statuses[0].id = keyId } catch {}
+            }
+          } catch {}
+          try {
+            const rid = `${state?.recipient_id || ''}`.trim()
+            if (rid) {
+              state.conversation = state.conversation || {}
+              state.conversation.id = rid
+              try { (data as any).entry[0].changes[0].value.statuses[0].conversation.id = rid } catch {}
+            }
+          } catch {}
           let id = state.id
           try {
             // Normaliza id do status para UNO id quando houver mapeamento (provider->UNO)

@@ -19,7 +19,7 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
@@ -142,6 +142,17 @@ const buildSendOkResponse = (to: string, keyId: string) => ({
 })
 
 export class ClientBaileys implements Client {
+  private async ensureUnoExternalMessageId(key: { id?: string; remoteJid?: string } | undefined): Promise<string> {
+    const idBaileys = `${key?.id || ''}`.trim()
+    if (!idBaileys) return ''
+    let idUno = ''
+    try { idUno = `${await this.store?.dataStore?.loadUnoId(idBaileys) || ''}`.trim() } catch {}
+    if (!idUno) idUno = uuid()
+    try { await this.store?.dataStore?.setUnoId(idBaileys, idUno) } catch {}
+    try { if (key?.id) await this.store?.dataStore?.setKey(idUno, key as any) } catch {}
+    return idUno || idBaileys
+  }
+
   private async remapMentionsToLidForGroup(targetTo: string, content: any, payload?: any) {
     try {
       if (!targetTo || !isJidGroup(targetTo)) return
@@ -546,13 +557,13 @@ export class ClientBaileys implements Client {
                         const mapped = await store.dataStore.getPnForLid?.(this.phone, j)
                         if (mapped && isPnUser(mapped)) {
                           info.pnJid = mapped
-                          try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                          try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                         }
                         // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                       } catch {}
                     } else {
                       info.pnJid = j
-                      try { info.pn = jidToPhoneNumber(j, '').replace('+','') } catch {}
+                      try { info.pn = jidToRawPhoneNumber(j, '').replace('+','') } catch {}
                       // Se houver LID mapeado para este PN, persiste também
                       try {
                         const lid = await store.dataStore.getLidForPn?.(this.phone, j)
@@ -683,13 +694,13 @@ export class ClientBaileys implements Client {
                   const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
                   if (mapped && isPnUser(mapped)) {
                     info.pnJid = mapped
-                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                    try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
                   // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid
-                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try { info.pn = jidToRawPhoneNumber(jid, '').replace('+','') } catch {}
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
@@ -726,13 +737,13 @@ export class ClientBaileys implements Client {
                   const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
                   if (mapped && isPnUser(mapped)) {
                     info.pnJid = mapped
-                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                    try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
                   // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid
-                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try { info.pn = jidToRawPhoneNumber(jid, '').replace('+','') } catch {}
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
@@ -778,10 +789,10 @@ export class ClientBaileys implements Client {
               const a = `${u?.from || ''}`
               const b = `${u?.to || ''}`
               if (!a || !b) continue
-              // Normalize para remover sufixos :device
+              // Normalize apenas no formato de transporte; não reescreve PN com 9º dígito.
               let j1 = a; let j2 = b
-              try { j1 = jidNormalizedUser(a as any) } catch {}
-              try { j2 = jidNormalizedUser(b as any) } catch {}
+              try { j1 = normalizeTransportJid(a) } catch {}
+              try { j2 = normalizeTransportJid(b) } catch {}
               // Identificar papéis PN/LID
               let pnJid: string | undefined
               let lidJid: string | undefined
@@ -908,7 +919,23 @@ export class ClientBaileys implements Client {
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
-            await this.rejectCall(id, from)
+            let rejectTarget = from
+            try {
+              if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
+                if (callerPn && (isPnUser(callerPn) || callerPn.indexOf('@') < 0)) {
+                  rejectTarget = normalizeTransportJid(callerPn)
+                } else {
+                  rejectTarget = normalizeTransportJid(from)
+                }
+              } else if (isLidUser(from)) {
+                rejectTarget = normalizeTransportJid(from)
+              } else if (callerPn && (isPnUser(callerPn) || callerPn.indexOf('@') < 0)) {
+                rejectTarget = normalizeTransportJid(callerPn)
+              } else {
+                rejectTarget = normalizeTransportJid(from)
+              }
+            } catch { rejectTarget = from }
+            await this.rejectCall(id, rejectTarget)
             // Enviar mensagem de rejeição respeitando o modo 1:1:
             // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
             // - Em LID: manter origem
@@ -1404,21 +1431,10 @@ export class ClientBaileys implements Client {
               } catch { logger.info('SEND_OK') }
             }
             const key = response.key
+            const externalId = await this.ensureUnoExternalMessageId(key)
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
-            const ok = {
-              messaging_product: 'whatsapp',
-              contacts: [
-                {
-                  wa_id: jidToPhoneNumber(to, ''),
-                },
-              ],
-              messages: [
-                {
-                  id: key.id,
-                },
-              ],
-            }
+            const ok = buildSendOkResponse(to, externalId || key.id)
             try {
               if (to === 'status@broadcast') {
                 const skipped = (response as any).__statusSkipped || []
@@ -1449,9 +1465,10 @@ export class ClientBaileys implements Client {
           const response = await this.sendMessage(retryPayload.targetJid, retryMessage as any, retryOptions)
           if (response) {
             const key = response.key
+            const externalId = await this.ensureUnoExternalMessageId(key)
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
-            const ok = buildSendOkResponse(to, key.id)
+            const ok = buildSendOkResponse(to, externalId || key.id)
             const r: Response = { ok }
             return r
           }
@@ -1496,13 +1513,10 @@ export class ClientBaileys implements Client {
                 const resp = await this.sendMessage(toJid, retryContent as any, messageOptions)
                 if (resp) {
                   const key = resp.key
+                  const externalId = await this.ensureUnoExternalMessageId(key)
                   await this.store?.dataStore?.setKey(key.id, key)
                   await this.store?.dataStore?.setMessage(key.remoteJid, resp)
-                  const ok = {
-                    messaging_product: 'whatsapp',
-                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
-                    messages: [{ id: key.id }],
-                  }
+                  const ok = buildSendOkResponse(toJid, externalId || key.id)
                   const r: Response = { ok }
                   return r
                 }
@@ -1537,13 +1551,10 @@ export class ClientBaileys implements Client {
                 const response = await this.sendMessage(toJid, content as any, messageOptions)
                 if (response) {
                   const key = response.key
+                  const externalId = await this.ensureUnoExternalMessageId(key)
                   await this.store?.dataStore?.setKey(key.id, key)
                   await this.store?.dataStore?.setMessage(key.remoteJid, response)
-                  const ok = {
-                    messaging_product: 'whatsapp',
-                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
-                    messages: [{ id: key.id }],
-                  }
+                  const ok = buildSendOkResponse(toJid, externalId || key.id)
                   const r: Response = { ok }
                   return r
                 }
