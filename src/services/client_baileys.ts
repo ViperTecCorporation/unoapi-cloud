@@ -912,23 +912,7 @@ export class ClientBaileys implements Client {
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
-            let rejectTarget = from
-            try {
-              if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
-                if (callerPn && (isPnUser(callerPn) || callerPn.indexOf('@') < 0)) {
-                  rejectTarget = normalizeTransportJid(callerPn)
-                } else {
-                  rejectTarget = normalizeTransportJid(from)
-                }
-              } else if (isLidUser(from)) {
-                rejectTarget = normalizeTransportJid(from)
-              } else if (callerPn && (isPnUser(callerPn) || callerPn.indexOf('@') < 0)) {
-                rejectTarget = normalizeTransportJid(callerPn)
-              } else {
-                rejectTarget = normalizeTransportJid(from)
-              }
-            } catch { rejectTarget = from }
-            await this.rejectCall(id, rejectTarget)
+            await this.rejectCall(id, from)
             // Enviar mensagem de rejeição respeitando o modo 1:1:
             // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
             // - Em LID: manter origem

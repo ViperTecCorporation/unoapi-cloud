@@ -250,7 +250,7 @@ describe('service client baileys', () => {
       },
     ])
 
-    expect(rejectCall).toHaveBeenCalledWith('call-1', '556696923653@s.whatsapp.net')
+    expect(rejectCall).toHaveBeenCalledWith('call-1', '123456789012345@lid')
     expect(send).toHaveBeenCalledWith('556696923653@s.whatsapp.net', { text: config.rejectCalls }, {})
   })
 
