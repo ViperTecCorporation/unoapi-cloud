@@ -28,7 +28,7 @@ jest.mock('@redis/client', () => ({
 
 process.env.REDIS_URL = 'redis://mock'
 
-import { getProviderId, getUnoId, setUnoId } from '../../src/services/redis'
+import { getProviderId, getUnoId, setUnoId, setJidMapping, getLidForPn, getPnForLid } from '../../src/services/redis'
 
 describe('redis.setUnoId', () => {
   beforeEach(() => {
@@ -56,5 +56,25 @@ describe('redis.setUnoId', () => {
     const other = chosen === unoA ? unoB : unoA
     const otherProvider = await getProviderId(phone, other)
     expect(otherProvider).toBeFalsy()
+  })
+})
+
+describe('redis.setJidMapping', () => {
+  beforeEach(() => {
+    mockClient.__reset()
+  })
+
+  it('keeps only one BR lid_for_pn mapping between 12 and 13 digit variants', async () => {
+    const phone = '5566996269251'
+    const lidJid = '123456789012345@lid'
+    const pn12 = '556696923653@s.whatsapp.net'
+    const pn13 = '5566996923653@s.whatsapp.net'
+
+    await setJidMapping(phone, pn13, lidJid)
+    await setJidMapping(phone, pn12, lidJid)
+
+    expect(await getPnForLid(phone, lidJid)).toBe(pn12)
+    expect(await getLidForPn(phone, pn12)).toBe(lidJid)
+    expect(await getLidForPn(phone, pn13)).toBeUndefined()
   })
 })

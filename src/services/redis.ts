@@ -661,6 +661,17 @@ const jidMapPnKeyNew   = (session: string, lidJid: string) => `${BASE_KEY}jidmap
 const jidMapLidKeyNew  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
 const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_lid:${lidJid}`
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
+const getAlternateBrPnJids = (pnJid: string): string[] => {
+  const digits = `${pnJid || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
+  if (!digits.startsWith('55')) return []
+  if (digits.length === 13 && digits.charAt(4) === '9') {
+    return [`55${digits.slice(2, 4)}${digits.slice(5)}@s.whatsapp.net`]
+  }
+  if (digits.length === 12 && /[6-9]/.test(digits.charAt(4))) {
+    return [`55${digits.slice(2, 4)}9${digits.slice(4)}@s.whatsapp.net`]
+  }
+  return []
+}
 
 export const getPnForLid = async (session: string, lidJid: string) => {
   if (!JIDMAP_STORED_LOOKUP_ENABLED) return undefined
@@ -699,6 +710,13 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
     if (ttlSec > 0) return redisSetAndExpire(key, value, ttlSec)
     return redisSet(key, value)
   }
+  try {
+    const alternates = getAlternateBrPnJids(pnJid).filter((alt) => alt && alt !== pnJid)
+    for (const altPnJid of alternates) {
+      try { await redisDel(jidMapLidKeyGlob(altPnJid)) } catch {}
+      try { await redisDel(jidMapLidKeyNew(session, altPnJid)) } catch {}
+    }
+  } catch {}
   // Apenas escopo global (reduz chaves duplicadas por sess?o); leitura legacy continua via fallback
   try { await setMapping(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
   try { await setMapping(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
