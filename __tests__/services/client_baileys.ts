@@ -404,7 +404,13 @@ describe('service client baileys', () => {
             from: '123456789012345@lid',
             'call-creator': '123456789012345@lid',
           },
-          content: undefined,
+          content: [
+            {
+              tag: 'enc',
+              attrs: {},
+              content: Buffer.from('test-enc-payload'),
+            },
+          ],
         },
       ],
     })
@@ -416,6 +422,8 @@ describe('service client baileys', () => {
         callId: 'call-5',
         peerJid: '123456789012345@lid',
         msgType: 'offer',
+        payloadBase64: expect.any(String),
+        payloadEncoding: 'wa_binary',
       }),
     )
   })

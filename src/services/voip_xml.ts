@@ -1,4 +1,24 @@
 import type { BinaryNode } from '@whiskeysockets/baileys'
+import { inflateSync } from 'zlib'
+
+const WAP_TAGS = {
+  LIST_EMPTY: 0,
+  DICTIONARY_0: 236,
+  DICTIONARY_1: 237,
+  DICTIONARY_2: 238,
+  DICTIONARY_3: 239,
+  INTEROP_JID: 245,
+  FB_JID: 246,
+  AD_JID: 247,
+  LIST_8: 248,
+  LIST_16: 249,
+  JID_PAIR: 250,
+  HEX_8: 251,
+  BINARY_8: 252,
+  BINARY_20: 253,
+  BINARY_32: 254,
+  NIBBLE_8: 255,
+} as const
 
 const escapeXml = (value: string) =>
   value
@@ -87,6 +107,152 @@ export const getBinaryNodeChildrenSafe = (node?: BinaryNode): BinaryNode[] => {
   const content = node?.content
   if (!Array.isArray(content)) return []
   return content.filter((item): item is BinaryNode => !!item && typeof item === 'object' && typeof (item as any).tag === 'string')
+}
+
+export const decompressWapFrameIfRequired = (buffer: Buffer): Buffer => {
+  if (!buffer?.length) return Buffer.alloc(0)
+  if (2 & buffer.readUInt8(0)) {
+    return inflateSync(buffer.subarray(1))
+  }
+  return buffer.subarray(1)
+}
+
+const readUInt20 = (buffer: Buffer, indexRef: { index: number }) => {
+  const b1 = buffer[indexRef.index++] || 0
+  const b2 = buffer[indexRef.index++] || 0
+  const b3 = buffer[indexRef.index++] || 0
+  return ((b1 & 0x0f) << 16) | (b2 << 8) | b3
+}
+
+const skipPacked8 = (buffer: Buffer, indexRef: { index: number }) => {
+  const startByte = buffer[indexRef.index++] || 0
+  indexRef.index += startByte & 127
+}
+
+const skipWapString = (buffer: Buffer, indexRef: { index: number }, tag: number): void => {
+  if (tag >= 1 && tag < WAP_TAGS.DICTIONARY_0) return
+  switch (tag) {
+    case WAP_TAGS.DICTIONARY_0:
+    case WAP_TAGS.DICTIONARY_1:
+    case WAP_TAGS.DICTIONARY_2:
+    case WAP_TAGS.DICTIONARY_3:
+      indexRef.index += 1
+      return
+    case WAP_TAGS.LIST_EMPTY:
+      return
+    case WAP_TAGS.BINARY_8: {
+      const length = buffer[indexRef.index++] || 0
+      indexRef.index += length
+      return
+    }
+    case WAP_TAGS.BINARY_20:
+      indexRef.index += readUInt20(buffer, indexRef)
+      return
+    case WAP_TAGS.BINARY_32: {
+      const length = buffer.readUInt32BE(indexRef.index)
+      indexRef.index += 4 + length
+      return
+    }
+    case WAP_TAGS.JID_PAIR:
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      return
+    case WAP_TAGS.AD_JID:
+      indexRef.index += 2
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      return
+    case WAP_TAGS.FB_JID:
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      indexRef.index += 2
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      return
+    case WAP_TAGS.INTEROP_JID:
+      skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+      indexRef.index += 4
+      if (indexRef.index < buffer.length) {
+        const maybeTag = buffer[indexRef.index]
+        if (maybeTag !== undefined && maybeTag !== WAP_TAGS.LIST_EMPTY) {
+          skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+        }
+      }
+      return
+    case WAP_TAGS.HEX_8:
+    case WAP_TAGS.NIBBLE_8:
+      skipPacked8(buffer, indexRef)
+      return
+    default:
+      throw new Error(`unsupported WAP string tag: ${tag}`)
+  }
+}
+
+const readListSize = (buffer: Buffer, indexRef: { index: number }, tag: number) => {
+  switch (tag) {
+    case WAP_TAGS.LIST_EMPTY:
+      return 0
+    case WAP_TAGS.LIST_8:
+      return buffer[indexRef.index++] || 0
+    case WAP_TAGS.LIST_16: {
+      const size = buffer.readUInt16BE(indexRef.index)
+      indexRef.index += 2
+      return size
+    }
+    default:
+      throw new Error(`invalid list tag: ${tag}`)
+  }
+}
+
+const isListTag = (tag: number) =>
+  tag === WAP_TAGS.LIST_EMPTY || tag === WAP_TAGS.LIST_8 || tag === WAP_TAGS.LIST_16
+
+const skipWapNode = (buffer: Buffer, indexRef: { index: number }) => {
+  const listTag = buffer[indexRef.index++] || 0
+  const listSize = readListSize(buffer, indexRef, listTag)
+  skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+  const attributesLength = (listSize - 1) >> 1
+  for (let i = 0; i < attributesLength; i++) {
+    skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+    skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+  }
+  if (listSize % 2 === 0) {
+    const contentTag = buffer[indexRef.index++] || 0
+    if (isListTag(contentTag)) {
+      const childCount = readListSize(buffer, indexRef, contentTag)
+      for (let i = 0; i < childCount; i++) {
+        skipWapNode(buffer, indexRef)
+      }
+    } else {
+      skipWapString(buffer, indexRef, contentTag)
+    }
+  }
+}
+
+export const extractFirstChildDecompressedWapSlice = (buffer: Buffer): Buffer | undefined => {
+  if (!buffer?.length) return undefined
+  const indexRef = { index: 0 }
+  const listTag = buffer[indexRef.index++] || 0
+  const listSize = readListSize(buffer, indexRef, listTag)
+  skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+  const attributesLength = (listSize - 1) >> 1
+  for (let i = 0; i < attributesLength; i++) {
+    skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+    skipWapString(buffer, indexRef, buffer[indexRef.index++] || 0)
+  }
+  if (listSize % 2 !== 0) return undefined
+  const contentTagIndex = indexRef.index
+  const contentTag = buffer[indexRef.index++] || 0
+  if (!isListTag(contentTag)) return undefined
+
+  try {
+    const childCount = readListSize(buffer, indexRef, contentTag)
+    if (!childCount) return undefined
+    const childStart = indexRef.index
+    skipWapNode(buffer, indexRef)
+    return buffer.subarray(childStart, indexRef.index)
+  } catch {
+    // Some inbound call frames appear to encode the first child node directly
+    // at the content position instead of wrapping it in a children-count list.
+    return buffer.subarray(contentTagIndex)
+  }
 }
 
 const contentToXml = (content: BinaryNode['content']): string => {

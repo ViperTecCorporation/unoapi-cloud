@@ -17,6 +17,8 @@ export interface VoipCallEventPayload {
   callId: string
   from: string
   callerPn?: string
+  isGroup?: boolean
+  groupJid?: string
   isVideo?: boolean
   timestamp?: number
   raw?: unknown
@@ -26,7 +28,17 @@ export interface VoipSignalingPayload {
   session: string
   callId: string
   peerJid: string
-  payload: string
+  payload?: string
+  payloadBase64?: string
+  rawCallOfferEncWapBase64?: string
+  rawOfferEncBase64?: string
+  rawDecryptedCallFrameBase64?: string
+  rawOfferWapNoPrefixBase64?: string
+  rawOfferChildWapBase64?: string
+  payloadEncoding?: 'xml' | 'wa_binary'
+  attrs?: Record<string, string>
+  outerAttrs?: Record<string, string>
+  encAttrs?: Record<string, string>
   msgType?: string
   timestamp?: number
 }
