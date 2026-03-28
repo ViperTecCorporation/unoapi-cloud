@@ -16,6 +16,7 @@ import {
   BASE_STORE,
   UNOAPI_RETRY_REQUEST_DELAY_MS,
   IGNORE_CALLS,
+  REJECT_CALLS,
   REJECT_CALLS_WEBHOOK,
   MESSAGE_CALLS_WEBHOOK,
   WEBHOOK_SESSION,
@@ -97,7 +98,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.qrTimeoutMs = QR_TIMEOUT_MS
     config.composingMessage = COMPOSING_MESSAGE
     config.baseStore = BASE_STORE
-    config.rejectCalls = IGNORE_CALLS
+    config.rejectCalls = REJECT_CALLS
     config.rejectCallsWebhook = REJECT_CALLS_WEBHOOK
     config.messageCallsWebhook = MESSAGE_CALLS_WEBHOOK
     config.throwWebhookError = THROW_WEBHOOK_ERROR

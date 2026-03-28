@@ -2158,6 +2158,10 @@ export const connect = async ({
     try {
       if (targetIsLid) {
         logger.debug('CALL_REJECT: preserving LID %s for rejectCall', target)
+        logger.info('CALL_REJECT fast path: callId=%s target=%s', callId, target)
+        const result = await sock?.rejectCall(callId, target)
+        logger.info('CALL_REJECT sent: callId=%s target=%s', callId, target)
+        return result
       // If a plain number was provided, resolve via onWhatsApp with BR 12?13 preference before falling back
       } else if (typeof target === 'string' && target.indexOf('@') < 0) {
         try {
@@ -2290,7 +2294,11 @@ export const connect = async ({
       } catch {}
       const targets = Array.from(set)
       if (targets.length) {
-        await (sock as any).assertSessions(targets, true)
+        const assertSessionsWithTimeout = Promise.race([
+          (sock as any).assertSessions(targets, true),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('rejectCall_assertSessions_timeout')), 1500)),
+        ])
+        await assertSessionsWithTimeout
         try { logger.debug('Preasserted %s sessions for rejectCall %s', targets.length, JSON.stringify(targets)) } catch {}
         try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
       }

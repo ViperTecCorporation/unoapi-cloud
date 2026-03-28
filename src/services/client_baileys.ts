@@ -997,6 +997,14 @@ export class ClientBaileys implements Client {
         try {
           await this.notifyVoipServiceCallEvent(event)
         } catch {}
+        const terminalCallStatuses = new Set(['terminate', 'terminated', 'timeout', 'timed_out', 'reject', 'rejected', 'end', 'ended', 'hangup', 'missed'])
+        if (terminalCallStatuses.has(`${status || ''}`)) {
+          try {
+            if (this.calls.delete(from)) {
+              logger.info('CALL gate cleared immediately: from=%s id=%s status=%s', from, id, status)
+            }
+          } catch {}
+        }
         try {
           logger.info(
             'CALL ringing gate: from=%s id=%s hasCall=%s hasRejectCall=%s rejectCallsConfigured=%s status=%s',
