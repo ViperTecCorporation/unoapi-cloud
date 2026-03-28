@@ -7,6 +7,7 @@ import {
   sendMessage,
   readMessages,
   rejectCall,
+  sendCallNode,
   OnQrCode,
   OnNotification,
   OnNewLogin,
@@ -34,6 +35,9 @@ import { ClientForward } from './client_forward'
 import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
 import { getRetryableStaleSendPayload, isRetryableStaleSendError } from './error_utils'
+import { extractVoipCommands, mapBaileysCallStatusToVoipEvent, sendVoipCallEvent, sendVoipSignaling, VoipCommand } from './client_voip'
+import { binaryNodeToXml, parseVoipXmlFragment, parseVoipXmlNode } from './voip_xml'
+import { BinaryNode, getAllBinaryNodeChildren } from '@whiskeysockets/baileys/lib/WABinary'
 
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
@@ -109,6 +113,10 @@ const rejectCallDefault: rejectCall = async (_keys) => {
   throw sendError
 }
 
+const sendCallNodeDefault: sendCallNode = async (_node) => {
+  throw sendError
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const fetchImageUrlDefault: fetchImageUrl = async (_jid: string) => ''
 
@@ -142,6 +150,80 @@ const buildSendOkResponse = (to: string, keyId: string) => ({
 })
 
 export class ClientBaileys implements Client {
+  private async processVoipCommands(commands: VoipCommand[]) {
+    for (const command of commands || []) {
+      if (!command || command.action !== 'send_call_node') continue
+      try {
+        const xml = Buffer.from(command.payloadBase64 || '', 'base64').toString('utf8').trim()
+        const parsed = parseVoipXmlNode(xml)
+        if (parsed?.tag === 'call') {
+          await this.sendCallNode(parsed)
+          continue
+        }
+
+        const children = parseVoipXmlFragment(xml)
+        if (!children.length) {
+          logger.warn({ session: this.phone, callId: command.callId }, 'voip command without parsable call payload')
+          continue
+        }
+        const node: BinaryNode = {
+          tag: command.payloadTag || 'call',
+          attrs: {
+            from: `${this.store?.state?.creds?.me?.id || ''}`.trim(),
+            to: command.peerJid,
+          },
+          content: children,
+        }
+        await this.sendCallNode(node)
+      } catch (error) {
+        logger.warn(error as any, 'failed to process voip command for %s', this.phone)
+      }
+    }
+  }
+
+  private async forwardVoipSignalingNode(node: BinaryNode) {
+    try {
+      const children = getAllBinaryNodeChildren(node)
+      const infoChild = children?.[0]
+      if (!infoChild) return
+      const callId = `${infoChild.attrs?.['call-id'] || ''}`.trim()
+      const peerJid = `${infoChild.attrs?.from || infoChild.attrs?.['call-creator'] || node.attrs?.from || ''}`.trim()
+      if (!callId || !peerJid) return
+      const response = await sendVoipSignaling(this.config, {
+        session: this.phone,
+        callId,
+        peerJid,
+        msgType: infoChild.tag,
+        payload: binaryNodeToXml(infoChild),
+        timestamp: Number(node?.attrs?.t || 0) || undefined,
+      })
+      await this.processVoipCommands(extractVoipCommands(response.body))
+    } catch (error) {
+      logger.warn(error as any, 'failed to forward voip signaling for %s', this.phone)
+    }
+  }
+
+  private async notifyVoipServiceCallEvent(event: any) {
+    const mappedEvent = mapBaileysCallStatusToVoipEvent(event?.status)
+    const callId = `${event?.id || ''}`.trim()
+    const from = `${event?.from || ''}`.trim()
+    if (!mappedEvent || !callId || !from) return
+
+    const timestampRaw = event?.timestamp ?? event?.t ?? event?.messageTimestamp
+    const timestamp = Number(timestampRaw)
+    const response = await sendVoipCallEvent(this.config, {
+      session: this.phone,
+      event: mappedEvent,
+      callId,
+      from,
+      callerPn: `${event?.callerPn || event?.caller_pn || ''}`.trim() || undefined,
+      isVideo: typeof event?.isVideo === 'boolean' ? event.isVideo : (typeof event?.is_video === 'boolean' ? event.is_video : undefined),
+      timestamp: Number.isFinite(timestamp) ? timestamp : undefined,
+      raw: event,
+    })
+    await this.processVoipCommands(extractVoipCommands(response.body))
+  }
+
   private async ensureUnoExternalMessageId(key: { id?: string; remoteJid?: string } | undefined): Promise<string> {
     const idBaileys = `${key?.id || ''}`.trim()
     if (!idBaileys) return ''
@@ -313,6 +395,7 @@ export class ClientBaileys implements Client {
   private fetchGroupMetadata = fetchGroupMetadataDefault
   private readMessages = readMessagesDefault
   private rejectCall: rejectCall | undefined = rejectCallDefault
+  private sendCallNode: sendCallNode = sendCallNodeDefault
   private listener: Listener
   private store: Store | undefined
   private calls = new Map<string, boolean>()
@@ -485,11 +568,12 @@ export class ClientBaileys implements Client {
       logger.error('Socket connect return empty %s', this.phone)
       return
     }
-    const { send, read, event, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
+    const { send, read, event, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
     this.event = event
     this.sendMessage = send
     this.readMessages = read
     this.rejectCall = rejectCall
+    this.sendCallNode = sendCallNode
     this.fetchImageUrl = this.config.sendProfilePicture ? fetchImageUrl : fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadata
     this.close = close
@@ -513,6 +597,7 @@ export class ClientBaileys implements Client {
     this.sendMessage = this.sendMessageDefault
     this.readMessages = readMessagesDefault
     this.rejectCall = rejectCallDefault
+    this.sendCallNode = sendCallNodeDefault
     this.fetchImageUrl = fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadataDefault
     this.exists = existsDefault
@@ -909,6 +994,9 @@ export class ClientBaileys implements Client {
         try {
           logger.info('CALL event: from=%s callerPn=%s id=%s status=%s', from, callerPn || '<none>', id, status)
         } catch {}
+        try {
+          await this.notifyVoipServiceCallEvent(event)
+        } catch {}
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
@@ -1002,6 +1090,9 @@ export class ClientBaileys implements Client {
           }, 10_000)
         }
       }
+    })
+    this.event('call.raw' as any, async (node: BinaryNode) => {
+      await this.forwardVoipSignalingNode(node)
     })
   }
 

@@ -7,6 +7,7 @@ import makeWASocket, {
   WASocket,
   AnyMessageContent,
   BaileysEventMap,
+  BinaryNode,
   GroupMetadata,
   Browsers,
   ConnectionState,
@@ -109,6 +110,10 @@ export interface readMessages {
 
 export interface rejectCall {
   (_callId: string, _callFrom: string): Promise<void>
+}
+
+export interface sendCallNode {
+  (_node: BinaryNode): Promise<void>
 }
 
 export interface fetchImageUrl {
@@ -2252,6 +2257,12 @@ export const connect = async ({
     return sock?.rejectCall(callId, target)
   }
 
+  const sendCallNode: sendCallNode = async (node: BinaryNode) => {
+    await validateStatus()
+    if (!node || node.tag !== 'call') throw new Error('invalid_call_node')
+    await (sock as any)?.sendNode?.(node)
+  }
+
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
     return dataStore.loadImageUrl(jid, sock!)
   }
@@ -2392,6 +2403,18 @@ export const connect = async ({
       }
     }
     if (sock) {
+      try {
+        ;(sock as any)?.ws?.on?.('CB:call', async (node: BinaryNode) => {
+          try {
+            const cb = eventsMap.get('call.raw' as any)
+            if (cb) await cb(node as any)
+          } catch (e) {
+            logger.warn(e as any, 'Ignore error on call.raw handler')
+          }
+        })
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error registering raw call listener')
+      }
       event('connection.update', onConnectionUpdate)
       event('creds.update', verifyAndSaveCreds)
       sock.ev.process(async(events) => {
@@ -2434,5 +2457,5 @@ export const connect = async ({
     return
   }
 
-  return { event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
+  return { event, status, send, read, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
 }
