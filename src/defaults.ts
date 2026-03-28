@@ -67,7 +67,7 @@ export const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || '6000')
 export const CONNECTION_TYPE = process.env.CONNECTION_TYPE || 'qrcode'
 export const VOIP_SERVICE_URL = process.env.VOIP_SERVICE_URL || ''
 export const VOIP_SERVICE_TOKEN = process.env.VOIP_SERVICE_TOKEN || ''
-export const VOIP_SERVICE_TIMEOUT_MS = parseInt(process.env.VOIP_SERVICE_TIMEOUT_MS || '3000')
+export const VOIP_SERVICE_TIMEOUT_MS = parseInt(process.env.VOIP_SERVICE_TIMEOUT_MS || '10000')
 
 export const CONSUMER_TIMEOUT_MS = parseInt(process.env.CONSUMER_TIMEOUT_MS || '15000')
 export const WEBHOOK_SEND_NEW_MESSAGES = process.env.WEBHOOK_SEND_NEW_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEW_MESSAGES == 'true'

@@ -45,7 +45,7 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
@@ -1455,6 +1455,49 @@ export const connect = async ({
     const forceRemoteJid = options?.forceRemoteJid
     const skipBrSendOrder = options?.skipBrSendOrder
     let idCandidate = forceRemoteJid || to
+    try {
+      if (!forceRemoteJid && isIndividualJid(idCandidate)) {
+        if (isLidUser(idCandidate as any)) {
+          const authPn = await getPnForLidFromAuthCache(phone, `${idCandidate}`)
+          if (authPn && isPnUser(authPn as any)) {
+            logger.debug('AUTH_CANONICAL: using PN %s from auth for LID %s', authPn, idCandidate)
+            idCandidate = authPn
+          }
+        } else {
+          const raw = ensurePn(`${idCandidate}`)
+          if (raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
+            const to12 = (() => {
+              if (raw.length === 12) return raw
+              const ddd = raw.slice(2, 4)
+              const local9 = raw.slice(4)
+              return `55${ddd}${local9.slice(1)}`
+            })()
+            const to13 = (() => {
+              if (raw.length === 13) return raw
+              const ddd = raw.slice(2, 4)
+              const local = raw.slice(4)
+              return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : raw
+            })()
+            const variants = Array.from(new Set([to12, to13]))
+            for (const variant of variants) {
+              const variantJid = `${variant}@s.whatsapp.net`
+              const authLid = await getLidForPnFromAuthCache(phone, variantJid)
+              if (authLid) {
+                if (variantJid !== idCandidate) {
+                  logger.warn('AUTH_CANONICAL: overriding destination %s -> %s via auth mapping %s', idCandidate, variantJid, authLid)
+                } else {
+                  logger.debug('AUTH_CANONICAL: keeping destination %s via auth mapping %s', variantJid, authLid)
+                }
+                idCandidate = variantJid
+                break
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logger.debug(e as any, 'AUTH_CANONICAL: ignore error resolving canonical 1:1 destination')
+    }
     let id = forceRemoteJid ? idCandidate : (isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate)
     try {
       logger.debug('1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s skipBrSendOrder=%s brSendOrder=%s', to, idCandidate, id || '<none>', !!forceRemoteJid, !!skipBrSendOrder, !!BR_SEND_ORDER_ENABLED)
@@ -2254,7 +2297,15 @@ export const connect = async ({
     } catch (e) {
       logger.warn(e as any, 'Ignore error on preassert sessions for rejectCall')
     }
-    return sock?.rejectCall(callId, target)
+    logger.info('CALL_REJECT final target: callId=%s from=%s target=%s', callId, callFrom, target)
+    try {
+      const result = await sock?.rejectCall(callId, target)
+      logger.info('CALL_REJECT sent: callId=%s target=%s', callId, target)
+      return result
+    } catch (error) {
+      logger.warn({ err: error, callId, callFrom, target }, 'CALL_REJECT send failed')
+      throw error
+    }
   }
 
   const sendCallNode: sendCallNode = async (node: BinaryNode) => {

@@ -78,13 +78,24 @@ export const sendVoipCallEvent = async (
     'Content-Type': 'application/json; charset=utf-8',
   }
   if (config.voipServiceToken) headers.Authorization = `Bearer ${config.voipServiceToken}`
+  const startedAt = Date.now()
 
   try {
+    logger.info(
+      {
+        url,
+        timeoutMs: config.voipServiceTimeoutMs || 10_000,
+        session: payload.session,
+        callId: payload.callId,
+        event: payload.event,
+      },
+      'sending voip call event'
+    )
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(config.voipServiceTimeoutMs || 3_000),
+      signal: AbortSignal.timeout(config.voipServiceTimeoutMs || 10_000),
     })
     let body: unknown = undefined
     try {
@@ -97,9 +108,31 @@ export const sendVoipCallEvent = async (
       )
       return { ok: false, status: response.status, body }
     }
+    logger.info(
+      {
+        url,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        session: payload.session,
+        callId: payload.callId,
+        event: payload.event,
+      },
+      'voip call event sent'
+    )
     return { ok: true, status: response.status, body }
   } catch (error) {
-    logger.warn(error as any, 'failed to send voip call event to %s', url)
+    logger.warn(
+      {
+        err: error,
+        url,
+        durationMs: Date.now() - startedAt,
+        timeoutMs: config.voipServiceTimeoutMs || 10_000,
+        session: payload.session,
+        callId: payload.callId,
+        event: payload.event,
+      },
+      'failed to send voip call event'
+    )
     return { ok: false, reason: 'request_failed' }
   }
 }
@@ -116,13 +149,25 @@ export const sendVoipSignaling = async (
     'Content-Type': 'application/json; charset=utf-8',
   }
   if (config.voipServiceToken) headers.Authorization = `Bearer ${config.voipServiceToken}`
+  const startedAt = Date.now()
 
   try {
+    logger.info(
+      {
+        url,
+        timeoutMs: config.voipServiceTimeoutMs || 10_000,
+        session: payload.session,
+        callId: payload.callId,
+        peerJid: payload.peerJid,
+        msgType: payload.msgType || 'unknown',
+      },
+      'sending voip signaling'
+    )
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(config.voipServiceTimeoutMs || 3_000),
+      signal: AbortSignal.timeout(config.voipServiceTimeoutMs || 10_000),
     })
     let body: unknown = undefined
     try {
@@ -135,9 +180,33 @@ export const sendVoipSignaling = async (
       )
       return { ok: false, status: response.status, body }
     }
+    logger.info(
+      {
+        url,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        session: payload.session,
+        callId: payload.callId,
+        peerJid: payload.peerJid,
+        msgType: payload.msgType || 'unknown',
+      },
+      'voip signaling sent'
+    )
     return { ok: true, status: response.status, body }
   } catch (error) {
-    logger.warn(error as any, 'failed to send voip signaling to %s', url)
+    logger.warn(
+      {
+        err: error,
+        url,
+        durationMs: Date.now() - startedAt,
+        timeoutMs: config.voipServiceTimeoutMs || 10_000,
+        session: payload.session,
+        callId: payload.callId,
+        peerJid: payload.peerJid,
+        msgType: payload.msgType || 'unknown',
+      },
+      'failed to send voip signaling'
+    )
     return { ok: false, reason: 'request_failed' }
   }
 }

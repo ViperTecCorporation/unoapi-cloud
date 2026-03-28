@@ -1000,7 +1000,13 @@ export class ClientBaileys implements Client {
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
-            await this.rejectCall(id, from)
+            try {
+              logger.info('CALL reject start: from=%s callerPn=%s id=%s', from, callerPn || '<none>', id)
+              await this.rejectCall(id, from)
+              logger.info('CALL reject success: from=%s id=%s', from, id)
+            } catch (error) {
+              logger.warn({ err: error, from, callerPn, id }, 'CALL reject failed')
+            }
             // Enviar mensagem de rejeição respeitando o modo 1:1:
             // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
             // - Em LID: manter origem
@@ -1032,8 +1038,12 @@ export class ClientBaileys implements Client {
                 toMsg = from
               }
             } catch { toMsg = from }
-            await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {});
-            logger.info('Rejecting calls %s %s', this.phone, this.config.rejectCalls)
+            try {
+              await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {})
+              logger.info('Rejecting calls %s %s to=%s', this.phone, this.config.rejectCalls, toMsg)
+            } catch (error) {
+              logger.warn({ err: error, from, callerPn, id, toMsg }, 'CALL reject message send failed')
+            }
           }
           
           const messageCallsWebhook = this.config.rejectCallsWebhook || this.config.messageCallsWebhook
