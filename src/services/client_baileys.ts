@@ -997,6 +997,17 @@ export class ClientBaileys implements Client {
         try {
           await this.notifyVoipServiceCallEvent(event)
         } catch {}
+        try {
+          logger.info(
+            'CALL ringing gate: from=%s id=%s hasCall=%s hasRejectCall=%s rejectCallsConfigured=%s status=%s',
+            from,
+            id,
+            this.calls.has(from),
+            !!this.rejectCall,
+            !!this.config.rejectCalls,
+            status,
+          )
+        } catch {}
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
