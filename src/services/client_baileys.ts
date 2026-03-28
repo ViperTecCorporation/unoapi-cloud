@@ -1,4 +1,5 @@
 import { GroupMetadata, WAMessage, proto, delay, isJidGroup, jidNormalizedUser, AnyMessageContent, isLidUser, WAMessageAddressingMode, isPnUser } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import { Listener } from './listener'
 import { Store } from './store'
@@ -36,8 +37,7 @@ import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
 import { getRetryableStaleSendPayload, isRetryableStaleSendError } from './error_utils'
 import { extractVoipCommands, mapBaileysCallStatusToVoipEvent, sendVoipCallEvent, sendVoipSignaling, VoipCommand } from './client_voip'
-import { binaryNodeToXml, parseVoipXmlFragment, parseVoipXmlNode } from './voip_xml'
-import { BinaryNode, getAllBinaryNodeChildren } from '@whiskeysockets/baileys/lib/WABinary'
+import { binaryNodeToXml, getBinaryNodeChildrenSafe, parseVoipXmlFragment, parseVoipXmlNode } from './voip_xml'
 
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
@@ -183,7 +183,7 @@ export class ClientBaileys implements Client {
 
   private async forwardVoipSignalingNode(node: BinaryNode) {
     try {
-      const children = getAllBinaryNodeChildren(node)
+      const children = getBinaryNodeChildrenSafe(node)
       const infoChild = children?.[0]
       if (!infoChild) return
       const callId = `${infoChild.attrs?.['call-id'] || ''}`.trim()

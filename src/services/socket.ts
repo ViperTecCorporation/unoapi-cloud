@@ -7,7 +7,6 @@ import makeWASocket, {
   WASocket,
   AnyMessageContent,
   BaileysEventMap,
-  BinaryNode,
   GroupMetadata,
   Browsers,
   ConnectionState,
@@ -18,6 +17,7 @@ import makeWASocket, {
   isPnUser,
   WAMessageAddressingMode,
 } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'

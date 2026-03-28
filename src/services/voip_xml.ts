@@ -1,4 +1,4 @@
-import { BinaryNode } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
 
 const escapeXml = (value: string) =>
   value
@@ -81,6 +81,12 @@ export const parseVoipXmlFragment = (xml: string): BinaryNode[] => {
 export const parseVoipXmlNode = (xml: string): BinaryNode | undefined => {
   const roots = parseVoipXmlFragment(xml)
   return roots.length ? roots[0] : undefined
+}
+
+export const getBinaryNodeChildrenSafe = (node?: BinaryNode): BinaryNode[] => {
+  const content = node?.content
+  if (!Array.isArray(content)) return []
+  return content.filter((item): item is BinaryNode => !!item && typeof item === 'object' && typeof (item as any).tag === 'string')
 }
 
 const contentToXml = (content: BinaryNode['content']): string => {
