@@ -416,6 +416,8 @@ describe('service client baileys', () => {
         callId: 'call-5',
         peerJid: '123456789012345@lid',
         msgType: 'offer',
+        payloadBase64: expect.any(String),
+        payloadEncoding: 'wa_binary',
       }),
     )
   })
