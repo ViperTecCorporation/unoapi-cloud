@@ -2140,6 +2140,30 @@ describe('service transformer', () => {
     expect(from).toEqual(remotePhoneNumber)
   })
 
+  test('fromBaileysMessageContent group always includes group_id even without groupMetadata', async () => {
+    const phoneNumer = '5566996269251'
+    const remotePhoneNumber = '5587981148453'
+    const groupJid = '120363036972484891@g.us'
+    const input = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: 'f196aca0-2a2b-11f1-a5b4-4b9e88d5d5a0',
+        participant: `${remotePhoneNumber}@s.whatsapp.net`,
+      },
+      messageTimestamp: 1774650364,
+      pushName: 'Joseph Fernandes',
+      message: {
+        conversation: 'pra rodar desenvolver local as calls precisa de que tanto?'
+      },
+    }
+    const resp = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = resp.entry[0].changes[0].value
+    expect(value.contacts[0].group_id).toEqual(groupJid)
+    expect(value.contacts[0].wa_id).toEqual(remotePhoneNumber)
+    expect(value.messages[0].from).toEqual(remotePhoneNumber)
+  })
+
   test('fromBaileysMessageContent statusMentionMessage', async () => {
     const remotePhoneNumber = '11115551212'
     const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`

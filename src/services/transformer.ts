@@ -1448,10 +1448,12 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     let messageTimestamp = payload.messageTimestamp
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const groupMetadata: any = {}
-    if (payload.groupMetadata) {
-      groupMetadata.group_subject = payload.groupMetadata.subject
+    if (typeof chatJid === 'string' && chatJid.endsWith('@g.us')) {
       groupMetadata.group_id = chatJid
-      groupMetadata.group_picture = payload.groupMetadata.profilePicture
+    }
+    if (payload.groupMetadata) {
+      if (payload.groupMetadata.subject) groupMetadata.group_subject = payload.groupMetadata.subject
+      if (payload.groupMetadata.profilePicture) groupMetadata.group_picture = payload.groupMetadata.profilePicture
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const statuses: any[] = []
