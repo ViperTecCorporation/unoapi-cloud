@@ -58,6 +58,7 @@ export const isJidNewsletter = (jid: string) => /@newsletter$/.test(jid)
 export const isLidUser = (jid?: string) => !!jid && /@lid$/.test(jid)
 export const isPnUser = (jid?: string) => !!jid && /@s\.whatsapp\.net$/.test(jid)
 export const jidNormalizedUser = (jid: string) => jid
+export const encodeBinaryNode = (node: unknown) => Buffer.from(JSON.stringify(node))
 
 // storage/auth state helper used by data_store_file.ts
 export const useMultiFileAuthState = async (_dir: string) => ({
