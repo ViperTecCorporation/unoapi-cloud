@@ -252,13 +252,41 @@ export class ClientBaileys implements Client {
         ? (node as any).__unoRawDecryptedFrameBase64 as string
         : ''
       const rawDecryptedCallFrameBytes = rawDecryptedCallFrameBase64 ? Buffer.from(rawDecryptedCallFrameBase64, 'base64') : undefined
-      let rawOfferChildWapBytes: Buffer | undefined
-      if (infoChild.tag === 'offer' && rawDecryptedCallFrameBytes) {
+      let rawFirstChildWapBytes: Buffer | undefined
+      if (rawDecryptedCallFrameBytes) {
         try {
-          rawOfferChildWapBytes = extractFirstChildDecompressedWapSlice(decompressWapFrameIfRequired(rawDecryptedCallFrameBytes))
+          rawFirstChildWapBytes = extractFirstChildDecompressedWapSlice(decompressWapFrameIfRequired(rawDecryptedCallFrameBytes))
         } catch (error) {
-          logger.warn({ err: error, phone: this.phone, callId, msgType: infoChild.tag }, 'failed to extract raw offer child WAP slice')
+          logger.warn({ err: error, phone: this.phone, callId, msgType: infoChild.tag }, 'failed to extract raw first child WAP slice')
         }
+      }
+      let rawOfferChildWapBytes: Buffer | undefined
+      if (infoChild.tag === 'offer' && rawFirstChildWapBytes) {
+        rawOfferChildWapBytes = rawFirstChildWapBytes
+      }
+      try {
+        logger.info(
+          {
+            phone: this.phone,
+            callId,
+            msgType: infoChild.tag,
+            originalInfoBytes: originalInfoBytes.byteLength,
+            originalInfoPreviewHex: originalInfoBytes.subarray(0, 48).toString('hex'),
+            originalInfoPreviewBase64: originalInfoBytes.subarray(0, 48).toString('base64'),
+            rawDecryptedCallFrameBytes: rawDecryptedCallFrameBytes?.byteLength,
+            rawDecryptedCallFramePreviewHex: rawDecryptedCallFrameBytes?.subarray(0, 48).toString('hex'),
+            rawDecryptedCallFramePreviewBase64: rawDecryptedCallFrameBytes?.subarray(0, 48).toString('base64'),
+            rawFirstChildWapBytes: rawFirstChildWapBytes?.byteLength,
+            rawFirstChildWapPreviewHex: rawFirstChildWapBytes?.subarray(0, 48).toString('hex'),
+            rawFirstChildWapPreviewBase64: rawFirstChildWapBytes?.subarray(0, 48).toString('base64'),
+          },
+          'VOIP signaling binary framing diagnostics'
+        )
+      } catch {}
+      if (infoChild.tag === 'offer' && !rawOfferChildWapBytes && rawDecryptedCallFrameBytes) {
+        try {
+          logger.warn({ phone: this.phone, callId, msgType: infoChild.tag }, 'raw offer child WAP slice unavailable from decrypted frame')
+        } catch {}
       }
       if (infoChild.tag === 'offer' && rawDecryptedCallFrameBase64) {
         signalingPayloadBase64 = rawDecryptedCallFrameBase64
