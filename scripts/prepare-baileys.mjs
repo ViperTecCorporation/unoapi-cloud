@@ -39,7 +39,6 @@ const patchBaileysCompat = (modDir) => {
   const chatUtilsPath = join(modDir, 'lib', 'Utils', 'chat-utils.js')
   const ltHashPath = join(modDir, 'lib', 'Utils', 'lt-hash.js')
   const reportingUtilsPath = join(modDir, 'lib', 'Utils', 'reporting-utils.js')
-  const noiseHandlerTsPath = join(modDir, 'src', 'Utils', 'noise-handler.ts')
 
   const patchedCrypto = patchFile(cryptoPath, (src) => {
     let out = src
@@ -107,17 +106,7 @@ const patchBaileysCompat = (modDir) => {
     return out
   })
 
-  const patchedNoiseHandlerTs = patchFile(noiseHandlerTsPath, (src) => {
-    let out = src
-    if (!out.includes("VOIP noise decrypted call frame diagnostics")) return src
-    out = out.replace(
-      `\t\t\t\t\tif ((frame as BinaryNode)?.tag === 'call') {\n\t\t\t\t\t\t;(frame as any).__unoRawDecryptedFrameBase64 = Buffer.from(result).toString('base64')\n\t\t\t\t\t\tlogger.info({\n\t\t\t\t\t\t\trawBytes: result?.byteLength,\n\t\t\t\t\t\t\trawPreviewHex: Buffer.from(result).subarray(0, 48).toString('hex'),\n\t\t\t\t\t\t\trawPreviewBase64: Buffer.from(result).subarray(0, 48).toString('base64'),\n\t\t\t\t\t\t\tattrs: (frame as BinaryNode)?.attrs,\n\t\t\t\t\t\t\tfirstChildTag: Array.isArray((frame as BinaryNode)?.content) ? (frame as BinaryNode)?.content?.[0]?.tag : undefined,\n\t\t\t\t\t\t\tfirstChildAttrs: Array.isArray((frame as BinaryNode)?.content) ? (frame as BinaryNode)?.content?.[0]?.attrs : undefined,\n\t\t\t\t\t\t}, 'VOIP noise decrypted call frame diagnostics')\n\t\t\t\t\t}`,
-      `\t\t\t\t\tif ((frame as BinaryNode)?.tag === 'call') {\n\t\t\t\t\t\tconst firstChild = Array.isArray((frame as BinaryNode)?.content)\n\t\t\t\t\t\t\t? (frame as BinaryNode).content?.[0] as BinaryNode | undefined\n\t\t\t\t\t\t\t: undefined\n\t\t\t\t\t\t;(frame as any).__unoRawDecryptedFrameBase64 = Buffer.from(result).toString('base64')\n\t\t\t\t\t\tlogger.info({\n\t\t\t\t\t\t\trawBytes: result?.byteLength,\n\t\t\t\t\t\t\trawPreviewHex: Buffer.from(result).subarray(0, 48).toString('hex'),\n\t\t\t\t\t\t\trawPreviewBase64: Buffer.from(result).subarray(0, 48).toString('base64'),\n\t\t\t\t\t\t\tattrs: (frame as BinaryNode)?.attrs,\n\t\t\t\t\t\t\tfirstChildTag: firstChild?.tag,\n\t\t\t\t\t\t\tfirstChildAttrs: firstChild?.attrs,\n\t\t\t\t\t\t}, 'VOIP noise decrypted call frame diagnostics')\n\t\t\t\t\t}`
-    )
-    return out
-  })
-
-  if (patchedCrypto || patchedChatUtils || patchedLtHash || patchedReporting || patchedNoiseHandlerTs) {
+  if (patchedCrypto || patchedChatUtils || patchedLtHash || patchedReporting) {
     log('compat patch aplicado para evitar TLA do whatsapp-rust-bridge')
   }
 }
