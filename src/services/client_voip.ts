@@ -30,6 +30,24 @@ export interface VoipSignalingPayload {
   peerJid: string
   payload?: string
   payloadBase64?: string
+  rawCallRootWapBase64?: string
+  rawCallOfferRootMinimalWapBase64?: string
+  rawCallOfferRootEnrichedWapBase64?: string
+  rawCallOfferRootPrunedWapBase64?: string
+  rawCallOfferRootNoEncoptWapBase64?: string
+  rawCallOfferRootNoMetadataWapBase64?: string
+  rawCallOfferRootNoEncoptNoMetadataWapBase64?: string
+  rawCallOfferRootNoRelayWapBase64?: string
+  rawCallOfferRootNoNetWapBase64?: string
+  rawCallOfferRootNoRteWapBase64?: string
+  rawCallOfferRootCoreRelayWapBase64?: string
+  rawCallOfferRootCallerMetadataWapBase64?: string
+  rawCallOfferRootCreatorDeviceWapBase64?: string
+  rawCallOfferRootCallerMetadataCreatorDeviceWapBase64?: string
+  rawCallOfferRootNoJoinableWapBase64?: string
+  rawCallOfferRootNoCallerPnWapBase64?: string
+  rawCallOfferRootNoCountryCodeWapBase64?: string
+  rawCallOfferRootMinimalAttrsWapBase64?: string
   rawCallOfferEncWapBase64?: string
   rawOfferEncBase64?: string
   rawDecryptedCallFrameBase64?: string

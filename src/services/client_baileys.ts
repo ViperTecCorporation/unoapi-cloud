@@ -209,6 +209,10 @@ export class ClientBaileys implements Client {
       if (!callId || !peerJid) return
       const infoChildren = getBinaryNodeChildrenSafe(infoChild)
       const encChild = infoChildren.find((child) => child?.tag === 'enc')
+      const audioChild = infoChildren.find((child) => child?.tag === 'audio')
+      const capabilityChild = infoChildren.find((child) => child?.tag === 'capability')
+      const metadataChild = infoChildren.find((child) => child?.tag === 'metadata')
+      const encoptChild = infoChildren.find((child) => child?.tag === 'encopt')
       const encContent = encChild?.content
       const encCtor = encContent && typeof encContent === 'object' ? (encContent as any)?.constructor?.name : typeof encContent
       let encBytes: Buffer | undefined
@@ -218,6 +222,26 @@ export class ClientBaileys implements Client {
         encBytes = Buffer.from(encContent)
       } else if (typeof encContent === 'string') {
         encBytes = Buffer.from(encContent, 'binary')
+      }
+      if (infoChild.tag === 'offer') {
+        try {
+          logger.info(
+            {
+              phone: this.phone,
+              callId,
+              peerJid,
+              rootAttrs: node.attrs || {},
+              offerAttrs: infoChild.attrs || {},
+              offerChildTags: infoChildren.map((child) => child?.tag).filter(Boolean),
+              audioAttrs: audioChild?.attrs || {},
+              capabilityAttrs: capabilityChild?.attrs || {},
+              metadataAttrs: metadataChild?.attrs || {},
+              encoptAttrs: encoptChild?.attrs || {},
+              encAttrsExpanded: encChild?.attrs || {},
+            },
+            'VOIP offer tree diagnostics'
+          )
+        } catch {}
       }
       try {
         logger.info(
@@ -240,7 +264,25 @@ export class ClientBaileys implements Client {
       } catch {}
       let signalingPayloadBase64 = ''
       let payloadStrategy = 'enc_raw'
+      let rawCallRootWapBytes: Buffer | undefined
       const originalInfoBytes = encodeBinaryNode(infoChild)
+      let rawCallOfferRootMinimalWapBytes: Buffer | undefined
+      let rawCallOfferRootEnrichedWapBytes: Buffer | undefined
+      let rawCallOfferRootPrunedWapBytes: Buffer | undefined
+      let rawCallOfferRootNoEncoptWapBytes: Buffer | undefined
+      let rawCallOfferRootNoMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootNoEncoptNoMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootNoRelayWapBytes: Buffer | undefined
+      let rawCallOfferRootNoNetWapBytes: Buffer | undefined
+      let rawCallOfferRootNoRteWapBytes: Buffer | undefined
+      let rawCallOfferRootCoreRelayWapBytes: Buffer | undefined
+      let rawCallOfferRootCallerMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootCreatorDeviceWapBytes: Buffer | undefined
+      let rawCallOfferRootCallerMetadataCreatorDeviceWapBytes: Buffer | undefined
+      let rawCallOfferRootNoJoinableWapBytes: Buffer | undefined
+      let rawCallOfferRootNoCallerPnWapBytes: Buffer | undefined
+      let rawCallOfferRootNoCountryCodeWapBytes: Buffer | undefined
+      let rawCallOfferRootMinimalAttrsWapBytes: Buffer | undefined
       let rawCallOfferEncWapBytes: Buffer | undefined
       const rawOfferEncBase64 = infoChild.tag === 'offer' && encBytes
         ? encBytes.toString('base64')
@@ -288,6 +330,232 @@ export class ClientBaileys implements Client {
           logger.warn({ phone: this.phone, callId, msgType: infoChild.tag }, 'raw offer child WAP slice unavailable from decrypted frame')
         } catch {}
       }
+      if (infoChild.tag === 'offer') {
+        const minimalRootAttrs = Object.fromEntries(
+          Object.entries(node.attrs || {}).filter(([key, value]) =>
+            ['from', 'id', 't'].includes(key) && typeof value !== 'undefined'
+          )
+        )
+        const enrichedRootAttrs = Object.fromEntries(
+          Object.entries(node.attrs || {}).filter(([key, value]) =>
+            ['from', 'version', 'platform', 'id', 't'].includes(key) && typeof value !== 'undefined'
+          )
+        )
+        const callOfferRootMinimalNode: BinaryNode = {
+          tag: node.tag,
+          attrs: minimalRootAttrs,
+          content: [infoChild],
+        }
+        rawCallOfferRootMinimalWapBytes = encodeBinaryNode(callOfferRootMinimalNode)
+        const callOfferRootEnrichedNode: BinaryNode = {
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [infoChild],
+        }
+        rawCallOfferRootEnrichedWapBytes = encodeBinaryNode(callOfferRootEnrichedNode)
+        const prunedOfferChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => {
+            if (typeof child !== 'object' || !child) return false
+            return ['audio', 'capability', 'enc', 'encopt', 'metadata'].includes(child.tag || '')
+          })
+          : infoChild.content
+        const callOfferRootPrunedNode: BinaryNode = {
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: prunedOfferChildren,
+          }],
+        }
+        rawCallOfferRootPrunedWapBytes = encodeBinaryNode(callOfferRootPrunedNode)
+        const noEncoptChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'encopt')
+          : infoChild.content
+        const noMetadataChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'metadata')
+          : infoChild.content
+        const noEncoptNoMetadataChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || (child.tag !== 'encopt' && child.tag !== 'metadata'))
+          : infoChild.content
+        rawCallOfferRootNoEncoptWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noEncoptChildren,
+          }],
+        })
+        rawCallOfferRootNoMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noMetadataChildren,
+          }],
+        })
+        rawCallOfferRootNoEncoptNoMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noEncoptNoMetadataChildren,
+          }],
+        })
+        const noRelayChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'relay')
+          : infoChild.content
+        const noNetChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'net')
+          : infoChild.content
+        const noRteChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'rte')
+          : infoChild.content
+        const coreRelayChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => {
+            if (typeof child !== 'object' || !child) return false
+            return ['audio', 'capability', 'enc', 'relay'].includes(child.tag || '')
+          })
+          : infoChild.content
+        rawCallOfferRootNoRelayWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noRelayChildren,
+          }],
+        })
+        rawCallOfferRootNoNetWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noNetChildren,
+          }],
+        })
+        rawCallOfferRootNoRteWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noRteChildren,
+          }],
+        })
+        rawCallOfferRootCoreRelayWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: coreRelayChildren,
+          }],
+        })
+        const callerPn = `${infoChild.attrs?.caller_pn || ''}`.trim()
+        const originalCallCreator = `${infoChild.attrs?.['call-creator'] || ''}`.trim()
+        const creatorDeviceJid = callerPn || originalCallCreator.replace(/@lid$/i, '@s.whatsapp.net')
+        const callerMetadataChild: BinaryNode = {
+          tag: 'caller_metadata',
+          attrs: {
+            call_creator: originalCallCreator || creatorDeviceJid,
+            caller_pn: callerPn,
+            platform: `${node.attrs?.platform || ''}`.trim(),
+            notify: `${node.attrs?.notify || ''}`.trim(),
+          },
+          content: undefined,
+        }
+        const callerMetadataChildren = Array.isArray(infoChild.content)
+          ? [...infoChild.content, callerMetadataChild]
+          : [callerMetadataChild]
+        rawCallOfferRootCallerMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: callerMetadataChildren,
+          }],
+        })
+        const creatorDeviceOfferAttrs = {
+          ...(infoChild.attrs || {}),
+          ...(creatorDeviceJid ? { 'call-creator': creatorDeviceJid } : {}),
+        }
+        const creatorDeviceRootAttrs = {
+          ...enrichedRootAttrs,
+          ...(creatorDeviceJid ? { from: creatorDeviceJid } : {}),
+        }
+        rawCallOfferRootCreatorDeviceWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: creatorDeviceRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: creatorDeviceOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootCallerMetadataCreatorDeviceWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: creatorDeviceRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: creatorDeviceOfferAttrs,
+            content: callerMetadataChildren,
+          }],
+        })
+        const noJoinableOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'joinable')
+        )
+        const noCallerPnOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'caller_pn')
+        )
+        const noCountryCodeOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'caller_country_code')
+        )
+        const minimalOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => ['call-id', 'call-creator', 'caller_pn'].includes(key))
+        )
+        rawCallOfferRootNoJoinableWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noJoinableOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootNoCallerPnWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noCallerPnOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootNoCountryCodeWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noCountryCodeOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootMinimalAttrsWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: minimalOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+      }
       if (infoChild.tag === 'offer' && rawDecryptedCallFrameBase64) {
         signalingPayloadBase64 = rawDecryptedCallFrameBase64
         payloadStrategy = 'raw_decrypted_call_frame'
@@ -325,6 +593,12 @@ export class ClientBaileys implements Client {
               rawCallOfferEncWapBytes: rawCallOfferEncWapBytes?.byteLength,
               rawCallOfferEncWapPreviewHex: rawCallOfferEncWapBytes?.subarray(0, 48).toString('hex'),
               rawCallOfferEncWapPreviewBase64: rawCallOfferEncWapBytes?.subarray(0, 48).toString('base64'),
+              rawCallOfferRootMinimalWapBytes: rawCallOfferRootMinimalWapBytes?.byteLength,
+              rawCallOfferRootMinimalWapPreviewHex: rawCallOfferRootMinimalWapBytes?.subarray(0, 48).toString('hex'),
+              rawCallOfferRootMinimalWapPreviewBase64: rawCallOfferRootMinimalWapBytes?.subarray(0, 48).toString('base64'),
+              rawCallOfferRootEnrichedWapBytes: rawCallOfferRootEnrichedWapBytes?.byteLength,
+              rawCallOfferRootEnrichedWapPreviewHex: rawCallOfferRootEnrichedWapBytes?.subarray(0, 48).toString('hex'),
+              rawCallOfferRootEnrichedWapPreviewBase64: rawCallOfferRootEnrichedWapBytes?.subarray(0, 48).toString('base64'),
               offerWapNoPrefixBytes: offerWapNoPrefixBytes?.byteLength,
               offerWapNoPrefixPreviewHex: offerWapNoPrefixBytes?.subarray(0, 48).toString('hex'),
               offerWapNoPrefixPreviewBase64: offerWapNoPrefixBytes?.subarray(0, 48).toString('base64'),
@@ -338,32 +612,87 @@ export class ClientBaileys implements Client {
       } else if (encBytes) {
         signalingPayloadBase64 = encBytes.toString('base64')
       }
+      if (!rawCallRootWapBytes) {
+        rawCallRootWapBytes = encodeBinaryNode(node)
+      }
       if (!signalingPayloadBase64) {
         // Fallback for signaling nodes that are not wrapped in an `enc` payload.
-        signalingPayloadBase64 = encodeBinaryNode(node).toString('base64')
+        signalingPayloadBase64 = rawCallRootWapBytes.toString('base64')
         payloadStrategy = 'root_fallback_wap'
       }
       try {
-        logger.info({ phone: this.phone, callId, msgType: infoChild.tag, payloadStrategy }, 'VOIP signaling payload strategy')
+        const finalPayloadBytes = signalingPayloadBase64 ? Buffer.from(signalingPayloadBase64, 'base64') : undefined
+        logger.info({
+          phone: this.phone,
+          callId,
+          msgType: infoChild.tag,
+          payloadStrategy,
+          finalPayloadBytes: finalPayloadBytes?.byteLength,
+          finalPayloadPreviewHex: finalPayloadBytes?.subarray(0, 48).toString('hex'),
+          finalPayloadPreviewBase64: finalPayloadBytes?.subarray(0, 48).toString('base64'),
+          matchesOriginalInfo: !!(finalPayloadBytes && originalInfoBytes.equals(finalPayloadBytes)),
+          matchesRawFirstChild: !!(finalPayloadBytes && rawFirstChildWapBytes && finalPayloadBytes.equals(rawFirstChildWapBytes)),
+          matchesRawDecryptedFrame: !!(finalPayloadBytes && rawDecryptedCallFrameBytes && finalPayloadBytes.equals(rawDecryptedCallFrameBytes)),
+        }, 'VOIP signaling payload strategy')
       } catch {}
-      const response = await this.enqueueVoipByCall(callId, async () => sendVoipSignaling(this.config, {
-        session: this.phone,
+      logger.info({
+        phone: this.phone,
         callId,
-        peerJid,
         msgType: infoChild.tag,
-        payload: binaryNodeToXml(infoChild),
-        payloadBase64: signalingPayloadBase64,
-        rawCallOfferEncWapBase64: rawCallOfferEncWapBytes?.toString('base64'),
-        rawOfferEncBase64,
-        rawDecryptedCallFrameBase64: rawDecryptedCallFrameBase64 || undefined,
-        rawOfferWapNoPrefixBase64: offerWapNoPrefixBytes?.toString('base64'),
-        rawOfferChildWapBase64: rawOfferChildWapBytes?.toString('base64'),
-        payloadEncoding: 'wa_binary',
-        attrs: Object.fromEntries(Object.entries(infoChild.attrs || {}).map(([key, value]) => [key, `${value}`])),
-        outerAttrs: Object.fromEntries(Object.entries(node.attrs || {}).map(([key, value]) => [key, `${value}`])),
-        encAttrs: encChild ? Object.fromEntries(Object.entries(encChild.attrs || {}).map(([key, value]) => [key, `${value}`])) : undefined,
-        timestamp: Number(node?.attrs?.t || 0) || undefined,
-      }))
+        peerJid,
+        payloadStrategy,
+      }, 'VOIP enqueue signaling start')
+      const response = await this.enqueueVoipByCall(callId, async () => {
+        logger.info({
+          phone: this.phone,
+          callId,
+          msgType: infoChild.tag,
+          peerJid,
+          payloadStrategy,
+        }, 'VOIP enqueue signaling callback')
+        return sendVoipSignaling(this.config, {
+          session: this.phone,
+          callId,
+          peerJid,
+          msgType: infoChild.tag,
+          payload: binaryNodeToXml(infoChild),
+          payloadBase64: signalingPayloadBase64,
+          rawCallRootWapBase64: rawCallRootWapBytes?.toString('base64'),
+          rawCallOfferRootMinimalWapBase64: rawCallOfferRootMinimalWapBytes?.toString('base64'),
+          rawCallOfferRootEnrichedWapBase64: rawCallOfferRootEnrichedWapBytes?.toString('base64'),
+          rawCallOfferRootPrunedWapBase64: rawCallOfferRootPrunedWapBytes?.toString('base64'),
+          rawCallOfferRootNoEncoptWapBase64: rawCallOfferRootNoEncoptWapBytes?.toString('base64'),
+          rawCallOfferRootNoMetadataWapBase64: rawCallOfferRootNoMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootNoEncoptNoMetadataWapBase64: rawCallOfferRootNoEncoptNoMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootNoRelayWapBase64: rawCallOfferRootNoRelayWapBytes?.toString('base64'),
+          rawCallOfferRootNoNetWapBase64: rawCallOfferRootNoNetWapBytes?.toString('base64'),
+          rawCallOfferRootNoRteWapBase64: rawCallOfferRootNoRteWapBytes?.toString('base64'),
+          rawCallOfferRootCoreRelayWapBase64: rawCallOfferRootCoreRelayWapBytes?.toString('base64'),
+          rawCallOfferRootCallerMetadataWapBase64: rawCallOfferRootCallerMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootCreatorDeviceWapBase64: rawCallOfferRootCreatorDeviceWapBytes?.toString('base64'),
+          rawCallOfferRootCallerMetadataCreatorDeviceWapBase64: rawCallOfferRootCallerMetadataCreatorDeviceWapBytes?.toString('base64'),
+          rawCallOfferRootNoJoinableWapBase64: rawCallOfferRootNoJoinableWapBytes?.toString('base64'),
+          rawCallOfferRootNoCallerPnWapBase64: rawCallOfferRootNoCallerPnWapBytes?.toString('base64'),
+          rawCallOfferRootNoCountryCodeWapBase64: rawCallOfferRootNoCountryCodeWapBytes?.toString('base64'),
+          rawCallOfferRootMinimalAttrsWapBase64: rawCallOfferRootMinimalAttrsWapBytes?.toString('base64'),
+          rawCallOfferEncWapBase64: rawCallOfferEncWapBytes?.toString('base64'),
+          rawOfferEncBase64,
+          rawDecryptedCallFrameBase64: rawDecryptedCallFrameBase64 || undefined,
+          rawOfferWapNoPrefixBase64: offerWapNoPrefixBytes?.toString('base64'),
+          rawOfferChildWapBase64: rawOfferChildWapBytes?.toString('base64'),
+          payloadEncoding: 'wa_binary',
+          attrs: Object.fromEntries(Object.entries(infoChild.attrs || {}).map(([key, value]) => [key, `${value}`])),
+          outerAttrs: Object.fromEntries(Object.entries(node.attrs || {}).map(([key, value]) => [key, `${value}`])),
+          encAttrs: encChild ? Object.fromEntries(Object.entries(encChild.attrs || {}).map(([key, value]) => [key, `${value}`])) : undefined,
+          timestamp: Number(node?.attrs?.t || 0) || undefined,
+        })
+      })
+      logger.info({
+        phone: this.phone,
+        callId,
+        msgType: infoChild.tag,
+        peerJid,
+      }, 'VOIP enqueue signaling done')
       await this.processVoipCommands(extractVoipCommands(response.body))
     } catch (error) {
       logger.warn(error as any, 'failed to forward voip signaling for %s', this.phone)
