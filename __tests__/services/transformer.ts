@@ -16,6 +16,9 @@ import {
   isGroupMessage,
   isOutgoingMessage,
   getChatAndNumberAndId,
+  toRawPnJid,
+  jidToRawPhoneNumber,
+  normalizeTransportJid,
 } from '../../src/services/transformer'
 import { BASE_URL, WEBHOOK_FORWARD_VERSION } from '../../src/defaults'
 const key = { remoteJid: 'XXXX@s.whatsapp.net', id: 'abc' }
@@ -226,6 +229,18 @@ describe('service transformer', () => {
 
   test('phoneNumberToJid with fixed line', async () => {
     expect(phoneNumberToJid('554936213155')).toEqual('554936213155@s.whatsapp.net')
+  })
+
+  test('toRawPnJid preserves brazilian pn without inserting ninth digit', async () => {
+    expect(toRawPnJid('556696923653')).toEqual('556696923653@s.whatsapp.net')
+  })
+
+  test('jidToRawPhoneNumber preserves raw pn digits', async () => {
+    expect(jidToRawPhoneNumber('556696923653@s.whatsapp.net', '')).toEqual('556696923653')
+  })
+
+  test('normalizeTransportJid removes device suffix without normalizing pn', async () => {
+    expect(normalizeTransportJid('556696923653:7@s.whatsapp.net')).toEqual('556696923653@s.whatsapp.net')
   })
 
   test('getMessageType with conversation', async () => {
@@ -1148,7 +1163,7 @@ describe('service transformer', () => {
                   {
                     conversation: {
                       // expiration_timestamp: 1681504976647,
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                     },
                     id,
                     recipient_id: remotePhoneNumber.replace('+', ''),
@@ -1206,7 +1221,7 @@ describe('service transformer', () => {
                   {
                     conversation: {
                       // expiration_timestamp: 1681504976647,
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                     },
                     id,
                     recipient_id: remotePhoneNumber.replace('+', ''),
@@ -1259,7 +1274,7 @@ describe('service transformer', () => {
                 statuses: [
                   {
                     conversation: {
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                       // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
                     },
                     id,
@@ -1313,7 +1328,7 @@ describe('service transformer', () => {
                 statuses: [
                   {
                     conversation: {
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                       // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
                     },
                     id,
@@ -1367,7 +1382,7 @@ describe('service transformer', () => {
                 statuses: [
                   {
                     conversation: {
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                       // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
                     },
                     errors: [
@@ -1427,7 +1442,7 @@ describe('service transformer', () => {
                 statuses: [
                   {
                     conversation: {
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                       // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
                     },
                     id,
@@ -1481,7 +1496,7 @@ describe('service transformer', () => {
                 statuses: [
                   {
                     conversation: {
-                      id: remoteJid,
+                      id: remotePhoneNumber.replace('+', ''),
                       // expiration_timestamp: new Date().setDate(new Date().getDate() + 30),
                     },
                     id,
@@ -2123,6 +2138,30 @@ describe('service transformer', () => {
     const resp = fromBaileysMessageContent(phoneNumer, input)[0]
     const from = resp.entry[0].changes[0].value.messages[0].from
     expect(from).toEqual(remotePhoneNumber)
+  })
+
+  test('fromBaileysMessageContent group always includes group_id even without groupMetadata', async () => {
+    const phoneNumer = '5566996269251'
+    const remotePhoneNumber = '5587981148453'
+    const groupJid = '120363036972484891@g.us'
+    const input = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: 'f196aca0-2a2b-11f1-a5b4-4b9e88d5d5a0',
+        participant: `${remotePhoneNumber}@s.whatsapp.net`,
+      },
+      messageTimestamp: 1774650364,
+      pushName: 'Joseph Fernandes',
+      message: {
+        conversation: 'pra rodar desenvolver local as calls precisa de que tanto?'
+      },
+    }
+    const resp = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = resp.entry[0].changes[0].value
+    expect(value.contacts[0].group_id).toEqual(groupJid)
+    expect(value.contacts[0].wa_id).toEqual(remotePhoneNumber)
+    expect(value.messages[0].from).toEqual(remotePhoneNumber)
   })
 
   test('fromBaileysMessageContent statusMentionMessage', async () => {

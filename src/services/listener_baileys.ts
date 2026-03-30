@@ -3,7 +3,7 @@ import logger from './logger'
 import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
-import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
+import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, jidToRawPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
@@ -666,46 +666,81 @@ export class ListenerBaileys implements Listener {
       try {
         if (data) {
           const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
+          const isGroupPayload = Array.isArray(v.contacts) && v.contacts.some((c: any) => typeof c?.group_id === 'string' && c.group_id.endsWith('@g.us'))
           const digitsOnly = (s?: string) => typeof s === 'string' && /^\d+$/.test(s)
           const toPnJid = (d: string) => `${d.replace(/\D/g,'')}@s.whatsapp.net`
-          // contacts[].wa_id
-          if (Array.isArray(v.contacts)) {
-            for (const c of v.contacts) {
-              const id = c?.wa_id
-              if (digitsOnly(id)) {
-                try {
-                  const lid = await dataStore.getLidForPn?.(phone, toPnJid(id))
-                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    c.wa_id = lid
-                  }
-                } catch {}
+          if (!isGroupPayload) {
+            // contacts[].wa_id
+            if (Array.isArray(v.contacts)) {
+              for (const c of v.contacts) {
+                const id = c?.wa_id
+                if (digitsOnly(id)) {
+                  try {
+                    const lid = await dataStore.getLidForPn?.(phone, toPnJid(id))
+                    if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                      c.wa_id = lid
+                    }
+                  } catch {}
+                }
               }
             }
-          }
-          // messages[].from
-          if (Array.isArray(v.messages)) {
-            for (const m of v.messages) {
-              const from = m?.from
-              if (digitsOnly(from)) {
-                try {
-                  const lid = await dataStore.getLidForPn?.(phone, toPnJid(from))
-                  if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    m.from = lid
-                  }
-                } catch {}
+            // messages[].from
+            if (Array.isArray(v.messages)) {
+              for (const m of v.messages) {
+                const from = m?.from
+                if (digitsOnly(from)) {
+                  try {
+                    const lid = await dataStore.getLidForPn?.(phone, toPnJid(from))
+                    if (typeof lid === 'string' && lid.endsWith('@lid')) {
+                      m.from = lid
+                    }
+                  } catch {}
+                }
               }
             }
           }
         }
       } catch {}
+      // Preferir PN bruto do transporte para caches internos/JIDMAP.
+      // senderPhone já vem normalizado para webhook e pode inserir o 9º dígito BR.
+      let rawTransportPnDigits = ''
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const kid: any = (i as any)?.key || {}
+        const rawPnCandidates = [
+          kid?.participantPn,
+          kid?.senderPn,
+          (i as any)?.participantPn,
+          (i as any)?.participant,
+          (i as any)?.participantAlt,
+          kid?.participantAlt,
+          kid?.remoteJidAlt,
+          (!kid?.remoteJid || `${kid.remoteJid}`.includes('@lid')) ? undefined : kid?.remoteJid,
+        ]
+        for (const candidate of rawPnCandidates) {
+          const raw = `${candidate || ''}`.trim()
+          if (!raw) continue
+          let digits = ''
+          try {
+            if (raw.includes('@s.whatsapp.net')) digits = jidToRawPhoneNumber(raw, '').replace('+', '')
+            else if (/^\+?\d+$/.test(raw)) digits = raw.replace(/\D/g, '')
+          } catch {}
+          if (digits) {
+            rawTransportPnDigits = digits
+            break
+          }
+        }
+      } catch {}
+      const senderPhoneDigits = (senderPhone || '').replace(/\D/g, '')
+      const preferredPnDigits = rawTransportPnDigits || senderPhoneDigits
       // Mapeia PN (apenas dígitos) -> JID reportado pelo evento, sem heurística BR
       try {
-        const pn = (senderPhone || '').replace(/\D/g, '')
-        if (pn) { await dataStore.setJidIfNotFound(pn, senderId) }
+        if (preferredPnDigits) { await dataStore.setJidIfNotFound(preferredPnDigits, senderId) }
       } catch {}
-      // Se inbound veio de LID, grava/atualiza mapeamento PN<->LID para aquecer cache (também em 1:1)
+      // Se inbound veio de LID, apenas aquece contact-info.
+      // O JIDMAP persistente deve ser aquecido exclusivamente a partir do auth cache.
       try {
-        const pnDigits = (senderPhone || '').replace(/\D/g, '')
+        const pnDigits = preferredPnDigits
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const kid: any = (i as any)?.key || {}
         const lidJid = (typeof kid?.participant === 'string' && kid.participant.includes('@lid')) ? kid.participant
@@ -716,7 +751,6 @@ export class ListenerBaileys implements Listener {
         if (pnDigits && lidJid && isValidPhoneNumber(pnDigits, true)) {
           try {
             const pnJid = `${pnDigits}@s.whatsapp.net`
-            await dataStore.setJidMapping?.(phone, pnJid, lidJid)
             try {
               const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
               if (rawName) {
@@ -732,7 +766,13 @@ export class ListenerBaileys implements Listener {
           try {
             const pnJid = await dataStore.getPnForLid?.(phone, lidJid)
             if (pnJid && typeof pnJid === 'string' && pnJid.endsWith('@s.whatsapp.net')) {
-              await dataStore.setJidMapping?.(phone, pnJid, lidJid)
+              const rawName = ((i as any)?.verifiedBizName || (i as any)?.pushName || '').toString().trim()
+              if (rawName) {
+                try { await dataStore.setContactName?.(pnJid, rawName) } catch {}
+                try { await dataStore.setContactName?.(lidJid, rawName) } catch {}
+                try { await dataStore.setContactInfo?.(pnJid, { name: rawName, pnJid, lidJid, pn: pnJid.split('@')[0] }) } catch {}
+                try { await dataStore.setContactInfo?.(lidJid, { name: rawName, pnJid, lidJid, pn: pnJid.split('@')[0] }) } catch {}
+              }
             }
           } catch {}
         }
@@ -782,6 +822,21 @@ export class ListenerBaileys implements Listener {
       const state = data?.entry[0]?.changes[0]?.value?.statuses?.[0] || {}
       try {
         if (state?.id && state?.status) {
+          try {
+            const keyId = `${i?.key?.id || ''}`.trim()
+            if (keyId) {
+              state.id = keyId
+              try { (data as any).entry[0].changes[0].value.statuses[0].id = keyId } catch {}
+            }
+          } catch {}
+          try {
+            const rid = `${state?.recipient_id || ''}`.trim()
+            if (rid) {
+              state.conversation = state.conversation || {}
+              state.conversation.id = rid
+              try { (data as any).entry[0].changes[0].value.statuses[0].conversation.id = rid } catch {}
+            }
+          } catch {}
           let id = state.id
           try {
             // Normaliza id do status para UNO id quando houver mapeamento (provider->UNO)

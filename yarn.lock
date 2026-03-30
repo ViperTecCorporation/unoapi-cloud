@@ -2925,9 +2925,9 @@
   dependencies:
     "@wasm-audio-decoders/common" "9.0.7"
 
-"@whiskeysockets/baileys@github:ViperTecCorporation/Baileys#b62cb12c2ceb1cc5eeb3431c6a67e60709111a93":
+"@whiskeysockets/baileys@github:ViperTecCorporation/Baileys#136036fcb57e8aea7059eb44007f8664dfa37546":
   version "7.0.0-rc.9"
-  resolved "https://codeload.github.com/ViperTecCorporation/Baileys/tar.gz/b62cb12c2ceb1cc5eeb3431c6a67e60709111a93"
+  resolved "https://codeload.github.com/ViperTecCorporation/Baileys/tar.gz/136036fcb57e8aea7059eb44007f8664dfa37546"
   dependencies:
     "@cacheable/node-cache" "^1.4.0"
     "@hapi/boom" "^9.1.3"
@@ -2938,6 +2938,7 @@
     p-queue "^9.0.0"
     pino "^9.6"
     protobufjs "^7.2.4"
+    whatsapp-rust-bridge "0.5.3"
     ws "^8.13.0"
 
 "@whiskeysockets/libsignal-node@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/e81ecfc32eb74951d789ab37f7e341ab66d5fff1":
@@ -7150,10 +7151,10 @@ webidl-conversions@^3.0.0:
   resolved "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz"
   integrity sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==
 
-whatsapp-rust-bridge@0.5.2:
-  version "0.5.2"
-  resolved "https://registry.yarnpkg.com/whatsapp-rust-bridge/-/whatsapp-rust-bridge-0.5.2.tgz#2c133c3497f5f5fa0544b00dc969d18cc55e9c7d"
-  integrity sha512-6KBRNvxg6WMIwZ/euA8qVzj16qxMBzLllfmaJIP1JGAAfSvwn6nr8JDOMXeqpXPEOl71UfOG+79JwKEoT2b1Fw==
+whatsapp-rust-bridge@0.5.3:
+  version "0.5.3"
+  resolved "https://registry.yarnpkg.com/whatsapp-rust-bridge/-/whatsapp-rust-bridge-0.5.3.tgz#3981f247106fe0e03a674ba541d11f32b19608d7"
+  integrity sha512-Xb3GAgtWQQJ30oI4a4pjM4+YUeli9CMLTwTIewUrb+AJMFElIkiT5uo+j1Zhc+amiV0Jj+LfX76c/EEZirJbGA==
 
 whatwg-url@^5.0.0:
   version "5.0.0"

@@ -21,6 +21,7 @@ import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
 import { isTransientInfraError } from './error_utils'
+import { version as appVersion } from '../../package.json'
 
 export const BASE_KEY = 'unoapi-'
 
@@ -42,6 +43,7 @@ const REDIS_CONNECT_RETRY_DELAY_MS = parseInt(process.env.REDIS_CONNECT_RETRY_DE
 let redisHealthStarted = false
 const REDIS_HEALTH_INTERVAL_MS = 15_000
 const REDIS_PING_WARN_MS = 200
+let startupMigrationsDone = false
 const isCacheValid = (ts: number, ttlMs: number) => ttlMs <= 0 || (Date.now() - ts) <= ttlMs
 const authCache: Map<string, { value: string | null, ts: number }> = new Map()
 const sessionStatusCache: Map<string, { value: string | null, ts: number }> = new Map()
@@ -106,11 +108,86 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
       } catch {}
     }
   }
+  if (client && !startupMigrationsDone) {
+    startupMigrationsDone = true
+    try {
+      await runStartupRedisMigrations()
+    } catch (e) {
+      logger.warn(e as any, 'Redis startup migrations failed')
+    }
+  }
   return client
 }
 
 export const getRedis = async (redisUrl = REDIS_URL) => {
   return await startRedis(redisUrl)
+}
+
+const appVersionKey = () => `${BASE_KEY}app:version:last`
+const appMigrationLockKey = (name: string) => `${BASE_KEY}app:migration:${name}:lock`
+
+const parseSemverLike = (raw?: string): [number, number, number] => {
+  const cleaned = `${raw || ''}`.trim().replace(/^v/i, '').split('-')[0]
+  const parts = cleaned.split('.').map((p) => parseInt(p, 10))
+  return [
+    Number.isFinite(parts[0]) ? parts[0] : 0,
+    Number.isFinite(parts[1]) ? parts[1] : 0,
+    Number.isFinite(parts[2]) ? parts[2] : 0,
+  ]
+}
+
+const isSemverLt = (a?: string, b?: string): boolean => {
+  const av = parseSemverLike(a)
+  const bv = parseSemverLike(b)
+  for (let i = 0; i < 3; i += 1) {
+    if (av[i] < bv[i]) return true
+    if (av[i] > bv[i]) return false
+  }
+  return false
+}
+
+const clearGlobalJidMapOnLegacyUpgrade = async (): Promise<void> => {
+  const currentVersion = `${appVersion || ''}`.trim()
+  const previousVersion = `${await redisGet(appVersionKey()) || ''}`.trim()
+  const targetVersion = '3.0.57'
+  try {
+    logger.info('Startup migration check: previous=%s current=%s target=%s', previousVersion || '<none>', currentVersion || '<none>', targetVersion)
+  } catch {}
+  if (!previousVersion) {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+    return
+  }
+  if (!isSemverLt(previousVersion, targetVersion)) {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+    return
+  }
+  const lockKey = appMigrationLockKey(`clear-global-jidmap-before-${targetVersion}`)
+  const acquired = await redisSetIfNotExists(lockKey, currentVersion || '1', 600)
+  if (!acquired) {
+    try {
+      await redisSet(appVersionKey(), currentVersion)
+    } catch {}
+    return
+  }
+  try {
+    const keys = await redisScanSome(`${BASE_KEY}jidmap:global:*`, 100000)
+    let deleted = 0
+    for (const key of keys || []) {
+      try {
+        await redisDel(key)
+        deleted += 1
+      } catch {}
+    }
+    try {
+      logger.warn('Startup migration: cleared %s global jidmap key(s) due to upgrade from %s to %s', deleted, previousVersion, currentVersion)
+    } catch {}
+  } finally {
+    try { await redisSet(appVersionKey(), currentVersion) } catch {}
+  }
+}
+
+const runStartupRedisMigrations = async (): Promise<void> => {
+  await clearGlobalJidMapOnLegacyUpgrade()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {
@@ -584,6 +661,17 @@ const jidMapPnKeyNew   = (session: string, lidJid: string) => `${BASE_KEY}jidmap
 const jidMapLidKeyNew  = (session: string, pnJid: string) => `${BASE_KEY}jidmap:${session}:lid_for_pn:${pnJid}`
 const jidMapPnKeyGlob  = (lidJid: string) => `${BASE_KEY}jidmap:global:pn_for_lid:${lidJid}`
 const jidMapLidKeyGlob = (pnJid: string)  => `${BASE_KEY}jidmap:global:lid_for_pn:${pnJid}`
+const getAlternateBrPnJids = (pnJid: string): string[] => {
+  const digits = `${pnJid || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
+  if (!digits.startsWith('55')) return []
+  if (digits.length === 13 && digits.charAt(4) === '9') {
+    return [`55${digits.slice(2, 4)}${digits.slice(5)}@s.whatsapp.net`]
+  }
+  if (digits.length === 12 && /[6-9]/.test(digits.charAt(4))) {
+    return [`55${digits.slice(2, 4)}9${digits.slice(4)}@s.whatsapp.net`]
+  }
+  return []
+}
 
 export const getPnForLid = async (session: string, lidJid: string) => {
   if (!JIDMAP_STORED_LOOKUP_ENABLED) return undefined
@@ -622,6 +710,13 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
     if (ttlSec > 0) return redisSetAndExpire(key, value, ttlSec)
     return redisSet(key, value)
   }
+  try {
+    const alternates = getAlternateBrPnJids(pnJid).filter((alt) => alt && alt !== pnJid)
+    for (const altPnJid of alternates) {
+      try { await redisDel(jidMapLidKeyGlob(altPnJid)) } catch {}
+      try { await redisDel(jidMapLidKeyNew(session, altPnJid)) } catch {}
+    }
+  } catch {}
   // Apenas escopo global (reduz chaves duplicadas por sess?o); leitura legacy continua via fallback
   try { await setMapping(jidMapPnKeyGlob(lidJid), pnJid) } catch {}
   try { await setMapping(jidMapLidKeyGlob(pnJid), lidJid) } catch {}

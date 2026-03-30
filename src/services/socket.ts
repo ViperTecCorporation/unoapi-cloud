@@ -17,10 +17,11 @@ import makeWASocket, {
   isPnUser,
   WAMessageAddressingMode,
 } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
 import MAIN_LOGGER from '@whiskeysockets/baileys/lib/Utils/logger'
 import { Config, defaultConfig } from './config'
 import { Store } from './store'
-import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
+import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid, ensurePn, normalizeTransportJid } from './transformer'
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -44,7 +45,7 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
@@ -109,6 +110,10 @@ export interface readMessages {
 
 export interface rejectCall {
   (_callId: string, _callFrom: string): Promise<void>
+}
+
+export interface sendCallNode {
+  (_node: BinaryNode): Promise<void>
 }
 
 export interface fetchImageUrl {
@@ -1216,7 +1221,7 @@ export const connect = async ({
                 return out
               }
               const all = collectJids(u).map((j) => {
-                try { return jidNormalizedUser(j) } catch { return j }
+                try { return normalizeTransportJid(j) } catch { return j }
               })
               let pn: string | undefined
               let lid: string | undefined
@@ -1224,13 +1229,6 @@ export const connect = async ({
                 try {
                   if (!pn && isPnUser(j as any)) pn = j
                   if (!lid && isLidUser(j as any)) lid = j
-                } catch {}
-              }
-              // Fallback: se só houver LID, derivar PN via jidNormalizedUser
-              if (!pn && lid) {
-                try {
-                  const cand = jidNormalizedUser(lid)
-                  if (cand && isPnUser(cand as any)) pn = cand as any
                 } catch {}
               }
               if (pn && lid) {
@@ -1457,6 +1455,49 @@ export const connect = async ({
     const forceRemoteJid = options?.forceRemoteJid
     const skipBrSendOrder = options?.skipBrSendOrder
     let idCandidate = forceRemoteJid || to
+    try {
+      if (!forceRemoteJid && isIndividualJid(idCandidate)) {
+        if (isLidUser(idCandidate as any)) {
+          const authPn = await getPnForLidFromAuthCache(phone, `${idCandidate}`)
+          if (authPn && isPnUser(authPn as any)) {
+            logger.debug('AUTH_CANONICAL: using PN %s from auth for LID %s', authPn, idCandidate)
+            idCandidate = authPn
+          }
+        } else {
+          const raw = ensurePn(`${idCandidate}`)
+          if (raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
+            const to12 = (() => {
+              if (raw.length === 12) return raw
+              const ddd = raw.slice(2, 4)
+              const local9 = raw.slice(4)
+              return `55${ddd}${local9.slice(1)}`
+            })()
+            const to13 = (() => {
+              if (raw.length === 13) return raw
+              const ddd = raw.slice(2, 4)
+              const local = raw.slice(4)
+              return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : raw
+            })()
+            const variants = Array.from(new Set([to12, to13]))
+            for (const variant of variants) {
+              const variantJid = `${variant}@s.whatsapp.net`
+              const authLid = await getLidForPnFromAuthCache(phone, variantJid)
+              if (authLid) {
+                if (variantJid !== idCandidate) {
+                  logger.warn('AUTH_CANONICAL: overriding destination %s -> %s via auth mapping %s', idCandidate, variantJid, authLid)
+                } else {
+                  logger.debug('AUTH_CANONICAL: keeping destination %s via auth mapping %s', variantJid, authLid)
+                }
+                idCandidate = variantJid
+                break
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logger.debug(e as any, 'AUTH_CANONICAL: ignore error resolving canonical 1:1 destination')
+    }
     let id = forceRemoteJid ? idCandidate : (isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate)
     try {
       logger.debug('1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s skipBrSendOrder=%s brSendOrder=%s', to, idCandidate, id || '<none>', !!forceRemoteJid, !!skipBrSendOrder, !!BR_SEND_ORDER_ENABLED)
@@ -2117,6 +2158,10 @@ export const connect = async ({
     try {
       if (targetIsLid) {
         logger.debug('CALL_REJECT: preserving LID %s for rejectCall', target)
+        logger.info('CALL_REJECT fast path: callId=%s target=%s', callId, target)
+        const result = await sock?.rejectCall(callId, target)
+        logger.info('CALL_REJECT sent: callId=%s target=%s', callId, target)
+        return result
       // If a plain number was provided, resolve via onWhatsApp with BR 12?13 preference before falling back
       } else if (typeof target === 'string' && target.indexOf('@') < 0) {
         try {
@@ -2249,14 +2294,32 @@ export const connect = async ({
       } catch {}
       const targets = Array.from(set)
       if (targets.length) {
-        await (sock as any).assertSessions(targets, true)
+        const assertSessionsWithTimeout = Promise.race([
+          (sock as any).assertSessions(targets, true),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('rejectCall_assertSessions_timeout')), 1500)),
+        ])
+        await assertSessionsWithTimeout
         try { logger.debug('Preasserted %s sessions for rejectCall %s', targets.length, JSON.stringify(targets)) } catch {}
         try { if ((config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
       }
     } catch (e) {
       logger.warn(e as any, 'Ignore error on preassert sessions for rejectCall')
     }
-    return sock?.rejectCall(callId, target)
+    logger.info('CALL_REJECT final target: callId=%s from=%s target=%s', callId, callFrom, target)
+    try {
+      const result = await sock?.rejectCall(callId, target)
+      logger.info('CALL_REJECT sent: callId=%s target=%s', callId, target)
+      return result
+    } catch (error) {
+      logger.warn({ err: error, callId, callFrom, target }, 'CALL_REJECT send failed')
+      throw error
+    }
+  }
+
+  const sendCallNode: sendCallNode = async (node: BinaryNode) => {
+    await validateStatus()
+    if (!node || node.tag !== 'call') throw new Error('invalid_call_node')
+    await (sock as any)?.sendNode?.(node)
   }
 
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
@@ -2318,7 +2381,7 @@ export const connect = async ({
     } else {
       try {
         const fetchVer: any = fetchLatestWaWebVersion as any
-        let version: number[] | undefined
+        let version: [number, number, number] | number[] | undefined
         try {
           const res = await fetchVer({
             headers: {
@@ -2332,9 +2395,10 @@ export const connect = async ({
           version = res?.version || res
         }
         if (!Array.isArray(version) || version.length < 3) throw new Error('invalid WA version response')
-        socketConfig.version = version
-        resolvedWhatsappVersion = version as any
-        logger.debug('Using latest WA Web version %s', JSON.stringify(version))
+        const normalizedVersion: [number, number, number] = [version[0], version[1], version[2]]
+        socketConfig.version = normalizedVersion
+        resolvedWhatsappVersion = normalizedVersion as any
+        logger.debug('Using latest WA Web version %s', JSON.stringify(normalizedVersion))
       } catch (e) {
         logger.warn(e as any, 'Failed to fetch WA Web version; using default')
       }
@@ -2398,6 +2462,18 @@ export const connect = async ({
       }
     }
     if (sock) {
+      try {
+        ;(sock as any)?.ws?.on?.('CB:call', async (node: BinaryNode) => {
+          try {
+            const cb = eventsMap.get('call.raw' as any)
+            if (cb) await cb(node as any)
+          } catch (e) {
+            logger.warn(e as any, 'Ignore error on call.raw handler')
+          }
+        })
+      } catch (e) {
+        logger.warn(e as any, 'Ignore error registering raw call listener')
+      }
       event('connection.update', onConnectionUpdate)
       event('creds.update', verifyAndSaveCreds)
       sock.ev.process(async(events) => {
@@ -2440,5 +2516,5 @@ export const connect = async ({
     return
   }
 
-  return { event, status, send, read, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
+  return { event, status, send, read, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
 }

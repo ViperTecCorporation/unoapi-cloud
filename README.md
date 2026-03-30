@@ -799,6 +799,9 @@ WEBHOOK_URL=the webhook url, this config attribute put phone number on the end, 
 WEBHOOK_TOKEN=the webhook header token
 WEBHOOK_HEADER=the webhook header name
 WEBHOOK_TIMEOUT_MS=webhook request timeout, default 6000 ms
+VOIP_SERVICE_URL=internal VoIP helper service base url, optional, example http://localhost:3097
+VOIP_SERVICE_TOKEN=bearer token used to authenticate against the internal VoIP helper service
+VOIP_SERVICE_TIMEOUT_MS=timeout in milliseconds for requests to the internal VoIP helper service, default 3000
 WEBHOOK_ASYNC=true to send webhooks in background (fire-and-forget), default true
 WEBHOOK_ASYNC_MODE=amqp to enqueue webhooks in RabbitMQ even in cloud mode; requires AMQP_URL, default amqp
 WEBHOOK_CB_ENABLED=true enable webhook circuit breaker to avoid backlog when endpoint is offline, default true
@@ -854,6 +857,26 @@ WEBHOOK_FORWARD_URL=the url of whatsapp cloud api, default is https://graph.face
 WEBHOOK_FORWARD_TIMEOUT_MS=the timeout for request to whatsapp cloud api, default is 6000
 VALIDATE_MEDIA_LINK_BEFORE_SEND=false validate media link with HEAD before sending media (image, document, video, audio)
 ```
+
+VoIP helper service integration:
+
+```env
+VOIP_SERVICE_URL=http://localhost:3097
+VOIP_SERVICE_TOKEN=change-me
+VOIP_SERVICE_TIMEOUT_MS=3000
+```
+
+PT-BR:
+
+- `VOIP_SERVICE_URL`: URL base do serviço auxiliar de VoIP. A UnoAPI envia eventos de chamada para ele.
+- `VOIP_SERVICE_TOKEN`: token Bearer compartilhado entre a UnoAPI e o serviço de VoIP.
+- `VOIP_SERVICE_TIMEOUT_MS`: timeout das requisições internas para o serviço de VoIP.
+
+EN:
+
+- `VOIP_SERVICE_URL`: base URL of the helper VoIP service. UnoAPI sends call events to it.
+- `VOIP_SERVICE_TOKEN`: shared Bearer token between UnoAPI and the VoIP service.
+- `VOIP_SERVICE_TIMEOUT_MS`: timeout for internal requests to the VoIP service.
 
 ### Config session with redis
 

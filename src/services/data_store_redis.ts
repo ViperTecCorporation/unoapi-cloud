@@ -1,6 +1,6 @@
-import { proto, WAMessage, WAMessageKey, GroupMetadata, isLidUser, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
+import { proto, WAMessage, WAMessageKey, GroupMetadata, isLidUser, isPnUser } from '@whiskeysockets/baileys'
 import { DataStore, MessageStatus } from './data_store'
-import { jidToPhoneNumber, phoneNumberToJid, isIndividualJid } from './transformer'
+import { jidToPhoneNumber, phoneNumberToJid, isIndividualJid, toRawPnJid, jidToRawPhoneNumber } from './transformer'
 import { getDataStore, dataStores } from './data_store'
 import { ONLY_HELLO_TEMPLATE } from '../defaults'
 import {
@@ -160,11 +160,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   }
   store.setContactInfo = async (jid: string, info: { name?: string; pnJid?: string; lidJid?: string; pn?: string }) => {
     const normalize = (j?: string) => `${(j || '').toString().trim()}`.replace(/@+/g, '@')
-    const cleanPnJid = (j: string) => {
-      try { const norm = jidNormalizedUser(j as any) as any; if (isPnUser(norm)) return norm } catch {}
-      const d = `${j || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
-      return d ? `${d}@s.whatsapp.net` : ''
-    }
+    const cleanPnJid = (j: string) => toRawPnJid(j)
     const cleanLidJid = (j: string) => `${(j || '').split('@')[0].split(':')[0]}@lid`
     try {
       const raw = normalize(jid)
@@ -173,9 +169,6 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       if (raw.includes('@lid')) {
         lidJid = cleanLidJid(raw)
         pnJid = (info as any)?.pnJid || (await redisGetPnForLid(phone, lidJid)) || ''
-        if (!pnJid) {
-          try { const cand = jidNormalizedUser(lidJid as any) as any; if (isPnUser(cand)) pnJid = cand } catch {}
-        }
       } else if (raw.includes('@s.whatsapp.net')) {
         pnJid = cleanPnJid(raw)
         lidJid = (info as any)?.lidJid || (await redisGetLidForPn(phone, pnJid)) || ''
@@ -184,7 +177,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         lidJid = (info as any)?.lidJid || (await redisGetLidForPn(phone, pnJid)) || ''
       }
       let pnDigits = ''
-      try { pnDigits = pnJid ? jidToPhoneNumber(pnJid, '').replace('+','') : '' } catch {}
+      try { pnDigits = pnJid ? jidToRawPhoneNumber(pnJid, '').replace('+','') : '' } catch {}
       const merged: any = { ...(info || {}) }
       if (pnJid) merged.pnJid = pnJid
       if (lidJid) merged.lidJid = lidJid
@@ -193,8 +186,6 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       if (pnJid) { try { await redisSetContactInfo(phone, pnJid, merged) } catch {} }
       if (lidJid) { try { await redisSetContactInfo(phone, lidJid, merged) } catch {} }
       if (!pnJid && !lidJid) { try { await redisSetContactInfo(phone, raw, merged) } catch {} }
-      // Reflect PN<->LID mapping when both present
-      try { if (JIDMAP_CACHE_ENABLED && pnJid && lidJid) { await redisSetJidMapping(phone, pnJid, lidJid) } } catch {}
     } catch {}
     return
   }
@@ -342,16 +333,6 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         return fast
       }
     } catch {}
-    // Fallback: derive PN from LID using Baileys normalization and persist
-    try {
-      if (isLidUser(lidJid)) {
-        const pn = jidNormalizedUser(lidJid)
-        if (pn && isPnUser(pn as any)) {
-          try { await redisSetJidMapping(sessionPhone, pn, lidJid); logger.debug('jidMap(redis): derived PN %s from LID %s and cached', pn, lidJid) } catch {}
-          return pn as any
-        }
-      }
-    } catch {}
     // Fallback 2: consult contact cache (when present)
     try {
       // read enriched contact info keyed by the LID JID
@@ -360,14 +341,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         const info = typeof raw === 'string' ? JSON.parse(raw) : raw
         // Prefer explicit PN JID
         if (info?.pnJid) {
-          try { await redisSetJidMapping(sessionPhone, info.pnJid, lidJid) } catch {}
           return info.pnJid
         }
         // Or digits-only PN -> convert to JID
         if (info?.pn) {
           try {
-            const pnJid = phoneNumberToJid(`${info.pn}`)
-            try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
+            const pnJid = toRawPnJid(`${info.pn}`)
             return pnJid
           } catch {}
         }
@@ -385,7 +364,7 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     try {
       const fast = await redisGetLidForPnFromAuthCache(sessionPhone, pnJid)
       if (fast && typeof fast === 'string' && fast.endsWith('@lid')) {
-        try { await redisSetJidMapping(sessionPhone, pnJid.includes('@') ? pnJid : `${pnJid.replace(/\D/g,'')}@s.whatsapp.net`, fast) } catch {}
+        try { await redisSetJidMapping(sessionPhone, toRawPnJid(pnJid), fast) } catch {}
         return fast
       }
     } catch {}
@@ -394,13 +373,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       let keyJid = pnJid
       // If digits, convert to JID to check contact cache
       if (!keyJid.includes('@')) {
-        try { keyJid = phoneNumberToJid(keyJid) } catch {}
+        try { keyJid = toRawPnJid(keyJid) } catch {}
       }
       const raw = await redisGetContactInfo(sessionPhone, keyJid)
       if (raw) {
         const info = typeof raw === 'string' ? JSON.parse(raw) : raw
         if (info?.lidJid) {
-          try { await redisSetJidMapping(sessionPhone, keyJid, info.lidJid) } catch {}
           return info.lidJid
         }
       }
@@ -408,8 +386,10 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     return undefined
   }
   store.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
-    if (!JIDMAP_CACHE_ENABLED) return
-    try { await redisSetJidMapping(sessionPhone, pnJid, lidJid) } catch {}
+    void sessionPhone
+    void pnJid
+    void lidJid
+    return
   }
   return store
 }

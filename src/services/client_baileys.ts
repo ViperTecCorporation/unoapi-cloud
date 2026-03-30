@@ -1,4 +1,5 @@
-import { GroupMetadata, WAMessage, proto, delay, isJidGroup, jidNormalizedUser, AnyMessageContent, isLidUser, WAMessageAddressingMode, isPnUser } from '@whiskeysockets/baileys'
+import { GroupMetadata, WAMessage, proto, delay, isJidGroup, jidNormalizedUser, AnyMessageContent, isLidUser, WAMessageAddressingMode, isPnUser, encodeBinaryNode } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import { Listener } from './listener'
 import { Store } from './store'
@@ -7,6 +8,7 @@ import {
   sendMessage,
   readMessages,
   rejectCall,
+  sendCallNode,
   OnQrCode,
   OnNotification,
   OnNewLogin,
@@ -19,7 +21,7 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
@@ -34,6 +36,8 @@ import { ClientForward } from './client_forward'
 import { ClientCoexistence } from './client_coexistence'
 import { SendError } from './send_error'
 import { getRetryableStaleSendPayload, isRetryableStaleSendError } from './error_utils'
+import { extractVoipCommands, mapBaileysCallStatusToVoipEvent, sendVoipCallEvent, sendVoipSignaling, VoipCommand } from './client_voip'
+import { binaryNodeToXml, decompressWapFrameIfRequired, extractFirstChildDecompressedWapSlice, getBinaryNodeChildrenSafe, parseVoipXmlFragment, parseVoipXmlNode } from './voip_xml'
 
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
@@ -109,6 +113,10 @@ const rejectCallDefault: rejectCall = async (_keys) => {
   throw sendError
 }
 
+const sendCallNodeDefault: sendCallNode = async (_node) => {
+  throw sendError
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const fetchImageUrlDefault: fetchImageUrl = async (_jid: string) => ''
 
@@ -142,6 +150,589 @@ const buildSendOkResponse = (to: string, keyId: string) => ({
 })
 
 export class ClientBaileys implements Client {
+  private voipPipelines = new Map<string, Promise<void>>()
+
+  private async enqueueVoipByCall<T>(callId: string, task: () => Promise<T>): Promise<T> {
+    const key = `${this.phone}:${callId}`
+    const previous = this.voipPipelines.get(key) || Promise.resolve()
+    let current: Promise<T>
+    current = previous.catch(() => undefined).then(task)
+    const settled = current.then(() => undefined, () => undefined)
+    this.voipPipelines.set(key, settled)
+    try {
+      return await current
+    } finally {
+      if (this.voipPipelines.get(key) === settled) {
+        this.voipPipelines.delete(key)
+      }
+    }
+  }
+
+  private async processVoipCommands(commands: VoipCommand[]) {
+    for (const command of commands || []) {
+      if (!command || command.action !== 'send_call_node') continue
+      try {
+        const xml = Buffer.from(command.payloadBase64 || '', 'base64').toString('utf8').trim()
+        const parsed = parseVoipXmlNode(xml)
+        if (parsed?.tag === 'call') {
+          await this.sendCallNode(parsed)
+          continue
+        }
+
+        const children = parseVoipXmlFragment(xml)
+        if (!children.length) {
+          logger.warn({ session: this.phone, callId: command.callId }, 'voip command without parsable call payload')
+          continue
+        }
+        const node: BinaryNode = {
+          tag: command.payloadTag || 'call',
+          attrs: {
+            from: `${this.store?.state?.creds?.me?.id || ''}`.trim(),
+            to: command.peerJid,
+          },
+          content: children,
+        }
+        await this.sendCallNode(node)
+      } catch (error) {
+        logger.warn(error as any, 'failed to process voip command for %s', this.phone)
+      }
+    }
+  }
+
+  private async forwardVoipSignalingNode(node: BinaryNode) {
+    try {
+      const children = getBinaryNodeChildrenSafe(node)
+      const infoChild = children?.[0]
+      if (!infoChild) return
+      const callId = `${infoChild.attrs?.['call-id'] || ''}`.trim()
+      const peerJid = `${infoChild.attrs?.from || infoChild.attrs?.['call-creator'] || node.attrs?.from || ''}`.trim()
+      if (!callId || !peerJid) return
+      const infoChildren = getBinaryNodeChildrenSafe(infoChild)
+      const encChild = infoChildren.find((child) => child?.tag === 'enc')
+      const audioChild = infoChildren.find((child) => child?.tag === 'audio')
+      const capabilityChild = infoChildren.find((child) => child?.tag === 'capability')
+      const metadataChild = infoChildren.find((child) => child?.tag === 'metadata')
+      const encoptChild = infoChildren.find((child) => child?.tag === 'encopt')
+      const encContent = encChild?.content
+      const encCtor = encContent && typeof encContent === 'object' ? (encContent as any)?.constructor?.name : typeof encContent
+      let encBytes: Buffer | undefined
+      if (encContent && Buffer.isBuffer(encContent)) {
+        encBytes = Buffer.from(encContent)
+      } else if (encContent instanceof Uint8Array) {
+        encBytes = Buffer.from(encContent)
+      } else if (typeof encContent === 'string') {
+        encBytes = Buffer.from(encContent, 'binary')
+      }
+      if (infoChild.tag === 'offer') {
+        try {
+          logger.info(
+            {
+              phone: this.phone,
+              callId,
+              peerJid,
+              rootAttrs: node.attrs || {},
+              offerAttrs: infoChild.attrs || {},
+              offerChildTags: infoChildren.map((child) => child?.tag).filter(Boolean),
+              audioAttrs: audioChild?.attrs || {},
+              capabilityAttrs: capabilityChild?.attrs || {},
+              metadataAttrs: metadataChild?.attrs || {},
+              encoptAttrs: encoptChild?.attrs || {},
+              encAttrsExpanded: encChild?.attrs || {},
+            },
+            'VOIP offer tree diagnostics'
+          )
+        } catch {}
+      }
+      try {
+        logger.info(
+          {
+            phone: this.phone,
+            callId,
+            msgType: infoChild.tag,
+            peerJid,
+            outerTag: node.tag,
+            encTag: encChild?.tag,
+            encCtor,
+            encLength: typeof encContent === 'string'
+              ? encContent.length
+              : encBytes?.byteLength,
+            encPreviewHex: encBytes?.subarray(0, 24).toString('hex'),
+            encPreviewBase64: encBytes?.subarray(0, 24).toString('base64'),
+          },
+          'VOIP raw signaling payload diagnostics'
+        )
+      } catch {}
+      let signalingPayloadBase64 = ''
+      let payloadStrategy = 'enc_raw'
+      let rawCallRootWapBytes: Buffer | undefined
+      const originalInfoBytes = encodeBinaryNode(infoChild)
+      let rawCallOfferRootMinimalWapBytes: Buffer | undefined
+      let rawCallOfferRootEnrichedWapBytes: Buffer | undefined
+      let rawCallOfferRootPrunedWapBytes: Buffer | undefined
+      let rawCallOfferRootNoEncoptWapBytes: Buffer | undefined
+      let rawCallOfferRootNoMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootNoEncoptNoMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootNoRelayWapBytes: Buffer | undefined
+      let rawCallOfferRootNoNetWapBytes: Buffer | undefined
+      let rawCallOfferRootNoRteWapBytes: Buffer | undefined
+      let rawCallOfferRootCoreRelayWapBytes: Buffer | undefined
+      let rawCallOfferRootCallerMetadataWapBytes: Buffer | undefined
+      let rawCallOfferRootCreatorDeviceWapBytes: Buffer | undefined
+      let rawCallOfferRootCallerMetadataCreatorDeviceWapBytes: Buffer | undefined
+      let rawCallOfferRootNoJoinableWapBytes: Buffer | undefined
+      let rawCallOfferRootNoCallerPnWapBytes: Buffer | undefined
+      let rawCallOfferRootNoCountryCodeWapBytes: Buffer | undefined
+      let rawCallOfferRootMinimalAttrsWapBytes: Buffer | undefined
+      let rawCallOfferEncWapBytes: Buffer | undefined
+      const rawOfferEncBase64 = infoChild.tag === 'offer' && encBytes
+        ? encBytes.toString('base64')
+        : undefined
+      const offerWapNoPrefixBytes = infoChild.tag === 'offer'
+        ? Buffer.from((encodeBinaryNode as any)(infoChild, undefined, []))
+        : undefined
+      const rawDecryptedCallFrameBase64 = typeof (node as any)?.__unoRawDecryptedFrameBase64 === 'string'
+        ? (node as any).__unoRawDecryptedFrameBase64 as string
+        : ''
+      const rawDecryptedCallFrameBytes = rawDecryptedCallFrameBase64 ? Buffer.from(rawDecryptedCallFrameBase64, 'base64') : undefined
+      let rawFirstChildWapBytes: Buffer | undefined
+      if (rawDecryptedCallFrameBytes) {
+        try {
+          rawFirstChildWapBytes = extractFirstChildDecompressedWapSlice(decompressWapFrameIfRequired(rawDecryptedCallFrameBytes))
+        } catch (error) {
+          logger.warn({ err: error, phone: this.phone, callId, msgType: infoChild.tag }, 'failed to extract raw first child WAP slice')
+        }
+      }
+      let rawOfferChildWapBytes: Buffer | undefined
+      if (infoChild.tag === 'offer' && rawFirstChildWapBytes) {
+        rawOfferChildWapBytes = rawFirstChildWapBytes
+      }
+      try {
+        logger.info(
+          {
+            phone: this.phone,
+            callId,
+            msgType: infoChild.tag,
+            originalInfoBytes: originalInfoBytes.byteLength,
+            originalInfoPreviewHex: originalInfoBytes.subarray(0, 48).toString('hex'),
+            originalInfoPreviewBase64: originalInfoBytes.subarray(0, 48).toString('base64'),
+            rawDecryptedCallFrameBytes: rawDecryptedCallFrameBytes?.byteLength,
+            rawDecryptedCallFramePreviewHex: rawDecryptedCallFrameBytes?.subarray(0, 48).toString('hex'),
+            rawDecryptedCallFramePreviewBase64: rawDecryptedCallFrameBytes?.subarray(0, 48).toString('base64'),
+            rawFirstChildWapBytes: rawFirstChildWapBytes?.byteLength,
+            rawFirstChildWapPreviewHex: rawFirstChildWapBytes?.subarray(0, 48).toString('hex'),
+            rawFirstChildWapPreviewBase64: rawFirstChildWapBytes?.subarray(0, 48).toString('base64'),
+          },
+          'VOIP signaling binary framing diagnostics'
+        )
+      } catch {}
+      if (infoChild.tag === 'offer' && !rawOfferChildWapBytes && rawDecryptedCallFrameBytes) {
+        try {
+          logger.warn({ phone: this.phone, callId, msgType: infoChild.tag }, 'raw offer child WAP slice unavailable from decrypted frame')
+        } catch {}
+      }
+      if (infoChild.tag === 'offer') {
+        const minimalRootAttrs = Object.fromEntries(
+          Object.entries(node.attrs || {}).filter(([key, value]) =>
+            ['from', 'id', 't'].includes(key) && typeof value !== 'undefined'
+          )
+        )
+        const enrichedRootAttrs = Object.fromEntries(
+          Object.entries(node.attrs || {}).filter(([key, value]) =>
+            ['from', 'version', 'platform', 'id', 't'].includes(key) && typeof value !== 'undefined'
+          )
+        )
+        const callOfferRootMinimalNode: BinaryNode = {
+          tag: node.tag,
+          attrs: minimalRootAttrs,
+          content: [infoChild],
+        }
+        rawCallOfferRootMinimalWapBytes = encodeBinaryNode(callOfferRootMinimalNode)
+        const callOfferRootEnrichedNode: BinaryNode = {
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [infoChild],
+        }
+        rawCallOfferRootEnrichedWapBytes = encodeBinaryNode(callOfferRootEnrichedNode)
+        const prunedOfferChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => {
+            if (typeof child !== 'object' || !child) return false
+            return ['audio', 'capability', 'enc', 'encopt', 'metadata'].includes(child.tag || '')
+          })
+          : infoChild.content
+        const callOfferRootPrunedNode: BinaryNode = {
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: prunedOfferChildren,
+          }],
+        }
+        rawCallOfferRootPrunedWapBytes = encodeBinaryNode(callOfferRootPrunedNode)
+        const noEncoptChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'encopt')
+          : infoChild.content
+        const noMetadataChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'metadata')
+          : infoChild.content
+        const noEncoptNoMetadataChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || (child.tag !== 'encopt' && child.tag !== 'metadata'))
+          : infoChild.content
+        rawCallOfferRootNoEncoptWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noEncoptChildren,
+          }],
+        })
+        rawCallOfferRootNoMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noMetadataChildren,
+          }],
+        })
+        rawCallOfferRootNoEncoptNoMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noEncoptNoMetadataChildren,
+          }],
+        })
+        const noRelayChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'relay')
+          : infoChild.content
+        const noNetChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'net')
+          : infoChild.content
+        const noRteChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => typeof child !== 'object' || !child || child.tag !== 'rte')
+          : infoChild.content
+        const coreRelayChildren = Array.isArray(infoChild.content)
+          ? infoChild.content.filter((child) => {
+            if (typeof child !== 'object' || !child) return false
+            return ['audio', 'capability', 'enc', 'relay'].includes(child.tag || '')
+          })
+          : infoChild.content
+        rawCallOfferRootNoRelayWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noRelayChildren,
+          }],
+        })
+        rawCallOfferRootNoNetWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noNetChildren,
+          }],
+        })
+        rawCallOfferRootNoRteWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: noRteChildren,
+          }],
+        })
+        rawCallOfferRootCoreRelayWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: coreRelayChildren,
+          }],
+        })
+        const callerPn = `${infoChild.attrs?.caller_pn || ''}`.trim()
+        const originalCallCreator = `${infoChild.attrs?.['call-creator'] || ''}`.trim()
+        const creatorDeviceJid = callerPn || originalCallCreator.replace(/@lid$/i, '@s.whatsapp.net')
+        const callerMetadataChild: BinaryNode = {
+          tag: 'caller_metadata',
+          attrs: {
+            call_creator: originalCallCreator || creatorDeviceJid,
+            caller_pn: callerPn,
+            platform: `${node.attrs?.platform || ''}`.trim(),
+            notify: `${node.attrs?.notify || ''}`.trim(),
+          },
+          content: undefined,
+        }
+        const callerMetadataChildren = Array.isArray(infoChild.content)
+          ? [...infoChild.content, callerMetadataChild]
+          : [callerMetadataChild]
+        rawCallOfferRootCallerMetadataWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: infoChild.attrs || {},
+            content: callerMetadataChildren,
+          }],
+        })
+        const creatorDeviceOfferAttrs = {
+          ...(infoChild.attrs || {}),
+          ...(creatorDeviceJid ? { 'call-creator': creatorDeviceJid } : {}),
+        }
+        const creatorDeviceRootAttrs = {
+          ...enrichedRootAttrs,
+          ...(creatorDeviceJid ? { from: creatorDeviceJid } : {}),
+        }
+        rawCallOfferRootCreatorDeviceWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: creatorDeviceRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: creatorDeviceOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootCallerMetadataCreatorDeviceWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: creatorDeviceRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: creatorDeviceOfferAttrs,
+            content: callerMetadataChildren,
+          }],
+        })
+        const noJoinableOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'joinable')
+        )
+        const noCallerPnOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'caller_pn')
+        )
+        const noCountryCodeOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => key !== 'caller_country_code')
+        )
+        const minimalOfferAttrs = Object.fromEntries(
+          Object.entries(infoChild.attrs || {}).filter(([key]) => ['call-id', 'call-creator', 'caller_pn'].includes(key))
+        )
+        rawCallOfferRootNoJoinableWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noJoinableOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootNoCallerPnWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noCallerPnOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootNoCountryCodeWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: noCountryCodeOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+        rawCallOfferRootMinimalAttrsWapBytes = encodeBinaryNode({
+          tag: node.tag,
+          attrs: enrichedRootAttrs,
+          content: [{
+            tag: infoChild.tag,
+            attrs: minimalOfferAttrs,
+            content: infoChild.content,
+          }],
+        })
+      }
+      if (infoChild.tag === 'offer' && rawDecryptedCallFrameBase64) {
+        signalingPayloadBase64 = rawDecryptedCallFrameBase64
+        payloadStrategy = 'raw_decrypted_call_frame'
+      } else if (infoChild.tag === 'offer' && encBytes && encChild) {
+        const minimalOfferNode: BinaryNode = {
+          tag: infoChild.tag,
+          attrs: infoChild.attrs || {},
+          content: [{
+            tag: encChild.tag,
+            attrs: encChild.attrs || {},
+            content: encBytes,
+          }],
+        }
+        const minimalOfferBytes = encodeBinaryNode(minimalOfferNode)
+        const callOfferNode: BinaryNode = {
+          tag: node.tag,
+          attrs: node.attrs || {},
+          content: [minimalOfferNode],
+        }
+        rawCallOfferEncWapBytes = encodeBinaryNode(callOfferNode)
+        signalingPayloadBase64 = minimalOfferBytes.toString('base64')
+        payloadStrategy = 'offer_minimal_wap'
+        try {
+          logger.info(
+            {
+              phone: this.phone,
+              callId,
+              originalOfferBytes: originalInfoBytes.byteLength,
+              minimalOfferBytes: minimalOfferBytes.byteLength,
+              sameBytes: originalInfoBytes.equals(minimalOfferBytes),
+              originalOfferPreviewHex: originalInfoBytes.subarray(0, 48).toString('hex'),
+              minimalOfferPreviewHex: minimalOfferBytes.subarray(0, 48).toString('hex'),
+              originalOfferPreviewBase64: originalInfoBytes.subarray(0, 48).toString('base64'),
+              minimalOfferPreviewBase64: minimalOfferBytes.subarray(0, 48).toString('base64'),
+              rawCallOfferEncWapBytes: rawCallOfferEncWapBytes?.byteLength,
+              rawCallOfferEncWapPreviewHex: rawCallOfferEncWapBytes?.subarray(0, 48).toString('hex'),
+              rawCallOfferEncWapPreviewBase64: rawCallOfferEncWapBytes?.subarray(0, 48).toString('base64'),
+              rawCallOfferRootMinimalWapBytes: rawCallOfferRootMinimalWapBytes?.byteLength,
+              rawCallOfferRootMinimalWapPreviewHex: rawCallOfferRootMinimalWapBytes?.subarray(0, 48).toString('hex'),
+              rawCallOfferRootMinimalWapPreviewBase64: rawCallOfferRootMinimalWapBytes?.subarray(0, 48).toString('base64'),
+              rawCallOfferRootEnrichedWapBytes: rawCallOfferRootEnrichedWapBytes?.byteLength,
+              rawCallOfferRootEnrichedWapPreviewHex: rawCallOfferRootEnrichedWapBytes?.subarray(0, 48).toString('hex'),
+              rawCallOfferRootEnrichedWapPreviewBase64: rawCallOfferRootEnrichedWapBytes?.subarray(0, 48).toString('base64'),
+              offerWapNoPrefixBytes: offerWapNoPrefixBytes?.byteLength,
+              offerWapNoPrefixPreviewHex: offerWapNoPrefixBytes?.subarray(0, 48).toString('hex'),
+              offerWapNoPrefixPreviewBase64: offerWapNoPrefixBytes?.subarray(0, 48).toString('base64'),
+              rawOfferChildWapBytes: rawOfferChildWapBytes?.byteLength,
+              rawOfferChildWapPreviewHex: rawOfferChildWapBytes?.subarray(0, 48).toString('hex'),
+              rawOfferChildWapPreviewBase64: rawOfferChildWapBytes?.subarray(0, 48).toString('base64'),
+            },
+            'VOIP offer binary diff diagnostics'
+          )
+        } catch {}
+      } else if (encBytes) {
+        signalingPayloadBase64 = encBytes.toString('base64')
+      }
+      if (!rawCallRootWapBytes) {
+        rawCallRootWapBytes = encodeBinaryNode(node)
+      }
+      if (!signalingPayloadBase64) {
+        // Fallback for signaling nodes that are not wrapped in an `enc` payload.
+        signalingPayloadBase64 = rawCallRootWapBytes.toString('base64')
+        payloadStrategy = 'root_fallback_wap'
+      }
+      try {
+        const finalPayloadBytes = signalingPayloadBase64 ? Buffer.from(signalingPayloadBase64, 'base64') : undefined
+        logger.info({
+          phone: this.phone,
+          callId,
+          msgType: infoChild.tag,
+          payloadStrategy,
+          finalPayloadBytes: finalPayloadBytes?.byteLength,
+          finalPayloadPreviewHex: finalPayloadBytes?.subarray(0, 48).toString('hex'),
+          finalPayloadPreviewBase64: finalPayloadBytes?.subarray(0, 48).toString('base64'),
+          matchesOriginalInfo: !!(finalPayloadBytes && originalInfoBytes.equals(finalPayloadBytes)),
+          matchesRawFirstChild: !!(finalPayloadBytes && rawFirstChildWapBytes && finalPayloadBytes.equals(rawFirstChildWapBytes)),
+          matchesRawDecryptedFrame: !!(finalPayloadBytes && rawDecryptedCallFrameBytes && finalPayloadBytes.equals(rawDecryptedCallFrameBytes)),
+        }, 'VOIP signaling payload strategy')
+      } catch {}
+      logger.info({
+        phone: this.phone,
+        callId,
+        msgType: infoChild.tag,
+        peerJid,
+        payloadStrategy,
+      }, 'VOIP enqueue signaling start')
+      const response = await this.enqueueVoipByCall(callId, async () => {
+        logger.info({
+          phone: this.phone,
+          callId,
+          msgType: infoChild.tag,
+          peerJid,
+          payloadStrategy,
+        }, 'VOIP enqueue signaling callback')
+        return sendVoipSignaling(this.config, {
+          session: this.phone,
+          callId,
+          peerJid,
+          msgType: infoChild.tag,
+          payload: binaryNodeToXml(infoChild),
+          payloadBase64: signalingPayloadBase64,
+          rawCallRootWapBase64: rawCallRootWapBytes?.toString('base64'),
+          rawCallOfferRootMinimalWapBase64: rawCallOfferRootMinimalWapBytes?.toString('base64'),
+          rawCallOfferRootEnrichedWapBase64: rawCallOfferRootEnrichedWapBytes?.toString('base64'),
+          rawCallOfferRootPrunedWapBase64: rawCallOfferRootPrunedWapBytes?.toString('base64'),
+          rawCallOfferRootNoEncoptWapBase64: rawCallOfferRootNoEncoptWapBytes?.toString('base64'),
+          rawCallOfferRootNoMetadataWapBase64: rawCallOfferRootNoMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootNoEncoptNoMetadataWapBase64: rawCallOfferRootNoEncoptNoMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootNoRelayWapBase64: rawCallOfferRootNoRelayWapBytes?.toString('base64'),
+          rawCallOfferRootNoNetWapBase64: rawCallOfferRootNoNetWapBytes?.toString('base64'),
+          rawCallOfferRootNoRteWapBase64: rawCallOfferRootNoRteWapBytes?.toString('base64'),
+          rawCallOfferRootCoreRelayWapBase64: rawCallOfferRootCoreRelayWapBytes?.toString('base64'),
+          rawCallOfferRootCallerMetadataWapBase64: rawCallOfferRootCallerMetadataWapBytes?.toString('base64'),
+          rawCallOfferRootCreatorDeviceWapBase64: rawCallOfferRootCreatorDeviceWapBytes?.toString('base64'),
+          rawCallOfferRootCallerMetadataCreatorDeviceWapBase64: rawCallOfferRootCallerMetadataCreatorDeviceWapBytes?.toString('base64'),
+          rawCallOfferRootNoJoinableWapBase64: rawCallOfferRootNoJoinableWapBytes?.toString('base64'),
+          rawCallOfferRootNoCallerPnWapBase64: rawCallOfferRootNoCallerPnWapBytes?.toString('base64'),
+          rawCallOfferRootNoCountryCodeWapBase64: rawCallOfferRootNoCountryCodeWapBytes?.toString('base64'),
+          rawCallOfferRootMinimalAttrsWapBase64: rawCallOfferRootMinimalAttrsWapBytes?.toString('base64'),
+          rawCallOfferEncWapBase64: rawCallOfferEncWapBytes?.toString('base64'),
+          rawOfferEncBase64,
+          rawDecryptedCallFrameBase64: rawDecryptedCallFrameBase64 || undefined,
+          rawOfferWapNoPrefixBase64: offerWapNoPrefixBytes?.toString('base64'),
+          rawOfferChildWapBase64: rawOfferChildWapBytes?.toString('base64'),
+          payloadEncoding: 'wa_binary',
+          attrs: Object.fromEntries(Object.entries(infoChild.attrs || {}).map(([key, value]) => [key, `${value}`])),
+          outerAttrs: Object.fromEntries(Object.entries(node.attrs || {}).map(([key, value]) => [key, `${value}`])),
+          encAttrs: encChild ? Object.fromEntries(Object.entries(encChild.attrs || {}).map(([key, value]) => [key, `${value}`])) : undefined,
+          timestamp: Number(node?.attrs?.t || 0) || undefined,
+        })
+      })
+      logger.info({
+        phone: this.phone,
+        callId,
+        msgType: infoChild.tag,
+        peerJid,
+      }, 'VOIP enqueue signaling done')
+      await this.processVoipCommands(extractVoipCommands(response.body))
+    } catch (error) {
+      logger.warn(error as any, 'failed to forward voip signaling for %s', this.phone)
+    }
+  }
+
+  private async notifyVoipServiceCallEvent(event: any) {
+    const mappedEvent = mapBaileysCallStatusToVoipEvent(event?.status)
+    const callId = `${event?.id || ''}`.trim()
+    const from = `${event?.from || ''}`.trim()
+    if (!mappedEvent || !callId || !from) return
+
+    const timestampRaw = event?.timestamp ?? event?.t ?? event?.messageTimestamp
+    const timestamp = Number(timestampRaw)
+    const response = await this.enqueueVoipByCall(callId, async () => sendVoipCallEvent(this.config, {
+      session: this.phone,
+      event: mappedEvent,
+      callId,
+      from,
+      callerPn: `${event?.callerPn || event?.caller_pn || ''}`.trim() || undefined,
+      isGroup: typeof event?.isGroup === 'boolean' ? event.isGroup : (typeof event?.is_group === 'boolean' ? event.is_group : undefined),
+      groupJid: `${event?.groupJid || event?.group_jid || ''}`.trim() || undefined,
+      isVideo: typeof event?.isVideo === 'boolean' ? event.isVideo : (typeof event?.is_video === 'boolean' ? event.is_video : undefined),
+      timestamp: Number.isFinite(timestamp) ? timestamp : undefined,
+      raw: event,
+    }))
+    await this.processVoipCommands(extractVoipCommands(response.body))
+  }
+
+  private async ensureUnoExternalMessageId(key: { id?: string; remoteJid?: string } | undefined): Promise<string> {
+    const idBaileys = `${key?.id || ''}`.trim()
+    if (!idBaileys) return ''
+    let idUno = ''
+    try { idUno = `${await this.store?.dataStore?.loadUnoId(idBaileys) || ''}`.trim() } catch {}
+    if (!idUno) idUno = uuid()
+    try { await this.store?.dataStore?.setUnoId(idBaileys, idUno) } catch {}
+    try { if (key?.id) await this.store?.dataStore?.setKey(idUno, key as any) } catch {}
+    return idUno || idBaileys
+  }
+
   private async remapMentionsToLidForGroup(targetTo: string, content: any, payload?: any) {
     try {
       if (!targetTo || !isJidGroup(targetTo)) return
@@ -302,6 +893,7 @@ export class ClientBaileys implements Client {
   private fetchGroupMetadata = fetchGroupMetadataDefault
   private readMessages = readMessagesDefault
   private rejectCall: rejectCall | undefined = rejectCallDefault
+  private sendCallNode: sendCallNode = sendCallNodeDefault
   private listener: Listener
   private store: Store | undefined
   private calls = new Map<string, boolean>()
@@ -474,11 +1066,12 @@ export class ClientBaileys implements Client {
       logger.error('Socket connect return empty %s', this.phone)
       return
     }
-    const { send, read, event, rejectCall, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
+    const { send, read, event, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
     this.event = event
     this.sendMessage = send
     this.readMessages = read
     this.rejectCall = rejectCall
+    this.sendCallNode = sendCallNode
     this.fetchImageUrl = this.config.sendProfilePicture ? fetchImageUrl : fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadata
     this.close = close
@@ -502,6 +1095,7 @@ export class ClientBaileys implements Client {
     this.sendMessage = this.sendMessageDefault
     this.readMessages = readMessagesDefault
     this.rejectCall = rejectCallDefault
+    this.sendCallNode = sendCallNodeDefault
     this.fetchImageUrl = fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadataDefault
     this.exists = existsDefault
@@ -546,18 +1140,16 @@ export class ClientBaileys implements Client {
                         const mapped = await store.dataStore.getPnForLid?.(this.phone, j)
                         if (mapped && isPnUser(mapped)) {
                           info.pnJid = mapped
-                          try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                          try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                         }
                         // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                       } catch {}
                     } else {
                       info.pnJid = j
-                      try { info.pn = jidToPhoneNumber(j, '').replace('+','') } catch {}
-                      // Se houver LID mapeado para este PN, persiste também
+                      try { info.pn = jidToRawPhoneNumber(j, '').replace('+','') } catch {}
                       try {
                         const lid = await store.dataStore.getLidForPn?.(this.phone, j)
                         if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                          await store.dataStore.setJidMapping?.(this.phone, j, lid)
                           if (!info.lidJid) info.lidJid = lid
                         }
                       } catch {}
@@ -683,17 +1275,16 @@ export class ClientBaileys implements Client {
                   const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
                   if (mapped && isPnUser(mapped)) {
                     info.pnJid = mapped
-                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                    try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
                   // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid
-                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try { info.pn = jidToRawPhoneNumber(jid, '').replace('+','') } catch {}
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
                     if (!info.lidJid) info.lidJid = lid
                   }
                 } catch {}
@@ -726,17 +1317,16 @@ export class ClientBaileys implements Client {
                   const mapped = await store.dataStore.getPnForLid?.(this.phone, jid)
                   if (mapped && isPnUser(mapped)) {
                     info.pnJid = mapped
-                    try { info.pn = jidToPhoneNumber(mapped, '').replace('+','') } catch {}
+                    try { info.pn = jidToRawPhoneNumber(mapped, '').replace('+','') } catch {}
                   }
                   // Não derive PN apenas por normalização do LID; aguarde mapping/exists válido
                 } catch {}
               } else {
                 info.pnJid = jid
-                try { info.pn = jidToPhoneNumber(jid, '').replace('+','') } catch {}
+                try { info.pn = jidToRawPhoneNumber(jid, '').replace('+','') } catch {}
                 try {
                   const lid = await store.dataStore.getLidForPn?.(this.phone, jid)
                   if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                    await store.dataStore.setJidMapping?.(this.phone, jid, lid)
                     if (!info.lidJid) info.lidJid = lid
                   }
                 } catch {}
@@ -778,10 +1368,10 @@ export class ClientBaileys implements Client {
               const a = `${u?.from || ''}`
               const b = `${u?.to || ''}`
               if (!a || !b) continue
-              // Normalize para remover sufixos :device
+              // Normalize apenas no formato de transporte; não reescreve PN com 9º dígito.
               let j1 = a; let j2 = b
-              try { j1 = jidNormalizedUser(a as any) } catch {}
-              try { j2 = jidNormalizedUser(b as any) } catch {}
+              try { j1 = normalizeTransportJid(a) } catch {}
+              try { j2 = normalizeTransportJid(b) } catch {}
               // Identificar papéis PN/LID
               let pnJid: string | undefined
               let lidJid: string | undefined
@@ -790,10 +1380,7 @@ export class ClientBaileys implements Client {
                 else if (isLidUser(j1) && isPnUser(j2)) { pnJid = j2; lidJid = j1 }
               } catch {}
               if (pnJid && lidJid) {
-                try {
-                  await store.dataStore.setJidMapping?.(this.phone, pnJid, lidJid)
-                  try { logger.info('lid-mapping.persist %s: %s <-> %s', this.phone, pnJid, lidJid) } catch {}
-                } catch (e) { logger.debug(e as any, 'lid-mapping.persist failed for %s: %s <-> %s', this.phone, pnJid, lidJid) }
+                try { logger.info('lid-mapping.observed %s: %s <-> %s', this.phone, pnJid, lidJid) } catch {}
               }
             } catch {}
           }
@@ -905,10 +1492,38 @@ export class ClientBaileys implements Client {
         try {
           logger.info('CALL event: from=%s callerPn=%s id=%s status=%s', from, callerPn || '<none>', id, status)
         } catch {}
+        try {
+          await this.notifyVoipServiceCallEvent(event)
+        } catch {}
+        const terminalCallStatuses = new Set(['terminate', 'terminated', 'timeout', 'timed_out', 'reject', 'rejected', 'end', 'ended', 'hangup', 'missed'])
+        if (terminalCallStatuses.has(`${status || ''}`)) {
+          try {
+            if (this.calls.delete(from)) {
+              logger.info('CALL gate cleared immediately: from=%s id=%s status=%s', from, id, status)
+            }
+          } catch {}
+        }
+        try {
+          logger.info(
+            'CALL ringing gate: from=%s id=%s hasCall=%s hasRejectCall=%s rejectCallsConfigured=%s status=%s',
+            from,
+            id,
+            this.calls.has(from),
+            !!this.rejectCall,
+            !!this.config.rejectCalls,
+            status,
+          )
+        } catch {}
         if (status == 'ringing' && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
-            await this.rejectCall(id, from)
+            try {
+              logger.info('CALL reject start: from=%s callerPn=%s id=%s', from, callerPn || '<none>', id)
+              await this.rejectCall(id, from)
+              logger.info('CALL reject success: from=%s id=%s', from, id)
+            } catch (error) {
+              logger.warn({ err: error, from, callerPn, id }, 'CALL reject failed')
+            }
             // Enviar mensagem de rejeição respeitando o modo 1:1:
             // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
             // - Em LID: manter origem
@@ -940,8 +1555,12 @@ export class ClientBaileys implements Client {
                 toMsg = from
               }
             } catch { toMsg = from }
-            await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {});
-            logger.info('Rejecting calls %s %s', this.phone, this.config.rejectCalls)
+            try {
+              await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {})
+              logger.info('Rejecting calls %s %s to=%s', this.phone, this.config.rejectCalls, toMsg)
+            } catch (error) {
+              logger.warn({ err: error, from, callerPn, id, toMsg }, 'CALL reject message send failed')
+            }
           }
           
           const messageCallsWebhook = this.config.rejectCallsWebhook || this.config.messageCallsWebhook
@@ -998,6 +1617,9 @@ export class ClientBaileys implements Client {
           }, 10_000)
         }
       }
+    })
+    this.event('call.raw' as any, async (node: BinaryNode) => {
+      await this.forwardVoipSignalingNode(node)
     })
   }
 
@@ -1404,21 +2026,10 @@ export class ClientBaileys implements Client {
               } catch { logger.info('SEND_OK') }
             }
             const key = response.key
+            const externalId = await this.ensureUnoExternalMessageId(key)
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
-            const ok = {
-              messaging_product: 'whatsapp',
-              contacts: [
-                {
-                  wa_id: jidToPhoneNumber(to, ''),
-                },
-              ],
-              messages: [
-                {
-                  id: key.id,
-                },
-              ],
-            }
+            const ok = buildSendOkResponse(to, externalId || key.id)
             try {
               if (to === 'status@broadcast') {
                 const skipped = (response as any).__statusSkipped || []
@@ -1449,9 +2060,10 @@ export class ClientBaileys implements Client {
           const response = await this.sendMessage(retryPayload.targetJid, retryMessage as any, retryOptions)
           if (response) {
             const key = response.key
+            const externalId = await this.ensureUnoExternalMessageId(key)
             await this.store?.dataStore?.setKey(key.id, key)
             await this.store?.dataStore?.setMessage(key.remoteJid, response)
-            const ok = buildSendOkResponse(to, key.id)
+            const ok = buildSendOkResponse(to, externalId || key.id)
             const r: Response = { ok }
             return r
           }
@@ -1496,13 +2108,10 @@ export class ClientBaileys implements Client {
                 const resp = await this.sendMessage(toJid, retryContent as any, messageOptions)
                 if (resp) {
                   const key = resp.key
+                  const externalId = await this.ensureUnoExternalMessageId(key)
                   await this.store?.dataStore?.setKey(key.id, key)
                   await this.store?.dataStore?.setMessage(key.remoteJid, resp)
-                  const ok = {
-                    messaging_product: 'whatsapp',
-                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
-                    messages: [{ id: key.id }],
-                  }
+                  const ok = buildSendOkResponse(toJid, externalId || key.id)
                   const r: Response = { ok }
                   return r
                 }
@@ -1537,13 +2146,10 @@ export class ClientBaileys implements Client {
                 const response = await this.sendMessage(toJid, content as any, messageOptions)
                 if (response) {
                   const key = response.key
+                  const externalId = await this.ensureUnoExternalMessageId(key)
                   await this.store?.dataStore?.setKey(key.id, key)
                   await this.store?.dataStore?.setMessage(key.remoteJid, response)
-                  const ok = {
-                    messaging_product: 'whatsapp',
-                    contacts: [{ wa_id: jidToPhoneNumber(toJid, '') }],
-                    messages: [{ id: key.id }],
-                  }
+                  const ok = buildSendOkResponse(toJid, externalId || key.id)
                   const r: Response = { ok }
                   return r
                 }
@@ -1900,7 +2506,6 @@ export class ClientBaileys implements Client {
           // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.senderPn = pnJid
-            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.senderLid) } catch {}
           }
         }
         if (k?.participant && isLidUser(k.participant)) {
@@ -1935,7 +2540,6 @@ export class ClientBaileys implements Client {
           // Não promover PN apenas por normalização de LID -> PN sem confirmação (evita "LID nu" como PN)
           if (pnJid && isPnUser(pnJid)) {
             k.participantPn = pnJid
-            try { await this.store?.dataStore?.setJidMapping?.(this.phone, pnJid, k.participantLid) } catch {}
           }
         }
       } catch (e) {
