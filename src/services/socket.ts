@@ -220,6 +220,10 @@ export const connect = async ({
   }
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
+  // Track recent 1:1 sends so PN->LID fallback on 463/479 works even when ACK_RETRY is disabled
+  const pendingOneToOneErrorFallbacks: Map<string, { to: string; message: AnyMessageContent; options: any; timer?: NodeJS.Timeout }> = new Map()
+  // Track 1:1 PN->LID fallback retries triggered by server ack errors such as 463/479
+  const pendingOneToOneAddressingFallback = new Set<string>()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
   const pendingDeliveryWatch: Map<string, { to: string; message: AnyMessageContent; options: any; attempt: number; timer?: NodeJS.Timeout }> = new Map()
   // Background LID->PN resolver (per session)
@@ -354,7 +358,7 @@ export const connect = async ({
       if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
       try {
         const attemptNo = entry.attemptIndex + 1
-        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, to, delayMs)
+        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, entry.to, delayMs)
       } catch {}
       entry.timer = setTimeout(async () => {
         try {
@@ -362,18 +366,18 @@ export const connect = async ({
           // Assert sessions for target (include PN variant and self when applicable)
           try {
             const attemptNo = entry.attemptIndex + 1
-            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, to)
+            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, entry.to)
           } catch {}
           try {
             const assertOneToOne = async () => {
               const set = new Set<string>()
-              set.add(to)
+              set.add(entry.to)
               try {
-                if (isLidUser(to)) {
-                  try { set.add(jidNormalizedUser(to)) } catch {}
-                } else if (isPnUser(to)) {
+                if (isLidUser(entry.to)) {
+                  try { set.add(jidNormalizedUser(entry.to)) } catch {}
+                } else if (isPnUser(entry.to)) {
                   try {
-                    const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                    const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
                     if (lid && typeof lid === 'string') set.add(lid)
                   } catch {}
                 }
@@ -412,26 +416,26 @@ export const connect = async ({
               if (lidsU.length) await assertChunked(lidsU)
               if (pnsU.length) await assertChunked(pnsU)
             }
-            if (typeof to === 'string' && to.endsWith('@g.us')) await assertGroup()
+            if (typeof entry.to === 'string' && entry.to.endsWith('@g.us')) await assertGroup()
             else await assertOneToOne()
           } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
           // Resend with the same id (prefer LID when configured and mapping exists)
           const opts = { ...(entry.options || {}), messageId }
-          let resendTo = to
+          let resendTo = entry.to
           try {
-            if (typeof to === 'string' && isIndividualJid(to) && ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
-              if (isPnUser(to)) {
+            if (typeof entry.to === 'string' && isIndividualJid(entry.to) && ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+              if (isPnUser(entry.to)) {
                 try {
-                  const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                  const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
                   if (lid && typeof lid === 'string') {
                     resendTo = lid
                     ;(opts as any).addressingMode = WAMessageAddressingMode.LID
-                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', to, resendTo) } catch {}
+                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', entry.to, resendTo) } catch {}
                   } else {
                     ;(opts as any).addressingMode = WAMessageAddressingMode.PN
                   }
                 } catch {}
-              } else if (isLidUser(to)) {
+              } else if (isLidUser(entry.to)) {
                 ;(opts as any).addressingMode = WAMessageAddressingMode.LID
               }
             }
@@ -446,7 +450,7 @@ export const connect = async ({
             // Exhausted attempts: notify own number and log
             try {
               const selfJid = phoneNumberToJid(phone)
-              const text = `Falha ao entregar a mensagem ${messageId} para ${to} após 3 tentativas.`
+              const text = `Falha ao entregar a mensagem ${messageId} para ${entry.to} após 3 tentativas.`
               logger.error('ACK timeout: %s', text)
               try { await sock?.sendMessage(selfJid, { text }, {}) } catch (e) { logger.warn(e as any, 'Erro ao notificar falha no próprio número') }
             } catch (e) { logger.warn(e as any, 'Erro ao preparar notificação de falha') }
@@ -1048,12 +1052,19 @@ export const connect = async ({
               try {
                 const kid = u?.key?.id || u?.id
                 const st = u?.update?.status ?? u?.status
+                const stubParams = Array.isArray(u?.update?.messageStubParameters) ? u.update.messageStubParameters : []
+                const preserveAckRetry = stubParams.includes('463') || stubParams.includes('479')
                 if (kid && (st !== undefined && st !== null)) {
                   const tracked = pendingAckResend.get(kid)
-                  if (tracked) {
+                  if (tracked && !preserveAckRetry) {
                     try { logger.info('ACK watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
                     try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
                     pendingAckResend.delete(kid)
+                  }
+                  const fallbackTracked = pendingOneToOneErrorFallbacks.get(kid)
+                  if (fallbackTracked && !preserveAckRetry) {
+                    try { if (fallbackTracked.timer) clearTimeout(fallbackTracked.timer) } catch {}
+                    pendingOneToOneErrorFallbacks.delete(kid)
                   }
                   // Clear delivery watchdog only on delivered/read
                   const delivered = (() => {
@@ -1105,6 +1116,73 @@ export const connect = async ({
                     }
                   } catch (e) {
                     logger.warn(e as any, 'Fallback resend failed')
+                  }
+                }
+              }
+              if (
+                Array.isArray(params) &&
+                key?.fromMe &&
+                key?.id &&
+                typeof key?.remoteJid === 'string' &&
+                isIndividualJid(key.remoteJid) &&
+                isPnUser(key.remoteJid) &&
+                (params.includes('463') || params.includes('479'))
+              ) {
+                const pending = pendingAckResend.get(key.id)
+                const fallbackPending = pending || pendingOneToOneErrorFallbacks.get(key.id)
+                if (fallbackPending && !pendingOneToOneAddressingFallback.has(key.id)) {
+                  let lid: string | undefined
+                  try { lid = await (dataStore as any).getLidForPn?.(phone, key.remoteJid) } catch {}
+                  if (lid && typeof lid === 'string' && isLidUser(lid as any)) {
+                    pendingOneToOneAddressingFallback.add(key.id)
+                    setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    fallbackPending.to = lid
+                    fallbackPending.options = {
+                      ...(fallbackPending.options || {}),
+                      addressingMode: WAMessageAddressingMode.LID,
+                      useUserDevicesCache: false,
+                    }
+                    try {
+                      const assertTargets = new Set<string>()
+                      assertTargets.add(lid)
+                      assertTargets.add(key.remoteJid)
+                      const self = state?.creds?.me?.id
+                      if (self) {
+                        assertTargets.add(self)
+                        try { assertTargets.add(jidNormalizedUser(self)) } catch {}
+                      }
+                      await (sock as any).assertSessions(Array.from(assertTargets), true)
+                    } catch (e) {
+                      logger.warn(e as any, 'Ignore error asserting sessions before PN->LID fallback resend')
+                    }
+                    try {
+                      logger.warn(
+                        '1:1 fallback resend after ack error=%s for msg=%s: PN %s -> LID %s',
+                        params.join(','),
+                        key.id,
+                        key.remoteJid,
+                        lid,
+                      )
+                    } catch {}
+                    try {
+                      await sock?.sendMessage(lid, fallbackPending.message, {
+                        ...(fallbackPending.options || {}),
+                        messageId: key.id,
+                        addressingMode: WAMessageAddressingMode.LID,
+                        useUserDevicesCache: false,
+                      })
+                    } catch (e) {
+                      logger.warn(e as any, '1:1 PN->LID fallback resend failed')
+                    }
+                  } else {
+                    try {
+                      logger.warn(
+                        '1:1 ack error=%s for msg=%s on PN %s, but no mapped LID was found for fallback',
+                        params.join(','),
+                        key.id,
+                        key.remoteJid,
+                      )
+                    } catch {}
                   }
                 }
               }
@@ -2051,6 +2129,20 @@ export const connect = async ({
       try {
         const mid = (full as any)?.key?.id as string | undefined
         if (mid) {
+          if (typeof id === 'string' && isIndividualJid(id)) {
+            const existing = pendingOneToOneErrorFallbacks.get(mid)
+            if (existing?.timer) {
+              try { clearTimeout(existing.timer) } catch {}
+            }
+            const entry = { to: id, message, options: { ...opts }, timer: undefined as NodeJS.Timeout | undefined }
+            entry.timer = setTimeout(() => {
+              try {
+                const current = pendingOneToOneErrorFallbacks.get(mid)
+                if (current?.timer === entry.timer) pendingOneToOneErrorFallbacks.delete(mid)
+              } catch {}
+            }, 90_000) as unknown as NodeJS.Timeout
+            pendingOneToOneErrorFallbacks.set(mid, entry)
+          }
           scheduleAckWatch(id, mid, message, opts)
           scheduleDeliveryWatch(id, mid, message, opts)
         }
@@ -2365,6 +2457,32 @@ export const connect = async ({
       logger: loggerBaileys,
       markOnlineOnConnect: config.markOnlineOnConnect !== false,
       syncFullHistory: !config.ignoreHistoryMessages,
+      shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
+        const syncType = msg?.syncType as proto.HistorySync.HistorySyncType | undefined
+        const syncTypeName = typeof syncType === 'number'
+          ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
+          : `${syncType || 'unknown'}`
+        const shouldSync = syncType !== undefined
+          ? [
+              proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
+              proto.HistorySync.HistorySyncType.RECENT,
+              proto.HistorySync.HistorySyncType.PUSH_NAME,
+              proto.HistorySync.HistorySyncType.ON_DEMAND,
+              proto.HistorySync.HistorySyncType.FULL,
+            ].includes(syncType)
+          : false
+        try {
+          logger.info(
+            'History sync decision %s syncType=%s chunkOrder=%s progress=%s phone=%s',
+            shouldSync ? 'accept' : 'skip',
+            syncTypeName,
+            `${msg?.chunkOrder ?? '<none>'}`,
+            `${msg?.progress ?? '<none>'}`,
+            phone,
+          )
+        } catch {}
+        return shouldSync
+      },
       getMessage,
       shouldIgnoreJid: config.shouldIgnoreJid,
       retryRequestDelayMs: config.retryRequestDelayMs,

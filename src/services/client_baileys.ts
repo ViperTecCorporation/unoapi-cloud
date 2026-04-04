@@ -21,7 +21,7 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid, normalizeMessageContent } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
@@ -1469,13 +1469,103 @@ export class ClientBaileys implements Client {
     })
     if (!this.config.ignoreHistoryMessages) {
       logger.info('Config import history messages %', this.phone)
-      this.event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
+      this.event('messaging-history.set', async ({
+        messages,
+        isLatest,
+        syncType,
+        chunkOrder,
+        progress,
+      }: {
+        messages: proto.IWebMessageInfo[]
+        isLatest?: boolean
+        syncType?: proto.HistorySync.HistorySyncType | null
+        chunkOrder?: number | null
+        progress?: number | null
+      }) => {
+        const sampleMediaMessage = (list: proto.IWebMessageInfo[] = []) => {
+          for (const item of list) {
+            try {
+              const normalized = normalizeMessageContent(item?.message)
+              const mt = normalized && getMessageType({ message: normalized as any })
+              const media = mt && TYPE_MESSAGES_MEDIA.includes(mt.replace('Message', ''))
+                ? (normalized as any)?.[mt]
+                : undefined
+              if (!media) continue
+              return {
+                id: `${item?.key?.id || ''}`.trim(),
+                remoteJid: `${item?.key?.remoteJid || ''}`.trim(),
+                type: mt,
+                timestamp: Number(item?.messageTimestamp || 0) || undefined,
+                hasMediaKey: !!media.mediaKey,
+                mediaKeyLength: media.mediaKey
+                  ? (() => {
+                      try {
+                        if (media.mediaKey instanceof Uint8Array) return media.mediaKey.length
+                        if (typeof media.mediaKey === 'string') return media.mediaKey.length
+                        if (Array.isArray(media.mediaKey?.data)) return media.mediaKey.data.length
+                        return Object.keys(media.mediaKey || {}).length || 0
+                      } catch {
+                        return 0
+                      }
+                    })()
+                  : 0,
+                hasDirectPath: !!media.directPath,
+                hasUrl: !!media.url,
+                mimetype: `${media.mimetype || ''}`.trim() || undefined,
+                fileName: `${media.fileName || ''}`.trim() || undefined,
+              }
+            } catch {}
+          }
+          return undefined
+        }
+        const summarizeMedia = (list: proto.IWebMessageInfo[] = []) => {
+          let withMedia = 0
+          let withMediaKey = 0
+          let withDirectPath = 0
+          let withUrl = 0
+          for (const item of list) {
+            try {
+              const normalized = normalizeMessageContent(item?.message)
+              const mt = normalized && getMessageType({ message: normalized as any })
+              const media = mt && TYPE_MESSAGES_MEDIA.includes(mt.replace('Message', ''))
+                ? (normalized as any)?.[mt]
+                : undefined
+              if (!media) continue
+              withMedia++
+              if (media.mediaKey) withMediaKey++
+              if (media.directPath) withDirectPath++
+              if (media.url) withUrl++
+            } catch {}
+          }
+          return { withMedia, withMediaKey, withDirectPath, withUrl }
+        }
+        const syncTypeName = typeof syncType === 'number'
+          ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
+          : `${syncType || 'unknown'}`
         const cutoffSec = Math.floor((Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) / 1000)
         const filtered = (messages || []).filter((m) => {
           const ts = Number(m?.messageTimestamp || 0)
           return Number.isFinite(ts) && ts >= cutoffSec
         })
-        logger.info('Importing history messages (<= %sd): %d -> %d, isLatest %s %s', HISTORY_MAX_AGE_DAYS, messages?.length || 0, filtered.length, isLatest, this.phone)
+        const rawSummary = summarizeMedia(messages || [])
+        const filteredSummary = summarizeMedia(filtered)
+        const rawSample = sampleMediaMessage(messages || [])
+        const filteredSample = sampleMediaMessage(filtered)
+        logger.info(
+          'Importing history messages syncType=%s chunkOrder=%s progress=%s (<= %sd): %d -> %d, isLatest %s media raw=%j filtered=%j sampleRaw=%j sampleFiltered=%j %s',
+          syncTypeName,
+          `${chunkOrder ?? '<none>'}`,
+          `${progress ?? '<none>'}`,
+          HISTORY_MAX_AGE_DAYS,
+          messages?.length || 0,
+          filtered.length,
+          isLatest,
+          rawSummary,
+          filteredSummary,
+          rawSample,
+          filteredSample,
+          this.phone,
+        )
         if (filtered.length) {
           this.listener.process(this.phone, filtered, 'history')
         }
