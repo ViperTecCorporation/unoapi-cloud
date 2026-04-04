@@ -617,7 +617,8 @@ export class ClientBaileys implements Client {
       }
       if (!signalingPayloadBase64) {
         // Fallback for signaling nodes that are not wrapped in an `enc` payload.
-        signalingPayloadBase64 = rawCallRootWapBytes.toString('base64')
+        const rootFallbackBytes = rawCallRootWapBytes || encodeBinaryNode(node)
+        signalingPayloadBase64 = rootFallbackBytes.toString('base64')
         payloadStrategy = 'root_fallback_wap'
       }
       try {
