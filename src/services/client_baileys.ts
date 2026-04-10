@@ -1963,22 +1963,78 @@ export class ClientBaileys implements Client {
           let disappearingMessagesInChat: boolean | number = false
           const messageId = payload?.context?.message_id || payload?.context?.id
           if (messageId) {
-            const key = await this.store?.dataStore?.loadKey(messageId)
-            try { logger.debug('Quoted message key %s!', key?.id) } catch {}
+            const dataStore = this.store?.dataStore
+            let providerId: string | undefined
+            let key: any = undefined
+            try {
+              providerId = await dataStore?.loadProviderId?.(messageId)
+            } catch {}
+            if (!providerId) {
+              try {
+                const unoFromProvider = await dataStore?.loadUnoId?.(messageId)
+                if (unoFromProvider) providerId = messageId
+              } catch {}
+            }
+            try {
+              logger.info(
+                {
+                  phone: this.phone,
+                  targetTo,
+                  messageId,
+                  providerId,
+                },
+                'reply quote lookup start'
+              )
+            } catch {}
+            if (providerId) {
+              key = await dataStore?.loadKey(providerId)
+            }
+            if (!key) {
+              key = await dataStore?.loadKey(messageId)
+            }
+            try { logger.debug('Quoted message key %s (providerId=%s)!', key?.id, providerId) } catch {}
             if (key?.id) {
-              const remoteJid = phoneNumberToJid(targetTo)
-              quoted = await this.store?.dataStore.loadMessage(remoteJid, key?.id)
-              if (!quoted) {
-                const unoId = await this.store?.dataStore?.loadUnoId(key?.id)
-                if (unoId) {
-                  quoted = await this.store?.dataStore.loadMessage(remoteJid, unoId)
+              const candidateIds = Array.from(new Set([
+                providerId,
+                key?.id,
+                messageId,
+                await dataStore?.loadProviderId?.(key?.id),
+                await dataStore?.loadUnoId?.(key?.id),
+              ].filter((v): v is string => typeof v === 'string' && !!v)))
+              const candidateJids = Array.from(new Set([
+                key?.remoteJid,
+                targetTo,
+                (() => { try { return phoneNumberToJid(targetTo) } catch { return undefined } })(),
+                (() => { try { return normalizeTransportJid(key?.remoteJid) } catch { return key?.remoteJid } })(),
+              ].filter((v): v is string => typeof v === 'string' && !!v)))
+
+              for (const candidateJid of candidateJids) {
+                for (const candidateId of candidateIds) {
+                  quoted = await dataStore?.loadMessage(candidateJid, candidateId)
+                  if (quoted) break
                 }
+                if (quoted) break
               }
+
               try {
                 const qid = quoted?.key?.id
                 const qjid = quoted?.key?.remoteJid
                 const qtype = quoted?.message ? Object.keys(quoted.message)[0] : 'unknown'
-                logger.debug('Quoted message loaded (jid=%s id=%s type=%s)', qjid, qid, qtype)
+                logger.info(
+                  {
+                    phone: this.phone,
+                    targetTo,
+                    messageId,
+                    providerId,
+                    quotedFound: !!quoted,
+                    quotedId: qid,
+                    quotedRemoteJid: qjid,
+                    quotedType: qtype,
+                    candidateJids,
+                    candidateIds,
+                  },
+                  'reply quote lookup result'
+                )
               } catch { logger.debug('Quoted message loaded') }
             }
           }
