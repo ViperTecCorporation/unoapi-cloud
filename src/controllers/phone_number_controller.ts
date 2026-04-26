@@ -104,7 +104,7 @@ export class PhoneNumberController {
         const config = await this.getConfig(phone)
         const status = config.provider == 'forwarder' ? 'forwarder' : await this.sessionStore.getStatus(phone)
         if (this.isAuthorizedToken(token, config)) {
-          return { ...config, display_phone_number: phone, status }
+          return { ...config, id: phone, phone, display_phone_number: phone, status }
         }
         return undefined
       }))

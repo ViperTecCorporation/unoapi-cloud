@@ -1149,6 +1149,27 @@
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
             }
+            function htmlText(value) {
+                return htmlAttr(value);
+            }
+            function sessionActionId(session) {
+                const candidates = [
+                    session && session.id,
+                    session && session.phone,
+                    session && session.session_phone,
+                    session && session.display_phone_number,
+                ];
+                for (const candidate of candidates) {
+                    const value = `${candidate ?? ''}`.trim();
+                    if (value && value.toLowerCase() !== 'unavailable') return value;
+                }
+                return '';
+            }
+            function sessionDisplayPhone(session, actionId) {
+                const value = `${session && session.display_phone_number ? session.display_phone_number : ''}`.trim();
+                if (value && value.toLowerCase() !== 'unavailable') return value;
+                return actionId;
+            }
 
             if (storedToken) {
                 fetchSessions(storedToken, true);
@@ -1297,21 +1318,21 @@
                 var raw = (status || '').toString();
                 var s = raw.toLowerCase();
                 if (s === 'online') {
-                    return `<span class="status status-online" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-online" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'offline' || s === 'disconnected') {
-                    return `<span class="status status-offline" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-offline" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'connecting') {
-                    return `<span class="status status-connecting" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-connecting" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'standby') {
-                    return `<span class="status status-standby" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-standby" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'restart_required') {
-                    return `<span class="status status-restart_required" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-restart_required" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
-                return `<span class="status" title="${raw}"><span class="dot" style="background: var(--muted)"></span><span>${raw}</span></span>`;
+                return `<span class="status" title="${htmlAttr(raw)}"><span class="dot" style="background: var(--muted)"></span><span>${htmlText(raw)}</span></span>`;
             }
 
             // Populate Datatable with session numbers
@@ -1354,15 +1375,18 @@
                 };
 
                 sessions.forEach(session => {
-                    const displayPhone = safeCell(session.display_phone_number || session.phone || session.id, '');
-                    if (!displayPhone) return;
+                    session = session || {};
+                    const actionId = sessionActionId(session);
+                    if (!actionId) return;
+                    const displayPhone = sessionDisplayPhone(session, actionId);
+                    const actionAttr = htmlAttr(actionId);
                     table.row.add([
-                        safeCell(session.label, displayPhone),
-                        displayPhone,
+                        htmlText(safeCell(session.label, displayPhone)),
+                        htmlText(displayPhone),
                         renderStatus(session.status),
-                        safeCell(session.server),
+                        htmlText(safeCell(session.server)),
                         `
-                        <button class=\"btn btn-sm btn-warning edit-btn\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
+                        <button class=\"btn btn-sm btn-warning edit-btn\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
                     ]);
                 });
                 table.draw(false);
@@ -1402,7 +1426,7 @@
 
                 if (token) {
                     $('#editModal').data('number', number);
-                    fetch(`${apiUrl}/v15.0/${number}`, {
+                    fetch(`${apiUrl}/v15.0/${encodeURIComponent(number)}`, {
                         headers: { Authorization: `Bearer ${token}` }
                     })
                     .then(response => {

@@ -49,6 +49,65 @@ export class IncomingJob {
     return fn.call(this.incoming, phone, ...args)
   }
 
+  private buildOutgoingWebhookMessage(
+    phone: string,
+    payload: any,
+    idUno: string,
+    timestamp: string,
+    messagePayload: any,
+  ) {
+    const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
+    const groupId = isGroup ? payload.to : undefined
+    const contactWaId = isGroup ? phone.replace('+', '') : normalizeUserOrGroupIdForWebhook(payload?.to)
+    const message: any = {
+      from: phone.replace('+', ''),
+      id: idUno,
+      timestamp,
+      [payload.type]: messagePayload,
+      type: payload.type,
+    }
+    if (groupId) message.group_id = groupId
+    const userId = `${payload?.from_user_id || payload?.user_id || payload?.contact?.user_id || ''}`.trim()
+    if (userId) message.from_user_id = userId
+
+    const contact: any = {
+      wa_id: contactWaId,
+      ...(groupId ? { group_id: groupId } : {}),
+      profile: {
+        name: `${payload?.contact?.name || payload?.profile?.name || contactWaId || ''}`,
+        picture: `${payload?.contact?.picture || payload?.profile?.picture || ''}`,
+      },
+    }
+    if (payload?.group_subject) contact.group_subject = `${payload.group_subject}`
+    if (payload?.group_picture) contact.group_picture = `${payload.group_picture}`
+    if (userId) contact.user_id = userId
+    const username = `${payload?.username || payload?.contact?.username || payload?.profile?.username || ''}`.trim()
+    if (username) contact.profile.username = username
+
+    return {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phone,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: phone,
+                  phone_number_id: phone,
+                },
+                contacts: [contact],
+                messages: [message],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+  }
+
   async consume(phone: string, data: object) {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
@@ -128,46 +187,7 @@ export class IncomingJob {
           logger.warn('Incoming media without link for %s type=%s; skipping media download/cache', idUno, payload.type)
         }
       }
-      const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
-      const webhookMessage = {
-        object: 'whatsapp_business_account',
-        entry: [
-          {
-            id: phone,
-            changes: [
-              {
-                value: {
-                  messaging_product: 'whatsapp',
-                  metadata: {
-                    display_phone_number: phone,
-                    phone_number_id: phone,
-                  },
-                  contacts: [
-                    {
-                      wa_id: waId,
-                      ...(isGroup ? { group_id: payload.to } : {}),
-                      profile: {
-                        name: '',
-                        picture: '',
-                      },
-                    },
-                  ],
-                  messages: [
-                    {
-                      from: phone,
-                      id: idUno,
-                      timestamp,
-                      [payload.type]: messagePayload,
-                      type: payload.type,
-                    },
-                  ],
-                },
-                field: 'messages',
-              },
-            ],
-          },
-        ],
-      }
+      const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, messagePayload)
       const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
       logger.debug('%s webhooks with sendNewMessages', webhooks.length)
       await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
@@ -238,43 +258,7 @@ export class IncomingJob {
       throw `Unknow response ${JSON.stringify(response)}`
     } else if (ok.success) {
       // Fallback: provedor não retornou id da mensagem, ainda assim notificar "new message" no webhook
-      const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
-      const webhookMessage = {
-        object: 'whatsapp_business_account',
-        entry: [
-          {
-            id: phone,
-            changes: [
-              {
-                value: {
-                  messaging_product: 'whatsapp',
-                  metadata: {
-                    display_phone_number: phone,
-                    phone_number_id: phone,
-                  },
-                  contacts: [
-                    {
-                      wa_id: waId,
-                      ...(isGroup ? { group_id: payload.to } : {}),
-                      profile: { name: '', picture: '' },
-                    },
-                  ],
-                  messages: [
-                    {
-                      from: phone,
-                      id: idUno,
-                      timestamp,
-                      [payload.type]: payload[payload.type],
-                      type: payload.type,
-                    },
-                  ],
-                },
-                field: 'messages',
-              },
-            ],
-          },
-        ],
-      }
+      const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, payload[payload.type])
       const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
       logger.debug('%s webhooks with sendNewMessages (fallback)', webhooks.length)
       await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))

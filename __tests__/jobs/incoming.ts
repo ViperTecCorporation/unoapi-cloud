@@ -57,4 +57,57 @@ describe('incoming job', () => {
       args: [],
     })).rejects.toThrow('Unknown group management action groupDestroyEverything')
   })
+
+  test('emits meta-like group webhook when provider success has no message id', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const getConfigTest: getConfig = async () => ({
+      ...defaultConfig,
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          id: 'default',
+          sendNewMessages: true,
+          sendGroupMessages: true,
+        },
+      ],
+    })
+    incoming.send = jest.fn().mockResolvedValue({ ok: { success: true } })
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, getConfigTest)
+
+    await job.consume('5566996269251', {
+      id: 'uno-id-1',
+      payload: {
+        messaging_product: 'whatsapp',
+        to: '120363039221813429@g.us',
+        type: 'text',
+        text: { body: 'Teste' },
+      },
+      options: {},
+    })
+
+    expect(outgoing.sendHttp).toHaveBeenCalled()
+    const webhookPayload = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
+    const value = webhookPayload.entry[0].changes[0].value
+
+    expect(value.contacts[0]).toEqual({
+      wa_id: '5566996269251',
+      group_id: '120363039221813429@g.us',
+      profile: {
+        name: '5566996269251',
+        picture: '',
+      },
+    })
+    expect(value.messages[0]).toEqual({
+      from: '5566996269251',
+      id: 'uno-id-1',
+      timestamp: expect.any(String),
+      text: { body: 'Teste' },
+      type: 'text',
+      group_id: '120363039221813429@g.us',
+    })
+  })
 })

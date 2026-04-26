@@ -71,6 +71,22 @@ describe('phone number meta-like routes', () => {
     }))
   })
 
+  test('lists sessions with stable edit identifiers when status is offline', async () => {
+    ;(sessionStore.getStatus as jest.Mock).mockResolvedValue('offline')
+
+    const res = await request(app.server)
+      .get('/sessions')
+      .set('Authorization', 'Bearer client-token')
+
+    expect(res.status).toEqual(200)
+    expect(res.body.data[0]).toEqual(expect.objectContaining({
+      id: sessionPhone,
+      phone: sessionPhone,
+      display_phone_number: sessionPhone,
+      status: 'offline',
+    }))
+  })
+
   test('returns debug token scopes for valid token', async () => {
     const res = await request(app.server)
       .get('/v19.0/debug_token?input_token=client-token')
