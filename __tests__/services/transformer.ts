@@ -1974,6 +1974,81 @@ describe('service transformer', () => {
     }
   })
 
+  test('fromBaileysMessageContent emits Meta-like text webhook for view once unavailable stub', async () => {
+    const phoneNumer = '5549998093075'
+    const remoteJid = '24788516941@lid'
+    const username = '@maria.vendas'
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        remoteJidUsername: username,
+        fromMe: false,
+        id,
+        isViewOnce: true,
+      },
+      messageTimestamp,
+      pushName: 'Contato view once',
+      messageStubType: 'FUTUREPROOF',
+      messageStubParameters: ['view_once_unavailable'],
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = output.entry[0].changes[0].value
+    const message = value.messages[0]
+
+    expect(value.contacts[0]).toEqual({
+      profile: {
+        name: 'Contato view once',
+        username,
+      },
+      wa_id: '',
+      user_id: remoteJid,
+    })
+    expect(value.statuses).toEqual([])
+    expect(message).toEqual({
+      from_user_id: remoteJid,
+      from: '',
+      id,
+      timestamp: messageTimestamp,
+      text: { body: 'Mídia de visualização única indisponível neste dispositivo.' },
+      type: 'text',
+    })
+  })
+
+  test('fromBaileysMessageContent emits Meta-like text webhook for view once unavailable update', async () => {
+    const phoneNumer = '5549998093075'
+    const remotePhoneNumber = '+11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: true,
+        id,
+        isViewOnce: true,
+      },
+      messageTimestamp,
+      update: {
+        messageStubType: 'FUTUREPROOF',
+        messageStubParameters: ['view_once_unavailable'],
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = output.entry[0].changes[0].value
+    const message = value.messages[0]
+
+    expect(value.statuses).toEqual([])
+    expect(message.from).toBe(phoneNumer)
+    expect(message.id).toBe(id)
+    expect(message.timestamp).toBe(messageTimestamp)
+    expect(message.type).toBe('text')
+    expect(message.text).toEqual({ body: 'Mídia de visualização única indisponível neste dispositivo.' })
+  })
+
   test('isValidPhoneNumber return false when 8 digits phone brazilian', async () => {
     expect(isValidPhoneNumber('554988290955')).toEqual(false)
   })

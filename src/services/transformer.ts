@@ -30,6 +30,14 @@ const MESSAGE_STUB_TYPE_ERRORS = [
   'No matching sessions found for message'.toLowerCase(),
 ]
 
+const isViewOnceUnavailableStub = (payload: any): boolean => {
+  const source = payload?.update || payload || {}
+  const stubParams = Array.isArray(source?.messageStubParameters)
+    ? source.messageStubParameters.map((p: any) => `${p}`)
+    : []
+  return stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')
+}
+
 export class BindTemplateError extends Error {
   constructor() {
     super('')
@@ -1603,6 +1611,23 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       from: undefined as any,
       id: whatsappMessageId,
     }
+    const emitViewOnceUnavailableMessage = () => {
+      const k: any = (payload as any)?.key || {}
+      message.type = 'text'
+      message.text = {
+        body: 'Mídia de visualização única indisponível neste dispositivo.',
+      }
+      logger.info('view_once_unavailable detected msgId=%s remoteJid=%s fromMe=%s hasMediaKey=%s hasDirectPath=%s reason=%s',
+        k?.id || whatsappMessageId || '<none>',
+        k?.remoteJid || '<none>',
+        !!k?.fromMe,
+        false,
+        false,
+        'server_delivered_unavailable_placeholder',
+      )
+      change.value.messages.push(message)
+      return [data, senderPhone, senderId] as [any, string, string]
+    }
     if (senderStableUserId && !fromMe) {
       message.from_user_id = senderStableUserId
     }
@@ -1794,15 +1819,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       case 'messageStubType': {
-        const stubParams = Array.isArray((payload as any)?.messageStubParameters)
-          ? (payload as any).messageStubParameters.map((p: any) => `${p}`)
-          : []
-        if (stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')) {
-          message.text = { body: 'Conteúdo de visualização única indisponível aqui. Confira no aparelho celular.' }
-          message.unsupported = { reason: 'view_once_not_available_on_companion' }
-          message.type = 'text'
-          change.value.messages.push(message)
-          return [data, senderPhone, senderId]
+        if (isViewOnceUnavailableStub(payload)) {
+          return emitViewOnceUnavailableMessage()
         }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
@@ -2060,6 +2078,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         // Suporta formatos com payload.status OU payload.update.status
         // Evita acessar update quando inexistente
         const u: any = (payload && (payload as any).update) || {}
+        if (isViewOnceUnavailableStub(payload)) {
+          return emitViewOnceUnavailableMessage()
+        }
         const baileysStatus = (payload as any)?.status ?? u?.status
         if (
           typeof baileysStatus === 'undefined' &&
