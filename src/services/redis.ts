@@ -1003,6 +1003,12 @@ export const setConfig = async (phone: string, value: any) => {
       await setPhoneNumberIdMapping(phone, phoneNumberId)
     }
   } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
+  try {
+    const businessAccountId = (config as any)?.webhookForward?.businessAccountId
+    if (businessAccountId) {
+      await setBusinessAccountIdMapping(phone, businessAccountId)
+    }
+  } catch (e) { logger.debug(e as any, 'ignore setBusinessAccountIdMapping error') }
   configs.delete(phone)
   return config
 }
@@ -1515,6 +1521,7 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session
 const phoneNumberIdKey = (id: string) => `${BASE_KEY}meta:phone_number_id:${id}`
+const businessAccountIdKey = (id: string) => `${BASE_KEY}meta:business_account_id:${id}`
 export const setPhoneNumberIdMapping = async (phone: string, phoneNumberId: string) => {
   if (!phoneNumberId) return
   try {
@@ -1529,6 +1536,23 @@ export const getPhoneByPhoneNumberId = async (phoneNumberId: string) => {
     return await redisGet(phoneNumberIdKey(phoneNumberId))
   } catch (e) {
     logger.warn(e as any, 'Failed to get phone by phoneNumberId')
+    return undefined
+  }
+}
+export const setBusinessAccountIdMapping = async (phone: string, businessAccountId: string) => {
+  if (!businessAccountId) return
+  try {
+    await redisSetAndExpire(businessAccountIdKey(businessAccountId), phone, SESSION_TTL >= 0 ? SESSION_TTL : DATA_TTL)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to set businessAccountId mapping')
+  }
+}
+export const getPhoneByBusinessAccountId = async (businessAccountId: string) => {
+  if (!businessAccountId) return undefined
+  try {
+    return await redisGet(businessAccountIdKey(businessAccountId))
+  } catch (e) {
+    logger.warn(e as any, 'Failed to get phone by businessAccountId')
     return undefined
   }
 }

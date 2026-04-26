@@ -1102,6 +1102,7 @@
 
         $(document).ready(function () {
             var table;
+            var sessionsFetchInFlight = false;
             const storedToken = localStorage.getItem(tokenKey);
 
             if (storedToken) {
@@ -1179,6 +1180,8 @@
 
             //Create DataTable And Fetch Conected Sessions
             function fetchSessions(token, hideForm = true) {
+                if (sessionsFetchInFlight) return;
+                sessionsFetchInFlight = true;
                 if (!$.fn.dataTable.isDataTable('#sessionsTable')) {
                     const dtLang = (currentLang === 'pt-BR') ? {
                         decimal: "",
@@ -1281,11 +1284,14 @@
                             $('#navbarDropdown').removeClass('d-none');
                             $('#login').addClass('d-none');
                         }
-                        populateTable(resp.data); // Popula a tabela com os dados
+                        populateTable(Array.isArray(resp?.data) ? resp.data : []); // Popula a tabela com os dados
                     })
                     .catch(() => {
                         $('#errorMessage').removeClass('d-none');
                         $('#sessionsTable').addClass('d-none');
+                    })
+                    .finally(() => {
+                        sessionsFetchInFlight = false;
                     });
             }
 
@@ -1297,16 +1303,24 @@
                 // Limpa os dados antigos da tabela antes de adicionar os novos
                 table.clear();
 
+                const safeCell = (value, fallback = '-') => {
+                    const text = `${value ?? ''}`.trim();
+                    return text || fallback;
+                };
+
                 sessions.forEach(session => {
+                    const displayPhone = safeCell(session.display_phone_number || session.phone || session.id, '');
+                    if (!displayPhone) return;
                     table.row.add([
-                        session.label,
-                        session.display_phone_number,
+                        safeCell(session.label, displayPhone),
+                        displayPhone,
                         renderStatus(session.status),
-                        session.server,
+                        safeCell(session.server),
                         `
-                        <button class=\"btn btn-sm btn-warning edit-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#editModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
-                    ]).draw(false);
+                        <button class=\"btn btn-sm btn-warning edit-btn\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${displayPhone}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
+                    ]);
                 });
+                table.draw(false);
             }
 
             //deregister function
@@ -1341,6 +1355,7 @@
                 const token = localStorage.getItem(tokenKey);
 
                 if (token) {
+                    $('#editModal').data('number', number);
                     fetch(`${apiUrl}/v15.0/${number}`, {
                         headers: { Authorization: `Bearer ${token}` }
                     })
@@ -1350,8 +1365,6 @@
                     })
                     .then(data => {
                         populateEditForm(data);
-
-                        $('#editModal').data('number', number); 
 
                         $('#editModal').modal('show');
                     })
@@ -1400,9 +1413,9 @@
                 $('#proxyUrl').val(session.proxyUrl);
                 try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
                 try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
-                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '') } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(`${session.webhookForward?.phoneNumberId || ''}`.trim()) } catch {}
                 try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
-                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '') } catch {}
+                try { $('#webhookForwardBusinessAccountId').val(`${session.webhookForward?.businessAccountId || ''}`.trim()) } catch {}
                 $('#server').val(session.server);
                 // Se houver payload do Embedded guardado, aplica e mantém alerta visível
                 applyEmbeddedToForm(true);
@@ -1519,9 +1532,9 @@
                         webhookForward: {
                           url: $('#webhookForwardUrl').val(),
                           version: $('#webhookForwardVersion').val(),
-                          phoneNumberId: $('#webhookForwardPhoneNumberId').val(),
+                          phoneNumberId: `${$('#webhookForwardPhoneNumberId').val() || ''}`.trim(),
                           token: $('#webhookForwardToken').val(),
-                          businessAccountId: $('#webhookForwardBusinessAccountId').val(),
+                          businessAccountId: `${$('#webhookForwardBusinessAccountId').val() || ''}`.trim(),
                         },
                         server: $('#server').val(),
                         // rate limits

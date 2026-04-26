@@ -92,6 +92,8 @@
         tagline: 'Architecture, Development and Status/Broadcast docs',
         navArchitecture: 'Architecture Overview',
         navDevelopment: 'Development Guide',
+        navCompatOdoo: 'Odoo Compatibility',
+        navEmbedded: 'WhatsApp Embedded',
         navStatus: 'Status/Broadcast',
         navInstall: 'Installation Guide',
         navOpenapiRedoc: 'OpenAPI (Redoc)',
@@ -101,6 +103,8 @@
         navTranscription: 'Audio Transcription',
         h2Architecture: 'Architecture Overview',
         h2Development: 'Development Guide',
+        h2CompatOdoo: 'Odoo Compatibility',
+        h2Embedded: 'WhatsApp Embedded Signup',
         h2Environment: 'Environment Variables',
         h2Install: 'Installation Guide',
         h2Status: 'Status/Broadcast',
@@ -113,6 +117,8 @@
         tagline: 'Documentação de Arquitetura, Desenvolvimento e Status/Transmissão',
         navArchitecture: 'Visão de Arquitetura',
         navDevelopment: 'Guia de Desenvolvimento',
+        navCompatOdoo: 'Compatibilidade Odoo',
+        navEmbedded: 'WhatsApp Embedded',
         navStatus: 'Status/Transmissão',
         navInstall: 'Guia de Instalação',
         navOpenapiRedoc: 'OpenAPI (Redoc)',
@@ -121,6 +127,8 @@
         navChangelog: 'Histórico de Mudanças',
         h2Architecture: 'Visão de Arquitetura',
         h2Development: 'Guia de Desenvolvimento',
+        h2CompatOdoo: 'Compatibilidade Odoo',
+        h2Embedded: 'WhatsApp Embedded Signup',
         h2Environment: 'Variáveis de Ambiente',
         h2Install: 'Guia de Instalação',
         h2Status: 'Status/Transmissão',
@@ -195,6 +203,8 @@
       if (currentLang === 'pt-BR') {
         load('arch', '/docs/pt-BR/ARQUITETURA.md');
         load('dev', '/docs/pt-BR/DESENVOLVIMENTO.md');
+        load('compat-odoo-content', '/docs/pt-BR/COMPAT_ODOO.md');
+        load('embedded-content', '/docs/pt-BR/WHATSAPP_EMBEDDED.md');
         load('env', '/docs/pt-BR/AMBIENTE.md');
         load('status-content', '/docs/pt-BR/STATUS_BROADCAST.md');
         load('install-content', '/docs/pt-BR/INSTALACAO.md');
@@ -203,6 +213,8 @@
       } else {
         load('arch', '/docs/ARCHITECTURE.md');
         load('dev', '/docs/DEVELOPMENT.md');
+        load('compat-odoo-content', '/docs/COMPAT_ODOO.md');
+        load('embedded-content', '/docs/WHATSAPP_EMBEDDED.md');
         load('env', '/docs/ENVIRONMENT.md');
         load('jidmap-content', '/docs/pt-BR/JIDMAP.md');
         load('status-content', '/docs/STATUS_BROADCAST.md');
@@ -270,6 +282,8 @@
       <nav>
         <a href="#architecture" data-i18n="navArchitecture">Architecture Overview</a>
         <a href="#development" data-i18n="navDevelopment">Development Guide</a>
+        <a href="#compat-odoo" data-i18n="navCompatOdoo">Odoo Compatibility</a>
+        <a href="#embedded" data-i18n="navEmbedded">WhatsApp Embedded</a>
         <a href="#status" data-i18n="navStatus">Status/Broadcast</a>
         <a href="#transcription" data-i18n="navTranscription">Audio Transcription</a>
         <a href="#install" data-i18n="navInstall">Installation Guide</a>
@@ -287,6 +301,14 @@
         <article id="development">
           <h2 data-i18n="h2Development">Development Guide</h2>
           <div id="dev"></div>
+        </article>
+        <article id="compat-odoo">
+          <h2 data-i18n="h2CompatOdoo">Odoo Compatibility</h2>
+          <div id="compat-odoo-content"></div>
+        </article>
+        <article id="embedded">
+          <h2 data-i18n="h2Embedded">WhatsApp Embedded Signup</h2>
+          <div id="embedded-content"></div>
         </article>
         <article id="jidmap">
           <h2 data-i18n="h2Jidmap">JIDMAP (PN↔LID)</h2>

@@ -874,6 +874,8 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 
 - Architecture: see `docs/ARCHITECTURE.md`
 - Development: see `docs/DEVELOPMENT.md`
+- Odoo/official connector compatibility: see `docs/COMPAT_ODOO.md` (PT-BR: `docs/pt-BR/COMPAT_ODOO.md`)
+- WhatsApp Embedded Signup helper: see `docs/WHATSAPP_EMBEDDED.md` (PT-BR: `docs/pt-BR/WHATSAPP_EMBEDDED.md`)
 - Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
 - Environment variables: see `docs/ENVIRONMENT.md` (PT-BR: `docs/pt-BR/AMBIENTE.md`)
 - Changelog: see `CHANGELOG.md` (PT-BR: `docs/pt-BR/CHANGELOG.md`)

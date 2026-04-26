@@ -2,6 +2,8 @@ import { UNOAPI_HEADER_NAME, UNOAPI_AUTH_TOKEN } from '../defaults'
 import { Request, Response, NextFunction } from 'express'
 import logger from './logger'
 import { SessionStore } from './session_store'
+import { isEmbeddedAccessToken } from './embedded_tokens'
+import { resolveSessionPhoneByMetaId } from './meta_alias'
 
 
 export default class Security {
@@ -17,7 +19,7 @@ export default class Security {
       const path = req.path || ''
       if (path.startsWith('/embedded')) return next()
     } catch {}
-    const phone = req.params.phone || '*'
+    const rawPhone = req.params.phone || req.params.phone_number_id || req.params.business_account_id || '*'
     logger.debug('Verifing client authentication...')
     if (UNOAPI_AUTH_TOKEN) {
       const httpAuthToken = `${getAuthHeaderToken(req).trim()}`
@@ -41,6 +43,11 @@ export default class Security {
           logger.debug('Authenticated by UNOAPI_AUTH_TOKEN')
           return next()
         }
+        if (isEmbeddedAccessToken(httpAuthToken)) {
+          logger.debug('Authenticated by embedded access token')
+          return next()
+        }
+        const phone = rawPhone === '*' ? rawPhone : await resolveSessionPhoneByMetaId(rawPhone)
         const tokens = await this.sessionStore.getTokens(phone)
         logger.debug(`Retrieved auth token ${httpAuthToken}`)
         const allTokens = [UNOAPI_AUTH_TOKEN, ...tokens]

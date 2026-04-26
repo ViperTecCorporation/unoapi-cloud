@@ -106,6 +106,30 @@ describe('messages routes', () => {
     )
   })
 
+  test('accepts Graph-like phone_number_id messages route', async () => {
+    const sendSpy = jest.spyOn(incoming, 'send')
+    const r: Response = { ok: { success: true } }
+    jest.spyOn(incoming, 'send').mockResolvedValue(r)
+    const phoneNumberId = `phone-id-${new Date().getTime()}`
+
+    const res = await request(app.server).post(`/v19.0/${phoneNumberId}/messages`).send({
+      messaging_product: 'whatsapp',
+      to: '5566999999999',
+      type: 'text',
+      text: { body: 'teste' },
+    })
+
+    expect(res.status).toEqual(200)
+    expect(sendSpy).toHaveBeenCalledWith(
+      phoneNumberId,
+      expect.objectContaining({
+        type: 'text',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({ endpoint: 'messages' }),
+    )
+  })
+
   test('whatsapp with 400 status', async () => {
     jest.spyOn(incoming, 'send').mockRejectedValue(new Error('cannot login'))
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)
