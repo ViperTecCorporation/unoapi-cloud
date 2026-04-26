@@ -9,19 +9,39 @@ const normalizeGroupJid = (input?: string): string => {
   return normalizeGroupId(`${input || ''}`)
 }
 
-const parseContactInfoName = (raw?: string): string | undefined => {
+const firstNonEmptyString = (...values: any[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
+const parseContactInfo = (raw?: string): any => {
   if (!raw) return undefined
   try {
-    const parsed = JSON.parse(raw)
-    const name = `${parsed?.name || ''}`.trim()
-    return name || undefined
+    return JSON.parse(raw)
   } catch {
     return undefined
   }
 }
 
+const parseContactInfoName = (raw?: string): string | undefined => {
+  const parsed = parseContactInfo(raw)
+  const name = `${parsed?.name || ''}`.trim()
+  return name || undefined
+}
+
 const normalizeParticipantJidForResponse = (rawJid?: string): string => {
   return normalizeParticipantId(`${rawJid || ''}`)
+}
+
+const normalizeParticipantPhoneForResponse = (rawJid?: string): string => {
+  const value = `${rawJid || ''}`.trim()
+  if (!value || value.endsWith('@lid')) return ''
+  const normalized = normalizeParticipantId(value)
+  return normalized.endsWith('@lid') ? '' : normalized
 }
 
 const normalizeParticipantJidForBaileys = (rawJid?: string): string => {
@@ -41,6 +61,25 @@ const normalizeParticipantsForBaileys = (participants?: any): string[] => {
 const isParticipantAdmin = (participant: any): boolean => {
   const admin = `${participant?.admin || ''}`.toLowerCase()
   return admin === 'admin' || admin === 'superadmin' || participant?.isAdmin === true
+}
+
+const participantLid = (participant: any, sourceJid = ''): string => {
+  return firstNonEmptyString(
+    participant?.lid,
+    `${sourceJid || ''}`.endsWith('@lid') ? sourceJid : '',
+    `${participant?.jid || ''}`.endsWith('@lid') ? participant.jid : '',
+    `${participant?.id || ''}`.endsWith('@lid') ? participant.id : '',
+  ) || ''
+}
+
+const participantUsername = (participant: any, contactInfo?: any): string => {
+  return firstNonEmptyString(
+    participant?.username,
+    participant?.participantUsername,
+    participant?.remoteJidUsername,
+    participant?.senderUsername,
+    contactInfo?.username,
+  ) || ''
 }
 
 const participantRole = (participant: any): string => {
@@ -157,19 +196,37 @@ export class GroupsController {
     const sourceJid = `${participant?.id || participant?.jid || participant?.lid || ''}`.trim()
     const jid = normalizeParticipantJidForResponse(sourceJid)
     const pnJid = sourceJid.endsWith('@s.whatsapp.net') ? sourceJid : ''
-    const lid = `${participant?.lid || (sourceJid.endsWith('@lid') ? sourceJid : '') || ''}`.trim()
-    const waId = jid.endsWith('@lid') && pnJid ? normalizeParticipantId(pnJid) : jid
-    const name = await resolveNameForJid(phone, sourceJid)
+    const lid = participantLid(participant, sourceJid)
+    const waId = normalizeParticipantPhoneForResponse(pnJid || sourceJid)
+    let contactInfo: any
+    try { contactInfo = parseContactInfo(await getContactInfo(phone, sourceJid)) } catch {}
+    const username = participantUsername(participant, contactInfo)
+    const resolvedName = await resolveNameForJid(phone, sourceJid)
+    const name = firstNonEmptyString(resolvedName, username, waId, lid) || ''
     const picture = await getProfilePicture(phone, sourceJid)
     return {
       jid,
       wa_id: waId,
       name,
+      ...(lid ? { user_id: lid } : {}),
+      ...(username ? { username } : {}),
       ...(picture ? { picture } : {}),
       ...(lid ? { lid } : {}),
       is_admin: isParticipantAdmin(participant),
       role: participantRole(participant),
     }
+  }
+
+  private async formatParticipantReference(phone: string, rawJid: string) {
+    const clean = `${rawJid || ''}`.trim()
+    const waId = normalizeParticipantPhoneForResponse(clean)
+    let userId = clean.endsWith('@lid') ? clean : ''
+    if (!userId && clean.endsWith('@s.whatsapp.net')) {
+      try { userId = `${await getLidForPn(phone, clean) || ''}`.trim() } catch {}
+    }
+    const response: any = { wa_id: waId }
+    if (userId) response.user_id = userId
+    return response
   }
 
   private async formatGroup(phone: string, groupJid: string, group: any, includeParticipants = false) {
@@ -269,10 +326,10 @@ export class GroupsController {
         description,
         ...(joinApprovalMode ? { join_approval_mode: req.body?.join_approval_mode } : {}),
         ...(code ? { invite_link: inviteLinkFromCode(code) } : {}),
-        participants: participants.map((participant) => ({
-          wa_id: normalizeParticipantJidForResponse(participant),
+        participants: await Promise.all(participants.map(async (participant) => ({
+          ...(await this.formatParticipantReference(phone, participant)),
           status: 'invited',
-        })),
+        }))),
       })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
@@ -423,10 +480,12 @@ export class GroupsController {
       const result = await (this.ensureIncomingMethod('groupParticipantsUpdate') as any)(phone, groupJid, participants, 'remove')
       const failed = (result || []).filter((item: any) => `${item?.status || '200'}` !== '200').map((item: any) => normalizeParticipantJidForResponse(item?.jid))
       const removed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
+      const participantRefs = (await Promise.all(participants.map((participant) => this.formatParticipantReference(phone, participant))))
+        .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
       await this.emitManagementWebhook(phone, 'group_participants_update', {
         group_id: groupJid,
         action: 'remove',
-        participants: removed.map((waId) => ({ wa_id: waId })),
+        participants: participantRefs,
         timestamp: nowTimestamp(),
       })
       return res.json({ group_id: groupJid, removed, failed })
@@ -476,9 +535,17 @@ export class GroupsController {
       const requests = await (this.ensureIncomingMethod('groupRequestParticipantsList') as any)(phone, groupJid)
       const join_requests = await Promise.all((requests || []).map(async (item: any) => {
         const jid = `${item?.jid || item?.id || item?.participant || ''}`.trim()
+        const lid = participantLid(item, jid)
+        let contactInfo: any
+        try { contactInfo = parseContactInfo(await getContactInfo(phone, jid)) } catch {}
+        const username = participantUsername(item, contactInfo)
+        const waId = normalizeParticipantPhoneForResponse(jid)
+        const name = firstNonEmptyString(await resolveNameForJid(phone, jid), username, waId, lid) || ''
         return {
-          wa_id: normalizeParticipantJidForResponse(jid),
-          name: await resolveNameForJid(phone, jid),
+          wa_id: waId,
+          ...(lid ? { user_id: lid } : {}),
+          ...(username ? { username } : {}),
+          name,
           requested_at: `${item?.request_time || item?.requested_at || item?.t || ''}`,
         }
       }))
@@ -500,10 +567,12 @@ export class GroupsController {
       const result = await (this.ensureIncomingMethod('groupRequestParticipantsUpdate') as any)(phone, groupJid, participants, action)
       const failed = (result || []).filter((item: any) => `${item?.status || '200'}` !== '200').map((item: any) => normalizeParticipantJidForResponse(item?.jid))
       const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
+      const participantRefs = (await Promise.all(participants.map((participant) => this.formatParticipantReference(phone, participant))))
+        .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
       await this.emitManagementWebhook(phone, 'group_participants_update', {
         group_id: groupJid,
         action,
-        participants: processed.map((waId) => ({ wa_id: waId })),
+        participants: participantRefs,
         timestamp: nowTimestamp(),
       })
       return res.json({ group_id: groupJid, [action === 'approve' ? 'approved' : 'rejected']: processed, failed })

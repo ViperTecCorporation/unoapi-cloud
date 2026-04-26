@@ -1104,6 +1104,14 @@
             var table;
             var sessionsFetchInFlight = false;
             const storedToken = localStorage.getItem(tokenKey);
+            const editModalEl = document.getElementById('editModal');
+            if (editModalEl) {
+                editModalEl.addEventListener('hide.bs.modal', function () {
+                    if (editModalEl.contains(document.activeElement)) {
+                        try { document.activeElement.blur(); } catch {}
+                    }
+                });
+            }
 
             if (storedToken) {
                 fetchSessions(storedToken, true);
@@ -1350,9 +1358,10 @@
             });
 
             //Edit button
-            $('#sessionsTable tbody').on('click', '.edit-btn', function () {
+            $('#sessionsTable tbody').on('click', '.edit-btn', function (event) {
+                event.preventDefault();
                 const number = $(this).data('number');
-                const token = localStorage.getItem(tokenKey);
+                const token = getActiveToken();
 
                 if (token) {
                     $('#editModal').data('number', number);
@@ -1365,8 +1374,8 @@
                     })
                     .then(data => {
                         populateEditForm(data);
-
-                        $('#editModal').modal('show');
+                        const editModal = bootstrap.Modal.getOrCreateInstance(editModalEl);
+                        editModal.show();
                     })
                     .catch(error => alert(error.message));
                 }
@@ -1578,7 +1587,11 @@
                         return response.json();
                     })
                     .then(() => {
-                        $('#editModal').modal('hide');
+                        const editModal = bootstrap.Modal.getInstance(editModalEl);
+                        if (editModalEl && editModalEl.contains(document.activeElement)) {
+                            try { document.activeElement.blur(); } catch {}
+                        }
+                        if (editModal) editModal.hide();
                         fetchSessions(token, true);
                     })
                     .catch(error => alert(error.message));

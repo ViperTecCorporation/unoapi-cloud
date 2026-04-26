@@ -1099,6 +1099,52 @@ export const getNumberAndId = (payload: any): [string, string] => {
   return [phone!, id]
 }
 
+const firstNonEmptyString = (...values: any[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
+const normalizeLidUserId = (value?: string): string | undefined => {
+  if (!value || typeof value !== 'string') return undefined
+  try {
+    const jid = value.includes('@') ? formatJid(value) : value
+    return isLidUser(jid as any) ? jid : undefined
+  } catch {
+    return value.endsWith('@lid') ? value : undefined
+  }
+}
+
+const extractBaileysStableUserId = (payload: any, senderId?: string): string | undefined => {
+  const key = payload?.key || {}
+  return firstNonEmptyString(
+    normalizeLidUserId(key.senderLid),
+    normalizeLidUserId(key.participantLid),
+    normalizeLidUserId(key.recipientLid),
+    normalizeLidUserId(key.participant),
+    normalizeLidUserId(payload?.participant),
+    normalizeLidUserId(key.remoteJid),
+    normalizeLidUserId(senderId),
+  )
+}
+
+const extractBaileysUsername = (payload: any): string | undefined => {
+  const key = payload?.key || {}
+  return firstNonEmptyString(
+    key.participantUsername,
+    key.remoteJidUsername,
+    key.senderUsername,
+    payload?.participantUsername,
+    payload?.remoteJidUsername,
+    payload?.senderUsername,
+    payload?.contact?.username,
+    payload?.username,
+  )
+}
+
 export const formatJid = (jid: string) => {
   const jidSplit = jid.split('@')
   return `${jidSplit[0].split(':')[0]}@${jidSplit[1]}`
@@ -1294,7 +1340,7 @@ export const jidToPhoneNumberIfUser = (value: any): string => {
 
 // Normaliza IDs para webhook mantendo grupos intactos e convertendo usuários para PN com regra BR do 9º dígito
 // - Mantém '@g.us' sem alterações (group_id, group_picture, etc.)
-// - Converte '@lid' -> PN JID e depois -> PN
+// - Não expõe '@lid' em campos de telefone; LID fica em user_id/from_user_id
 // - Converte JID de usuário -> PN
 // - Aplica 9º dígito no Brasil somente para PN de usuários (55 + DDD + 8 dígitos iniciando em [6-9])
 export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
@@ -1317,10 +1363,10 @@ export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
     if (!val) return val
     // Não normalizar grupos
     if (val.includes('@g.us')) return val
-    // Não normalizar LID -> PN aqui: manter @lid quando não houver mapeamento explícito
+    // Não expor LID em campos Cloud API de telefone; usar user_id/from_user_id para isso.
     try {
       if (val.includes('@lid')) {
-        return val
+        return ''
       }
     } catch {}
     // Converter JID de usuário para PN quando aplicável
@@ -1469,11 +1515,27 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
+    const senderStableUserId = extractBaileysStableUserId(payload, senderId)
+    const senderUsername = extractBaileysUsername(payload)
+    const contactWaId = (
+      // 1) outro lado (derivado do remoteJid já normalizado)
+      ensurePn(senderPhone) ||
+      // 2) alternativas explícitas quando presentes
+      ensurePn(payload?.key?.participantPn) ||
+      ensurePn(payload?.participantPn) ||
+      ensurePn(payload?.key?.senderPn) ||
+      // 3) fallbacks a partir de JIDs brutos
+      ensurePn(senderId) ||
+      ensurePn(payload?.key?.remoteJid) ||
+      ensurePn(payload?.key?.remoteJidAlt) ||
+      ensurePn(payload?.key?.participantAlt) ||
+      ensurePn(payload?.participantAlt)
+    ) || ''
     let profileName
     if (fromMe) {
-      profileName = senderPhone
+      profileName = firstNonEmptyString(senderPhone, contactWaId, senderStableUserId)
     } else {
-      profileName = payload.verifiedBizName || payload.pushName || senderPhone
+      profileName = firstNonEmptyString(payload.verifiedBizName, payload.pushName, senderUsername, contactWaId, senderStableUserId)
     }
     let cloudApiStatus
     let messageTimestamp = payload.messageTimestamp
@@ -1506,6 +1568,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               () => {
                 // Em eventos de status (update/receipt), nao incluir picture
                 const p: any = { name: profileName }
+                if (senderUsername) p.username = senderUsername
                 const mt = `${messageType || ''}`
                 if (!['update', 'receipt'].includes(mt)) {
                   const pic = payload.profilePicture
@@ -1517,20 +1580,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               }
             )(),
             ...groupMetadata,
-            wa_id: (
-              // 1) outro lado (derivado do remoteJid já normalizado)
-              ensurePn(senderPhone) ||
-              // 2) alternativas explícitas quando presentes
-              ensurePn(payload?.key?.participantPn) ||
-              ensurePn(payload?.participantPn) ||
-              ensurePn(payload?.key?.senderPn) ||
-              // 3) fallbacks a partir de JIDs brutos
-              ensurePn(senderId) ||
-              ensurePn(payload?.key?.remoteJid) ||
-              ensurePn(payload?.key?.remoteJidAlt) ||
-              ensurePn(payload?.key?.participantAlt) ||
-              ensurePn(payload?.participantAlt)
-            ) || (payload?.key?.participant || payload?.key?.remoteJid || senderId),
+            wa_id: contactWaId,
+            ...(senderStableUserId ? { user_id: senderStableUserId } : {}),
           },
         ],
         statuses,
@@ -1552,10 +1603,13 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       from: undefined as any,
       id: whatsappMessageId,
     }
+    if (senderStableUserId && !fromMe) {
+      message.from_user_id = senderStableUserId
+    }
     if (groupMetadata.group_id) {
       message.group_id = normalizeGroupId(groupMetadata.group_id)
     }
-    // Build 'from' prioritizing PN; when not possible, keep @lid (not bare digits)
+    // Build 'from' prioritizing PN; when not possible, keep it empty and expose LID in from_user_id.
     try {
       if (fromMe) {
         message.from = phone.replace('+', '')
@@ -1569,19 +1623,11 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         if (fpn) {
           message.from = fpn
         } else {
-          // Prefer a JID with suffix when available (e.g., @lid) instead of bare digits
-          const kj: any = (payload as any)?.key || {}
-          const jidFallback = kj?.participant || kj?.remoteJid || senderId
-          if (typeof jidFallback === 'string' && jidFallback.includes('@')) {
-            message.from = jidFallback
-          } else {
-            // last resort: use senderId or digits as provided
-            message.from = senderId || jidFallback || ''
-          }
+          message.from = ''
         }
       }
     } catch {
-      message.from = fromMe ? phone.replace('+', '') : (senderId || '')
+      message.from = fromMe ? phone.replace('+', '') : ''
     }
     if (payload.messageTimestamp) {
       message['timestamp'] = payload.messageTimestamp.toString()

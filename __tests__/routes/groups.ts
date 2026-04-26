@@ -89,6 +89,7 @@ const cachedGroup = {
     {
       id: '556699999999@s.whatsapp.net',
       lid: '123456789012345@lid',
+      username: '@maria.vendas',
       admin: 'admin',
     },
     {
@@ -200,6 +201,8 @@ describe('groups routes', () => {
           jid: '556699999999',
           wa_id: '556699999999',
           name: 'Maria',
+          user_id: '123456789012345@lid',
+          username: '@maria.vendas',
           picture: 'https://cdn.exemplo.com/profile/maria.jpg',
           lid: '123456789012345@lid',
           is_admin: true,
@@ -239,7 +242,9 @@ describe('groups routes', () => {
         {
           jid: '556699999999',
           wa_id: '556699999999',
-          name: '',
+          name: '@maria.vendas',
+          user_id: '123456789012345@lid',
+          username: '@maria.vendas',
           lid: '123456789012345@lid',
           is_admin: true,
           role: 'admin',
@@ -247,12 +252,40 @@ describe('groups routes', () => {
         {
           jid: '556688888888',
           wa_id: '556688888888',
-          name: '',
+          name: '556688888888',
           is_admin: false,
           role: 'member',
         },
       ],
     })
+  })
+
+  test('participants route keeps wa_id blank for LID-only participants', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, redis } = await loadApp(true)
+    redis.getGroup.mockResolvedValue({
+      subject: cachedGroup.subject,
+      participants: [
+        {
+          lid: '777777777777777@lid',
+          username: '@lid.only',
+        },
+      ],
+    })
+
+    const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/participants`)
+
+    expect(res.status).toEqual(200)
+    expect(res.body.participants).toEqual([
+      expect.objectContaining({
+        jid: '777777777777777@lid',
+        wa_id: '',
+        user_id: '777777777777777@lid',
+        username: '@lid.only',
+        name: '@lid.only',
+      }),
+    ])
   })
 
   test('participants route returns Meta-like 404 payload when group is not cached', async () => {
@@ -374,8 +407,9 @@ describe('groups routes', () => {
   test('remove participants calls Baileys and emits participants webhook', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
-    const { app, incoming, outgoing } = await loadApp(true)
+    const { app, incoming, outgoing, redis } = await loadApp(true)
     incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([{ status: '200', jid: '556699999999@s.whatsapp.net' }])
+    redis.getLidForPn.mockResolvedValue('123456789012345@lid')
     outgoing.send.mockResolvedValue(undefined)
 
     const res = await request(app.server)
@@ -389,7 +423,7 @@ describe('groups routes', () => {
       entry: [expect.objectContaining({
         changes: [expect.objectContaining({
           field: 'group_participants_update',
-          value: expect.objectContaining({ group_id: groupJid, action: 'remove', participants: [{ wa_id: '556699999999' }] }),
+          value: expect.objectContaining({ group_id: groupJid, action: 'remove', participants: [{ wa_id: '556699999999', user_id: '123456789012345@lid' }] }),
         })],
       })],
     }))
@@ -415,7 +449,7 @@ describe('groups routes', () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
     const { app, incoming, outgoing } = await loadApp(true)
-    incoming.groupRequestParticipantsList = jest.fn().mockResolvedValue([{ jid: '556677777777@s.whatsapp.net', request_time: '1710000300' }])
+    incoming.groupRequestParticipantsList = jest.fn().mockResolvedValue([{ jid: '556677777777@s.whatsapp.net', lid: '987654321012345@lid', username: '@cliente.teste', request_time: '1710000300' }])
     incoming.groupRequestParticipantsUpdate = jest.fn().mockResolvedValue([{ status: '200', jid: '556677777777@s.whatsapp.net' }])
     outgoing.send.mockResolvedValue(undefined)
 
@@ -426,7 +460,7 @@ describe('groups routes', () => {
     expect(listRes.status).toEqual(200)
     expect(listRes.body).toEqual({
       group_id: groupJid,
-      join_requests: [{ wa_id: '556677777777', name: '', requested_at: '1710000300' }],
+      join_requests: [{ wa_id: '556677777777', user_id: '987654321012345@lid', username: '@cliente.teste', name: '@cliente.teste', requested_at: '1710000300' }],
     })
     expect(incoming.groupRequestParticipantsUpdate).toHaveBeenCalledWith(phone, groupJid, ['556677777777@s.whatsapp.net'], 'approve')
     expect(incoming.groupRequestParticipantsUpdate).toHaveBeenCalledWith(phone, groupJid, ['556677777777@s.whatsapp.net'], 'reject')

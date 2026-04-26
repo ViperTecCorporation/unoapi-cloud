@@ -389,6 +389,44 @@ describe('service transformer', () => {
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
   })
 
+  test('fromBaileysMessageContent exposes username metadata and LID stable ids', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteLid = '24788516941@lid'
+    const username = '@maria.vendas'
+    const body = `${new Date().getTime()}`
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid: remoteLid,
+        remoteJidUsername: username,
+        fromMe: false,
+        id,
+      },
+      message: { conversation: body },
+      messageTimestamp,
+    }
+
+    const value = fromBaileysMessageContent(phoneNumer, input)[0].entry[0].changes[0].value
+
+    expect(value.contacts[0]).toEqual({
+      profile: {
+        name: username,
+        username,
+      },
+      wa_id: '',
+      user_id: remoteLid,
+    })
+    expect(value.messages[0]).toEqual({
+      from_user_id: remoteLid,
+      from: '',
+      id,
+      timestamp: messageTimestamp,
+      text: { body },
+      type: 'text',
+    })
+  })
+
   test('fromBaileysMessageContent with messageContextInfo', async () => {
     const phoneNumer = '5549998360838'
     const remotePhoneNumer = '554988290955'

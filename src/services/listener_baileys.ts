@@ -662,45 +662,7 @@ export class ListenerBaileys implements Listener {
           logger.debug('READ_ON_REPLY: set lastIncoming %s -> %s', i.key.remoteJid, i.key.id)
         }
       } catch {}
-      // Reparar IDs "nus" (apenas dígitos) no payload já montado quando houver mapeamento PN->LID no cache
-      try {
-        if (data) {
-          const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
-          const isGroupPayload = Array.isArray(v.contacts) && v.contacts.some((c: any) => typeof c?.group_id === 'string' && c.group_id.endsWith('@g.us'))
-          const digitsOnly = (s?: string) => typeof s === 'string' && /^\d+$/.test(s)
-          const toPnJid = (d: string) => `${d.replace(/\D/g,'')}@s.whatsapp.net`
-          if (!isGroupPayload) {
-            // contacts[].wa_id
-            if (Array.isArray(v.contacts)) {
-              for (const c of v.contacts) {
-                const id = c?.wa_id
-                if (digitsOnly(id)) {
-                  try {
-                    const lid = await dataStore.getLidForPn?.(phone, toPnJid(id))
-                    if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                      c.wa_id = lid
-                    }
-                  } catch {}
-                }
-              }
-            }
-            // messages[].from
-            if (Array.isArray(v.messages)) {
-              for (const m of v.messages) {
-                const from = m?.from
-                if (digitsOnly(from)) {
-                  try {
-                    const lid = await dataStore.getLidForPn?.(phone, toPnJid(from))
-                    if (typeof lid === 'string' && lid.endsWith('@lid')) {
-                      m.from = lid
-                    }
-                  } catch {}
-                }
-              }
-            }
-          }
-        }
-      } catch {}
+      // wa_id/from are Cloud API phone fields. LID is exposed by the transformer via user_id/from_user_id.
       // Preferir PN bruto do transporte para caches internos/JIDMAP.
       // senderPhone já vem normalizado para webhook e pode inserir o 9º dígito BR.
       let rawTransportPnDigits = ''

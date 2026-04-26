@@ -18,9 +18,12 @@ The media files are saved in file system at folder data with the session or in s
 ## Addressing, Webhooks, Pictures and JIDMAP
 
 - LID/PN handling
-  - Webhooks prefer PN (digits) in `wa_id`, `from` and `recipient_id`; when PN cannot be inferred safely, a LID/JID is returned as fallback.
+  - Webhooks keep `wa_id`, `from` and `recipient_id` as phone-only fields. When PN cannot be inferred safely, `wa_id`/`from` are left empty and LID is exposed through `user_id`/`from_user_id`.
   - Internally, the API uses LID whenever possible (1:1 and groups) to reduce “no sessions” and decryption issues, while keeping webhooks PN‑first for compatibility.
   - A PN?LID cache is maintained per session (file/redis) and is updated from Baileys events and observations.
+  - When Baileys exposes WhatsApp usernames, Uno keeps the LID as the stable identifier and adds the username as profile metadata. In Cloud-like webhooks this means `contacts[].user_id` and `messages[].from_user_id` receive the `@lid`, while `contacts[].profile.username` receives the username.
+  - Meta-like group participant and join-request routes follow the same rule: `user_id` receives the participant `@lid` when known, `username` carries the WhatsApp username, and the legacy `wa_id` field is preserved.
+  - `contacts[].profile.name` fallback order is: Baileys business/push name, then username, then `wa_id`, then `user_id` (`@lid`). This avoids empty names for username/LID-only contacts.
 
 - Group sends
   - Default addressingMode is LID. You can force via `GROUP_SEND_ADDRESSING_MODE=lid|pn`.
@@ -46,7 +49,7 @@ See more details in docs/pt-BR/JIDMAP.md.### One‑to‑One (Direct) Sending
 - Control addressing for direct chats (1:1) using `ONE_TO_ONE_ADDRESSING_MODE`.
   - `pn` (default): send via PN. Recommended — avoids cases where `@lid` opens a separate thread or hides the message on some devices.
   - `lid`: prefer sending via LID when available (may reduce first-contact session issues, but can cause split threads in some clients).
-- Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved.
+- Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved; unresolved LIDs are exposed through `user_id`/`from_user_id`.
   - You can control webhook normalization with `WEBHOOK_PREFER_PN_OVER_LID` (default `true`).
 
 Example:
