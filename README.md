@@ -82,7 +82,7 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
   - Edited messages are unwrapped to their original content (no recursion); device‑sent updates with inline content are converted to normal message payloads.
 
 - Profile pictures
-  - Stored and looked up by a canonical PN identifier whenever possible, so PN and LID variants point to the same file. The same applies to S3 keys.
+  - Stored and looked up by both canonical PN and stable LID/user id when known, so webhook consumers can resolve profile pictures by phone or BSUID. The same applies to S3 keys.
 
 Notes on Rate Limiting
 - Optional per‑session and per‑destination caps are available via env. When exceeded, messages may be scheduled in RabbitMQ instead of returning 429.

@@ -4,6 +4,8 @@ import { mock } from 'jest-mock-extended'
 import { getMediaStoreFile } from '../../src/services/media_store_file'
 import { MediaStore } from '../../src/services/media_store'
 import { defaultConfig } from '../../src/services/config'
+import fetch from 'node-fetch'
+jest.mock('node-fetch', () => jest.fn())
 const phone = `${new Date().getTime()}`
 const messageId = `wa.${new Date().getTime()}`
 const url = `http://somehost`
@@ -16,6 +18,7 @@ const message = {
   mime_type: mimetype
 }
 const dataStore = mock<DataStore>()
+const fetchMock = fetch as unknown as jest.Mock
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const getTestDataStore: getDataStore = async (_phone: string, _config: unknown): Promise<DataStore> => {
   return dataStore
@@ -26,6 +29,10 @@ describe('media routes', () => {
 
   beforeEach(() => {
     dataStore.loadMediaPayload.mockReturnValue(new Promise((resolve) => resolve(message)))
+    dataStore.getLidForPn.mockReset()
+    dataStore.getPnForLid.mockReset()
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue({ arrayBuffer: async () => Buffer.from('profile-picture') })
     mediaStore = getMediaStoreFile(phone, defaultConfig, getTestDataStore)
   })
 
@@ -35,5 +42,21 @@ describe('media routes', () => {
       ...message
     }
     expect(await mediaStore.getMedia(url, messageId)).toStrictEqual(response)
+  })
+
+  test('saveProfilePicture mirrors picture by phone and user id', async () => {
+    const pn = '556699999999'
+    const pnJid = `${pn}@s.whatsapp.net`
+    const lid = '123456789012345@lid'
+    dataStore.getLidForPn.mockResolvedValue(lid)
+    dataStore.getPnForLid.mockResolvedValue(pnJid)
+
+    await mediaStore.saveProfilePicture({ id: pnJid, lid, imgUrl: 'https://example.test/profile.jpg' } as any)
+
+    const pnUrl = await mediaStore.getProfilePictureUrl(url, pnJid)
+    const lidUrl = await mediaStore.getProfilePictureUrl(url, lid)
+
+    expect(pnUrl).toContain('5566999999999.jpg')
+    expect(lidUrl).toContain(`${lid}.jpg`)
   })
 })

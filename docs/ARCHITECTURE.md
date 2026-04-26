@@ -232,7 +232,7 @@ Flow overview (when SEND_PROFILE_PICTURE=true):
    │                         persist via mediaStore.saveProfilePicture
    │                                     │
    ├───────── S3 backend ────────────────┴──────── filesystem backend ────────┐
-   │  PutObject to <phone>/profile-pictures/<canonical>.jpg                    │
+   │  PutObject to <phone>/profile-pictures/<pn>.jpg and <lid>.jpg when known  │
    │  return signed URL (expires DATA_URL_TTL)                                │
    │                                                                           │
    │                                              write file under <baseStore>/medias

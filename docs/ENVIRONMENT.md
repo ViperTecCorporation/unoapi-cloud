@@ -213,7 +213,7 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 
 - Webhooks prefer PN. When PN cannot be resolved safely, LID/JID is returned as a fallback.
 - Internally, the API uses LID when available for 1:1 and groups. For 1:1, PNÃ¢â€ â€™LID mappings are learned on-the-fly (assertSessions/exists, and events).
-- Profile pictures are stored and retrieved by a canonical PN whenever possible (same for S3 keys), so PN and LID variants reference the same asset.
+- Profile pictures are stored and retrieved by canonical PN and, when known, by stable LID/user id as separate keys (same for S3 keys), so PN and BSUID lookups can both resolve the image.
 
 ## AntiÃ¢â‚¬â€˜Spam / Rate Limits
 
@@ -305,8 +305,8 @@ Skip sending the same message again when a job retry happens after a successful 
   - `SEND_PROFILE_PICTURE` Ã¢â‚¬â€ Include profile pictures in webhook payloads. Default `true`.
 
 - Storage backends
-  - S3 (preferred): enabled when `STORAGE_ENDPOINT` is set. Uses `@aws-sdk/client-s3` with credentials from `STORAGE_*` envs. Files are written as `<phone>/profile-pictures/<canonical>.jpg` where `<canonical>` is the contact number (digits only) for users, or the group JID for groups.
-  - Filesystem: default when no S3 endpoint is configured. Files are stored under `<baseStore>/medias/<phone>/profile-pictures/<canonical>.jpg`.
+  - S3 (preferred): enabled when `STORAGE_ENDPOINT` is set. Uses `@aws-sdk/client-s3` with credentials from `STORAGE_*` envs. Files are written as `<phone>/profile-pictures/<pn>.jpg` and also `<phone>/profile-pictures/<lid>.jpg` when a stable LID/user id is known; groups use the group JID.
+  - Filesystem: default when no S3 endpoint is configured. Files are stored under `<baseStore>/medias/<phone>/profile-pictures/<pn-or-lid>.jpg`.
 
 - URLs returned to webhooks
   - S3: A preÃ¢â‚¬â€˜signed URL is generated per request using `DATA_URL_TTL` (seconds). Link expires after TTL.

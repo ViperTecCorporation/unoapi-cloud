@@ -31,6 +31,19 @@ export const getMediaStoreS3: getMediaStore = (phone: string, config: Config, ge
 export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDataStore): MediaStore => {
   const PROFILE_PICTURE_FOLDER = 'profile-pictures'
   const profilePictureFileName = (phone) => `${phone}.jpg`
+  const sanitizeProfileId = (input?: string): string => {
+    try {
+      let s = `${input || ''}`.trim()
+      if (!s) return ''
+      if (s.includes('@lid@s.whatsapp.net')) s = s.replace('@lid@s.whatsapp.net', '@lid')
+      const pn = ensurePn(s)
+      if (pn) return pn
+      if (s.includes('@lid')) return `${s.split('@')[0].split(':')[0]}@lid`
+      return s
+    } catch {
+      return `${input || ''}`
+    }
+  }
   const s3Config = STORAGE_OPTIONS((config as any).storage)
   const bucket = s3Config.bucket
   const s3Client = new S3Client({
@@ -181,86 +194,84 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     return response.Body as Readable
   }
  
-  mediaStore.getProfilePictureUrl = async (_baseUrl: string, jid: string) => {
-    const sanitizeId = (input: string): string => {
-      try {
-        let s = `${input || ''}`
-        if (!s) return s
-        if (s.includes('@lid@s.whatsapp.net')) s = s.replace('@lid@s.whatsapp.net', '@lid')
-        const pn = ensurePn(s)
-        if (pn) return pn
-        return s
-      } catch { return input }
+  const profilePictureIdsFor = async (jid?: string, contact?: Partial<Contact>): Promise<string[]> => {
+    const ids = new Set<string>()
+    const add = (value?: string) => {
+      const id = sanitizeProfileId(value)
+      if (id) ids.add(id)
     }
-    // Nome do arquivo deve ser o número (PN). Se não houver, tenta mapear via PN<->LID.
-    let canonical = ensurePn(jid)
-    if (!canonical && (jid || '').includes('@lid')) {
-      try {
-        const ds = await getDataStore(phone, config)
-        const pn = await (ds as any).getPnForLid?.(phone, jid)
-        canonical = ensurePn(pn)
-      } catch {}
-    }
-    const id = sanitizeId(canonical || jid)
-    logger.debug('S3 profile picture path canonical id: %s (from %s)', id, sanitizeId(jid))
-    const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
-    // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
+    const original = `${jid || contact?.id || ''}`.trim()
+    add(original)
+    add((contact as any)?.lid)
     try {
-      await sendWithRetry(new HeadObjectCommand({ Bucket: bucket, Key: fileName }), s3Config.timeoutMs)
-    } catch (error: any) {
-      if ((error?.$metadata?.httpStatusCode === 404) || error?.name === 'NotFound' || error?.code === 'NotFound' || error?.Code === 'NotFound') {
-        logger.debug('PROFILE_PICTURE S3 not found: %s', fileName)
+      const ds = await getDataStore(phone, config)
+      const pn = ensurePn(original)
+      const lid = original.includes('@lid') ? sanitizeProfileId(original) : ''
+      if (pn) {
+        const pnJid = phoneNumberToJid(pn)
+        add(pnJid)
+        add(await (ds as any).getLidForPn?.(phone, pnJid))
+      }
+      if (lid) {
+        const pnJid = await (ds as any).getPnForLid?.(phone, lid)
+        add(pnJid)
+        const pnDigits = ensurePn(pnJid)
+        if (pnDigits) add(await (ds as any).getLidForPn?.(phone, phoneNumberToJid(pnDigits)))
+      }
+    } catch {}
+    return Array.from(ids)
+  }
+
+  mediaStore.getProfilePictureUrl = async (_baseUrl: string, jid: string) => {
+    const ids = await profilePictureIdsFor(jid)
+    logger.debug('S3 profile picture path candidate ids: %s (from %s)', ids.join(','), sanitizeProfileId(jid))
+    for (const id of ids) {
+      const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
+      // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
+      try {
+        await sendWithRetry(new HeadObjectCommand({ Bucket: bucket, Key: fileName }), s3Config.timeoutMs)
+      } catch (error: any) {
+        if ((error?.$metadata?.httpStatusCode === 404) || error?.name === 'NotFound' || error?.code === 'NotFound' || error?.Code === 'NotFound') {
+          logger.debug('PROFILE_PICTURE S3 not found: %s', fileName)
+          continue
+        }
+        throw error
+      }
+      try {
+        const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
+        logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
+        return url
+      } catch (error: any) {
+        logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
         return ''
       }
-      throw error
     }
-    try {
-      const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
-      logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
-      return url
-    } catch (error: any) {
-      logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
-      return ''
-    }
+    return ''
   }
 
   mediaStore.saveProfilePicture = async (contact: Partial<Contact>) => {
-    const sanitizeId = (input: string): string => {
-      try {
-        let s = `${input || ''}`
-        if (!s) return s
-        if (s.includes('@lid@s.whatsapp.net')) s = s.replace('@lid@s.whatsapp.net', '@lid')
-        const pn = ensurePn(s)
-        if (pn) return pn
-        return s
-      } catch { return input }
-    }
     const originalId = contact.id as string
-    let canonicalPn = ensurePn(originalId)
-    if (!canonicalPn && (originalId || '').includes('@lid')) {
-      try {
-        const ds = await getDataStore(phone, config)
-        const pnJid = await (ds as any).getPnForLid?.(phone, originalId)
-        canonicalPn = ensurePn(pnJid)
-      } catch {}
-    }
-    const targetId = sanitizeId(canonicalPn || originalId)
+    const targetIds = await profilePictureIdsFor(originalId, contact)
 
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
-      const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
-      try { await mediaStore.removeMedia(fileName) } catch {}
+      for (const targetId of targetIds) {
+        const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
+        try { await mediaStore.removeMedia(fileName) } catch {}
+      }
       return
     }
     if (contact.imgUrl) {
-      logger.info('PROFILE_PICTURE saving (S3) target: %s (from %s)', targetId, sanitizeId(originalId))
+      logger.info('PROFILE_PICTURE saving (S3) targets: %s (from %s)', targetIds.join(','), sanitizeProfileId(originalId))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       const buffer = toBuffer(await response.arrayBuffer())
-      const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
-      try {
-        await mediaStore.saveMediaBuffer(fileName, buffer)
-        logger.info('PROFILE_PICTURE saved (S3): %s', jidToPhoneNumberIfUser(targetId))
-      } catch (e) {
-        logger.warn(e as any, 'Ignore error saving S3 profile picture %s', targetId)
+      for (const targetId of targetIds) {
+        const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
+        try {
+          await mediaStore.saveMediaBuffer(fileName, buffer)
+          logger.info('PROFILE_PICTURE saved (S3): %s', jidToPhoneNumberIfUser(targetId))
+        } catch (e) {
+          logger.warn(e as any, 'Ignore error saving S3 profile picture %s', targetId)
+        }
       }
     }
   }
