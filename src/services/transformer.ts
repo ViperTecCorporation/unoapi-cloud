@@ -907,6 +907,26 @@ export const phoneNumberToJid = (phoneNumber: string) => {
   }
 }
 
+export const normalizeGroupId = (input: string): string => {
+  const raw = `${input || ''}`.trim()
+  if (!raw) return ''
+  if (raw.endsWith('@g.us')) return raw
+  const digits = raw.replace(/\D/g, '')
+  return digits ? `${digits}@g.us` : raw
+}
+
+export const normalizeParticipantId = (jid: string): string => {
+  const value = `${jid || ''}`.trim()
+  if (!value) return ''
+  if (value.endsWith('@s.whatsapp.net')) {
+    return value.split('@')[0].split(':')[0].replace(/\D/g, '')
+  }
+  if (value.endsWith('@lid')) {
+    return value
+  }
+  return value.replace(/\D/g, '') || value
+}
+
 // Converte PN/JID para PN JID de transporte sem heurística extra (ex.: sem inserir 9º dígito BR).
 // Deve ser usado para caches internos/JIDMAP, preservando o valor como chega do Baileys.
 export const toRawPnJid = (value?: string): string => {
@@ -1163,6 +1183,11 @@ export const getGroupId = (payload: object) => {
         data.entry[0].changes[0].value.contacts
         && data.entry[0].changes[0].value.contacts[0]
         && data.entry[0].changes[0].value.contacts[0].group_id
+      )
+      || (
+        data.entry[0].changes[0].value.messages
+        && data.entry[0].changes[0].value.messages[0]
+        && data.entry[0].changes[0].value.messages[0].group_id
       )
     )
 }
@@ -1520,6 +1545,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const message: any = {
       from: undefined as any,
       id: whatsappMessageId,
+    }
+    if (groupMetadata.group_id) {
+      message.group_id = normalizeGroupId(groupMetadata.group_id)
     }
     // Build 'from' prioritizing PN; when not possible, keep @lid (not bare digits)
     try {
@@ -2484,6 +2512,10 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         id: messageId,
         recipient_id: recipientPn || senderId,
         status: cloudApiStatus,
+      }
+      if (groupMetadata.group_id) {
+        state.recipient_id = normalizeGroupId(groupMetadata.group_id)
+        state.recipient_type = 'group'
       }
       // Defensivo: se recipient_id ficou vazio ou igual ao número do próprio canal,
       // force usar o PN do outro lado (senderPhone derivado do remoteJid)

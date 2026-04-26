@@ -46,4 +46,28 @@ export interface Client {
   getMessageMetadata<T>(message: T): Promise<T>
 
   contacts(numbers: string[]): Promise<Contact[]>
+
+  groupCreate?(subject: string, participants: string[]): Promise<any>
+
+  groupUpdateSubject?(jid: string, subject: string): Promise<void>
+
+  groupUpdateDescription?(jid: string, description?: string): Promise<void>
+
+  groupUpdatePicture?(jid: string, pictureUrl: string): Promise<void>
+
+  groupParticipantsUpdate?(jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote'): Promise<any[]>
+
+  groupInviteCode?(jid: string): Promise<string | undefined>
+
+  groupRevokeInvite?(jid: string): Promise<string | undefined>
+
+  groupRequestParticipantsList?(jid: string): Promise<any[]>
+
+  groupRequestParticipantsUpdate?(jid: string, participants: string[], action: 'approve' | 'reject'): Promise<any[]>
+
+  groupLeave?(jid: string): Promise<void>
+
+  groupSettingUpdate?(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
+
+  groupJoinApprovalMode?(jid: string, mode: 'on' | 'off'): Promise<void>
 }

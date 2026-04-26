@@ -21,6 +21,7 @@ import logger from './services/logger'
 import { version } from '../package.json'
 import { extractDestinyPhone } from './services/transformer'
 import { isTransientInfraError } from './services/error_utils'
+import { v1 as uuid } from 'uuid'
 
 const withTimeout = (millis, error, promise) => {
   let timeoutPid
@@ -94,7 +95,23 @@ export type PublishOption = CreateOption & {
 }
 
 export interface ConsumeCallback {
-  (routingKey: string, data: object, options?: { countRetries: number; maxRetries: number }): Promise<void>
+  (routingKey: string, data: object, options?: { countRetries: number; maxRetries: number }): Promise<unknown>
+}
+
+const toRpcError = (error: unknown) => {
+  const err = error as any
+  return {
+    message: err?.message || `${error}`,
+    name: err?.name,
+    stack: err?.stack,
+  }
+}
+
+const replyRpc = async (channel: Channel, payload: ConsumeMessage, response: object) => {
+  const replyTo = payload.properties.replyTo
+  const correlationId = payload.properties.correlationId
+  if (!replyTo || !correlationId) return
+  channel.sendToQueue(replyTo, Buffer.from(JSON.stringify(response)), { correlationId })
 }
 
 const resetAmqpState = (reason: unknown) => {
@@ -319,6 +336,104 @@ export const amqpPublish = async (
   )
 }
 
+export const amqpRpc = async <T = unknown>(
+  exchange: string,
+  queue: string,
+  routingKey: string,
+  payload: object,
+  options: Partial<PublishOption> & { timeoutMs?: number } = {
+    delay: 0,
+    dead: false,
+    maxRetries: UNOAPI_MESSAGE_RETRY_LIMIT,
+    countRetries: 0,
+    priority: 0,
+  },
+): Promise<T> => {
+  validateRoutingKey(routingKey)
+  const channel = await amqpGetChannel()
+  const prefetch = options.prefetch ?? 1
+  options.prefetch = prefetch
+  options.type = options.type || getExchangeType(exchange)
+  await amqpGetExchange(exchange, options.type!, prefetch)
+  const { queueMain } = await amqpGetQueue(exchange, queue, routingKey, options)
+  const replyQueue = await channel?.assertQueue('', { exclusive: true, autoDelete: true })
+  if (!channel || !replyQueue) {
+    throw new Error('AMQP channel is not available')
+  }
+
+  const correlationId = uuid()
+  const timeoutMs = options.timeoutMs ?? CONSUMER_TIMEOUT_MS
+  const { delay, dead, maxRetries = UNOAPI_MESSAGE_RETRY_LIMIT, countRetries = 0 } = options
+  if (delay || dead) {
+    throw new Error('AMQP RPC does not support delayed or dead-letter publishing')
+  }
+
+  const headers: any = {}
+  headers[UNOAPI_X_COUNT_RETRIES] = countRetries
+  headers[UNOAPI_X_MAX_RETRIES] = maxRetries
+  const properties: Options.Publish = {
+    persistent: true,
+    deliveryMode: 2,
+    headers,
+    replyTo: replyQueue.queue,
+    correlationId,
+  }
+  if (options.priority) {
+    properties.priority = options.priority
+  }
+
+  return new Promise<T>(async (resolve, reject) => {
+    let consumerTag = ''
+    const timeoutPid = setTimeout(async () => {
+      try {
+        if (consumerTag) await channel.cancel(consumerTag)
+        await channel.deleteQueue(replyQueue.queue)
+      } catch {}
+      reject(new Error(`timeout ${timeoutMs} is exceeded rpc queue: ${queue}, routing key: ${routingKey}`))
+    }, timeoutMs)
+
+    try {
+      const consumer = await channel.consume(replyQueue.queue, async (message) => {
+        if (!message || message.properties.correlationId !== correlationId) return
+        clearTimeout(timeoutPid)
+        try {
+          if (consumerTag) await channel.cancel(consumerTag)
+          await channel.deleteQueue(replyQueue.queue)
+        } catch {}
+        try {
+          const response = JSON.parse(message.content.toString())
+          if (!response?.ok) {
+            const err = new Error(response?.error?.message || 'AMQP RPC failed')
+            ;(err as any).remote = response?.error
+            reject(err)
+            return
+          }
+          resolve(response.result as T)
+        } catch (error) {
+          reject(error)
+        }
+      }, { noAck: true })
+      consumerTag = consumer.consumerTag
+      const destiny = bindingKey(queueMain.queue, routingKey)
+      channel.publish(exchange, destiny, Buffer.from(JSON.stringify(payload)), properties)
+      logger.debug(
+        'Published RPC at exchange %s, with binding key: %s, payload: %s, properties: %s',
+        exchange,
+        destiny,
+        JSON.stringify(payload),
+        JSON.stringify(properties)
+      )
+    } catch (error) {
+      clearTimeout(timeoutPid)
+      try {
+        if (consumerTag) await channel.cancel(consumerTag)
+        await channel.deleteQueue(replyQueue.queue)
+      } catch {}
+      reject(error)
+    }
+  })
+}
+
 export const amqpConsume = async (
   exchange: string,
   queue: string,
@@ -361,20 +476,31 @@ export const amqpConsume = async (
         const headers = payload.properties.headers || {}
         const maxRetries = parseInt(headers[UNOAPI_X_MAX_RETRIES] || UNOAPI_MESSAGE_RETRY_LIMIT)
         const countRetries = parseInt(headers[UNOAPI_X_COUNT_RETRIES] || '0') + 1
+        const isRpc = !!(payload.properties.replyTo && payload.properties.correlationId)
         try {
           logger.debug('Received in queue %s, with routing key: %s, with message: %s with headers: %s', queue, routingKeyLocal, content, JSON.stringify(payload.properties.headers))
-          if (IGNORED_CONNECTIONS_NUMBERS.includes(routingKeyLocal)) {
+          if (!isRpc && IGNORED_CONNECTIONS_NUMBERS.includes(routingKeyLocal)) {
             logger.info(`Ignore messages from ${routingKeyLocal}`)
-          } else if (IGNORED_TO_NUMBERS.length > 0 && IGNORED_TO_NUMBERS.includes(extractDestinyPhone(data.payload, false))) {
-            logger.info(`Ignore messages to ${extractDestinyPhone(data.payload, false)}`)
+          } else if (!isRpc &&
+            IGNORED_TO_NUMBERS.length > 0 &&
+            (data as any).payload &&
+            IGNORED_TO_NUMBERS.includes(extractDestinyPhone((data as any).payload, false))
+          ) {
+            logger.info(`Ignore messages to ${extractDestinyPhone((data as any).payload, false)}`)
           } else {
             const timeoutError = `timeout ${CONSUMER_TIMEOUT_MS} is exceeded consume queue: ${queue}, routing key: ${routingKeyLocal}, payload: ${content}`
-            await withTimeout(CONSUMER_TIMEOUT_MS, timeoutError, callback(routingKeyLocal, data, { countRetries, maxRetries }))
+            const result = await withTimeout(CONSUMER_TIMEOUT_MS, timeoutError, callback(routingKeyLocal, data, { countRetries, maxRetries }))
+            await replyRpc(channel, payload, { ok: true, result })
           }
           logger.debug('Ack message!')
           await channel?.ack(payload)
         } catch (error) {
           logger.error(error, 'Error on consume %s', queue)
+          if (payload.properties.replyTo && payload.properties.correlationId) {
+            await replyRpc(channel, payload, { ok: false, error: toRpcError(error) })
+            await channel?.ack(payload)
+            return
+          }
           if (countRetries >= maxRetries) {
             logger.info('Reject %s retries', countRetries)
             if (normalizedOptions.notifyFailedMessages) {

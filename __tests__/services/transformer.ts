@@ -2160,8 +2160,32 @@ describe('service transformer', () => {
     const resp = fromBaileysMessageContent(phoneNumer, input)[0]
     const value = resp.entry[0].changes[0].value
     expect(value.contacts[0].group_id).toEqual(groupJid)
+    expect(value.messages[0].group_id).toEqual(groupJid)
     expect(value.contacts[0].wa_id).toEqual(remotePhoneNumber)
     expect(value.messages[0].from).toEqual(remotePhoneNumber)
+  })
+
+  test('fromBaileysMessageContent group status uses group recipient contract', async () => {
+    const phoneNumer = '5566996269251'
+    const remotePhoneNumber = '5587981148453'
+    const groupJid = '120363036972484891@g.us'
+    const input = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: true,
+        id: 'wamid.UNO.group-status',
+        participant: `${remotePhoneNumber}@s.whatsapp.net`,
+      },
+      update: {
+        status: 3,
+      },
+      messageTimestamp: 1774650365,
+    }
+    const resp = fromBaileysMessageContent(phoneNumer, input)[0]
+    const status = resp.entry[0].changes[0].value.statuses[0]
+    expect(status.recipient_id).toEqual(groupJid)
+    expect(status.recipient_type).toEqual('group')
+    expect(status.status).toEqual('delivered')
   })
 
   test('fromBaileysMessageContent statusMentionMessage', async () => {

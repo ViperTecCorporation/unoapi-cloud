@@ -441,6 +441,27 @@ http://localhost:9876/v15.0/5549988290955/messages \
 
 Group cache endpoints (participants by session):
 
+Set `UNOAPI_META_GROUPS_ENABLED=true` to enable the Meta-like group response
+shape and the group details route.
+
+With `UNOAPI_META_GROUPS_ENABLED=true`, Uno also exposes Meta-like group
+management endpoints backed by Baileys:
+
+- `POST /v15.0/{phone}/groups` creates a group.
+- `GET /v15.0/{phone}/groups/{groupId}` returns group details.
+- `POST /v15.0/{phone}/groups/{groupId}` updates subject, description, picture URL, announcement/locked settings, and join approval mode.
+- `DELETE /v15.0/{phone}/groups/{groupId}/participants` removes participants.
+- `GET /v15.0/{phone}/groups/{groupId}/invite_link` returns the invite link.
+- `POST /v15.0/{phone}/groups/{groupId}/invite_link` resets the invite link.
+- `GET /v15.0/{phone}/groups/{groupId}/join_requests` lists pending join requests.
+- `POST /v15.0/{phone}/groups/{groupId}/join_requests` approves join requests.
+- `DELETE /v15.0/{phone}/groups/{groupId}/join_requests` rejects join requests.
+- `DELETE /v15.0/{phone}/groups/{groupId}` leaves/deletes the group for the current session.
+
+Group management runs through Baileys directly when the HTTP process owns the
+session. In AMQP deployments, the HTTP process sends a synchronous RPC command
+to the session owner and returns the Baileys result.
+
 ```sh
 curl -i -X GET \
 http://localhost:9876/v15.0/5549988290955/groups \
@@ -457,7 +478,9 @@ http://localhost:9876/v15.0/5549988290955/groups/120363040468224422@g.us/partici
 
 Participants response includes:
 - `jid`: participant identifier (`5566...` for PN contacts, `...@lid` for LID contacts)
+- `wa_id`: participant id for Meta-like consumers
 - `name`: participant name when available in contact cache
+- `picture`, `lid`, `is_admin`, and `role` when available with `UNOAPI_META_GROUPS_ENABLED=true`
 
 Example response:
 

@@ -128,6 +128,50 @@ export interface exists {
   (_jid: string): Promise<string | undefined>
 }
 
+export interface groupCreate {
+  (_subject: string, _participants: string[]): Promise<GroupMetadata>
+}
+
+export interface groupUpdateSubject {
+  (_jid: string, _subject: string): Promise<void>
+}
+
+export interface groupUpdateDescription {
+  (_jid: string, _description?: string): Promise<void>
+}
+
+export interface groupUpdatePicture {
+  (_jid: string, _pictureUrl: string): Promise<void>
+}
+
+export interface groupParticipantsUpdate {
+  (_jid: string, _participants: string[], _action: 'add' | 'remove' | 'promote' | 'demote'): Promise<any[]>
+}
+
+export interface groupInviteCode {
+  (_jid: string): Promise<string | undefined>
+}
+
+export interface groupRequestParticipantsList {
+  (_jid: string): Promise<any[]>
+}
+
+export interface groupRequestParticipantsUpdate {
+  (_jid: string, _participants: string[], _action: 'approve' | 'reject'): Promise<any[]>
+}
+
+export interface groupLeave {
+  (_jid: string): Promise<void>
+}
+
+export interface groupSettingUpdate {
+  (_jid: string, _setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
+}
+
+export interface groupJoinApprovalMode {
+  (_jid: string, _mode: 'on' | 'off'): Promise<void>
+}
+
 export interface close {
   (): Promise<void>
 }
@@ -2414,6 +2458,66 @@ export const connect = async ({
     await (sock as any)?.sendNode?.(node)
   }
 
+  const groupCreate: groupCreate = async (subject: string, participants: string[]) => {
+    await validateStatus()
+    return (sock as any).groupCreate(subject, participants)
+  }
+
+  const groupUpdateSubject: groupUpdateSubject = async (jid: string, subject: string) => {
+    await validateStatus()
+    return (sock as any).groupUpdateSubject(jid, subject)
+  }
+
+  const groupUpdateDescription: groupUpdateDescription = async (jid: string, description?: string) => {
+    await validateStatus()
+    return (sock as any).groupUpdateDescription(jid, description)
+  }
+
+  const groupUpdatePicture: groupUpdatePicture = async (jid: string, pictureUrl: string) => {
+    await validateStatus()
+    return (sock as any).updateProfilePicture(jid, { url: pictureUrl })
+  }
+
+  const groupParticipantsUpdate: groupParticipantsUpdate = async (jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') => {
+    await validateStatus()
+    return (sock as any).groupParticipantsUpdate(jid, participants, action)
+  }
+
+  const groupInviteCode: groupInviteCode = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupInviteCode(jid)
+  }
+
+  const groupRevokeInvite: groupInviteCode = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupRevokeInvite(jid)
+  }
+
+  const groupRequestParticipantsList: groupRequestParticipantsList = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupRequestParticipantsList(jid)
+  }
+
+  const groupRequestParticipantsUpdate: groupRequestParticipantsUpdate = async (jid: string, participants: string[], action: 'approve' | 'reject') => {
+    await validateStatus()
+    return (sock as any).groupRequestParticipantsUpdate(jid, participants, action)
+  }
+
+  const groupLeave: groupLeave = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupLeave(jid)
+  }
+
+  const groupSettingUpdate: groupSettingUpdate = async (jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') => {
+    await validateStatus()
+    return (sock as any).groupSettingUpdate(jid, setting)
+  }
+
+  const groupJoinApprovalMode: groupJoinApprovalMode = async (jid: string, mode: 'on' | 'off') => {
+    await validateStatus()
+    return (sock as any).groupJoinApprovalMode(jid, mode)
+  }
+
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
     return dataStore.loadImageUrl(jid, sock!)
   }
@@ -2634,5 +2738,29 @@ export const connect = async ({
     return
   }
 
-  return { event, status, send, read, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
+  return {
+    event,
+    status,
+    send,
+    read,
+    rejectCall,
+    sendCallNode,
+    fetchImageUrl,
+    fetchGroupMetadata,
+    exists,
+    close,
+    logout,
+    groupCreate,
+    groupUpdateSubject,
+    groupUpdateDescription,
+    groupUpdatePicture,
+    groupParticipantsUpdate,
+    groupInviteCode,
+    groupRevokeInvite,
+    groupRequestParticipantsList,
+    groupRequestParticipantsUpdate,
+    groupLeave,
+    groupSettingUpdate,
+    groupJoinApprovalMode,
+  }
 }

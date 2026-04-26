@@ -9,6 +9,17 @@ import {
   readMessages,
   rejectCall,
   sendCallNode,
+  groupCreate,
+  groupUpdateSubject,
+  groupUpdateDescription,
+  groupUpdatePicture,
+  groupParticipantsUpdate,
+  groupInviteCode,
+  groupRequestParticipantsList,
+  groupRequestParticipantsUpdate,
+  groupLeave,
+  groupSettingUpdate,
+  groupJoinApprovalMode,
   OnQrCode,
   OnNotification,
   OnNewLogin,
@@ -21,7 +32,7 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid, normalizeMessageContent } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid, normalizeMessageContent, normalizeGroupId } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
@@ -134,20 +145,26 @@ const existsDefault: exists = async (_jid: string) => {
 const logoutDefault: logout = async () => {}
 
 const closeDefault = async () => logger.info(`Close connection`)
+const groupUnavailable = async () => { throw new Error('group management unavailable') }
 
-const buildSendOkResponse = (to: string, keyId: string) => ({
-  messaging_product: 'whatsapp',
-  contacts: [
-    {
-      wa_id: jidToPhoneNumber(to, ''),
-    },
-  ],
-  messages: [
-    {
-      id: keyId,
-    },
-  ],
-})
+const buildSendOkResponse = (to: string, keyId: string) => {
+  const target = `${to || ''}`.trim()
+  const waId = target.endsWith('@g.us') ? target : jidToPhoneNumber(target, '')
+  return {
+    messaging_product: 'whatsapp',
+    contacts: [
+      {
+        input: target,
+        wa_id: waId,
+      },
+    ],
+    messages: [
+      {
+        id: keyId,
+      },
+    ],
+  }
+}
 
 export class ClientBaileys implements Client {
   private voipPipelines = new Map<string, Promise<void>>()
@@ -895,6 +912,18 @@ export class ClientBaileys implements Client {
   private readMessages = readMessagesDefault
   private rejectCall: rejectCall | undefined = rejectCallDefault
   private sendCallNode: sendCallNode = sendCallNodeDefault
+  private groupCreateFn: groupCreate = groupUnavailable
+  private groupUpdateSubjectFn: groupUpdateSubject = groupUnavailable
+  private groupUpdateDescriptionFn: groupUpdateDescription = groupUnavailable
+  private groupUpdatePictureFn: groupUpdatePicture = groupUnavailable
+  private groupParticipantsUpdateFn: groupParticipantsUpdate = groupUnavailable
+  private groupInviteCodeFn: groupInviteCode = groupUnavailable
+  private groupRevokeInviteFn: groupInviteCode = groupUnavailable
+  private groupRequestParticipantsListFn: groupRequestParticipantsList = groupUnavailable
+  private groupRequestParticipantsUpdateFn: groupRequestParticipantsUpdate = groupUnavailable
+  private groupLeaveFn: groupLeave = groupUnavailable
+  private groupSettingUpdateFn: groupSettingUpdate = groupUnavailable
+  private groupJoinApprovalModeFn: groupJoinApprovalMode = groupUnavailable
   private listener: Listener
   private store: Store | undefined
   private calls = new Map<string, boolean>()
@@ -1067,12 +1096,47 @@ export class ClientBaileys implements Client {
       logger.error('Socket connect return empty %s', this.phone)
       return
     }
-    const { send, read, event, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
+    const {
+      send,
+      read,
+      event,
+      rejectCall,
+      sendCallNode,
+      fetchImageUrl,
+      fetchGroupMetadata,
+      exists,
+      close,
+      logout,
+      groupCreate,
+      groupUpdateSubject,
+      groupUpdateDescription,
+      groupUpdatePicture,
+      groupParticipantsUpdate,
+      groupInviteCode,
+      groupRevokeInvite,
+      groupRequestParticipantsList,
+      groupRequestParticipantsUpdate,
+      groupLeave,
+      groupSettingUpdate,
+      groupJoinApprovalMode,
+    } = result
     this.event = event
     this.sendMessage = send
     this.readMessages = read
     this.rejectCall = rejectCall
     this.sendCallNode = sendCallNode
+    this.groupCreateFn = groupCreate || groupUnavailable
+    this.groupUpdateSubjectFn = groupUpdateSubject || groupUnavailable
+    this.groupUpdateDescriptionFn = groupUpdateDescription || groupUnavailable
+    this.groupUpdatePictureFn = groupUpdatePicture || groupUnavailable
+    this.groupParticipantsUpdateFn = groupParticipantsUpdate || groupUnavailable
+    this.groupInviteCodeFn = groupInviteCode || groupUnavailable
+    this.groupRevokeInviteFn = groupRevokeInvite || groupUnavailable
+    this.groupRequestParticipantsListFn = groupRequestParticipantsList || groupUnavailable
+    this.groupRequestParticipantsUpdateFn = groupRequestParticipantsUpdate || groupUnavailable
+    this.groupLeaveFn = groupLeave || groupUnavailable
+    this.groupSettingUpdateFn = groupSettingUpdate || groupUnavailable
+    this.groupJoinApprovalModeFn = groupJoinApprovalMode || groupUnavailable
     this.fetchImageUrl = this.config.sendProfilePicture ? fetchImageUrl : fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadata
     this.close = close
@@ -1785,6 +1849,10 @@ export class ClientBaileys implements Client {
         if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction'].includes(type)) {
           let content
           let targetTo = to
+          if (payload?.recipient_type === 'group' || `${targetTo || ''}`.endsWith('@g.us')) {
+            targetTo = normalizeGroupId(targetTo)
+            to = targetTo
+          }
           const extraSendOptions: any = {}
           if ('reaction' === type) {
             const reaction = payload?.reaction || {}
@@ -2359,7 +2427,8 @@ export class ClientBaileys implements Client {
                     statuses: [
                       {
                         id,
-                        recipient_id: jidToPhoneNumber(to || this.phone, ''),
+                        recipient_id: `${to || ''}`.endsWith('@g.us') ? to : jidToPhoneNumber(to || this.phone, ''),
+                        ...(`${to || ''}`.endsWith('@g.us') ? { recipient_type: 'group' } : {}),
                         status: 'failed',
                         timestamp: Math.floor(Date.now() / 1000),
                         errors: [
@@ -2711,6 +2780,54 @@ export class ClientBaileys implements Client {
       }
     }
     return message
+  }
+
+  public async groupCreate(subject: string, participants: string[]) {
+    return this.groupCreateFn(subject, participants)
+  }
+
+  public async groupUpdateSubject(jid: string, subject: string) {
+    return this.groupUpdateSubjectFn(jid, subject)
+  }
+
+  public async groupUpdateDescription(jid: string, description?: string) {
+    return this.groupUpdateDescriptionFn(jid, description)
+  }
+
+  public async groupUpdatePicture(jid: string, pictureUrl: string) {
+    return this.groupUpdatePictureFn(jid, pictureUrl)
+  }
+
+  public async groupParticipantsUpdate(jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') {
+    return this.groupParticipantsUpdateFn(jid, participants, action)
+  }
+
+  public async groupInviteCode(jid: string) {
+    return this.groupInviteCodeFn(jid)
+  }
+
+  public async groupRevokeInvite(jid: string) {
+    return this.groupRevokeInviteFn(jid)
+  }
+
+  public async groupRequestParticipantsList(jid: string) {
+    return this.groupRequestParticipantsListFn(jid)
+  }
+
+  public async groupRequestParticipantsUpdate(jid: string, participants: string[], action: 'approve' | 'reject') {
+    return this.groupRequestParticipantsUpdateFn(jid, participants, action)
+  }
+
+  public async groupLeave(jid: string) {
+    return this.groupLeaveFn(jid)
+  }
+
+  public async groupSettingUpdate(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') {
+    return this.groupSettingUpdateFn(jid, setting)
+  }
+
+  public async groupJoinApprovalMode(jid: string, mode: 'on' | 'off') {
+    return this.groupJoinApprovalModeFn(jid, mode)
   }
 
   public async contacts(numbers: string[]) {

@@ -157,6 +157,30 @@ describe('service client baileys', () => {
     expect(response.ok.messages[0].id).toBe(`uno-${id}`)
   })
 
+  test('call send with recipient_type group normalizes destination and response ids', async () => {
+    const id = `${new Date().getMilliseconds()}`
+    send.mockResolvedValue({ key: { id, remoteJid: '120363040468224422@g.us' } })
+    const payload = {
+      recipient_type: 'group',
+      to: '120363040468224422',
+      type: 'text',
+      text: { body: 'Ola pessoal' },
+    }
+    await client.connect(0)
+    const response: Response = await client.send(payload, {})
+
+    expect(send).toHaveBeenCalledWith(
+      '120363040468224422@g.us',
+      expect.objectContaining({ text: 'Ola pessoal' }),
+      expect.any(Object),
+    )
+    expect(response.ok.contacts[0]).toEqual({
+      input: '120363040468224422@g.us',
+      wa_id: '120363040468224422@g.us',
+    })
+    expect(response.ok.messages[0].id).toBe(`uno-${id}`)
+  })
+
   test('call send with message type unknown', async () => {
     const type = `${new Date().getMilliseconds()}`
     try {

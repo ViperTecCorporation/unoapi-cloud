@@ -28,4 +28,61 @@ export class IncomingBaileys implements Incoming {
     logger.debug('Retrieved client for %s', phone)
     return client.send(payload, options)
   }
+
+  private async client(phone: string): Promise<Client> {
+    return this.getClient({
+      phone,
+      listener: this.service,
+      getConfig: this.getConfig,
+      onNewLogin: this.onNewLogin,
+    })
+  }
+
+  public async groupCreate(phone: string, subject: string, participants: string[]) {
+    return (await this.client(phone)).groupCreate!(subject, participants)
+  }
+
+  public async groupUpdateSubject(phone: string, jid: string, subject: string) {
+    return (await this.client(phone)).groupUpdateSubject!(jid, subject)
+  }
+
+  public async groupUpdateDescription(phone: string, jid: string, description?: string) {
+    return (await this.client(phone)).groupUpdateDescription!(jid, description)
+  }
+
+  public async groupUpdatePicture(phone: string, jid: string, pictureUrl: string) {
+    return (await this.client(phone)).groupUpdatePicture!(jid, pictureUrl)
+  }
+
+  public async groupParticipantsUpdate(phone: string, jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') {
+    return (await this.client(phone)).groupParticipantsUpdate!(jid, participants, action)
+  }
+
+  public async groupInviteCode(phone: string, jid: string) {
+    return (await this.client(phone)).groupInviteCode!(jid)
+  }
+
+  public async groupRevokeInvite(phone: string, jid: string) {
+    return (await this.client(phone)).groupRevokeInvite!(jid)
+  }
+
+  public async groupRequestParticipantsList(phone: string, jid: string) {
+    return (await this.client(phone)).groupRequestParticipantsList!(jid)
+  }
+
+  public async groupRequestParticipantsUpdate(phone: string, jid: string, participants: string[], action: 'approve' | 'reject') {
+    return (await this.client(phone)).groupRequestParticipantsUpdate!(jid, participants, action)
+  }
+
+  public async groupLeave(phone: string, jid: string) {
+    return (await this.client(phone)).groupLeave!(jid)
+  }
+
+  public async groupSettingUpdate(phone: string, jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') {
+    return (await this.client(phone)).groupSettingUpdate!(jid, setting)
+  }
+
+  public async groupJoinApprovalMode(phone: string, jid: string, mode: 'on' | 'off') {
+    return (await this.client(phone)).groupJoinApprovalMode!(jid, mode)
+  }
 }

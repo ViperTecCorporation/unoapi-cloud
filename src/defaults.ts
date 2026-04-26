@@ -81,6 +81,8 @@ export const WEBHOOK_SEND_UPDATE_MESSAGES =
   process.env.WEBHOOK_SEND_UPDATE_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_UPDATE_MESSAGES == 'true'
 export const WEBHOOK_SEND_NEWSLETTER_MESSAGES =
   process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == 'true'
+export const UNOAPI_META_GROUPS_ENABLED =
+  process.env.UNOAPI_META_GROUPS_ENABLED === _undefined ? false : process.env.UNOAPI_META_GROUPS_ENABLED == 'true'
 export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
   process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
 export const WEBHOOK_INCLUDE_MEDIA_DATA =

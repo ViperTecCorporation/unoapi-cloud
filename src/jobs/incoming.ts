@@ -22,6 +22,33 @@ export class IncomingJob {
     this.queueCommander = queueCommander
   }
 
+  private async consumeGroupManagement(phone: string, data: any) {
+    const action = data.action
+    const args = Array.isArray(data.args) ? data.args : []
+    const allowedActions = [
+      'groupCreate',
+      'groupUpdateSubject',
+      'groupUpdateDescription',
+      'groupUpdatePicture',
+      'groupParticipantsUpdate',
+      'groupInviteCode',
+      'groupRevokeInvite',
+      'groupRequestParticipantsList',
+      'groupRequestParticipantsUpdate',
+      'groupLeave',
+      'groupSettingUpdate',
+      'groupJoinApprovalMode',
+    ]
+    if (!allowedActions.includes(action)) {
+      throw new Error(`Unknown group management action ${action}`)
+    }
+    const fn = this.incoming[action]
+    if (typeof fn !== 'function') {
+      throw new Error(`Incoming provider does not support group management action ${action}`)
+    }
+    return fn.call(this.incoming, phone, ...args)
+  }
+
   async consume(phone: string, data: object) {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
@@ -31,6 +58,9 @@ export class IncomingJob {
     // e se for atualização, onde pega o id?
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = { ...data as any }
+    if (a.type === 'group_management') {
+      return this.consumeGroupManagement(phone, a)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = a.payload
     const options: object = a.options

@@ -148,6 +148,8 @@ When groups get large, per-recipient receipts (read/played/delivered per partici
   - Set `false` to receive perÃ¢â‚¬â€˜user read/played/delivery receipts in groups.
 - `GROUP_ONLY_DELIVERED_STATUS` Ã¢â‚¬â€ On `messages.update` for groups, forward only `DELIVERY_ACK` (delivered). Default `true`.
   - Set `false` to forward all status updates (including read/played) for groups.
+- `UNOAPI_META_GROUPS_ENABLED` - Enables the Meta-like group API shape, group details route, and group management endpoints. Default `false`.
+  - Group management uses the local Baileys client when available; AMQP deployments use a synchronous RPC command to the session owner.
 
 Example (keep load low in big groups):
 ```env
