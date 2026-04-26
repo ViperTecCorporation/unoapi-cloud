@@ -70,4 +70,121 @@ describe('template', () => {
     ]
     expect((await service.bind(phone, templateName, parameters)).text).toBe(`url: ${url}\nheader: ${header}\ntoken: ${token}`)
   })
+
+  test('bind carousel template to Baileys interactive carousel', async () => {
+    const phone = `${new Date().getTime()}`
+    const templateName = 'promo_carousel'
+    const templateCarousel = {
+      id: 3,
+      name: templateName,
+      status: 'APPROVED',
+      category: 'MARKETING',
+      language: 'pt_BR',
+      components: [
+        {
+          type: 'BODY',
+          text: 'Confira nossas ofertas, {{1}}',
+        },
+        {
+          type: 'CAROUSEL',
+          cards: [
+            {
+              components: [
+                {
+                  type: 'HEADER',
+                  format: 'IMAGE',
+                },
+                {
+                  type: 'BODY',
+                  text: 'Produto {{1}}',
+                },
+                {
+                  type: 'BUTTONS',
+                  buttons: [
+                    {
+                      type: 'QUICK_REPLY',
+                      text: 'Escolher',
+                    },
+                    {
+                      type: 'URL',
+                      text: 'Abrir',
+                      url: 'https://example.com',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    store.dataStore.loadTemplates = async () => [templateCarousel]
+    const parameters = [
+      {
+        type: 'body',
+        parameters: [{ type: 'text', text: 'Rodrigo' }],
+      },
+      {
+        type: 'carousel',
+        cards: [
+          {
+            card_index: 0,
+            components: [
+              {
+                type: 'header',
+                parameters: [
+                  {
+                    type: 'image',
+                    image: { link: 'https://example.com/produto.jpg' },
+                  },
+                ],
+              },
+              {
+                type: 'body',
+                parameters: [{ type: 'text', text: '1' }],
+              },
+              {
+                type: 'button',
+                sub_type: 'quick_reply',
+                index: '0',
+                parameters: [{ type: 'payload', payload: 'produto_1' }],
+              },
+              {
+                type: 'button',
+                sub_type: 'url',
+                index: '1',
+                parameters: [{ type: 'text', text: 'https://example.com/produto-1' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    expect(await service.bind(phone, templateName, parameters)).toEqual({
+      interactiveMessage: {
+        body: { text: 'Confira nossas ofertas, Rodrigo' },
+        carouselMessage: {
+          cards: [
+            {
+              header: { imageMessage: { url: 'https://example.com/produto.jpg' } },
+              body: { text: 'Produto 1' },
+              nativeFlowMessage: {
+                buttons: [
+                  {
+                    name: 'quick_reply',
+                    buttonParamsJson: '{"display_text":"Escolher","id":"produto_1"}',
+                  },
+                  {
+                    name: 'cta_url',
+                    buttonParamsJson: '{"display_text":"Abrir","url":"https://example.com/produto-1","merchant_url":"https://example.com/produto-1"}',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+  })
 })

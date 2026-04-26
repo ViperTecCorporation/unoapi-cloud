@@ -70,6 +70,42 @@ describe('messages routes', () => {
     )
   })
 
+  test('normalizes raw Baileys interactive payload before sending', async () => {
+    const sendSpy = jest.spyOn(incoming, 'send')
+    const r: Response = { ok: { success: true } }
+    jest.spyOn(incoming, 'send').mockResolvedValue(r)
+    const raw = {
+      jid: '5511999999999@s.whatsapp.net',
+      message: {
+        text: 'Escolha uma opcao:',
+        buttons: [
+          {
+            buttonId: 'opcao_1',
+            buttonText: { displayText: 'Opcao 1' },
+            type: 1,
+          },
+        ],
+      },
+    }
+
+    const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(raw)
+
+    expect(res.status).toEqual(200)
+    expect(sendSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        ...raw,
+        to: raw.jid,
+        type: 'baileys',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        requestId: expect.any(String),
+      }),
+    )
+  })
+
   test('whatsapp with 400 status', async () => {
     jest.spyOn(incoming, 'send').mockRejectedValue(new Error('cannot login'))
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)

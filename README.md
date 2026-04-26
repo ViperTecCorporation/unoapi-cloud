@@ -199,6 +199,61 @@ http://localhost:9876/v15.0/554931978550/messages \
   }
 }'
 ```
+
+Official Meta-like carousel template
+
+The template must exist in the local template store with a `CAROUSEL`
+component. Uno renders the approved template text with the send-time
+parameters and converts it to a Baileys `interactiveMessage.carouselMessage`.
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "template",
+  "template": {
+    "name": "promo_carousel",
+    "language": { "code": "pt_BR" },
+    "components": [
+      {
+        "type": "body",
+        "parameters": [{ "type": "text", "text": "Rodrigo" }]
+      },
+      {
+        "type": "carousel",
+        "cards": [
+          {
+            "card_index": 0,
+            "components": [
+              {
+                "type": "header",
+                "parameters": [
+                  { "type": "image", "image": { "link": "https://example.com/produto.jpg" } }
+                ]
+              },
+              {
+                "type": "body",
+                "parameters": [{ "type": "text", "text": "1" }]
+              },
+              {
+                "type": "button",
+                "sub_type": "quick_reply",
+                "index": "0",
+                "parameters": [{ "type": "payload", "payload": "produto_1" }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}'
+```
+
 To Send a Status
 Requisitos:
 to = 'status@broadcast'
@@ -497,6 +552,120 @@ Example response:
   ]
 }
 ```
+
+### Group message webhook compatibility
+
+`UNOAPI_META_GROUPS_ENABLED` does not duplicate webhooks. Uno sends one webhook
+per event. The flag controls the newer Meta-like group routes and enriches the
+group contract where possible, while keeping the existing message webhook shape
+compatible with older consumers.
+
+With `UNOAPI_META_GROUPS_ENABLED=false`, group message webhooks keep the legacy
+compatible shape. The participant remains in `contacts[0].wa_id` and
+`messages[0].from`; the group is identified by `group_id` when available.
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "5566999999999",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "5566999999999",
+              "phone_number_id": "5566999999999"
+            },
+            "contacts": [
+              {
+                "wa_id": "556688888888",
+                "group_id": "120363040468224422@g.us",
+                "profile": {
+                  "name": "Maria",
+                  "picture": ""
+                }
+              }
+            ],
+            "messages": [
+              {
+                "from": "556688888888",
+                "id": "MESSAGE_ID",
+                "timestamp": "1710000000",
+                "text": {
+                  "body": "Oi grupo"
+                },
+                "type": "text",
+                "group_id": "120363040468224422@g.us"
+              }
+            ],
+            "statuses": [],
+            "errors": []
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
+```
+
+With `UNOAPI_META_GROUPS_ENABLED=true`, the message webhook remains a single
+payload and preserves the same participant/group split, but may include richer
+group fields from cache/metadata.
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "5566999999999",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "5566999999999",
+              "phone_number_id": "5566999999999"
+            },
+            "contacts": [
+              {
+                "wa_id": "556688888888",
+                "group_id": "120363040468224422@g.us",
+                "group_subject": "Equipe Comercial",
+                "group_picture": "https://example.com/group.jpg",
+                "profile": {
+                  "name": "Maria",
+                  "picture": "https://example.com/maria.jpg"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "from": "556688888888",
+                "id": "MESSAGE_ID",
+                "timestamp": "1710000000",
+                "text": {
+                  "body": "Oi grupo"
+                },
+                "type": "text",
+                "group_id": "120363040468224422@g.us"
+              }
+            ],
+            "statuses": [],
+            "errors": []
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Status webhooks for group sends also become more explicit with the flag enabled:
+`recipient_id` may be the group JID and `recipient_type` may be `group`.
 
 To mark message as read
 

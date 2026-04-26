@@ -532,6 +532,9 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     .filter((value: string) => !!value)
   const mentionsUnique = Array.from(new Set(mentions))
   switch (type) {
+    case 'baileys':
+      return payload.message || {}
+
     case 'text':
       response.text = customMessageCharactersFunction(
         hasMentionAllToken
@@ -616,6 +619,9 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
         response.footer = footer.text || ''
         response.title = header.text || ''
         response.buttonText = action.button || 'Selecione'
+        if (typeof action.listType !== 'undefined') {
+          response.listType = action.listType
+        }
         response.sections = action.sections.map((section: any) => ({
           title: section.title || '',
           rows: (section.rows || []).map((row: any) => ({
@@ -2071,7 +2077,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               }
             }
         }
-        break
+      break
       case 'listResponseMessage':
         message.text = {
           body: payload.message.listResponseMessage.title,

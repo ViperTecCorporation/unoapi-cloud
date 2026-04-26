@@ -53,6 +53,24 @@ export class MessagesController {
     this.outgoing = outgoing
   }
 
+  private normalizeBaileysRawPayload(payload: any) {
+    if (
+      payload &&
+      !payload.type &&
+      typeof payload.jid === 'string' &&
+      payload.jid.trim() &&
+      payload.message &&
+      typeof payload.message === 'object'
+    ) {
+      return {
+        ...payload,
+        to: payload.to || payload.jid,
+        type: 'baileys',
+      }
+    }
+    return payload
+  }
+
   private async loadStatusRecipientsFromContactInfo(phone: string): Promise<string[]> {
     const prefix = `${BASE_KEY}contact-info:${phone}:`
     const pattern = `${prefix}*`
@@ -86,7 +104,7 @@ export class MessagesController {
     logger.debug('%s params %s', this.endpoint, JSON.stringify(req.params))
     logger.debug('%s body %s', this.endpoint, JSON.stringify(req.body))
     const { phone } = req.params
-    const payload: any = req.body
+    const payload: any = this.normalizeBaileysRawPayload(req.body)
     const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
     const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
     payload._requestId = requestId

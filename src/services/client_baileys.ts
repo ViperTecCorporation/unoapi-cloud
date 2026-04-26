@@ -1846,7 +1846,7 @@ export class ClientBaileys implements Client {
           throw new Error(`Unknow message status ${status}`)
         }
       } else if (type) {
-        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction'].includes(type)) {
+        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction', 'baileys'].includes(type)) {
           let content
           let targetTo = to
           if (payload?.recipient_type === 'group' || `${targetTo || ''}`.endsWith('@g.us')) {

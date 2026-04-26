@@ -2049,6 +2049,73 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent preserves raw Baileys payload', async () => {
+    const rawMessage = {
+      viewOnce: true,
+      interactiveMessage: {
+        body: { text: 'Confirmar acao?' },
+        nativeFlowMessage: {
+          buttons: [
+            {
+              name: 'quick_reply',
+              buttonParamsJson: '{"display_text":"Confirmar","id":"confirmar_1"}',
+            },
+          ],
+        },
+      },
+    }
+
+    expect(toBaileysMessageContent({
+      type: 'baileys',
+      to: '5511999999999@s.whatsapp.net',
+      message: rawMessage,
+    })).toEqual(rawMessage)
+  })
+
+  test('toBaileysMessageContent preserves interactive listType override', async () => {
+    const input = {
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: 'Escolha um item' },
+        action: {
+          button: 'Abrir lista',
+          listType: 1,
+          sections: [
+            {
+              title: 'Opcoes',
+              rows: [
+                {
+                  id: 'single_1',
+                  title: 'Single 1',
+                  description: 'Teste SINGLE_SELECT',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }
+
+    expect(toBaileysMessageContent(input)).toEqual(expect.objectContaining({
+      buttonText: 'Abrir lista',
+      listType: 1,
+      sections: [
+        {
+          title: 'Opcoes',
+          rows: [
+            {
+              rowId: 'single_1',
+              title: 'Single 1',
+              description: 'Teste SINGLE_SELECT',
+            },
+          ],
+        },
+      ],
+      text: 'Escolha um item',
+    }))
+  })
+
   test('toBaileysMessageContent interactive carousel', async () => {
     const input = {
       type: 'interactive',
@@ -2395,6 +2462,7 @@ describe('service transformer', () => {
     }
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
   })
+
 // {"key":{"remoteJid":"555533800800@s.whatsapp.net","fromMe":false,"id":"1BE283407E62E5A073"},"messageTimestamp":1753900800,"pushName":"555533800800","broadcast":false,"message":{"messageContextInfo":{"deviceListMetadata":{"recipientKeyHash":"BuoOcp2GlUsdsQ==","recipientTimestamp":"1753278139","recipientKeyIndexes":[0,5]},"deviceListMetadataVersion":2},"buttonsMessage":{"contentText":"Para confirmar, estou falando com *IM Agronegócios* e o seu CNPJ é *41.281.5xx/xxxx-xx*?","buttons":[{"buttonId":"1","buttonText":{"displayText":"Sim"},"type":"RESPONSE"},{"buttonId":"2","buttonText":{"displayText":"Não"},"type":"RESPONSE"}],"headerType":"EMPTY"}},"verifiedBizName":"Unifique"}
 // {"key":{"remoteJid":"555533800800@s.whatsapp.net","fromMe":true,"id":"3EB02FCD7C12A71F06DE34"}, "messageTimestamp":1753900805,"pushName":"Im Agronegócios","broadcast":false,"status":2, "message":{"buttonsResponseMessage":{"selectedButtonId":"1","selectedDisplayText":"Sim","contextInfo":{"stanzaId":"1BE283407E62E5A073","participant":"555533800800@s.whatsapp.net","quotedMessage":{"messageContextInfo":{},"buttonsMessage":{"contentText":"Para confirmar, estou falando com *IM Agronegócios* e o seu CNPJ é *41.281.5xx/xxxx-xx*?","buttons":[{"buttonId":"1","buttonText":{"displayText":"Sim"},"type":"RESPONSE"},{"buttonId":"2","buttonText":{"displayText":"Não"},"type":"RESPONSE"}],"headerType":"EMPTY"}}},"type":"DISPLAY_TEXT"}}}
 })
