@@ -1112,6 +1112,43 @@
                     }
                 });
             }
+            function showModalById(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(el).show();
+                    return;
+                }
+                if (window.$ && $.fn.modal) {
+                    $('#' + id).modal('show');
+                }
+            }
+            function hideModalById(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    const instance = bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+                    if (instance) instance.hide();
+                    return;
+                }
+                if (window.$ && $.fn.modal) {
+                    $('#' + id).modal('hide');
+                }
+            }
+            window.showModalById = showModalById;
+            window.hideModalById = hideModalById;
+            function asSessionPayload(data) {
+                if (data && data.data && !Array.isArray(data.data)) return data.data;
+                if (data && data.session) return data.session;
+                return data || {};
+            }
+            function htmlAttr(value) {
+                return `${value ?? ''}`
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
 
             if (storedToken) {
                 fetchSessions(storedToken, true);
@@ -1360,7 +1397,7 @@
             //Edit button
             $('#sessionsTable tbody').on('click', '.edit-btn', function (event) {
                 event.preventDefault();
-                const number = $(this).data('number');
+                const number = $(this).attr('data-number') || $(this).data('number');
                 const token = getActiveToken();
 
                 if (token) {
@@ -1373,33 +1410,41 @@
                         return response.json();
                     })
                     .then(data => {
-                        populateEditForm(data);
-                        const editModal = bootstrap.Modal.getOrCreateInstance(editModalEl);
-                        editModal.show();
+                        try {
+                            populateEditForm(asSessionPayload(data));
+                        } catch (error) {
+                            console.error('Erro ao preencher modal de edição da sessão', error, data);
+                            alert((currentLang === 'pt-BR' ? 'A modal abriu, mas algumas configurações não puderam ser preenchidas: ' : 'The modal opened, but some settings could not be filled: ') + (error && error.message ? error.message : error));
+                        }
+                        showModalById('editModal');
                     })
-                    .catch(error => alert(error.message));
+                    .catch(error => {
+                        console.error('Erro ao buscar dados da sessão para edição', error);
+                        alert(error.message);
+                    });
                 }
             });
 
             //Message button
             $('#sessionsTable tbody').on('click', '.message-btn', function () {
                 const number = $(this).data('number');
-                $('#messageModal').data('number', number); 
-                $('#messageModal').modal('show');
+                $('#messageModal').data('number', number);
+                showModalById('messageModal');
             });
 
             //Edit form for session number
             function populateEditForm(session) {
-                $('#label').val(session.label);
-                $('#authToken').val(session.authToken);
-                $('#wavoipToken').val(session.wavoipToken);
-                $('#openaiApiKey').val(session.openaiApiKey);
-                $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel);
-                $('#groqApiKey').val(session.groqApiKey);
-                $('#groqApiTranscribeModel').val(session.groqApiTranscribeModel);
-                $('#groqApiBaseUrl').val(session.groqApiBaseUrl);
-                $('#rejectCallsWebhook').val(session.rejectCallsWebhook);
-                $('#rejectCalls').val(session.rejectCalls);
+                session = session || {};
+                $('#label').val(session.label || '');
+                $('#authToken').val(session.authToken ?? '');
+                $('#wavoipToken').val(session.wavoipToken ?? '');
+                $('#openaiApiKey').val(session.openaiApiKey ?? '');
+                $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel ?? '');
+                $('#groqApiKey').val(session.groqApiKey ?? '');
+                $('#groqApiTranscribeModel').val(session.groqApiTranscribeModel ?? '');
+                $('#groqApiBaseUrl').val(session.groqApiBaseUrl ?? '');
+                $('#rejectCallsWebhook').val(session.rejectCallsWebhook ?? '');
+                $('#rejectCalls').val(session.rejectCalls ?? '');
                 $('#ignoreGroupMessages').prop('checked', session.ignoreGroupMessages);
                 $('#ignoreNewsletterMessages').prop('checked', session.ignoreNewsletterMessages);
                 $('#ignoreHistoryMessages').prop('checked', session.ignoreHistoryMessages);
@@ -1418,14 +1463,14 @@
                 try { $('#coexistenceEnabled').prop('checked', !!session.coexistenceEnabled); } catch {}
                 try { $('#coexistenceWindowSeconds').val(session.coexistenceWindowSeconds ?? 86400); } catch {}
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
-                $('#connectionType').val(session.connectionType);
-                $('#proxyUrl').val(session.proxyUrl);
+                $('#connectionType').val(session.connectionType ?? '');
+                $('#proxyUrl').val(session.proxyUrl ?? '');
                 try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
                 try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
                 try { $('#webhookForwardPhoneNumberId').val(`${session.webhookForward?.phoneNumberId || ''}`.trim()) } catch {}
                 try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
                 try { $('#webhookForwardBusinessAccountId').val(`${session.webhookForward?.businessAccountId || ''}`.trim()) } catch {}
-                $('#server').val(session.server);
+                $('#server').val(session.server ?? '');
                 // Se houver payload do Embedded guardado, aplica e mantém alerta visível
                 applyEmbeddedToForm(true);
                 // Rate limits (anti-spam)
@@ -1440,16 +1485,17 @@
 
                 if (session.webhooks && Array.isArray(session.webhooks)) {
                     session.webhooks.forEach(webhook => {
+                        webhook = webhook || {};
                         const webhookTemplate = `
                             <div class=\"webhook mb-3\">
                                 <label for=\"webhookId\" class=\"form-label\" data-i18n=\"whId\">ID</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-id\" value=\"${webhook.id}\" placeholder=\"Webhook ID\" data-i18n-placeholder=\"whIdPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-id\" value=\"${htmlAttr(webhook.id)}\" placeholder=\"Webhook ID\" data-i18n-placeholder=\"whIdPh\">
                                 <label for=\"webhookUrl\" class=\"form-label\" data-i18n=\"whUrlAbs\">Absolute URL</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-url\" value=\"${webhook.urlAbsolute}\" placeholder=\"Webhook Absolute URL\" data-i18n-placeholder=\"whUrlAbsPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-url\" value=\"${htmlAttr(webhook.urlAbsolute)}\" placeholder=\"Webhook Absolute URL\" data-i18n-placeholder=\"whUrlAbsPh\">
                                 <label for=\"webhookToken\" class=\"form-label\" data-i18n=\"whToken\">Token</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-token\" value=\"${webhook.token}\" placeholder=\"Webhook Token\" data-i18n-placeholder=\"whTokenPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-token\" value=\"${htmlAttr(webhook.token)}\" placeholder=\"Webhook Token\" data-i18n-placeholder=\"whTokenPh\">
                                 <label for=\"webhookHeader\" class=\"form-label\" data-i18n=\"whHeader\">Header</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${webhook.header}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${htmlAttr(webhook.header)}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
                                 <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
@@ -1491,7 +1537,7 @@
                                 </div>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}\" class=\"form-control\">
+                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${htmlAttr(webhook.addToBlackListOnOutgoingMessageWithTtl)}\" class=\"form-control\">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
@@ -1587,11 +1633,10 @@
                         return response.json();
                     })
                     .then(() => {
-                        const editModal = bootstrap.Modal.getInstance(editModalEl);
                         if (editModalEl && editModalEl.contains(document.activeElement)) {
                             try { document.activeElement.blur(); } catch {}
                         }
-                        if (editModal) editModal.hide();
+                        hideModalById('editModal');
                         fetchSessions(token, true);
                     })
                     .catch(error => alert(error.message));
@@ -1604,9 +1649,7 @@
             $(document).on('click', '.connect-btn', function () {
                 const number = $(this).data('number');
                 const token = getActiveToken();
-                const connectModalEl = document.getElementById('connectModal');
-                const connectModal = bootstrap.Modal.getOrCreateInstance(connectModalEl);
-                connectModal.show();
+                showModalById('connectModal');
 
                 if (token) {
                     // Subscribe immediately so we do not lose the first QR event.
@@ -1769,6 +1812,10 @@
 
         // show number add modal
         function addInstance() {
+            if (window.showModalById) {
+                window.showModalById('addInstanceModal');
+                return;
+            }
             const addInstanceModal = new bootstrap.Modal(document.getElementById('addInstanceModal'));
             addInstanceModal.show();
         }
@@ -1780,10 +1827,18 @@
                 const editModal = $('#editModal'); 
                 editModal.data('number', numberInput); 
 
-                bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
+                if (window.hideModalById) {
+                    window.hideModalById('addInstanceModal');
+                } else {
+                    bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
+                }
 
-                const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
-                editInstanceModal.show();
+                if (window.showModalById) {
+                    window.showModalById('editModal');
+                } else {
+                    const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
+                    editInstanceModal.show();
+                }
 
             } else {
                 alert(currentLang==='pt-BR' ? 'Por favor, insira um número válido.' : 'Please enter a valid number.');
