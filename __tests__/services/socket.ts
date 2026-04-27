@@ -104,7 +104,7 @@ describe('service socket', () => {
     expect(mockOn).toHaveBeenCalled()
   })
 
-  test('keeps full history sync disabled unless explicitly allowed', async () => {
+  test('allows full history sync for the first unmarked sync', async () => {
     await connect({
       phone,
       store,
@@ -117,16 +117,25 @@ describe('service socket', () => {
       time: 1,
       config: { ...defaultConfig, ignoreHistoryMessages: false, allowFullHistorySync: false, whatsappVersion }
     })
-    expect(mockMakeWASocket).toHaveBeenCalledWith(expect.objectContaining({ syncFullHistory: false }))
+    expect(mockMakeWASocket).toHaveBeenCalledWith(expect.objectContaining({ syncFullHistory: true }))
   })
 
-  test('history sync decision skips heavy sync by default', async () => {
+  test('history sync decision allows heavy sync when session is not marked yet', async () => {
     const config = { ignoreHistoryMessages: false, allowFullHistorySync: false }
     expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.PUSH_NAME, config)).toBe(true)
     expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.RECENT, config)).toBe(true)
-    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP, config)).toBe(false)
-    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.FULL, config)).toBe(false)
-    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.ON_DEMAND, config)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP, config)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.FULL, config)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.ON_DEMAND, config)).toBe(true)
+  })
+
+  test('history sync decision skips heavy sync after marker unless forced', async () => {
+    const config = { ignoreHistoryMessages: false, allowFullHistorySync: false }
+    const marked = { historyAlreadySynced: true }
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.RECENT, config, marked)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP, config, marked)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.FULL, config, marked)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.ON_DEMAND, { ...config, allowFullHistorySync: true }, marked)).toBe(true)
   })
 
   test('history sync decision only allows push names when history is ignored', async () => {

@@ -25,10 +25,11 @@ import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { 
+import {
   DEFAULT_BROWSER,
   LOG_LEVEL,
   CONNECTING_TIMEOUT_MS,
+  SESSION_TTL,
   BAILEYS_IDLE_RECONNECT_ENABLED,
   BAILEYS_IDLE_RECONNECT_MS,
   BAILEYS_IDLE_RECONNECT_CHECK_MS,
@@ -72,17 +73,38 @@ export const historySyncTypeName = (syncType: proto.HistorySync.HistorySyncType 
 export const shouldAcceptHistorySync = (
   syncType: proto.HistorySync.HistorySyncType | undefined,
   config: Pick<Partial<Config>, 'ignoreHistoryMessages' | 'allowFullHistorySync'>,
+  state: { historyAlreadySynced?: boolean; historySyncInProgress?: boolean } = {},
 ): boolean => {
   if (syncType === undefined) return false
   if (syncType === proto.HistorySync.HistorySyncType.PUSH_NAME) return true
   if (config.ignoreHistoryMessages) return false
   if (syncType === proto.HistorySync.HistorySyncType.RECENT) return true
-  if (!config.allowFullHistorySync) return false
+  if (state.historySyncInProgress) return true
+  if (state.historyAlreadySynced && !config.allowFullHistorySync) return false
   return [
     proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
     proto.HistorySync.HistorySyncType.ON_DEMAND,
     proto.HistorySync.HistorySyncType.FULL,
   ].includes(syncType)
+}
+
+const historySyncMarkerKey = (phone: string) => `${BASE_KEY}history-sync:${phone}:started`
+
+const getHistorySyncMarker = async (phone: string): Promise<boolean> => {
+  try {
+    return !!(await redisGet(historySyncMarkerKey(phone)))
+  } catch (e) {
+    logger.debug('Could not read history sync marker for %s: %s', phone, (e as any)?.message || e)
+    return false
+  }
+}
+
+const setHistorySyncMarker = async (phone: string, value: any) => {
+  try {
+    await redisSetAndExpire(historySyncMarkerKey(phone), JSON.stringify(value), SESSION_TTL)
+  } catch (e) {
+    logger.debug('Could not set history sync marker for %s: %s', phone, (e as any)?.message || e)
+  }
 }
 
 const EVENTS = [
@@ -247,6 +269,8 @@ export const connect = async ({
   })()
   const whatsappVersion = config.whatsappVersion
   let resolvedWhatsappVersion = whatsappVersion
+  let historyAlreadySynced = false
+  let historySyncInProgress = false
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
   // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid").
@@ -841,6 +865,12 @@ export const connect = async ({
     touchSocketActivity()
     status.attempt = 1
     await sessionStore.setStatus(phone, 'online')
+    if (historySyncInProgress) {
+      await setHistorySyncMarker(phone, {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      })
+    }
     logger.info(`${phone} connected`)
     const message = t(
       'connected',
@@ -2578,23 +2608,40 @@ export const connect = async ({
         logger.warn(e as any, 'Proxy configured but undici ProxyAgent not available; fetch uploads will not use proxy')
       }
     }
+    historyAlreadySynced = await getHistorySyncMarker(phone)
+    historySyncInProgress = false
+    const allowFullHistoryForSession = !config.ignoreHistoryMessages && (!historyAlreadySynced || config.allowFullHistorySync)
     const socketConfig: UserFacingSocketConfig = {
       auth: state,
       logger: loggerBaileys,
       markOnlineOnConnect: config.markOnlineOnConnect !== false,
-      syncFullHistory: !config.ignoreHistoryMessages && config.allowFullHistorySync,
+      syncFullHistory: allowFullHistoryForSession,
       shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
         const syncType = msg?.syncType as proto.HistorySync.HistorySyncType | undefined
         const syncTypeName = historySyncTypeName(syncType)
-        const shouldSync = shouldAcceptHistorySync(syncType, config)
+        const shouldSync = shouldAcceptHistorySync(syncType, config, { historyAlreadySynced, historySyncInProgress })
+        if (shouldSync && [
+          proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
+          proto.HistorySync.HistorySyncType.ON_DEMAND,
+          proto.HistorySync.HistorySyncType.FULL,
+        ].includes(syncType as any)) {
+          historySyncInProgress = true
+          setHistorySyncMarker(phone, {
+            status: 'started',
+            syncType: syncTypeName,
+            startedAt: new Date().toISOString(),
+          }).catch(() => {})
+        }
         try {
           logger.info(
-            'History sync decision %s syncType=%s chunkOrder=%s progress=%s phone=%s',
+            'History sync decision %s syncType=%s chunkOrder=%s progress=%s phone=%s historyAlreadySynced=%s historySyncInProgress=%s',
             shouldSync ? 'accept' : 'skip',
             syncTypeName,
             `${msg?.chunkOrder ?? '<none>'}`,
             `${msg?.progress ?? '<none>'}`,
             phone,
+            historyAlreadySynced,
+            historySyncInProgress,
           )
         } catch {}
         return shouldSync

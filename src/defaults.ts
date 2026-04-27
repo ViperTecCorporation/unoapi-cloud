@@ -270,8 +270,8 @@ export const VALIDATE_SESSION_NUMBER: boolean =
 // Limit for history sync (in days). When history import is enabled, only messages
 // newer than this window are forwarded to processing/webhooks. Default 30 days.
 export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
-// Emergency/explicit full history import. Disabled by default because full/bootstrap
-// history sync can spike memory during reconnect storms.
+// Force/redo full history import even when the per-session Redis marker says it already started.
+// New unmarked sessions can still do their first full/bootstrap sync when history import is enabled.
 export const BAILEYS_ALLOW_FULL_HISTORY_SYNC =
   process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC === _undefined ? false : process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC == 'true'
 

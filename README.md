@@ -1032,7 +1032,7 @@ READ_ON_RECEIPT=false mark message as read on receipt
 IGNORE_BROADCAST_MESSAGES=false to send broadcast messages in socket to webhook, default false
 IGNORE_HISTORY_MESSAGES=false to import messages when connect, default is true
 BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false clears Baileys app-state sync markers before connect, forcing fresh app-state snapshots. Keep false by default; enable only as an emergency self-heal for stale app-state decode errors.
-BAILEYS_ALLOW_FULL_HISTORY_SYNC=false allows Baileys FULL/INITIAL_BOOTSTRAP/ON_DEMAND history sync when importing history. Keep false by default to avoid memory spikes during reconnect storms.
+BAILEYS_ALLOW_FULL_HISTORY_SYNC=false forces Baileys FULL/INITIAL_BOOTSTRAP/ON_DEMAND history sync even when the session already has the Redis history-sync marker. New unmarked sessions can do their first full sync with IGNORE_HISTORY_MESSAGES=false.
 IGNORE_OWN_MESSAGES=false to send own messages in socket to webhook, default true
 IGNORE_YOURSELF_MESSAGES=true to ignore messages for yourself, default is true, possible loop if was false
 COMPOSING_MESSAGE=true enable composing before send message as text length, default false
@@ -1404,8 +1404,11 @@ IGNORE_HISTORY_MESSAGES=false
 # emergency only: forces Baileys to rebuild app-state snapshots on connect
 BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false
 
-# emergency/explicit full import only: allows FULL/INITIAL_BOOTSTRAP/ON_DEMAND history sync
+# force/redo full import even when the session already has the Redis history-sync marker
 BAILEYS_ALLOW_FULL_HISTORY_SYNC=false
+
+# marker created automatically per session when FULL/INITIAL_BOOTSTRAP/ON_DEMAND starts:
+# unoapi-history-sync:<phone>:started
 
 # only import messages newer than the last N days (default 30)
 HISTORY_MAX_AGE_DAYS=30
