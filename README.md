@@ -1042,6 +1042,7 @@ MESSAGE_CALLS_WEBHOOK=message to send webook when receive a call, default is emp
 SEND_CONNECTION_STATUS=true to send all connection status to webhook, false to send only important messages, default is true
 IGNORE_DATA_STORE=ignore save/retrieve data(message, contacts, groups...)
 AUTO_CONNECT=true, auto connect on start service
+AUTO_CONNECT_CONCURRENCY=1, max sessions connecting in parallel during service startup, default 1
 AUTO_RESTART_MS=miliseconds to restart connection, default is 0 and not auto restart
 THROW_WEBHOOK_ERROR=false send webhook error do self whatsapp, default is false, if true throw exception
 NOTIFY_FAILED_MESSAGES=true send message to your self in whatsapp when message failed and enqueued in dead queue
