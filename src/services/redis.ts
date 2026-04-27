@@ -125,6 +125,7 @@ export const getRedis = async (redisUrl = REDIS_URL) => {
 
 const appVersionKey = () => `${BASE_KEY}app:version:last`
 const appMigrationLockKey = (name: string) => `${BASE_KEY}app:migration:${name}:lock`
+export const historySyncMarkerKey = (phone: string) => `${BASE_KEY}history-sync:${phone}:started`
 
 const parseSemverLike = (raw?: string): [number, number, number] => {
   const cleaned = `${raw || ''}`.trim().replace(/^v/i, '').split('-')[0]
@@ -186,8 +187,58 @@ const clearGlobalJidMapOnLegacyUpgrade = async (): Promise<void> => {
   }
 }
 
+export const getHistorySyncMarker = async (phone: string): Promise<boolean> => {
+  try {
+    return !!(await redisGet(historySyncMarkerKey(phone)))
+  } catch (e) {
+    logger.debug(e as any, 'Could not read history sync marker for %s', phone)
+    return false
+  }
+}
+
+export const setHistorySyncMarker = async (phone: string, value: any) => {
+  try {
+    return await redisSetAndExpire(historySyncMarkerKey(phone), JSON.stringify(value || {}), SESSION_TTL)
+  } catch (e) {
+    logger.debug(e as any, 'Could not set history sync marker for %s', phone)
+  }
+}
+
+export const delHistorySyncMarker = async (phone: string) => {
+  try {
+    return await redisDel(historySyncMarkerKey(phone))
+  } catch (e) {
+    logger.debug(e as any, 'Could not delete history sync marker for %s', phone)
+  }
+}
+
+const seedHistorySyncMarkersForExistingSessions = async (): Promise<void> => {
+  const lockKey = appMigrationLockKey('seed-history-sync-markers-existing-sessions')
+  const acquired = await redisSetIfNotExists(lockKey, `${Date.now()}`, 600)
+  if (!acquired) return
+  const keys = await redisScanSome(configKey('*'), 100000)
+  let seeded = 0
+  for (const key of keys || []) {
+    const phone = `${key || ''}`.replace(configKey(''), '')
+    if (!phone || phone === 'auth-token-index') continue
+    try {
+      if (await redisGet(historySyncMarkerKey(phone))) continue
+      await setHistorySyncMarker(phone, {
+        status: 'completed',
+        seededAt: new Date().toISOString(),
+        source: 'startup-existing-session',
+      })
+      seeded += 1
+    } catch {}
+  }
+  try {
+    logger.warn('Startup migration: seeded %s history sync marker(s) for existing sessions', seeded)
+  } catch {}
+}
+
 const runStartupRedisMigrations = async (): Promise<void> => {
   await clearGlobalJidMapOnLegacyUpgrade()
+  await seedHistorySyncMarkersForExistingSessions()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {
@@ -1023,6 +1074,7 @@ export const delConfig = async (phone: string) => {
     }
   } catch {}
   await redisDel(key)
+  await delHistorySyncMarker(phone)
   await publishConfigUpdate(phone)
 }
 
@@ -1049,6 +1101,7 @@ export const delAuth = async (phone: string) => {
     logger.trace(`Deleted key ${key}!`)
   }
   await redisDel(indexKey)
+  await delHistorySyncMarker(phone)
 }
 
 export const getAuth = async (phone: string, parse = (value: string) => JSON.parse(value)) => {

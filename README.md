@@ -1410,6 +1410,7 @@ BAILEYS_ALLOW_FULL_HISTORY_SYNC=false
 
 # marker created automatically per session when FULL/INITIAL_BOOTSTRAP/ON_DEMAND starts:
 # unoapi-history-sync:<phone>:started
+# on startup, existing configured sessions are marked automatically; removing/logout session deletes this marker
 
 # only import messages newer than the last N days (default 30)
 HISTORY_MAX_AGE_DAYS=30

@@ -278,6 +278,7 @@ Some providers/devices may occasionally emit the same WA message more than once 
 - `BAILEYS_ALLOW_FULL_HISTORY_SYNC` - Forces Baileys `FULL`, `INITIAL_BOOTSTRAP`, and `ON_DEMAND` history sync even when the session already has the Redis history-sync marker. Default `false`.
   - New unmarked sessions can still do their first full/bootstrap sync when `IGNORE_HISTORY_MESSAGES=false`.
   - Uno writes `unoapi-history-sync:<phone>:started` when heavy history sync starts, and later reconnects skip heavy sync for that same session unless this flag is enabled.
+  - On application startup, existing configured sessions are marked automatically. When a session is removed/logout and its config/auth is deleted, this marker is deleted too.
 - `AUTO_CONNECT_CONCURRENCY` - Maximum sessions connecting in parallel during service startup. Default `1`.
   - Keep low on small containers to avoid reconnect storms and memory spikes.
 

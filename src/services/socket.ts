@@ -29,7 +29,6 @@ import {
   DEFAULT_BROWSER,
   LOG_LEVEL,
   CONNECTING_TIMEOUT_MS,
-  SESSION_TTL,
   BAILEYS_IDLE_RECONNECT_ENABLED,
   BAILEYS_IDLE_RECONNECT_MS,
   BAILEYS_IDLE_RECONNECT_CHECK_MS,
@@ -46,7 +45,7 @@ import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
 import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache, getHistorySyncMarker, setHistorySyncMarker } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
@@ -86,25 +85,6 @@ export const shouldAcceptHistorySync = (
     proto.HistorySync.HistorySyncType.ON_DEMAND,
     proto.HistorySync.HistorySyncType.FULL,
   ].includes(syncType)
-}
-
-const historySyncMarkerKey = (phone: string) => `${BASE_KEY}history-sync:${phone}:started`
-
-const getHistorySyncMarker = async (phone: string): Promise<boolean> => {
-  try {
-    return !!(await redisGet(historySyncMarkerKey(phone)))
-  } catch (e) {
-    logger.debug('Could not read history sync marker for %s: %s', phone, (e as any)?.message || e)
-    return false
-  }
-}
-
-const setHistorySyncMarker = async (phone: string, value: any) => {
-  try {
-    await redisSetAndExpire(historySyncMarkerKey(phone), JSON.stringify(value), SESSION_TTL)
-  } catch (e) {
-    logger.debug('Could not set history sync marker for %s: %s', phone, (e as any)?.message || e)
-  }
 }
 
 const EVENTS = [
