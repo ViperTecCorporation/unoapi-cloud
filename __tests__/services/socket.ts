@@ -33,6 +33,14 @@ jest.mock('@whiskeysockets/baileys/lib/Utils/logger', () => {
   }
   return { __esModule: true, default: mockLogger }
 })
+jest.mock('../../src/services/redis', () => {
+  const actual = jest.requireActual('../../src/services/redis')
+  return {
+    ...actual,
+    getHistorySyncMarker: jest.fn(async () => false),
+    setHistorySyncMarker: jest.fn(async () => undefined),
+  }
+})
 import { OnDisconnected, OnQrCode, OnReconnect, OnNotification, connect, shouldAcceptHistorySync } from '../../src/services/socket'
 import makeWASocket, { proto, WASocket, WAVersion } from '@whiskeysockets/baileys'
 import { mock } from 'jest-mock-extended'
