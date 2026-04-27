@@ -111,6 +111,10 @@ const normalizeJoinApprovalModeForBaileys = (value: any): 'on' | 'off' | undefin
   return undefined
 }
 
+const queryBoolean = (value: any): boolean => {
+  return ['1', 'true', 'yes', 'on'].includes(`${value || ''}`.trim().toLowerCase())
+}
+
 const inviteLinkFromCode = (code?: string): string => {
   const clean = `${code || ''}`.trim()
   return clean ? `https://chat.whatsapp.com/${clean}` : ''
@@ -192,7 +196,7 @@ export class GroupsController {
     return `${group?.profilePicture || group?.picture || cached || ''}`
   }
 
-  private async formatParticipant(phone: string, participant: any) {
+  private async formatParticipant(phone: string, participant: any, options: { includePicture?: boolean } = {}) {
     const sourceJid = `${participant?.id || participant?.jid || participant?.lid || ''}`.trim()
     const jid = normalizeParticipantJidForResponse(sourceJid)
     const pnJid = sourceJid.endsWith('@s.whatsapp.net') ? sourceJid : ''
@@ -203,7 +207,7 @@ export class GroupsController {
     const username = participantUsername(participant, contactInfo)
     const resolvedName = await resolveNameForJid(phone, sourceJid)
     const name = firstNonEmptyString(resolvedName, username, waId, lid) || ''
-    const picture = await getProfilePicture(phone, sourceJid)
+    const picture = options.includePicture ? await getProfilePicture(phone, sourceJid) : ''
     return {
       jid,
       wa_id: waId,
@@ -245,7 +249,7 @@ export class GroupsController {
       ...(groupCreatedAt(group) ? { creation_timestamp: groupCreatedAt(group) } : {}),
     }
     if (includeParticipants) {
-      formatted.participants = await Promise.all(participantsRaw.map((participant) => this.formatParticipant(phone, participant)))
+      formatted.participants = await Promise.all(participantsRaw.map((participant) => this.formatParticipant(phone, participant, { includePicture: true })))
     }
     return formatted
   }
@@ -433,7 +437,8 @@ export class GroupsController {
       const participantsRaw: any[] = Array.isArray((group as any)?.participants) ? (group as any).participants : []
       if (UNOAPI_META_GROUPS_ENABLED) {
         const picture = await this.groupPicture(phone, groupJid, group)
-        const participants = await Promise.all(participantsRaw.map((participant: any) => this.formatParticipant(phone, participant)))
+        const includeParticipantPictures = queryBoolean(req.query.include_pictures)
+        const participants = await Promise.all(participantsRaw.map((participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures })))
         return res.json({
           phone,
           group: {
@@ -443,6 +448,7 @@ export class GroupsController {
             ...(picture ? { picture } : {}),
           },
           participants,
+          total_participant_count: participantsRaw.length,
         })
       }
       const participants = await Promise.all(participantsRaw.map(async (participant: any) => {

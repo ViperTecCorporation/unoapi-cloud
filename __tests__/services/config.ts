@@ -47,4 +47,8 @@ describe('config', () => {
   test('getMessageMetada Group', async () => {
     expect(await (await getConfig(phone)).getMessageMetadata(groupPayload)).toBe(groupPayload)
   })
+
+  test('does not clear Baileys app-state sync on connect by default', async () => {
+    expect((await getConfig(phone)).clearAppStateSyncOnConnect).toBe(false)
+  })
 })

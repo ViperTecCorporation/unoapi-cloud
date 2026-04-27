@@ -1031,6 +1031,7 @@ IGNORE_STATUS_MESSAGE=false to send stories in socket to webhook, default true
 READ_ON_RECEIPT=false mark message as read on receipt
 IGNORE_BROADCAST_MESSAGES=false to send broadcast messages in socket to webhook, default false
 IGNORE_HISTORY_MESSAGES=false to import messages when connect, default is true
+BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false clears Baileys app-state sync markers before connect, forcing fresh app-state snapshots. Keep false by default; enable only as an emergency self-heal for stale app-state decode errors.
 IGNORE_OWN_MESSAGES=false to send own messages in socket to webhook, default true
 IGNORE_YOURSELF_MESSAGES=true to ignore messages for yourself, default is true, possible loop if was false
 COMPOSING_MESSAGE=true enable composing before send message as text length, default false
@@ -1398,6 +1399,9 @@ When history import is enabled, you can limit which historical messages are proc
 ```env
 # enable history import in your runtime config (example)
 IGNORE_HISTORY_MESSAGES=false
+
+# emergency only: forces Baileys to rebuild app-state snapshots on connect
+BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false
 
 # only import messages newer than the last N days (default 30)
 HISTORY_MAX_AGE_DAYS=30

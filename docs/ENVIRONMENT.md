@@ -270,6 +270,12 @@ Some providers/devices may occasionally emit the same WA message more than once 
 - `INBOUND_DEDUP_WINDOW_MS` Ã¢â‚¬â€ Skip processing a message if another with the same `remoteJid` and `id` arrives within this window (ms). Default `7000`.
   - Example: `INBOUND_DEDUP_WINDOW_MS=5000`
 
+### Baileys app-state sync
+
+- `BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT` - Clears Baileys `app-state-sync-version` before each connect. Default `false`.
+  - Keep disabled in normal operation because clearing it forces WhatsApp/Baileys to rebuild app-state snapshots and can increase memory/CPU during reconnect storms.
+  - Enable only as an emergency self-heal when logs show stale app-state decode failures such as `failed to find key to decode mutation`.
+
 ### Outgoing idempotency
 
 Skip sending the same message again when a job retry happens after a successful send.

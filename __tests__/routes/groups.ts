@@ -257,7 +257,31 @@ describe('groups routes', () => {
           role: 'member',
         },
       ],
+      total_participant_count: 2,
     })
+    expect(redis.getProfilePicture).toHaveBeenCalledWith(phone, groupJid)
+    expect(redis.getProfilePicture).not.toHaveBeenCalledWith(phone, '556699999999@s.whatsapp.net')
+  })
+
+  test('participants route includes participant pictures only when requested', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, redis } = await loadApp(true)
+    redis.getGroup.mockResolvedValue(cachedGroup)
+    redis.getContactName.mockResolvedValue('')
+    redis.getProfilePicture.mockImplementation(async (_phone: string, jid: string) => {
+      if (jid === groupJid) return cachedGroup.profilePicture
+      if (jid === '556699999999@s.whatsapp.net') return 'https://cdn.exemplo.com/profile/maria.jpg'
+      return ''
+    })
+
+    const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/participants?include_pictures=true`)
+
+    expect(res.status).toEqual(200)
+    expect(res.body.participants[0]).toEqual(expect.objectContaining({
+      picture: 'https://cdn.exemplo.com/profile/maria.jpg',
+    }))
+    expect(redis.getProfilePicture).toHaveBeenCalledWith(phone, '556699999999@s.whatsapp.net')
   })
 
   test('participants route keeps wa_id blank for LID-only participants', async () => {
@@ -286,6 +310,7 @@ describe('groups routes', () => {
         name: '@lid.only',
       }),
     ])
+    expect(res.body.total_participant_count).toEqual(1)
   })
 
   test('participants route returns Meta-like 404 payload when group is not cached', async () => {

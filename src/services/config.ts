@@ -54,6 +54,7 @@ export type Config = {
   readOnReply: boolean
   markOnlineOnConnect: boolean
   ignoreHistoryMessages: boolean
+  clearAppStateSyncOnConnect: boolean
   ignoreYourselfMessages: boolean
   ignoreOwnMessages: boolean
   sendConnectionStatus: boolean
@@ -124,6 +125,7 @@ export const defaultConfig: Config = {
   readOnReply: false,
   markOnlineOnConnect: true,
   ignoreHistoryMessages: true,
+  clearAppStateSyncOnConnect: false,
   ignoreOwnMessages: true,
   ignoreYourselfMessages: true,
   sendConnectionStatus: true,

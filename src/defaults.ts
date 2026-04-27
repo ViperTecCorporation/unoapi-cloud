@@ -124,6 +124,10 @@ export const BAILEYS_IDLE_RECONNECT_ENABLED =
   process.env.BAILEYS_IDLE_RECONNECT_ENABLED === _undefined ? false : process.env.BAILEYS_IDLE_RECONNECT_ENABLED == 'true'
 export const BAILEYS_IDLE_RECONNECT_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_MS || `${30 * 60 * 1000}`)
 export const BAILEYS_IDLE_RECONNECT_CHECK_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_CHECK_MS || '60000')
+export const BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT =
+  process.env.BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT === _undefined
+    ? false
+    : process.env.BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT == 'true'
 export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_REQUEST_DELAY || process.env.UNOAPI_RETRY_REQUEST_DELAY_MS || '5000')
 // export const QR_TIMEOUT = parseInt(process.env.QR_TIMEOUT || '30000')
 // export const SLEEP_TIME = parseInt(process.env.SLEEP_TIME || '5000')
