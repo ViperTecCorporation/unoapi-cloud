@@ -1,5 +1,5 @@
 import { Incoming } from './incoming'
-import { Client, getClient } from './client'
+import { Client, getClient, clients } from './client'
 import { getConfig } from './config'
 import { OnNewLogin } from './socket'
 import logger from './logger'
@@ -84,5 +84,13 @@ export class IncomingBaileys implements Incoming {
 
   public async groupJoinApprovalMode(phone: string, jid: string, mode: 'on' | 'off') {
     return (await this.client(phone)).groupJoinApprovalMode!(jid, mode)
+  }
+
+  public async groupMetadata(phone: string, jid: string) {
+    const client = clients.get(phone)
+    if (!client || typeof client.groupMetadata !== 'function') {
+      throw new Error(`Client ${phone} is not ready to fetch group metadata`)
+    }
+    return client.groupMetadata(jid)
   }
 }

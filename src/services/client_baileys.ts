@@ -20,6 +20,7 @@ import {
   groupLeave,
   groupSettingUpdate,
   groupJoinApprovalMode,
+  groupMetadata,
   OnQrCode,
   OnNotification,
   OnNewLogin,
@@ -133,6 +134,11 @@ const fetchImageUrlDefault: fetchImageUrl = async (_jid: string) => ''
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const fetchGroupMetadataDefault: fetchGroupMetadata = async (_jid: string) => {
+  throw sendError
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const groupMetadataDefault: groupMetadata = async (_jid: string) => {
   throw sendError
 }
 
@@ -909,6 +915,7 @@ export class ClientBaileys implements Client {
   private exists = existsDefault
   private socketLogout: logout = logoutDefault
   private fetchGroupMetadata = fetchGroupMetadataDefault
+  private groupMetadataFn: groupMetadata = groupMetadataDefault
   private readMessages = readMessagesDefault
   private rejectCall: rejectCall | undefined = rejectCallDefault
   private sendCallNode: sendCallNode = sendCallNodeDefault
@@ -1104,6 +1111,7 @@ export class ClientBaileys implements Client {
       sendCallNode,
       fetchImageUrl,
       fetchGroupMetadata,
+      groupMetadata,
       exists,
       close,
       logout,
@@ -1139,6 +1147,7 @@ export class ClientBaileys implements Client {
     this.groupJoinApprovalModeFn = groupJoinApprovalMode || groupUnavailable
     this.fetchImageUrl = this.config.sendProfilePicture ? fetchImageUrl : fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadata
+    this.groupMetadataFn = groupMetadata || groupMetadataDefault
     this.close = close
     this.exists = exists
     this.socketLogout = logout
@@ -2828,6 +2837,10 @@ export class ClientBaileys implements Client {
 
   public async groupJoinApprovalMode(jid: string, mode: 'on' | 'off') {
     return this.groupJoinApprovalModeFn(jid, mode)
+  }
+
+  public async groupMetadata(jid: string) {
+    return this.groupMetadataFn(jid)
   }
 
   public async contacts(numbers: string[]) {

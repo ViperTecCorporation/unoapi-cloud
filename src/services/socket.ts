@@ -148,6 +148,10 @@ export interface fetchGroupMetadata {
   (_jid: string): Promise<GroupMetadata | undefined>
 }
 
+export interface groupMetadata {
+  (_jid: string): Promise<GroupMetadata | undefined>
+}
+
 export interface exists {
   (_jid: string): Promise<string | undefined>
 }
@@ -2558,6 +2562,11 @@ export const connect = async ({
     return dataStore.loadGroupMetada(jid, sock!)
   }
 
+  const groupMetadata: groupMetadata = async (jid: string) => {
+    await validateStatus()
+    return sock?.groupMetadata(jid)
+  }
+
   const connect = async () => {
     await sessionStore.syncConnection(phone)
     if (await sessionStore.isStatusOnline(phone)) {
@@ -2786,6 +2795,7 @@ export const connect = async ({
     sendCallNode,
     fetchImageUrl,
     fetchGroupMetadata,
+    groupMetadata,
     exists,
     close,
     logout,

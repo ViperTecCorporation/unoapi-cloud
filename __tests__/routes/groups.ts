@@ -10,6 +10,8 @@ import { addToBlacklist } from '../../src/services/blacklist'
 import { Reload } from '../../src/services/reload'
 import { Logout } from '../../src/services/logout'
 
+jest.setTimeout(30000)
+
 type LoadedApp = {
   app: any
   incoming: any
@@ -23,6 +25,9 @@ type LoadedApp = {
     getPnForLid: jest.Mock
     getProfilePicture: jest.Mock
     setGroup: jest.Mock
+    redisSetIfNotExists: jest.Mock
+    redisDelKey: jest.Mock
+    groupKey: jest.Mock
   }
 }
 
@@ -57,6 +62,9 @@ const loadApp = async (metaGroupsEnabled: boolean): Promise<LoadedApp> => {
     getPnForLid: jest.fn(),
     getProfilePicture: jest.fn(),
     setGroup: jest.fn(),
+    redisSetIfNotExists: jest.fn(),
+    redisDelKey: jest.fn(),
+    groupKey: jest.fn((phone: string, jid: string) => `unoapi-group:${phone}:${jid}`),
   }))
 
   // Require after doMock so defaults/redis are evaluated with this test's flag.
@@ -65,6 +73,7 @@ const loadApp = async (metaGroupsEnabled: boolean): Promise<LoadedApp> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const redis = require('../../src/services/redis')
   const incoming = mock<Incoming>()
+  ;(incoming as any).groupMetadata = jest.fn()
   const outgoing = mock<Outgoing>()
   const onNewLogin = mock<OnNewLogin>()
   const reload = mock<Reload>()
@@ -103,6 +112,10 @@ describe('groups routes', () => {
     jest.dontMock('../../src/defaults')
     jest.dontMock('../../src/services/redis')
     jest.dontMock('../../src/services/rate_limit')
+  })
+
+  beforeEach(() => {
+    addToBlacklistMock.mockClear()
   })
 
   test('list keeps legacy shape when meta group flag is disabled', async () => {
@@ -211,6 +224,7 @@ describe('groups routes', () => {
         {
           jid: '556688888888',
           wa_id: '556688888888',
+          user_id: '',
           name: 'Joao',
           is_admin: false,
           role: 'member',
@@ -252,6 +266,7 @@ describe('groups routes', () => {
         {
           jid: '556688888888',
           wa_id: '556688888888',
+          user_id: '',
           name: '556688888888',
           is_admin: false,
           role: 'member',
@@ -284,7 +299,7 @@ describe('groups routes', () => {
     expect(redis.getProfilePicture).toHaveBeenCalledWith(phone, '556699999999@s.whatsapp.net')
   })
 
-  test('participants route keeps wa_id blank for LID-only participants', async () => {
+  test('participants route resolves wa_id for LID-only participants from jid map', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
     const { app, redis } = await loadApp(true)
@@ -297,20 +312,80 @@ describe('groups routes', () => {
         },
       ],
     })
+    redis.getPnForLid.mockResolvedValue('5566996222471@s.whatsapp.net')
 
     const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/participants`)
 
     expect(res.status).toEqual(200)
     expect(res.body.participants).toEqual([
       expect.objectContaining({
-        jid: '777777777777777@lid',
-        wa_id: '',
+        jid: '5566996222471',
+        wa_id: '5566996222471',
         user_id: '777777777777777@lid',
         username: '@lid.only',
         name: '@lid.only',
       }),
     ])
+    expect(redis.getPnForLid).toHaveBeenCalledWith(phone, '777777777777777@lid')
     expect(res.body.total_participant_count).toEqual(1)
+  })
+
+  test('participants route enriches legacy payload with wa_id and user_id', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, redis } = await loadApp(false)
+    redis.getGroup.mockResolvedValue({
+      subject: cachedGroup.subject,
+      participants: [{ lid: '11343495192601@lid' }],
+    })
+    redis.getPnForLid.mockResolvedValue('5566996222471@s.whatsapp.net')
+    redis.getContactName.mockResolvedValue('ViperTec')
+
+    const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/participants`)
+
+    expect(res.status).toEqual(200)
+    expect(res.body.participants).toEqual([
+      {
+        jid: '5566996222471',
+        wa_id: '5566996222471',
+        user_id: '11343495192601@lid',
+        name: 'ViperTec',
+      },
+    ])
+  })
+
+  test('participants route refreshes raw group metadata before responding when available', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming, redis } = await loadApp(true)
+    const staleGroup = {
+      subject: cachedGroup.subject,
+      participants: [{ id: '556600000001@s.whatsapp.net' }],
+    }
+    const freshGroup = {
+      subject: cachedGroup.subject,
+      participants: [
+        { id: '556600000001@s.whatsapp.net' },
+        { id: '5566996222471@s.whatsapp.net', lid: '11343495192601@lid', admin: 'admin' },
+      ],
+    }
+    redis.getGroup.mockResolvedValue(staleGroup)
+    redis.redisSetIfNotExists.mockResolvedValue(true)
+    incoming.groupMetadata.mockResolvedValue(freshGroup)
+
+    const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/participants`)
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupMetadata).toHaveBeenCalledWith(phone, groupJid)
+    expect(redis.redisDelKey).toHaveBeenCalledWith(`unoapi-group:${phone}:${groupJid}`)
+    expect(redis.setGroup).toHaveBeenCalledWith(phone, groupJid, freshGroup)
+    expect(res.body.total_participant_count).toEqual(2)
+    expect(res.body.participants[1]).toEqual(expect.objectContaining({
+      wa_id: '5566996222471',
+      user_id: '11343495192601@lid',
+      role: 'admin',
+      is_admin: true,
+    }))
   })
 
   test('participants route returns Meta-like 404 payload when group is not cached', async () => {

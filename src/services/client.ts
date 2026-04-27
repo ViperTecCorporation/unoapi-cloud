@@ -70,4 +70,6 @@ export interface Client {
   groupSettingUpdate?(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
 
   groupJoinApprovalMode?(jid: string, mode: 'on' | 'off'): Promise<void>
+
+  groupMetadata?(jid: string): Promise<any>
 }

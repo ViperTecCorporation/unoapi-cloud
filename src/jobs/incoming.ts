@@ -38,6 +38,7 @@ export class IncomingJob {
       'groupLeave',
       'groupSettingUpdate',
       'groupJoinApprovalMode',
+      'groupMetadata',
     ]
     if (!allowedActions.includes(action)) {
       throw new Error(`Unknown group management action ${action}`)

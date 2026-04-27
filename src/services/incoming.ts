@@ -14,4 +14,5 @@ export interface Incoming {
   groupLeave?(phone: string, jid: string): Promise<void>
   groupSettingUpdate?(phone: string, jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
   groupJoinApprovalMode?(phone: string, jid: string, mode: 'on' | 'off'): Promise<void>
+  groupMetadata?(phone: string, jid: string): Promise<any>
 }

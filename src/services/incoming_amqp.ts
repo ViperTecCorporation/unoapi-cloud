@@ -18,6 +18,7 @@ type GroupManagementAction =
   | 'groupLeave'
   | 'groupSettingUpdate'
   | 'groupJoinApprovalMode'
+  | 'groupMetadata'
 
 export class IncomingAmqp implements Incoming {
   private getConfig: getConfig
@@ -142,5 +143,9 @@ export class IncomingAmqp implements Incoming {
 
   public async groupJoinApprovalMode(phone: string, jid: string, mode: 'on' | 'off') {
     return this.groupManagementRpc<void>(phone, 'groupJoinApprovalMode', [jid, mode])
+  }
+
+  public async groupMetadata(phone: string, jid: string) {
+    return this.groupManagementRpc<any>(phone, 'groupMetadata', [jid])
   }
 }

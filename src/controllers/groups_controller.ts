@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { UNOAPI_META_GROUPS_ENABLED } from '../defaults'
-import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, getProfilePicture, redisKeys, BASE_KEY, setGroup } from '../services/redis'
+import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, getProfilePicture, redisKeys, BASE_KEY, setGroup, redisSetIfNotExists, redisDelKey, groupKey } from '../services/redis'
 import { normalizeGroupId, normalizeParticipantId } from '../services/transformer'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
@@ -88,6 +88,69 @@ const participantRole = (participant: any): string => {
   return 'member'
 }
 
+const resolveParticipantIdentity = async (phone: string, participant: any) => {
+  const rawId = `${participant?.id || participant?.jid || participant?.lid || ''}`.trim()
+  const rawPhoneNumber = `${participant?.phoneNumber || participant?.phone_number || participant?.pn || ''}`.trim()
+  const sourceJid = rawId || rawPhoneNumber
+  let pnJid = rawPhoneNumber.endsWith('@s.whatsapp.net') ? rawPhoneNumber : ''
+  if (!pnJid && rawPhoneNumber) {
+    const candidate = normalizeParticipantJidForBaileys(rawPhoneNumber)
+    if (candidate.endsWith('@s.whatsapp.net')) pnJid = candidate
+  }
+  if (!pnJid && sourceJid.endsWith('@s.whatsapp.net')) pnJid = sourceJid
+  let lid = participantLid(participant, rawId || sourceJid)
+
+  if (!pnJid && sourceJid && !sourceJid.endsWith('@lid')) {
+    const candidate = normalizeParticipantJidForBaileys(sourceJid)
+    if (candidate.endsWith('@s.whatsapp.net')) pnJid = candidate
+  }
+
+  if (!pnJid && lid) {
+    try { pnJid = `${await getPnForLid(phone, lid) || ''}`.trim() } catch {}
+  }
+
+  if (!lid && pnJid) {
+    try { lid = `${await getLidForPn(phone, pnJid) || ''}`.trim() } catch {}
+  }
+
+  const waId = normalizeParticipantPhoneForResponse(pnJid || sourceJid)
+  return {
+    sourceJid,
+    pnJid,
+    lid,
+    waId,
+    responseJid: normalizeParticipantJidForResponse(pnJid || sourceJid || lid),
+  }
+}
+
+const participantDisplayName = (participant: any): string => {
+  return firstNonEmptyString(
+    participant?.name,
+    participant?.notify,
+    participant?.verifiedName,
+    participant?.pushName,
+  ) || ''
+}
+
+const resolveParticipantName = async (phone: string, participant: any, pnJid: string, lid: string): Promise<string> => {
+  const directName = participantDisplayName(participant)
+  if (directName) return directName
+  for (const jid of [pnJid, lid]) {
+    const clean = `${jid || ''}`.trim()
+    if (!clean) continue
+    let name = ''
+    try { name = `${await getContactName(phone, clean) || ''}`.trim() } catch {}
+    if (!name) {
+      try {
+        const infoRaw = await getContactInfo(phone, clean)
+        name = `${parseContactInfoName(infoRaw) || ''}`.trim()
+      } catch {}
+    }
+    if (name) return name
+  }
+  return ''
+}
+
 const groupDescription = (group: any): string => {
   return `${group?.desc || group?.description || ''}`
 }
@@ -121,6 +184,9 @@ const inviteLinkFromCode = (code?: string): string => {
 }
 
 const nowTimestamp = () => `${Math.floor(Date.now() / 1000)}`
+const GROUP_METADATA_REFRESH_THROTTLE_SECONDS = 60
+const GROUP_METADATA_REFRESH_TIMEOUT_MS = 5000
+const GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT = 100
 
 const managementWebhook = (phone: string, field: string, value: any) => ({
   object: 'whatsapp_business_account',
@@ -196,23 +262,38 @@ export class GroupsController {
     return `${group?.profilePicture || group?.picture || cached || ''}`
   }
 
-  private async formatParticipant(phone: string, participant: any, options: { includePicture?: boolean } = {}) {
-    const sourceJid = `${participant?.id || participant?.jid || participant?.lid || ''}`.trim()
-    const jid = normalizeParticipantJidForResponse(sourceJid)
-    const pnJid = sourceJid.endsWith('@s.whatsapp.net') ? sourceJid : ''
-    const lid = participantLid(participant, sourceJid)
-    const waId = normalizeParticipantPhoneForResponse(pnJid || sourceJid)
+  private async refreshGroupMetadata(phone: string, groupJid: string): Promise<any | undefined> {
+    if (typeof this.incoming.groupMetadata !== 'function') return undefined
+    const refreshKey = `${BASE_KEY}group-refresh:${phone}:${groupJid}`
+    const acquired = await redisSetIfNotExists(refreshKey, `${Date.now()}`, GROUP_METADATA_REFRESH_THROTTLE_SECONDS)
+    if (!acquired) return undefined
+    const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), GROUP_METADATA_REFRESH_TIMEOUT_MS))
+    const fetched = await Promise.race([
+      this.incoming.groupMetadata(phone, groupJid).catch(() => undefined),
+      timeout,
+    ])
+    if (!fetched) return undefined
+    try { await redisDelKey(groupKey(phone, groupJid)) } catch {}
+    await setGroup(phone, groupJid, fetched as any)
+    return fetched
+  }
+
+  private async formatParticipant(phone: string, participant: any, options: { includePicture?: boolean, resolveName?: boolean } = {}) {
+    const { sourceJid, pnJid, lid, waId, responseJid } = await resolveParticipantIdentity(phone, participant)
+    const shouldResolveName = options.resolveName !== false
     let contactInfo: any
-    try { contactInfo = parseContactInfo(await getContactInfo(phone, sourceJid)) } catch {}
+    if (shouldResolveName) {
+      try { contactInfo = parseContactInfo(await getContactInfo(phone, pnJid || sourceJid || lid)) } catch {}
+    }
     const username = participantUsername(participant, contactInfo)
-    const resolvedName = await resolveNameForJid(phone, sourceJid)
+    const resolvedName = shouldResolveName ? await resolveParticipantName(phone, participant, pnJid, lid) : participantDisplayName(participant)
     const name = firstNonEmptyString(resolvedName, username, waId, lid) || ''
-    const picture = options.includePicture ? await getProfilePicture(phone, sourceJid) : ''
+    const picture = options.includePicture ? await getProfilePicture(phone, pnJid || sourceJid || lid) : ''
     return {
-      jid,
+      jid: responseJid,
       wa_id: waId,
+      user_id: lid,
       name,
-      ...(lid ? { user_id: lid } : {}),
       ...(username ? { username } : {}),
       ...(picture ? { picture } : {}),
       ...(lid ? { lid } : {}),
@@ -222,14 +303,9 @@ export class GroupsController {
   }
 
   private async formatParticipantReference(phone: string, rawJid: string) {
-    const clean = `${rawJid || ''}`.trim()
-    const waId = normalizeParticipantPhoneForResponse(clean)
-    let userId = clean.endsWith('@lid') ? clean : ''
-    if (!userId && clean.endsWith('@s.whatsapp.net')) {
-      try { userId = `${await getLidForPn(phone, clean) || ''}`.trim() } catch {}
-    }
+    const { waId, lid } = await resolveParticipantIdentity(phone, { id: rawJid })
     const response: any = { wa_id: waId }
-    if (userId) response.user_id = userId
+    if (lid) response.user_id = lid
     return response
   }
 
@@ -427,7 +503,13 @@ export class GroupsController {
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!groupId) return res.status(400).json({ error: 'missing groupId param' })
       const groupJid = normalizeGroupJid(groupId)
-      const group = await getGroup(phone, groupJid)
+      const cachedGroup = await getGroup(phone, groupJid)
+      const cachedParticipants = Array.isArray((cachedGroup as any)?.participants) ? (cachedGroup as any).participants : []
+      const shouldRefreshMetadata =
+        !cachedGroup ||
+        cachedParticipants.length <= GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT ||
+        queryBoolean(req.query.refresh_metadata || req.query.refreshMetadata)
+      const group = shouldRefreshMetadata ? await this.refreshGroupMetadata(phone, groupJid) || cachedGroup : cachedGroup
       if (!group) return res.status(404).json(
         UNOAPI_META_GROUPS_ENABLED
           ? { error: 'group not found in cache', group_id: groupJid }
@@ -435,10 +517,11 @@ export class GroupsController {
       )
 
       const participantsRaw: any[] = Array.isArray((group as any)?.participants) ? (group as any).participants : []
+      const resolveParticipantNames = participantsRaw.length <= GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT || queryBoolean(req.query.resolve_names || req.query.resolveNames)
       if (UNOAPI_META_GROUPS_ENABLED) {
         const picture = await this.groupPicture(phone, groupJid, group)
         const includeParticipantPictures = queryBoolean(req.query.include_pictures)
-        const participants = await Promise.all(participantsRaw.map((participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures })))
+        const participants = await Promise.all(participantsRaw.map((participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures, resolveName: resolveParticipantNames })))
         return res.json({
           phone,
           group: {
@@ -452,10 +535,13 @@ export class GroupsController {
         })
       }
       const participants = await Promise.all(participantsRaw.map(async (participant: any) => {
-        const sourceJid = `${participant?.id || participant?.jid || participant?.lid || ''}`.trim()
-        const name = await resolveNameForJid(phone, sourceJid)
+        const { pnJid, waId, lid, responseJid } = await resolveParticipantIdentity(phone, participant)
+        const resolvedName = resolveParticipantNames ? await resolveParticipantName(phone, participant, pnJid, lid) : participantDisplayName(participant)
+        const name = firstNonEmptyString(resolvedName, waId, lid) || ''
         return {
-          jid: normalizeParticipantJidForResponse(sourceJid),
+          jid: responseJid,
+          wa_id: waId,
+          user_id: lid,
           name,
         }
       }))
