@@ -2,7 +2,7 @@ import { DataStore } from '../../src/services/data_store'
 import { getDataStore } from '../../src/services/data_store'
 import { mock } from 'jest-mock-extended'
 import { getMediaStoreFile } from '../../src/services/media_store_file'
-import { MediaStore } from '../../src/services/media_store'
+import { MediaStore, mediaStores } from '../../src/services/media_store'
 import { defaultConfig } from '../../src/services/config'
 import fetch from 'node-fetch'
 jest.mock('node-fetch', () => jest.fn())
@@ -28,6 +28,7 @@ describe('media routes', () => {
   let mediaStore: MediaStore
 
   beforeEach(() => {
+    mediaStores.clear()
     dataStore.loadMediaPayload.mockReturnValue(new Promise((resolve) => resolve(message)))
     dataStore.getLidForPn.mockReset()
     dataStore.getPnForLid.mockReset()
