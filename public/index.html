@@ -1103,6 +1103,7 @@
         $(document).ready(function () {
             var table;
             var sessionsFetchInFlight = false;
+            var sessionsByActionId = {};
             const storedToken = localStorage.getItem(tokenKey);
             const editModalEl = document.getElementById('editModal');
             if (editModalEl) {
@@ -1368,6 +1369,7 @@
 
                 // Limpa os dados antigos da tabela antes de adicionar os novos
                 table.clear();
+                sessionsByActionId = {};
 
                 const safeCell = (value, fallback = '-') => {
                     const text = `${value ?? ''}`.trim();
@@ -1378,6 +1380,7 @@
                     session = session || {};
                     const actionId = sessionActionId(session);
                     if (!actionId) return;
+                    sessionsByActionId[actionId] = session;
                     const displayPhone = sessionDisplayPhone(session, actionId);
                     const actionAttr = htmlAttr(actionId);
                     table.row.add([
@@ -1426,6 +1429,15 @@
 
                 if (token) {
                     $('#editModal').data('number', number);
+                    const cachedSession = sessionsByActionId[number];
+                    if (cachedSession) {
+                        try {
+                            populateEditForm(cachedSession);
+                        } catch (error) {
+                            console.error('Erro ao preencher modal de edição da sessão pelo cache', error, cachedSession);
+                        }
+                        showModalById('editModal');
+                    }
                     fetch(`${apiUrl}/v15.0/${encodeURIComponent(number)}`, {
                         headers: { Authorization: `Bearer ${token}` }
                     })
@@ -1444,7 +1456,7 @@
                     })
                     .catch(error => {
                         console.error('Erro ao buscar dados da sessão para edição', error);
-                        alert(error.message);
+                        if (!cachedSession) alert(error.message);
                     });
                 }
             });
