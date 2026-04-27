@@ -51,4 +51,8 @@ describe('config', () => {
   test('does not clear Baileys app-state sync on connect by default', async () => {
     expect((await getConfig(phone)).clearAppStateSyncOnConnect).toBe(false)
   })
+
+  test('does not allow full Baileys history sync by default', async () => {
+    expect((await getConfig(phone)).allowFullHistorySync).toBe(false)
+  })
 })

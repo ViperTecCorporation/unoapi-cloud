@@ -270,6 +270,10 @@ export const VALIDATE_SESSION_NUMBER: boolean =
 // Limit for history sync (in days). When history import is enabled, only messages
 // newer than this window are forwarded to processing/webhooks. Default 30 days.
 export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
+// Emergency/explicit full history import. Disabled by default because full/bootstrap
+// history sync can spike memory during reconnect storms.
+export const BAILEYS_ALLOW_FULL_HISTORY_SYNC =
+  process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC === _undefined ? false : process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC == 'true'
 
 // Group sending safeguards
 // Validate membership before sending to a group (recommended)

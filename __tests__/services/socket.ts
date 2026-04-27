@@ -8,7 +8,22 @@ jest.mock('@whiskeysockets/baileys', () => {
     fetchLatestBaileysVersion: jest.fn(async () => ({ version: [2, 2, 2] })),
     DisconnectReason: { loggedOut: 401, connectionReplaced: 440, restartRequired: 515, badSession: 500 },
     delay: jest.fn(async () => {}),
-    proto: {},
+    proto: {
+      HistorySync: {
+        HistorySyncType: {
+          0: 'INITIAL_BOOTSTRAP',
+          1: 'RECENT',
+          2: 'PUSH_NAME',
+          3: 'ON_DEMAND',
+          4: 'FULL',
+          INITIAL_BOOTSTRAP: 0,
+          RECENT: 1,
+          PUSH_NAME: 2,
+          ON_DEMAND: 3,
+          FULL: 4,
+        },
+      },
+    },
   }
 })
 jest.mock('@whiskeysockets/baileys/lib/Utils/logger', () => {
@@ -18,8 +33,8 @@ jest.mock('@whiskeysockets/baileys/lib/Utils/logger', () => {
   }
   return { __esModule: true, default: mockLogger }
 })
-import { OnDisconnected, OnQrCode, OnReconnect, OnNotification, connect } from '../../src/services/socket'
-import makeWASocket, { WASocket, WAVersion } from '@whiskeysockets/baileys'
+import { OnDisconnected, OnQrCode, OnReconnect, OnNotification, connect, shouldAcceptHistorySync } from '../../src/services/socket'
+import makeWASocket, { proto, WASocket, WAVersion } from '@whiskeysockets/baileys'
 import { mock } from 'jest-mock-extended'
 import { Store } from '../../src/services/store'
 import { defaultConfig } from '../../src/services/config'
@@ -87,5 +102,37 @@ describe('service socket', () => {
       config: { ...defaultConfig, whatsappVersion } 
     })
     expect(mockOn).toHaveBeenCalled()
+  })
+
+  test('keeps full history sync disabled unless explicitly allowed', async () => {
+    await connect({
+      phone,
+      store,
+      onQrCode,
+      onNotification,
+      onDisconnected,
+      onReconnect,
+      onNewLogin,
+      attempts: 1,
+      time: 1,
+      config: { ...defaultConfig, ignoreHistoryMessages: false, allowFullHistorySync: false, whatsappVersion }
+    })
+    expect(mockMakeWASocket).toHaveBeenCalledWith(expect.objectContaining({ syncFullHistory: false }))
+  })
+
+  test('history sync decision skips heavy sync by default', async () => {
+    const config = { ignoreHistoryMessages: false, allowFullHistorySync: false }
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.PUSH_NAME, config)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.RECENT, config)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP, config)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.FULL, config)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.ON_DEMAND, config)).toBe(false)
+  })
+
+  test('history sync decision only allows push names when history is ignored', async () => {
+    const config = { ignoreHistoryMessages: true, allowFullHistorySync: true }
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.PUSH_NAME, config)).toBe(true)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.RECENT, config)).toBe(false)
+    expect(shouldAcceptHistorySync(proto.HistorySync.HistorySyncType.FULL, config)).toBe(false)
   })
 })

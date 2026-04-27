@@ -31,6 +31,7 @@ import {
   IGNORE_BROADCAST_MESSAGES,
   IGNORE_HISTORY_MESSAGES,
   BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT,
+  BAILEYS_ALLOW_FULL_HISTORY_SYNC,
   IGNORE_YOURSELF_MESSAGES,
   SEND_CONNECTION_STATUS,
   IGNORE_DATA_STORE,
@@ -89,6 +90,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     config.groupOnlyDeliveredStatus = GROUP_ONLY_DELIVERED_STATUS
     config.ignoreHistoryMessages = IGNORE_HISTORY_MESSAGES
     config.clearAppStateSyncOnConnect = BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT
+    config.allowFullHistorySync = BAILEYS_ALLOW_FULL_HISTORY_SYNC
     config.ignoreDataStore = IGNORE_DATA_STORE
     config.ignoreYourselfMessages = IGNORE_YOURSELF_MESSAGES
     config.ignoreOwnMessages = IGNORE_OWN_MESSAGES

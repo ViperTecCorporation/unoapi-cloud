@@ -275,6 +275,9 @@ Some providers/devices may occasionally emit the same WA message more than once 
 - `BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT` - Clears Baileys `app-state-sync-version` before each connect. Default `false`.
   - Keep disabled in normal operation because clearing it forces WhatsApp/Baileys to rebuild app-state snapshots and can increase memory/CPU during reconnect storms.
   - Enable only as an emergency self-heal when logs show stale app-state decode failures such as `failed to find key to decode mutation`.
+- `BAILEYS_ALLOW_FULL_HISTORY_SYNC` - Allows Baileys `FULL`, `INITIAL_BOOTSTRAP`, and `ON_DEMAND` history sync types when history import is enabled. Default `false`.
+  - When disabled, Uno only accepts lightweight `PUSH_NAME` and, if `IGNORE_HISTORY_MESSAGES=false`, `RECENT`.
+  - Keep disabled in production reconnect storms to avoid OOM from large history snapshots.
 
 ### Outgoing idempotency
 

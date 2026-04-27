@@ -63,6 +63,28 @@ import {
 import { t } from '../i18n'
 import { SendError } from './send_error'
 
+export const historySyncTypeName = (syncType: proto.HistorySync.HistorySyncType | undefined): string => {
+  return typeof syncType === 'number'
+    ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
+    : `${syncType || 'unknown'}`
+}
+
+export const shouldAcceptHistorySync = (
+  syncType: proto.HistorySync.HistorySyncType | undefined,
+  config: Pick<Partial<Config>, 'ignoreHistoryMessages' | 'allowFullHistorySync'>,
+): boolean => {
+  if (syncType === undefined) return false
+  if (syncType === proto.HistorySync.HistorySyncType.PUSH_NAME) return true
+  if (config.ignoreHistoryMessages) return false
+  if (syncType === proto.HistorySync.HistorySyncType.RECENT) return true
+  if (!config.allowFullHistorySync) return false
+  return [
+    proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
+    proto.HistorySync.HistorySyncType.ON_DEMAND,
+    proto.HistorySync.HistorySyncType.FULL,
+  ].includes(syncType)
+}
+
 const EVENTS = [
   'connection.update',
   'creds.update',
@@ -2560,21 +2582,11 @@ export const connect = async ({
       auth: state,
       logger: loggerBaileys,
       markOnlineOnConnect: config.markOnlineOnConnect !== false,
-      syncFullHistory: !config.ignoreHistoryMessages,
+      syncFullHistory: !config.ignoreHistoryMessages && config.allowFullHistorySync,
       shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
         const syncType = msg?.syncType as proto.HistorySync.HistorySyncType | undefined
-        const syncTypeName = typeof syncType === 'number'
-          ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
-          : `${syncType || 'unknown'}`
-        const shouldSync = syncType !== undefined
-          ? [
-              proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
-              proto.HistorySync.HistorySyncType.RECENT,
-              proto.HistorySync.HistorySyncType.PUSH_NAME,
-              proto.HistorySync.HistorySyncType.ON_DEMAND,
-              proto.HistorySync.HistorySyncType.FULL,
-            ].includes(syncType)
-          : false
+        const syncTypeName = historySyncTypeName(syncType)
+        const shouldSync = shouldAcceptHistorySync(syncType, config)
         try {
           logger.info(
             'History sync decision %s syncType=%s chunkOrder=%s progress=%s phone=%s',
