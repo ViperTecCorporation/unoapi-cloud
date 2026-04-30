@@ -627,17 +627,27 @@ export class ListenerBaileys implements Listener {
       const mapEditedOriginalId = async (container: any) => {
         const protocol = container?.protocolMessage || container?.editedMessage?.message?.protocolMessage
         const originalId = `${protocol?.key?.id || ''}`.trim()
-        if (`${protocol?.type || ''}` !== 'MESSAGE_EDIT' || !originalId) return
+        if (`${protocol?.type || ''}` !== 'MESSAGE_EDIT' || !originalId) return undefined
 
-        const unoId = await store.dataStore.loadUnoId(originalId)
-        if (unoId) {
-          protocol.key.id = unoId
+        let unoId = await store.dataStore.loadUnoId(originalId)
+        if (!unoId) {
+          unoId = uuid()
+          await store.dataStore.setUnoId(originalId, unoId)
+          logger.info('Unoapi generated edited original id %s for Baileys id %s', unoId, originalId)
+        } else {
           logger.debug('Unoapi edited original id %s to Baileys id %s', unoId, originalId)
         }
+        protocol.key.id = unoId
+        return { originalId, unoId }
       }
 
-      await mapEditedOriginalId((i as any)?.message)
-      await mapEditedOriginalId((i as any)?.update?.message)
+      const mappedEdit = (
+        await mapEditedOriginalId((i as any)?.message) ||
+        await mapEditedOriginalId((i as any)?.update?.message)
+      )
+      if (mappedEdit?.unoId && key?.id === mappedEdit.originalId) {
+        key.id = mappedEdit.unoId
+      }
     } catch {}
 
     // reaction
