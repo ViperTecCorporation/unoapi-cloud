@@ -370,7 +370,8 @@ describe('service transformer', () => {
                 messages: [
                   {
                     from: remotePhoneNumer,
-                    id,
+                    id: '3AD0FEAAF5915DAEAA07',
+                    edit_event_id: id,
                     context: {
                       message_id: '3AD0FEAAF5915DAEAA07',
                       id: '3AD0FEAAF5915DAEAA07',
@@ -1749,7 +1750,8 @@ describe('service transformer', () => {
 
     expect(message).toMatchObject({
       from: remotePhoneNumber,
-      id: editEventId,
+      id: originalMessageId,
+      edit_event_id: editEventId,
       context: {
         message_id: originalMessageId,
         id: originalMessageId,
@@ -1804,7 +1806,8 @@ describe('service transformer', () => {
 
     expect(message).toMatchObject({
       from: remotePhoneNumber,
-      id: editEventId,
+      id: originalMessageId,
+      edit_event_id: editEventId,
       context: {
         message_id: originalMessageId,
         id: originalMessageId,
