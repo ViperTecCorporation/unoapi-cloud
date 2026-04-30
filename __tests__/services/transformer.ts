@@ -371,6 +371,11 @@ describe('service transformer', () => {
                   {
                     from: remotePhoneNumer,
                     id,
+                    context: {
+                      message_id: '3AD0FEAAF5915DAEAA07',
+                      id: '3AD0FEAAF5915DAEAA07',
+                    },
+                    message_type: 'message_edit',
                     timestamp: messageTimestamp,
                     text: { body },
                     type: 'text',
@@ -1682,6 +1687,11 @@ describe('service transformer', () => {
                   {
                     from: phoneNumer.replace('+', ''),
                     id,
+                    context: {
+                      message_id: id2,
+                      id: id2,
+                    },
+                    message_type: 'message_edit',
                     timestamp: messageTimestamp,
                     text: { body: conversation },
                     type: 'text',
@@ -1696,6 +1706,59 @@ describe('service transformer', () => {
       ],
     }
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent messages.update protocol edit keeps original context id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.${new Date().getTime()}`
+    const originalMessageId = `original.${new Date().getTime()}`
+    const pushName = `Fernanda ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp,
+      pushName,
+      update: {
+        message: {
+          protocolMessage: {
+            key: {
+              remoteJid,
+              fromMe: false,
+              id: originalMessageId,
+            },
+            type: 'MESSAGE_EDIT',
+            editedMessage: {
+              conversation,
+            },
+            timestampMs,
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      from: remotePhoneNumber,
+      id: editEventId,
+      context: {
+        message_id: originalMessageId,
+        id: originalMessageId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
   })
 
   test('getMessageType with viewOnceMessage', async () => {

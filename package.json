@@ -27,7 +27,7 @@
     "cloud-dev": "NODE_OPTIONS=--max-old-space-size=4096 ./node_modules/nodemon/bin/nodemon.js src/cloud.ts",
     "start": "node --max-old-space-size=4096 dist/src/index.js",
     "start-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/start.ts",
-    "cloud": "node --max-old-space-size=4096 dist/src/cloud.js",
+    "cloud": "node --max-old-space-size=1024 dist/src/cloud.js",
     "cloud-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/cloud.ts",
     "standalone": "node --max-old-space-size=4096 dist/src/standalone.js",
     "standalone-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/standalone.ts",

@@ -38,6 +38,14 @@ export class IncomingBaileys implements Incoming {
     })
   }
 
+  public async recoverDelivery(phone: string, payload: object, options: object) {
+    const client = await this.client(phone)
+    if (typeof client.recoverDelivery !== 'function') {
+      throw new Error(`Client ${phone} does not support delivery recovery`)
+    }
+    return client.recoverDelivery(payload, options)
+  }
+
   public async groupCreate(phone: string, subject: string, participants: string[]) {
     return (await this.client(phone)).groupCreate!(subject, participants)
   }

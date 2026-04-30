@@ -216,7 +216,6 @@ describe('groups routes', () => {
           name: 'Maria',
           user_id: '123456789012345@lid',
           username: '@maria.vendas',
-          picture: 'https://cdn.exemplo.com/profile/maria.jpg',
           lid: '123456789012345@lid',
           is_admin: true,
           role: 'admin',
@@ -231,6 +230,23 @@ describe('groups routes', () => {
         },
       ],
     }))
+  })
+
+  test('details does not include participants by default', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, redis } = await loadApp(true)
+    redis.getGroup.mockResolvedValue(cachedGroup)
+
+    const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}`)
+
+    expect(res.status).toEqual(200)
+    expect(res.body.id).toEqual(groupJid)
+    expect(res.body.subject).toEqual(cachedGroup.subject)
+    expect(res.body.total_participant_count).toEqual(2)
+    expect(res.body.participants).toBeUndefined()
+    expect(redis.getContactName).not.toHaveBeenCalled()
+    expect(redis.getContactInfo).not.toHaveBeenCalled()
   })
 
   test('participants route returns Meta-like participant payload when flag is enabled', async () => {
@@ -377,7 +393,7 @@ describe('groups routes', () => {
 
     expect(res.status).toEqual(200)
     expect(incoming.groupMetadata).toHaveBeenCalledWith(phone, groupJid)
-    expect(redis.redisDelKey).toHaveBeenCalledWith(`unoapi-group:${phone}:${groupJid}`)
+    expect(redis.redisDelKey).not.toHaveBeenCalled()
     expect(redis.setGroup).toHaveBeenCalledWith(phone, groupJid, freshGroup)
     expect(res.body.total_participant_count).toEqual(2)
     expect(res.body.participants[1]).toEqual(expect.objectContaining({
@@ -529,6 +545,31 @@ describe('groups routes', () => {
     }))
   })
 
+  test('add participants accepts object payloads and emits participants webhook', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming, outgoing, redis } = await loadApp(true)
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([{ status: '200', jid: '556699999999@s.whatsapp.net' }])
+    redis.getLidForPn.mockResolvedValue('123456789012345@lid')
+    outgoing.send.mockResolvedValue(undefined)
+
+    const res = await request(app.server)
+      .post(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ participants: [{ wa_id: '556699999999', user_id: '123456789012345@lid' }] })
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupParticipantsUpdate).toHaveBeenCalledWith(phone, groupJid, ['556699999999@s.whatsapp.net'], 'add')
+    expect(res.body).toEqual({ group_id: groupJid, added: ['556699999999'], failed: [] })
+    expect(outgoing.send).toHaveBeenCalledWith(phone, expect.objectContaining({
+      entry: [expect.objectContaining({
+        changes: [expect.objectContaining({
+          field: 'group_participants_update',
+          value: expect.objectContaining({ group_id: groupJid, action: 'add', participants: [{ wa_id: '556699999999', user_id: '123456789012345@lid' }] }),
+        })],
+      })],
+    }))
+  })
+
   test('invite link get and reset use Baileys invite APIs', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
@@ -543,6 +584,30 @@ describe('groups routes', () => {
     expect(getRes.body).toEqual({ group_id: groupJid, invite_link: 'https://chat.whatsapp.com/old123' })
     expect(postRes.status).toEqual(200)
     expect(postRes.body).toEqual({ group_id: groupJid, invite_link: 'https://chat.whatsapp.com/new456', reset: true })
+  })
+
+  test('invite link hyphen alias and patch update are accepted', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming, outgoing } = await loadApp(true)
+    incoming.groupInviteCode = jest.fn().mockResolvedValue('old123')
+    incoming.groupRevokeInvite = jest.fn().mockResolvedValue('new456')
+    incoming.groupUpdateDescription = jest.fn().mockResolvedValue(undefined)
+    outgoing.send.mockResolvedValue(undefined)
+
+    const getRes = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}/invite-link`)
+    const postRes = await request(app.server).post(`/v15.0/${phone}/groups/${groupJid}/invite-link`)
+    const patchRes = await request(app.server)
+      .patch(`/v15.0/${phone}/groups/${groupJid}`)
+      .send({ description: 'Descricao via patch' })
+
+    expect(getRes.status).toEqual(200)
+    expect(getRes.body).toEqual({ group_id: groupJid, invite_link: 'https://chat.whatsapp.com/old123' })
+    expect(postRes.status).toEqual(200)
+    expect(postRes.body).toEqual({ group_id: groupJid, invite_link: 'https://chat.whatsapp.com/new456', reset: true })
+    expect(patchRes.status).toEqual(200)
+    expect(incoming.groupUpdateDescription).toHaveBeenCalledWith(phone, groupJid, 'Descricao via patch')
+    expect(patchRes.body).toEqual(expect.objectContaining({ id: groupJid, description: 'Descricao via patch', updated: true }))
   })
 
   test('join requests list approve and reject map Baileys calls', async () => {

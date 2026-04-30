@@ -97,6 +97,42 @@ export class IncomingAmqp implements Incoming {
     }
   }
 
+  public async recoverDelivery(phone: string, payload: object, options: object = {}) {
+    const body = payload as any
+    const config = await this.getConfig(phone)
+    const id = `${body?.message_id || body?.messageId || body?.id || uuid()}`
+    options['type'] = 'direct'
+    options['priority'] = 5
+    options['forceSessionRefresh'] = true
+    options['forceDeliveryRecovery'] = true
+    await amqpPublish(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      `${UNOAPI_QUEUE_INCOMING}.${config.server!}`,
+      phone,
+      { payload, id, options, action: 'recover_delivery' },
+      options
+    )
+    return {
+      ok: {
+        messaging_product: 'whatsapp',
+        contacts: [
+          {
+            input: `${body?.to || ''}`,
+            wa_id: jidToPhoneNumber(`${body?.to || ''}`, ''),
+          },
+        ],
+        messages: [
+          {
+            id,
+          },
+        ],
+        recovery: {
+          queued: true,
+        },
+      },
+    }
+  }
+
   public async groupCreate(phone: string, subject: string, participants: string[]) {
     return this.groupManagementRpc<any>(phone, 'groupCreate', [subject, participants])
   }

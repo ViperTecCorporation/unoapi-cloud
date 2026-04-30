@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { UNOAPI_META_GROUPS_ENABLED } from '../defaults'
-import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, getProfilePicture, redisKeys, BASE_KEY, setGroup, redisSetIfNotExists, redisDelKey, groupKey } from '../services/redis'
+import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, getProfilePicture, redisKeys, BASE_KEY, setGroup, redisSetIfNotExists } from '../services/redis'
 import { normalizeGroupId, normalizeParticipantId } from '../services/transformer'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
@@ -44,8 +44,23 @@ const normalizeParticipantPhoneForResponse = (rawJid?: string): string => {
   return normalized.endsWith('@lid') ? '' : normalized
 }
 
-const normalizeParticipantJidForBaileys = (rawJid?: string): string => {
-  const value = `${rawJid || ''}`.trim()
+const participantInputValue = (participant?: any): string => {
+  if (typeof participant === 'string' || typeof participant === 'number') return `${participant}`.trim()
+  if (!participant || typeof participant !== 'object') return ''
+  return firstNonEmptyString(
+    participant.wa_id,
+    participant.phone_number,
+    participant.phoneNumber,
+    participant.pn,
+    participant.jid,
+    participant.id,
+    participant.user_id,
+    participant.lid,
+  ) || ''
+}
+
+const normalizeParticipantJidForBaileys = (rawJid?: any): string => {
+  const value = participantInputValue(rawJid)
   if (!value) return ''
   if (value.endsWith('@s.whatsapp.net') || value.endsWith('@lid')) return value
   const digits = value.replace(/\D/g, '')
@@ -187,6 +202,21 @@ const nowTimestamp = () => `${Math.floor(Date.now() / 1000)}`
 const GROUP_METADATA_REFRESH_THROTTLE_SECONDS = 60
 const GROUP_METADATA_REFRESH_TIMEOUT_MS = 5000
 const GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT = 100
+const GROUP_PARTICIPANTS_FORMAT_CONCURRENCY = 25
+
+const mapWithConcurrency = async <T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> => {
+  const limit = Math.max(1, Math.floor(concurrency || 1))
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      results[index] = await mapper(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
 
 const managementWebhook = (phone: string, field: string, value: any) => ({
   object: 'whatsapp_business_account',
@@ -273,7 +303,6 @@ export class GroupsController {
       timeout,
     ])
     if (!fetched) return undefined
-    try { await redisDelKey(groupKey(phone, groupJid)) } catch {}
     await setGroup(phone, groupJid, fetched as any)
     return fetched
   }
@@ -325,7 +354,11 @@ export class GroupsController {
       ...(groupCreatedAt(group) ? { creation_timestamp: groupCreatedAt(group) } : {}),
     }
     if (includeParticipants) {
-      formatted.participants = await Promise.all(participantsRaw.map((participant) => this.formatParticipant(phone, participant, { includePicture: true })))
+      formatted.participants = await mapWithConcurrency(
+        participantsRaw,
+        GROUP_PARTICIPANTS_FORMAT_CONCURRENCY,
+        (participant) => this.formatParticipant(phone, participant)
+      )
     }
     return formatted
   }
@@ -488,7 +521,7 @@ export class GroupsController {
       const group = await getGroup(phone, groupJid)
       if (!group) return res.status(404).json({ error: 'group not found in cache', group_id: groupJid })
       const fields = `${req.query.fields || ''}`.split(',').map((field) => field.trim()).filter(Boolean)
-      const includeParticipants = fields.length === 0 || fields.includes('participants')
+      const includeParticipants = fields.includes('participants')
       return res.json(await this.formatGroup(phone, groupJid, group, includeParticipants))
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
@@ -521,7 +554,11 @@ export class GroupsController {
       if (UNOAPI_META_GROUPS_ENABLED) {
         const picture = await this.groupPicture(phone, groupJid, group)
         const includeParticipantPictures = queryBoolean(req.query.include_pictures)
-        const participants = await Promise.all(participantsRaw.map((participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures, resolveName: resolveParticipantNames })))
+        const participants = await mapWithConcurrency(
+          participantsRaw,
+          GROUP_PARTICIPANTS_FORMAT_CONCURRENCY,
+          (participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures, resolveName: resolveParticipantNames })
+        )
         return res.json({
           phone,
           group: {
@@ -534,7 +571,7 @@ export class GroupsController {
           total_participant_count: participantsRaw.length,
         })
       }
-      const participants = await Promise.all(participantsRaw.map(async (participant: any) => {
+      const participants = await mapWithConcurrency(participantsRaw, GROUP_PARTICIPANTS_FORMAT_CONCURRENCY, async (participant: any) => {
         const { pnJid, waId, lid, responseJid } = await resolveParticipantIdentity(phone, participant)
         const resolvedName = resolveParticipantNames ? await resolveParticipantName(phone, participant, pnJid, lid) : participantDisplayName(participant)
         const name = firstNonEmptyString(resolvedName, waId, lid) || ''
@@ -544,7 +581,7 @@ export class GroupsController {
           user_id: lid,
           name,
         }
-      }))
+      })
 
       return res.json({
         phone,
@@ -560,7 +597,7 @@ export class GroupsController {
   }
 
   // DELETE /:version/:phone/groups/:groupId/participants
-  async removeParticipants(req: Request, res: Response) {
+  private async updateParticipants(req: Request, res: Response, action: 'add' | 'remove') {
     try {
       if (!this.ensureMetaEnabled(res)) return
       const phone = `${req.params.phone || ''}`.trim()
@@ -569,21 +606,30 @@ export class GroupsController {
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!groupJid) return res.status(400).json({ error: 'missing groupId param' })
       if (!participants.length) return res.status(400).json({ error: 'missing participants' })
-      const result = await (this.ensureIncomingMethod('groupParticipantsUpdate') as any)(phone, groupJid, participants, 'remove')
+      const result = await (this.ensureIncomingMethod('groupParticipantsUpdate') as any)(phone, groupJid, participants, action)
       const failed = (result || []).filter((item: any) => `${item?.status || '200'}` !== '200').map((item: any) => normalizeParticipantJidForResponse(item?.jid))
-      const removed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
+      const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
       const participantRefs = (await Promise.all(participants.map((participant) => this.formatParticipantReference(phone, participant))))
         .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
       await this.emitManagementWebhook(phone, 'group_participants_update', {
         group_id: groupJid,
-        action: 'remove',
+        action,
         participants: participantRefs,
         timestamp: nowTimestamp(),
       })
-      return res.json({ group_id: groupJid, removed, failed })
+      return res.json({ group_id: groupJid, [action === 'add' ? 'added' : 'removed']: processed, failed })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
     }
+  }
+
+  // POST /:version/:phone/groups/:groupId/participants
+  async addParticipants(req: Request, res: Response) {
+    return this.updateParticipants(req, res, 'add')
+  }
+
+  async removeParticipants(req: Request, res: Response) {
+    return this.updateParticipants(req, res, 'remove')
   }
 
   // GET /:version/:phone/groups/:groupId/invite_link

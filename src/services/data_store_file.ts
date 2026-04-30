@@ -319,6 +319,10 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     if (providerId) {
       return statuses.get(providerId) || statuses.get(`${phone}-${providerId}`)
     }
+    const unoId = ids.get(id) || ids.get(`${phone}-${id}`)
+    if (unoId) {
+      return statuses.get(unoId) || statuses.get(`${phone}-${unoId}`)
+    }
     return undefined
   }
 

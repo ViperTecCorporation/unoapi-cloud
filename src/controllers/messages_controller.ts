@@ -182,4 +182,49 @@ export class MessagesController {
       return sendGraphError(res, 400, e.message, { code: 131000, type: 'GraphMethodException' })
     }
   }
+
+  public async recoverDelivery(req: Request, res: Response) {
+    logger.debug('%s recover_delivery method %s', this.endpoint, req.method)
+    logger.debug('%s recover_delivery params %s', this.endpoint, JSON.stringify(req.params))
+    logger.debug('%s recover_delivery body %s', this.endpoint, JSON.stringify(req.body))
+    const phone = `${req.params.phone || req.params.phone_number_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
+    const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
+    const payload: any = this.normalizeBaileysRawPayload({
+      ...(req.body || {}),
+      message_id: req.params.messageId || req.body?.message_id || req.body?.messageId || req.body?.id,
+    })
+    payload._requestId = requestId
+    const options: any = {
+      endpoint: this.endpoint,
+      requestId,
+      forceDeliveryRecovery: true,
+      forceSessionRefresh: true,
+      forceDeviceList: payload?.force_device_list !== false && payload?.forceDeviceList !== false,
+      useUserDevicesCache: false,
+    }
+    try {
+      res.setHeader('x-request-id', requestId)
+      if (typeof this.incoming.recoverDelivery !== 'function') {
+        return sendGraphError(res, 400, 'delivery_recovery_not_supported', { code: 131000, type: 'GraphMethodException' })
+      }
+      logger.warn(
+        'messages recover_delivery requestId=%s phone=%s to=%s messageId=%s type=%s',
+        requestId,
+        sessionPhone,
+        `${payload?.to || ''}`,
+        `${payload?.message_id || ''}`,
+        `${payload?.type || ''}`,
+      )
+      const response = await this.incoming.recoverDelivery(sessionPhone, payload, options)
+      await res.status(200).json(response.ok)
+      if (response.error) {
+        await this.outgoing.send(sessionPhone, response.error)
+      }
+    } catch (e: any) {
+      try { res.setHeader('x-request-id', requestId) } catch {}
+      return sendGraphError(res, 400, e.message, { code: 131000, type: 'GraphMethodException' })
+    }
+  }
 }

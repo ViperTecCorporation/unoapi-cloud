@@ -622,6 +622,24 @@ export class ListenerBaileys implements Listener {
       } catch {}
     }
 
+    // message edit: map the edited/original provider id to the Uno id that downstream systems stored
+    try {
+      const mapEditedOriginalId = async (container: any) => {
+        const protocol = container?.protocolMessage || container?.editedMessage?.message?.protocolMessage
+        const originalId = `${protocol?.key?.id || ''}`.trim()
+        if (`${protocol?.type || ''}` !== 'MESSAGE_EDIT' || !originalId) return
+
+        const unoId = await store.dataStore.loadUnoId(originalId)
+        if (unoId) {
+          protocol.key.id = unoId
+          logger.debug('Unoapi edited original id %s to Baileys id %s', unoId, originalId)
+        }
+      }
+
+      await mapEditedOriginalId((i as any)?.message)
+      await mapEditedOriginalId((i as any)?.update?.message)
+    } catch {}
+
     // reaction
     if (i?.message?.reactionMessage?.key?.id) {
       const reactionId = i?.message?.reactionMessage?.key?.id

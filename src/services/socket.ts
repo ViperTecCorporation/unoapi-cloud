@@ -43,7 +43,19 @@ import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_IN
 import { ONE_TO_ONE_ADDRESSING_MODE, BR_SEND_ORDER_ENABLED } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
-import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
+import {
+  DELIVERY_WATCHDOG_ENABLED,
+  DELIVERY_WATCHDOG_MS,
+  DELIVERY_WATCHDOG_MAX_ATTEMPTS,
+  DELIVERY_WATCHDOG_GROUPS,
+  DELIVERY_STALE_RECOVERY_ENABLED,
+  DELIVERY_STALE_RECOVERY_MS,
+  DELIVERY_STALE_RECOVERY_SCAN_MS,
+  DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS,
+  DELIVERY_STALE_RECOVERY_MAX_PENDING,
+  DELIVERY_STALE_RECOVERY_BATCH_SIZE,
+  DELIVERY_STALE_RECOVERY_GROUPS,
+} from '../defaults'
 import { SESSION_DIR } from './session_store_file'
 import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache, getHistorySyncMarker, setHistorySyncMarker } from './redis'
 import { readdirSync, rmSync } from 'fs'
@@ -300,6 +312,8 @@ export const connect = async ({
   const pendingOneToOneAddressingFallback = new Set<string>()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
   const pendingDeliveryWatch: Map<string, { to: string; message: AnyMessageContent; options: any; attempt: number; timer?: NodeJS.Timeout }> = new Map()
+  const pendingStaleDeliveryRecovery: Map<string, { to: string; message: AnyMessageContent; options: any; createdAt: number; dueAt: number; attempts: number }> = new Map()
+  let staleDeliveryRecoveryTimer: NodeJS.Timeout | undefined
   // Background LID->PN resolver (per session)
   const lidResolveQueue: Map<string, { next: number; attempts: number; lastSeen: number }> = new Map()
   let lidResolverTimer: NodeJS.Timeout | undefined
@@ -708,6 +722,126 @@ export const connect = async ({
       try { logger.info('DELIVERY watch: scheduled attempt %s/%s for id=%s to=%s in %sms', entry.attempt + 1, maxAttempts, messageId, to, Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)) } catch {}
     }
     scheduleNext()
+  }
+
+  const isDeliveredLikeStatus = (status?: string) => {
+    const s = `${status || ''}`.toLowerCase()
+    return s === 'delivered' || s === 'read' || s === 'deleted' || s === 'failed'
+  }
+
+  const ensureStaleDeliveryRecoveryTimer = () => {
+    if (staleDeliveryRecoveryTimer || !DELIVERY_STALE_RECOVERY_ENABLED) return
+    const intervalMs = Math.max(5000, DELIVERY_STALE_RECOVERY_SCAN_MS || 30000)
+    staleDeliveryRecoveryTimer = setInterval(async () => {
+      try {
+        if (!pendingStaleDeliveryRecovery.size) return
+        const now = Date.now()
+        const batch = Array.from(pendingStaleDeliveryRecovery.entries())
+          .filter(([, entry]) => entry.dueAt <= now)
+          .slice(0, Math.max(1, DELIVERY_STALE_RECOVERY_BATCH_SIZE || 1))
+        for (const [messageId, entry] of batch) {
+          try {
+            const currentStatus = `${await dataStore.loadStatus(messageId) || ''}`.toLowerCase()
+            if (isDeliveredLikeStatus(currentStatus)) {
+              pendingStaleDeliveryRecovery.delete(messageId)
+              logger.info('STALE_DELIVERY recovery: clear id=%s status=%s', messageId, currentStatus)
+              continue
+            }
+            if (currentStatus !== 'sent') {
+              entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+              logger.debug('STALE_DELIVERY recovery: wait id=%s status=%s', messageId, currentStatus || '<none>')
+              continue
+            }
+            if (entry.attempts >= Math.max(0, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS || 0)) {
+              pendingStaleDeliveryRecovery.delete(messageId)
+              logger.warn('STALE_DELIVERY recovery: exhausted id=%s to=%s status=%s', messageId, entry.to, currentStatus)
+              continue
+            }
+            entry.attempts += 1
+            entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+            logger.warn('STALE_DELIVERY recovery: attempt=%s id=%s to=%s status=%s', entry.attempts, messageId, entry.to, currentStatus)
+            try { await purgeSignalSessionsFor(entry.to, true) } catch {}
+            const targets = new Set<string>()
+            targets.add(entry.to)
+            try { if (isLidUser(entry.to)) targets.add(jidNormalizedUser(entry.to)) } catch {}
+            try {
+              const self = state?.creds?.me?.id
+              if (self) {
+                targets.add(self)
+                try { targets.add(jidNormalizedUser(self)) } catch {}
+              }
+            } catch {}
+            try {
+              const list = Array.from(targets).filter(Boolean)
+              if (list.length) await (sock as any).assertSessions(list, true)
+            } catch (e) {
+              logger.warn(e as any, 'STALE_DELIVERY recovery: assert failed id=%s', messageId)
+            }
+            try {
+              await sock?.sendMessage(entry.to, entry.message, {
+                ...(entry.options || {}),
+                messageId,
+                forceDeliveryRecovery: true,
+                forceSessionRefresh: true,
+                forceDeviceList: true,
+                useUserDevicesCache: false,
+              })
+              logger.warn('STALE_DELIVERY recovery: resent id=%s to=%s', messageId, entry.to)
+            } catch (e) {
+              logger.warn(e as any, 'STALE_DELIVERY recovery: resend failed id=%s to=%s', messageId, entry.to)
+            }
+          } catch (e) {
+            logger.warn(e as any, 'STALE_DELIVERY recovery: item failed id=%s', messageId)
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'STALE_DELIVERY recovery: interval failed')
+      }
+    }, intervalMs) as unknown as NodeJS.Timeout
+    try { (staleDeliveryRecoveryTimer as any)?.unref?.() } catch {}
+    try { logger.info('STALE_DELIVERY recovery enabled: delay=%sms scan=%sms attempts=%s batch=%s', DELIVERY_STALE_RECOVERY_MS, intervalMs, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS, DELIVERY_STALE_RECOVERY_BATCH_SIZE) } catch {}
+  }
+
+  const scheduleStaleDeliveryRecovery = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
+    try {
+      if (!DELIVERY_STALE_RECOVERY_ENABLED || SIGNAL_CACHE_SAFE_MODE) return
+      if (!messageId || !to) return
+      const isGroup = typeof to === 'string' && to.endsWith('@g.us')
+      if (isGroup && !DELIVERY_STALE_RECOVERY_GROUPS) return
+      if (!isGroup && !isIndividualJid(to)) return
+      const maxPending = Math.max(100, DELIVERY_STALE_RECOVERY_MAX_PENDING || 0)
+      if (!pendingStaleDeliveryRecovery.has(messageId) && pendingStaleDeliveryRecovery.size >= maxPending) {
+        let oldestKey = ''
+        let oldestAt = Infinity
+        for (const [key, entry] of pendingStaleDeliveryRecovery.entries()) {
+          if (entry.createdAt < oldestAt) {
+            oldestAt = entry.createdAt
+            oldestKey = key
+          }
+        }
+        if (oldestKey) pendingStaleDeliveryRecovery.delete(oldestKey)
+      }
+      const now = Date.now()
+      const delayMs = Math.max(30000, DELIVERY_STALE_RECOVERY_MS || 120000)
+      pendingStaleDeliveryRecovery.set(messageId, {
+        to,
+        message,
+        options: { ...(options || {}) },
+        createdAt: now,
+        dueAt: now + delayMs,
+        attempts: 0,
+      })
+      ensureStaleDeliveryRecoveryTimer()
+    } catch {}
+  }
+
+  const clearStaleDeliveryRecovery = (messageId: string, status?: string) => {
+    try {
+      if (!messageId) return
+      if (pendingStaleDeliveryRecovery.delete(messageId)) {
+        logger.info('STALE_DELIVERY recovery: clear id=%s status=%s', messageId, status || '<none>')
+      }
+    } catch {}
   }
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
@@ -1159,6 +1293,7 @@ export const connect = async ({
                       try { if (dw.timer) clearTimeout(dw.timer) } catch {}
                       pendingDeliveryWatch.delete(kid)
                     }
+                    clearStaleDeliveryRecovery(kid, `${st}`)
                   }
                 }
               } catch {}
@@ -1512,6 +1647,8 @@ export const connect = async ({
     logger.info(`${phone} close`)
     try { if (lidResolverTimer) { clearInterval(lidResolverTimer); lidResolverTimer = undefined } } catch {}
     try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined } } catch {}
+    try { if (staleDeliveryRecoveryTimer) { clearInterval(staleDeliveryRecoveryTimer); staleDeliveryRecoveryTimer = undefined } } catch {}
+    try { pendingStaleDeliveryRecovery.clear() } catch {}
     EVENTS.forEach((e: any) => {
       try {
         sock?.ev?.removeAllListeners(e)
@@ -1612,6 +1749,8 @@ export const connect = async ({
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     const forceRemoteJid = options?.forceRemoteJid
     const skipBrSendOrder = options?.skipBrSendOrder
+    const forceSessionRefresh = !!(options?.forceSessionRefresh || options?.forceDeliveryRecovery)
+    const forceSessionDeviceList = options?.forceDeviceList !== false
     let idCandidate = forceRemoteJid || to
     try {
       if (!forceRemoteJid && isIndividualJid(idCandidate)) {
@@ -1809,9 +1948,9 @@ export const connect = async ({
           } catch {}
         }
         const doPreassert =
-          ONE_TO_ONE_PREASSERT_ENABLED &&
+          (forceSessionRefresh || ONE_TO_ONE_PREASSERT_ENABLED) &&
           !SIGNAL_CACHE_SAFE_MODE &&
-          redisAllow &&
+          (forceSessionRefresh || redisAllow) &&
           (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()
         set.add(id)
@@ -1860,16 +1999,15 @@ export const connect = async ({
         } catch {}
         const targets = Array.from(set)
         if (doPreassert && targets.length) {
-          // Opcional: forçar refresh da lista de devices antes do assert (evitar cache desatualizado)
-          if (ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
-            try { await purgeSignalSessionsFor(id, true) } catch {}
+          if (forceSessionRefresh || ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
+            try { await purgeSignalSessionsFor(id, forceSessionDeviceList) } catch {}
           }
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
-          if (redisTtlSec > 0 && redisKey) {
+          if (!forceSessionRefresh && redisTtlSec > 0 && redisKey) {
             try { await redisSetAndExpire(redisKey, '1', redisTtlSec) } catch {}
           }
-          logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
+          logger.debug('Preasserted %s sessions for 1:1 %s (forceSessionRefresh=%s)', targets.length, id, forceSessionRefresh)
           try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
         } else {
           logger.debug('Skip preassert 1:1 (enabled=%s, sinceLast=%sms, cooldown=%sms) for %s', ONE_TO_ONE_PREASSERT_ENABLED, (now - last), ONE_TO_ONE_PREASSERT_COOLDOWN_MS, id)
@@ -2225,6 +2363,7 @@ export const connect = async ({
           }
           scheduleAckWatch(id, mid, message, opts)
           scheduleDeliveryWatch(id, mid, message, opts)
+          scheduleStaleDeliveryRecovery(id, mid, message, opts)
         }
       } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder

@@ -209,6 +209,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
         return getMessageStatus(phone, providerId)
       }
     } catch {}
+    try {
+      const unoId = await getUnoId(phone, id)
+      if (unoId) {
+        return getMessageStatus(phone, unoId)
+      }
+    } catch {}
     return direct
   }
   store.setTemplates = async (templates: object[]) => {

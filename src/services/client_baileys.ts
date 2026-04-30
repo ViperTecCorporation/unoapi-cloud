@@ -39,7 +39,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC, GROUP_METADATA_EVENT_REFRESH_ENABLED, GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS, GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS } from '../defaults'
 import { setContactSyncPending, getPnForLidFromAuthCache } from './redis'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { convertToWebpSticker } from '../utils/sticker_convert'
@@ -934,6 +934,9 @@ export class ClientBaileys implements Client {
   private listener: Listener
   private store: Store | undefined
   private calls = new Map<string, boolean>()
+  private groupMetadataRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private groupMetadataRefreshInFlight = new Set<string>()
+  private groupMetadataRefreshLastAt = new Map<string, number>()
   private getConfig: getConfig
   private onNewLogin
   private clientRegistry: Map<string, Client>
@@ -1058,6 +1061,61 @@ export class ClientBaileys implements Client {
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   private continueAfterSecondMessage: Delay = async (_phone, _to) => {}
 
+  private clearGroupMetadataRefreshTimers() {
+    for (const timer of this.groupMetadataRefreshTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.groupMetadataRefreshTimers.clear()
+    this.groupMetadataRefreshInFlight.clear()
+  }
+
+  private scheduleGroupMetadataRefresh(groupJid: string, reason: string) {
+    if (!GROUP_METADATA_EVENT_REFRESH_ENABLED) return
+    const jid = `${groupJid || ''}`.trim()
+    if (!jid || !jid.endsWith('@g.us')) return
+    if (!this.store?.dataStore?.setGroupMetada) return
+
+    const now = Date.now()
+    const debounceMs = Math.max(0, GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS || 0)
+    const minIntervalMs = Math.max(0, GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS || 0)
+    const lastRefreshAt = this.groupMetadataRefreshLastAt.get(jid) || 0
+    const remainingIntervalMs = lastRefreshAt ? Math.max(0, minIntervalMs - (now - lastRefreshAt)) : 0
+    const delayMs = Math.max(debounceMs, remainingIntervalMs)
+
+    const currentTimer = this.groupMetadataRefreshTimers.get(jid)
+    if (currentTimer) clearTimeout(currentTimer)
+
+    const timer = setTimeout(() => {
+      this.groupMetadataRefreshTimers.delete(jid)
+      void this.refreshGroupMetadataCache(jid, reason)
+    }, delayMs)
+    this.groupMetadataRefreshTimers.set(jid, timer)
+  }
+
+  private async refreshGroupMetadataCache(groupJid: string, reason: string) {
+    if (this.groupMetadataRefreshInFlight.has(groupJid)) return
+    this.groupMetadataRefreshInFlight.add(groupJid)
+    try {
+      const metadata = await this.groupMetadataFn(groupJid)
+      if (metadata) {
+        await this.store?.dataStore?.setGroupMetada(groupJid, metadata)
+        const participantsCount = Array.isArray((metadata as any)?.participants) ? (metadata as any).participants.length : undefined
+        logger.info(
+          'GROUP_METADATA cache refreshed: phone=%s group=%s reason=%s participants=%s',
+          this.phone,
+          groupJid,
+          reason,
+          participantsCount ?? '<unknown>',
+        )
+      }
+    } catch (error) {
+      logger.warn(error as any, 'Failed to refresh group metadata cache for %s (%s)', groupJid, reason)
+    } finally {
+      this.groupMetadataRefreshLastAt.set(groupJid, Date.now())
+      this.groupMetadataRefreshInFlight.delete(groupJid)
+    }
+  }
+
   constructor(phone: string, listener: Listener, getConfig: getConfig, onNewLogin: OnNewLogin, clientRegistry: Map<string, Client> = clients) {
     this.phone = phone
     this.listener = listener
@@ -1161,6 +1219,7 @@ export class ClientBaileys implements Client {
 
   async disconnect() {
     logger.debug('Disconnect client store for %s', this?.phone)
+    this.clearGroupMetadataRefreshTimers()
     this.store = undefined
 
     await this.close()
@@ -1172,6 +1231,7 @@ export class ClientBaileys implements Client {
     this.sendCallNode = sendCallNodeDefault
     this.fetchImageUrl = fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadataDefault
+    this.groupMetadataFn = groupMetadataDefault
     this.exists = existsDefault
     this.close = closeDefault
     this.config = defaultConfig
@@ -1180,6 +1240,20 @@ export class ClientBaileys implements Client {
   }
 
   async subscribe() {
+    this.event('groups.update', async (updates: any[] | any) => {
+      const list = Array.isArray(updates) ? updates : [updates]
+      for (const update of list) {
+        const groupJid = `${update?.id || ''}`.trim()
+        if (groupJid) this.scheduleGroupMetadataRefresh(groupJid, 'groups.update')
+      }
+    })
+
+    this.event('group-participants.update', async (update: any) => {
+      const groupJid = `${update?.id || ''}`.trim()
+      const action = `${update?.action || ''}`.trim()
+      if (groupJid) this.scheduleGroupMetadataRefresh(groupJid, action ? `group-participants.update:${action}` : 'group-participants.update')
+    })
+
     this.event('messages.upsert', async (payload: { messages: any[]; type }) => {
       try {
         const arr: any[] = (payload?.messages || []) as any[]
@@ -1659,8 +1733,9 @@ export class ClientBaileys implements Client {
         try {
           await this.notifyVoipServiceCallEvent(event)
         } catch {}
+        const normalizedStatus = `${status || ''}`.toLowerCase()
         const terminalCallStatuses = new Set(['terminate', 'terminated', 'timeout', 'timed_out', 'reject', 'rejected', 'end', 'ended', 'hangup', 'missed'])
-        if (terminalCallStatuses.has(`${status || ''}`)) {
+        if (terminalCallStatuses.has(normalizedStatus)) {
           try {
             if (this.calls.delete(from)) {
               logger.info('CALL gate cleared immediately: from=%s id=%s status=%s', from, id, status)
@@ -1675,10 +1750,11 @@ export class ClientBaileys implements Client {
             this.calls.has(from),
             !!this.rejectCall,
             !!this.config.rejectCalls,
-            status,
+            normalizedStatus,
           )
         } catch {}
-        if (status == 'ringing' && !this.calls.has(from)) {
+        const incomingCallStatuses = new Set(['ringing', 'offer'])
+        if (incomingCallStatuses.has(normalizedStatus) && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
             try {
@@ -2841,6 +2917,105 @@ export class ClientBaileys implements Client {
 
   public async groupMetadata(jid: string) {
     return this.groupMetadataFn(jid)
+  }
+
+  public async recoverDelivery(payload: any, options: any = {}) {
+    const messageId = `${payload?.message_id || payload?.messageId || payload?.id || ''}`.trim()
+    if (!messageId) {
+      throw new SendError(400, 'delivery_recovery_message_id_required')
+    }
+
+    const dataStore = this.store?.dataStore
+    let providerId = ''
+    try { providerId = `${await dataStore?.loadProviderId?.(messageId) || ''}`.trim() } catch {}
+    if (!providerId) {
+      try {
+        const unoFromProvider = `${await dataStore?.loadUnoId?.(messageId) || ''}`.trim()
+        if (unoFromProvider) providerId = messageId
+      } catch {}
+    }
+
+    let key: any
+    if (providerId) {
+      try { key = await dataStore?.loadKey?.(providerId) } catch {}
+    }
+    if (!key) {
+      try { key = await dataStore?.loadKey?.(messageId) } catch {}
+    }
+
+    const targetRaw = `${payload?.to || key?.remoteJid || ''}`.trim()
+    if (!targetRaw) {
+      throw new SendError(404, `delivery_recovery_target_not_found: ${messageId}`)
+    }
+    const targetTo = targetRaw.endsWith('@g.us')
+      ? normalizeGroupId(targetRaw)
+      : (targetRaw.includes('@') ? targetRaw : phoneNumberToJid(targetRaw))
+
+    let content: AnyMessageContent | undefined
+    if (payload?.type) {
+      content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction) as AnyMessageContent
+    } else {
+      const lookupIds = Array.from(new Set([providerId, key?.id, messageId].filter(Boolean)))
+      const lookupJids = Array.from(new Set([key?.remoteJid, targetTo].filter(Boolean)))
+      for (const jid of lookupJids) {
+        for (const id of lookupIds) {
+          try {
+            const stored = await dataStore?.loadMessage?.(jid, id)
+            if (stored?.message) {
+              content = stored.message as AnyMessageContent
+              break
+            }
+          } catch {}
+        }
+        if (content) break
+      }
+    }
+    if (!content) {
+      throw new SendError(404, `delivery_recovery_message_content_not_found: ${messageId}`)
+    }
+
+    const resendId = providerId || key?.id || messageId
+    if (resendId && resendId !== messageId) {
+      try { await dataStore?.setUnoId?.(resendId, messageId) } catch {}
+    }
+
+    const recoveryOptions = {
+      ...options,
+      ...(payload?.options || {}),
+      messageId: resendId,
+      forceDeliveryRecovery: true,
+      forceSessionRefresh: true,
+      forceDeviceList: payload?.force_device_list !== false && payload?.forceDeviceList !== false,
+      useUserDevicesCache: false,
+    }
+    logger.warn(
+      'DELIVERY_RECOVERY start phone=%s to=%s messageId=%s providerId=%s forceDeviceList=%s',
+      this.phone,
+      targetTo,
+      messageId,
+      providerId || '<none>',
+      `${recoveryOptions.forceDeviceList}`,
+    )
+    const response = await this.sendMessage(targetTo, content, recoveryOptions)
+    if (!response?.key?.id) {
+      throw new SendError(500, `delivery_recovery_send_failed: ${messageId}`)
+    }
+    const keyOut = response.key
+    const externalId = await this.ensureUnoExternalMessageId(keyOut)
+    try { await dataStore?.setKey?.(keyOut.id, keyOut) } catch {}
+    try { await dataStore?.setMessage?.(keyOut.remoteJid, response) } catch {}
+    logger.warn('DELIVERY_RECOVERY sent phone=%s to=%s messageId=%s providerId=%s newProviderId=%s', this.phone, targetTo, messageId, providerId || '<none>', keyOut.id)
+    const ok: any = buildSendOkResponse(targetTo, externalId || messageId)
+    ok.recovery = {
+      attempted: true,
+      message_id: messageId,
+      provider_id: providerId || undefined,
+      sent_provider_id: keyOut.id,
+      target: targetTo,
+      force_session_refresh: true,
+      force_device_list: recoveryOptions.forceDeviceList,
+    }
+    return { ok }
   }
 
   public async contacts(numbers: string[]) {

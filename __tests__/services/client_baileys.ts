@@ -8,6 +8,8 @@ jest.mock('../../src/defaults', () => {
     __esModule: true,
     ...actual,
     SEND_AUDIO_MESSAGE_AS_PTT: true,
+    GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS: 10,
+    GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS: 0,
   }
 })
 jest.mock('../../src/services/socket')
@@ -33,6 +35,7 @@ import {
   sendCallNode,
   fetchImageUrl,
   fetchGroupMetadata,
+  groupMetadata,
   exists,
   close,
   logout,
@@ -74,6 +77,7 @@ describe('service client baileys', () => {
   let sendCallNodeMock
   let fetchImageUrl
   let fetchGroupMetadata
+  let groupMetadataMock
   let getConfig: getConfig
   let config: Config
   let close: close
@@ -116,11 +120,12 @@ describe('service client baileys', () => {
     logout = mockFn<logout>()
     fetchImageUrl = mockFn<fetchImageUrl>()
     fetchGroupMetadata = mockFn<fetchGroupMetadata>()
+    groupMetadataMock = mockFn<groupMetadata>()
     const capturedEvent = (name, callback) => {
       eventHandlers[name] = callback
       return event(name, callback)
     }
-    mockConnect.mockResolvedValue({ event: capturedEvent as any, status, send, read, rejectCall, sendCallNode: sendCallNodeMock, fetchImageUrl, fetchGroupMetadata, exists, close, logout })
+    mockConnect.mockResolvedValue({ event: capturedEvent as any, status, send, read, rejectCall, sendCallNode: sendCallNodeMock, fetchImageUrl, fetchGroupMetadata, groupMetadata: groupMetadataMock, exists, close, logout })
   })
 
   test('call send with unknown status', async () => {
@@ -157,6 +162,44 @@ describe('service client baileys', () => {
     expect(response.ok.messages[0].id).toBe(`uno-${id}`)
   })
 
+  test('recovers delivery by refreshing sessions and resending with mapped provider id', async () => {
+    const unoId = 'uno-message-1'
+    const providerId = 'provider-message-1'
+    dataStore.loadProviderId.mockResolvedValue(providerId)
+    dataStore.loadUnoId.mockImplementation(async (id: string) => id === providerId ? unoId : undefined)
+    send.mockResolvedValue({
+      key: { id: providerId, remoteJid: '5566996810064@s.whatsapp.net' },
+      message: { conversation: 'reenviar agora' },
+    })
+
+    await client.connect(0)
+    const response = await client.recoverDelivery!({
+      message_id: unoId,
+      to: '5566996810064',
+      type: 'text',
+      text: { body: 'reenviar agora' },
+    }, {})
+
+    expect(send).toHaveBeenCalledWith(
+      '5566996810064@s.whatsapp.net',
+      expect.objectContaining({ text: 'reenviar agora' }),
+      expect.objectContaining({
+        messageId: providerId,
+        forceDeliveryRecovery: true,
+        forceSessionRefresh: true,
+        forceDeviceList: true,
+        useUserDevicesCache: false,
+      }),
+    )
+    expect(dataStore.setUnoId).toHaveBeenCalledWith(providerId, unoId)
+    expect(response.ok.messages[0].id).toBe(unoId)
+    expect((response.ok as any).recovery).toEqual(expect.objectContaining({
+      attempted: true,
+      message_id: unoId,
+      provider_id: providerId,
+    }))
+  })
+
   test('call send with recipient_type group normalizes destination and response ids', async () => {
     const id = `${new Date().getMilliseconds()}`
     send.mockResolvedValue({ key: { id, remoteJid: '120363040468224422@g.us' } })
@@ -181,6 +224,43 @@ describe('service client baileys', () => {
     expect(response.ok.messages[0].id).toBe(`uno-${id}`)
   })
 
+  test('refreshes group metadata cache after group participants update event', async () => {
+    const groupJid = '120363040468224422@g.us'
+    const metadata = {
+      id: groupJid,
+      subject: 'Grupo atualizado',
+      participants: [
+        { id: '5566996222471@s.whatsapp.net' },
+        { id: '11343495192601@lid' },
+      ],
+    }
+    groupMetadataMock.mockResolvedValue(metadata)
+
+    await client.connect(0)
+    await eventHandlers['group-participants.update']?.({
+      id: groupJid,
+      participants: ['5566996222471@s.whatsapp.net'],
+      action: 'add',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(groupMetadataMock).toHaveBeenCalledWith(groupJid)
+    expect(dataStore.setGroupMetada).toHaveBeenCalledWith(groupJid, metadata)
+  })
+
+  test('refreshes group metadata cache after groups update event', async () => {
+    const groupJid = '120363040468224422@g.us'
+    const metadata = { id: groupJid, subject: 'Novo nome', participants: [] }
+    groupMetadataMock.mockResolvedValue(metadata)
+
+    await client.connect(0)
+    await eventHandlers['groups.update']?.([{ id: groupJid, subject: 'Novo nome' }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(groupMetadataMock).toHaveBeenCalledWith(groupJid)
+    expect(dataStore.setGroupMetada).toHaveBeenCalledWith(groupJid, metadata)
+  })
+
   test('call send with message type unknown', async () => {
     const type = `${new Date().getMilliseconds()}`
     try {
@@ -198,7 +278,7 @@ describe('service client baileys', () => {
     send = async () => {
       throw new SendError(1, '')
     }
-    mockConnect.mockResolvedValue({ event, status, send, read, rejectCall, sendCallNode: sendCallNodeMock, fetchImageUrl, fetchGroupMetadata, exists, close, logout })
+    mockConnect.mockResolvedValue({ event, status, send, read, rejectCall, sendCallNode: sendCallNodeMock, fetchImageUrl, fetchGroupMetadata, groupMetadata: groupMetadataMock, exists, close, logout })
     await client.connect(0)
     const response = await client.send(payload, {})
     expect(response.error.entry.length).toBe(1)
@@ -290,6 +370,23 @@ describe('service client baileys', () => {
     ])
 
     expect(rejectCall).toHaveBeenCalledWith('call-1', '123456789012345@lid')
+    expect(send).toHaveBeenCalledWith('556696923653@s.whatsapp.net', { text: config.rejectCalls }, {})
+  })
+
+  test('call offer rejects as incoming call when Baileys sends LID identity', async () => {
+    config.rejectCalls = 'Nao posso atender agora'
+    await client.connect(0)
+
+    await eventHandlers.call?.([
+      {
+        from: '123456789012345@lid',
+        callerPn: '556696923653@s.whatsapp.net',
+        id: 'call-offer-1',
+        status: 'offer',
+      },
+    ])
+
+    expect(rejectCall).toHaveBeenCalledWith('call-offer-1', '123456789012345@lid')
     expect(send).toHaveBeenCalledWith('556696923653@s.whatsapp.net', { text: config.rejectCalls }, {})
   })
 

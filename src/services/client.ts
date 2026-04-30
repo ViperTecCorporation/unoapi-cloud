@@ -43,6 +43,9 @@ export interface Client {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send(payload: any, options: any): Promise<Response>
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  recoverDelivery?(payload: any, options: any): Promise<Response>
+
   getMessageMetadata<T>(message: T): Promise<T>
 
   contacts(numbers: string[]): Promise<Contact[]>

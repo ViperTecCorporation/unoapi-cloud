@@ -38,6 +38,30 @@ const isViewOnceUnavailableStub = (payload: any): boolean => {
   return stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')
 }
 
+const extractMessageEditInfo = (payload: any): { originalMessageId?: string; timestampMs?: string } | undefined => {
+  const candidates = [
+    payload?.__unoapiMessageEdit,
+    payload?.message?.protocolMessage,
+    payload?.message?.editedMessage?.message?.protocolMessage,
+    payload?.update?.message?.protocolMessage,
+    payload?.update?.message?.editedMessage?.message?.protocolMessage,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (candidate.originalMessageId) return candidate
+    const isEdit = `${candidate?.type || ''}` === 'MESSAGE_EDIT' || !!candidate?.editedMessage
+    const originalMessageId = `${candidate?.key?.id || ''}`.trim()
+    if (isEdit && originalMessageId) {
+      return {
+        originalMessageId,
+        timestampMs: candidate?.timestampMs ? `${candidate.timestampMs}` : undefined,
+      }
+    }
+  }
+  return undefined
+}
+
 export class BindTemplateError extends Error {
   constructor() {
     super('')
@@ -1463,15 +1487,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const { key: { id: whatsappMessageId, fromMe } } = payload
     const [chatJid, senderPhone, senderId] = getChatAndNumberAndId(payload)
     const messageType = getMessageType(payload)
+    const messageEditInfo = extractMessageEditInfo(payload)
     // Device-sent messages (from the phone) may arrive under messages.update with message content.
     // Unwrap to a plain message payload and DROP the update field to avoid recursion.
     const innerUpdateMsg = payload?.update?.message?.deviceSentMessage?.message || payload?.update?.message
     if (innerUpdateMsg) {
       const keys = Object.keys(innerUpdateMsg || {})
-      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k))
+      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k) || k === 'protocolMessage')
       if (hasReadable) {
         const { update: _omit, ...rest } = payload
-        const changedPayload = { ...rest, message: innerUpdateMsg }
+        const changedPayload = { ...rest, message: innerUpdateMsg, __unoapiMessageEdit: messageEditInfo }
         return fromBaileysMessageContent(phone, changedPayload, config)
       }
     }
@@ -1479,7 +1504,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const innerDeviceMsg = payload?.message?.deviceSentMessage?.message
     if (innerDeviceMsg) {
       const { update: _omitDev, ...restDev } = payload || {}
-      const changedPayload = { ...restDev, message: innerDeviceMsg }
+      const changedPayload = { ...restDev, message: innerDeviceMsg, __unoapiMessageEdit: messageEditInfo }
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     // Also unwrap editedMessage wrappers into their inner original message content
@@ -1519,7 +1544,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
       } catch {}
       const { update: _omitEdit, ...restEdit } = payload || {}
-      const changedPayload = { ...restEdit, message: innerEditedMsg }
+      const changedPayload = { ...restEdit, message: innerEditedMsg, __unoapiMessageEdit: messageEditInfo }
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
@@ -1741,7 +1766,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const editedMessage = binMessage.message.protocolMessage ? binMessage.message.protocolMessage[messageType] : binMessage.message
         // Keep envelope key.id (Cloud API expects current event id), only replace message content
         const { update: _omitUpdate1, ...restEdited } = payload || {}
-        const editedMessagePayload: any = { ...restEdited, message: editedMessage }
+        const editedMessagePayload: any = { ...restEdited, message: editedMessage, __unoapiMessageEdit: messageEditInfo }
         const editedMessageType = getMessageType(editedMessagePayload)
         const editedBinMessage = getBinMessage(editedMessagePayload)
         if (editedMessageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(editedMessageType) && !editedBinMessage?.message?.url && editedBinMessage?.message?.caption) {
@@ -1782,7 +1807,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             }
           } catch {}
           const { update: _omitUpdate2, ...restProto } = payload || {}
-          return fromBaileysMessageContent(phone, { ...restProto, message: inner }, config)
+          return fromBaileysMessageContent(phone, { ...restProto, message: inner, __unoapiMessageEdit: messageEditInfo }, config)
         } else {
           logger.debug(`Ignore message type ${messageType}`)
           return [null, senderPhone, senderId]
@@ -2640,6 +2665,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       // {"key":{"remoteJid":"554936213177@s.whatsapp.net","fromMe":false,"id":"1EBD1D8356472403AFE7102D05D6B21B"},"messageTimestamp":1698057926,"pushName":"Odonto Excellence","broadcast":false,"message":{"extendedTextMessage":{"text":"https://fb.me/4QHYHT0Fv","matchedText":"https://fb.me/4QHYHT0Fv","previewType":"NONE","contextInfo":{"forwardingScore":1,"isForwarded":true,"externalAdReply":{"title":"Converse conosco!","body":"🤩 PRÓTESE FLEXÍVEL: VOCÊ JÁ CONHECE? 🤩\\n\\n✅ Maior Conforto\\n✅ Mais Natural\\n✅ Mais Bonita\\n✅ Sem Grampos Aparentes\\n\\nEstes são os benefícios que a PRÓTESE FLEXÍVEL pode te proporcionar. Tenha a sua LIBERDADE de volta, e volte a sorrir e a comer com tranquilidade!!! 🍎🌽🥩🍗\\n\\n⭐ ESSA É SUA CHANCE, NÃO DEIXE PASSAR!\\n\\n📲 Garanta sua avaliação e vamos falar a respeito dessa possibilidade de TRANSFORMAÇÃO!! 💖","mediaType":"VIDEO","thumbnailUrl":"https://scontent.xx.fbcdn.net/v/t15.5256-10/341500845_517424053756219_5530967817243282036_n.jpg?stp=dst-jpg_s851x315&_nc_cat=105&ccb=1-7&_nc_sid=0808e3&_nc_ohc=K-u3hFrS1xcAX-NaRwd&_nc_ad=z-m&_nc_cid=0&_nc_ht=scontent.xx&oh=00_AfDNIQXVcym0OF49i-UJSEX0rri9IlrwXPQkcXOpTfH-xQ&oe=653A3E2F","mediaUrl":"https://www.facebook.com/OdontoExcellenceSaoMiguel/videos/179630185187923/","thumbnail":"/9j/4AAQSkZJRgABAQAAAQABAAD/7QCEUGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAGgcAigAYkZCTUQwYTAwMGE2YzAxMDAwMGQ5MDEwMDAwNzMwMjAwMDBiZDAyMDAwMGZkMDIwMDAwODMwMzAwMDAxZDA0MDAwMDU0MDQwMDAwOTYwNDAwMDBkYTA0MDAwMGQyMDUwMDAwAP/bAEMABgQFBgUEBgYFBgcHBggKEAoKCQkKFA4PDBAXFBgYFxQWFhodJR8aGyMcFhYgLCAjJicpKikZHy0wLSgwJSgpKP/bAEMBBwcHCggKEwoKEygaFhooKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKP/CABEIADIAMgMBIgACEQEDEQH/xAAaAAADAQEBAQAAAAAAAAAAAAAABAUGAwEC/8QAFwEBAQEBAAAAAAAAAAAAAAAAAQIDBP/aAAwDAQACEAMQAAAB7LotYdhMZYrOdwuhecNATMOzmNYureQ4GdHHXONXmxwSJaaQdvKOdak0MuMJQExenyFK1ADneUCsEgM+v//EACAQAAICAgICAwAAAAAAAAAAAAECAAMEERMhBRIUIjH/2gAIAQEAAQUC3031hfqx9ytG4iZuLb3vrgdyfGXNER6i+IjThSFwRh07WnWlEyKxbXe5xLPnLFb2lFjTfEj5Lqfn9M9OSp8RVvFx/vlXqinyF5OJkKQ11Ix7by7aee6CWqjwr6u4BRVIHIQeZo37L+pV+CZQHpP/xAAgEQACAQMEAwAAAAAAAAAAAAAAAgEDEjEQERMhMkFR/9oACAEDAQE/AWSGOOFzJUT3BaIkxgslsCq6FwsRBU2iOhdvp1pXwU/LT//EAB0RAAICAQUAAAAAAAAAAAAAAAABEBEhAgMSMUH/2gAIAQIBAT8BTGxZUbjvoWkqizj6VkRcuP/EACQQAAEDAwQCAwEAAAAAAAAAAAEAAhEDECESMUFRImEEIDKB/9oACAEBAAY/Ar+1J3F828RKa4aRHBUVGwpavysoPdJnhYs5pxPK01P4e1vZjGtwhjJUNXk2UW1WYPaxUcpcITG03eY64TdWw6CfU+Q4NKjVJ9IFohb24atMyjnKww/UQhaYzb//xAAfEAEAAwEAAgMBAQAAAAAAAAABABEhMWFxQVGRoRD/2gAIAQEAAT8hqsZpCOo1gfCKSW36f7RQYbuVXsGLPSbTxVksdfnjOxb/ACFWm/UxiC46BchpDwjVaM43GfSWyx9cNsBitlCoVAsKMtA9Uv1UEYf4ngAkKSM+DJsWuAza92sGRD8NFxGszcyE+XkXYp8sUbp+T25b0eScE8oBYH1OPB8jMi309ngYoOzZ4fE3d9TmUFGu1Byf/9oADAMBAAIAAwAAABCpUH4aO33xxv8AdjiD/8QAGhEBAQEBAQEBAAAAAAAAAAAAAQARMSEQcf/aAAgBAwEBPxATSPdACcX511eQmAIml+bAHhLEM2x9NWQ5crh8/8QAGhEBAQEAAwEAAAAAAAAAAAAAAQARECExQf/aAAgBAgEBPxBTpgSHlZMcjZCWlidvac6tHvEvt44//8QAIhABAAICAwEAAQUAAAAAAAAAAQARITFBUXFhkaGxwdHh/9oACAEBAAE/ELgC6IhR1ESCHFWGi8xRFxrP+D+8pJeObUEMSiHbfsaiXJlL/JU8W88CEAakQX4OmXygd1e0CCqM/UPBXx8gSHoA49g3iVFEDuzfdRK6UiCvhPGBDJqBi+feyWmG+okWXwHcu5BhA0ZqIF5VuouFW0XqUB/Vg/2Ic4Sw7B4bMj9Imnqgujq3c1ClB+sMFSoUAVS6v5Cs1Vazt3fkU1aHEUweytNAnJsrfVzTNey/SIkytuMRZpdEXSy4G4qghkGk4hVrKwtXryAQAbSymCI0jhCj+CI5KzdABLFtwWEULXJYQxAjl0wYr/MSmXU//9k=","sourceType":"ad","sourceId":"120200422938230365","sourceUrl":"https://fb.me/4QHYHT0Fv","containsAutoReply":false,"renderLargerThumbnail":true,"showAdAttribution":true,"ctwaClid":"ARA5EWTktP0VPr7ZyKkYKKQN_HfFye5re1giQ6os1ZjiFa0Pdftvs-ESdUtWgOjkEoBsJ_mCh86z8dBguiatoESpGwM"}},"inviteLinkGroupTypeV2":"DEFAULT"},"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"BmI9Pyppe2nL+A==","senderTimestamp":"1696945176","recipientKeyHash":"ltZ5vMXiILth5A==","recipientTimestamp":"1697942459"},"deviceListMetadataVersion":2}},"verifiedBizName":"Odonto Excellence"}
+      const editInfo = extractMessageEditInfo(payload)
+      if (editInfo?.originalMessageId) {
+        message.message_type = 'message_edit'
+        message.context = {
+          message_id: editInfo.originalMessageId,
+          id: editInfo.originalMessageId,
+        }
+        if (editInfo.timestampMs) message.edit_timestamp = editInfo.timestampMs
+      }
+
       const externalAdReply = binMessage?.contextInfo?.externalAdReply
       if (externalAdReply) {
         message.referral = {

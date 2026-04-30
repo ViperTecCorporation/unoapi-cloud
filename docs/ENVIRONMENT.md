@@ -93,6 +93,28 @@ ACK_RETRY_ENABLED=false
 # ACK_RETRY_MAX_ATTEMPTS=1
 ```
 
+## Low-cost delivery recovery
+
+- `DELIVERY_STALE_RECOVERY_ENABLED` — Enables automatic recovery for 1:1 messages that remain only as `sent`. Default `true`.
+- `DELIVERY_STALE_RECOVERY_MS` — Minimum age before recovery is attempted. Default `45000`.
+- `DELIVERY_STALE_RECOVERY_SCAN_MS` — One scan interval per session. Default `15000`.
+- `DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS` — Max resend attempts per stuck message. Default `1`.
+- `DELIVERY_STALE_RECOVERY_BATCH_SIZE` — Max stale messages recovered per scan. Default `3`.
+- `DELIVERY_STALE_RECOVERY_MAX_PENDING` — Local queue cap per session. Default `2000`.
+- `DELIVERY_STALE_RECOVERY_GROUPS` — Also recover group sends. Default `false`.
+
+This is lighter than `DELIVERY_WATCHDOG_ENABLED`: it does not create one timer per message and only refreshes Signal/device-list when the stored status is still `sent` after the configured window.
+
+Example:
+```
+DELIVERY_WATCHDOG_ENABLED=false
+DELIVERY_STALE_RECOVERY_ENABLED=true
+DELIVERY_STALE_RECOVERY_MS=45000
+DELIVERY_STALE_RECOVERY_SCAN_MS=15000
+DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS=1
+DELIVERY_STALE_RECOVERY_BATCH_SIZE=3
+```
+
 ## One‑to‑One (Direct) Sending
 
 - `ONE_TO_ONE_ADDRESSING_MODE` — Prefer addressing for direct chats. `pn` | `lid`. Default `pn`.
@@ -123,6 +145,11 @@ Large groups (No-sessions mitigation & throttles)
   - Example: `GROUP_ASSERT_CHUNK_SIZE=80`
 - `GROUP_ASSERT_FLOOD_WINDOW_MS` Ã¢â‚¬â€ Flood window to avoid repeated heavy asserts per group. Default `5000`.
   - Example: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
+- `GROUP_METADATA_EVENT_REFRESH_ENABLED` — Refresh the Redis group metadata cache after Baileys `groups.update` and `group-participants.update` events. Default `true`.
+  - This keeps member counts closer to WhatsApp without forcing every `/groups/:id/participants` read to hit Baileys.
+- `GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS` — Delay before refreshing a changed group metadata entry. Default `1500`.
+- `GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS` — Minimum interval between full metadata refreshes for the same group. Default `60000`.
+  - Increase this if large groups generate many participant events and the VPS is under pressure.
 - `NO_SESSION_RETRY_BASE_DELAY_MS` Ã¢â‚¬â€ Base delay before retrying send after asserts. Default `150`.
 - `NO_SESSION_RETRY_PER_200_DELAY_MS` Ã¢â‚¬â€ Extra delay per 200 targets. Default `300`.
 - `NO_SESSION_RETRY_MAX_DELAY_MS` Ã¢â‚¬â€ Cap for adaptive delay. Default `2000`.

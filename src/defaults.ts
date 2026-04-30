@@ -299,6 +299,12 @@ export const GROUP_LARGE_THRESHOLD = parseInt(process.env.GROUP_LARGE_THRESHOLD 
 // Controls for large-group No-sessions fallback (assertSessions)
 export const GROUP_ASSERT_CHUNK_SIZE = parseInt(process.env.GROUP_ASSERT_CHUNK_SIZE || '100')
 export const GROUP_ASSERT_FLOOD_WINDOW_MS = parseInt(process.env.GROUP_ASSERT_FLOOD_WINDOW_MS || '5000')
+// Keep the raw group metadata cache fresh when Baileys reports group changes.
+// The refresh is debounced/throttled per group to avoid stampeding WhatsApp/Redis on large groups.
+export const GROUP_METADATA_EVENT_REFRESH_ENABLED =
+  process.env.GROUP_METADATA_EVENT_REFRESH_ENABLED === _undefined ? true : process.env.GROUP_METADATA_EVENT_REFRESH_ENABLED == 'true'
+export const GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS = parseInt(process.env.GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS || '1500')
+export const GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS = parseInt(process.env.GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS || '60000')
 export const NO_SESSION_RETRY_BASE_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_BASE_DELAY_MS || '150')
 export const NO_SESSION_RETRY_PER_200_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_PER_200_DELAY_MS || '300')
 export const NO_SESSION_RETRY_MAX_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_MAX_DELAY_MS || '2000')
@@ -391,6 +397,19 @@ export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS ||
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
+
+// Low-cost delivery recovery: uma fila local com um unico intervalo por sessao.
+// Diferente do watchdog antigo, nao cria timer por mensagem e so tenta quando
+// o status persistido continua em "sent" depois da janela configurada.
+export const DELIVERY_STALE_RECOVERY_ENABLED =
+  process.env.DELIVERY_STALE_RECOVERY_ENABLED === _undefined ? true : process.env.DELIVERY_STALE_RECOVERY_ENABLED == 'true'
+export const DELIVERY_STALE_RECOVERY_MS = parseInt(process.env.DELIVERY_STALE_RECOVERY_MS || '45000')
+export const DELIVERY_STALE_RECOVERY_SCAN_MS = parseInt(process.env.DELIVERY_STALE_RECOVERY_SCAN_MS || '15000')
+export const DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS || '1')
+export const DELIVERY_STALE_RECOVERY_MAX_PENDING = parseInt(process.env.DELIVERY_STALE_RECOVERY_MAX_PENDING || '2000')
+export const DELIVERY_STALE_RECOVERY_BATCH_SIZE = parseInt(process.env.DELIVERY_STALE_RECOVERY_BATCH_SIZE || '3')
+export const DELIVERY_STALE_RECOVERY_GROUPS =
+  process.env.DELIVERY_STALE_RECOVERY_GROUPS === _undefined ? false : process.env.DELIVERY_STALE_RECOVERY_GROUPS == 'true'
 
 // BR send-order: if enabled, tries 12-digit then 13-digit candidate on send
 export const BR_SEND_ORDER_ENABLED =

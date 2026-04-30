@@ -130,6 +130,42 @@ describe('messages routes', () => {
     )
   })
 
+  test('delivery recovery route forces session refresh for the original message id', async () => {
+    const recoverSpy = jest.spyOn(incoming, 'recoverDelivery').mockResolvedValue({
+      ok: {
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'uno-message-1' }],
+        recovery: { attempted: true },
+      },
+    } as any)
+
+    const res = await request(app.server)
+      .post(`/v19.0/${phone}/messages/uno-message-1/recover_delivery`)
+      .send({
+        to: '5566996810064',
+        type: 'text',
+        text: { body: 'reenviar agora' },
+      })
+
+    expect(res.status).toEqual(200)
+    expect(recoverSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        message_id: 'uno-message-1',
+        to: '5566996810064',
+        type: 'text',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        forceDeliveryRecovery: true,
+        forceSessionRefresh: true,
+        forceDeviceList: true,
+        useUserDevicesCache: false,
+      }),
+    )
+  })
+
   test('whatsapp with 400 status', async () => {
     jest.spyOn(incoming, 'send').mockRejectedValue(new Error('cannot login'))
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)
