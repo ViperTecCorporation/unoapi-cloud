@@ -62,6 +62,11 @@ const extractMessageEditInfo = (payload: any): { originalMessageId?: string; tim
   return undefined
 }
 
+const isSecretEncryptedMessageEdit = (message: any): boolean => {
+  const secretType = `${message?.secretEncType || ''}`
+  return secretType === '2' || secretType === 'MESSAGE_EDIT'
+}
+
 export class BindTemplateError extends Error {
   constructor() {
     super('')
@@ -132,6 +137,7 @@ export const TYPE_MESSAGES_TO_READ = [
   'pollResultSnapshotMessageV3',
   'statusQuotedMessage',
   'statusAddYours',
+  'secretEncryptedMessage',
 ]
 
 const OTHER_MESSAGES_TO_PROCESS = [
@@ -1812,6 +1818,19 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
           logger.debug(`Ignore message type ${messageType}`)
           return [null, senderPhone, senderId]
         }
+
+      case 'secretEncryptedMessage':
+        if (isSecretEncryptedMessageEdit(binMessage)) {
+          const targetId = `${(binMessage as any)?.targetMessageKey?.id || messageEditInfo?.originalMessageId || ''}`.trim()
+          logger.info(
+            'Ignore encrypted message edit until decrypted content is available: eventId=%s targetId=%s',
+            whatsappMessageId || '<none>',
+            targetId || '<none>',
+          )
+          return [null, senderPhone, senderId]
+        }
+        logger.debug(`Ignore message type ${messageType}`)
+        return [null, senderPhone, senderId]
 
       case 'ephemeralMessage':
       case 'viewOnceMessage':

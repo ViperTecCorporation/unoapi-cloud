@@ -497,7 +497,7 @@ export const redisSetAndExpire = async function (key: string, value: any, ttl: n
 
 // Helper: SCAN keys with pattern, returning up to `limit` keys (non-blocking vs KEYS)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const redisScanSome = async (pattern: string, limit: number): Promise<string[]> => {
+export const redisScanSome = async (pattern: string, limit: number): Promise<string[]> => {
   try {
     const c: any = await getRedis()
     let cursor = '0'
@@ -1260,6 +1260,50 @@ export const getMessage = async <T>(phone: string, jid: string, id: string): Pro
     // last resort: ignore corrupt entry
     return undefined
   }
+}
+
+export const getMessageWithSecretAnySession = async <T>(id: string): Promise<T | undefined> => {
+  const messageId = `${id || ''}`.trim()
+  if (!messageId) return undefined
+  const keys = await redisScanSome(`${BASE_KEY}message:*:*:${messageId}`, 50)
+  let fallback: T | undefined
+  for (const key of keys) {
+    try {
+      const stored = await redisGet(key)
+      if (!stored) continue
+      let msg: any
+      if (stored.trim().startsWith('{') || stored.trim().startsWith('[')) {
+        msg = JSON.parse(stored)
+      } else {
+        msg = proto.WebMessageInfo.decode(Buffer.from(stored, 'base64'))
+      }
+      if (msg?.message?.messageContextInfo?.messageSecret) return msg as T
+      if (msg && !fallback) fallback = msg as T
+    } catch {}
+  }
+  return fallback
+}
+
+export const getUnoIdsForProviderAnySession = async (id: string): Promise<Array<{ phone: string; unoId: string }>> => {
+  const providerId = `${id || ''}`.trim()
+  if (!providerId) return []
+  const keys = await redisScanSome(`${BASE_KEY}id:*:${providerId}`, 50)
+  const mappings: Array<{ phone: string; unoId: string }> = []
+  const seen = new Set<string>()
+  for (const key of keys) {
+    try {
+      const unoId = `${await redisGet(key) || ''}`.trim()
+      if (!unoId) continue
+      const parts = key.split(':')
+      const phone = `${parts[1] || ''}`.trim()
+      if (!phone) continue
+      const dedupKey = `${phone}:${unoId}`
+      if (seen.has(dedupKey)) continue
+      seen.add(dedupKey)
+      mappings.push({ phone, unoId })
+    } catch {}
+  }
+  return mappings
 }
 
 // Persistência de última mensagem recebida por chat

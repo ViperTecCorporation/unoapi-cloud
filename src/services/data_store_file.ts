@@ -83,6 +83,17 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       try { return JSON.parse(b64) as WAMessage } catch { return undefined }
     }
   },
+  dataStore.findMessageWithSecret = async (id: string, jids: string[]) => {
+    let fallback: WAMessage | undefined
+    for (const jid of Array.from(new Set((jids || []).map((j) => `${j || ''}`.trim()).filter(Boolean)))) {
+      try {
+        const message = await dataStore.loadMessage(jid, id)
+        if (message?.message?.messageContextInfo?.messageSecret) return message
+        if (message && !fallback) fallback = message
+      } catch {}
+    }
+    return fallback
+  },
   dataStore.toJSON = () => {
     return {
       messages,

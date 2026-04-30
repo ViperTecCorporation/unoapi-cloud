@@ -1761,6 +1761,98 @@ describe('service transformer', () => {
     })
   })
 
+  test('fromBaileysMessageContent message edit prefers Uno mapped original id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.mapped.${new Date().getTime()}`
+    const originalBaileysId = `original.baileys.${new Date().getTime()}`
+    const originalUnoId = `original.uno.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado mapped.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      __unoapiMessageEdit: {
+        originalMessageId: originalUnoId,
+        timestampMs,
+      },
+      update: {
+        message: {
+          protocolMessage: {
+            key: {
+              remoteJid,
+              fromMe: false,
+              id: originalBaileysId,
+            },
+            type: 'MESSAGE_EDIT',
+            editedMessage: {
+              conversation,
+            },
+            timestampMs,
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      id: editEventId,
+      context: {
+        message_id: originalUnoId,
+        id: originalUnoId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
+  })
+
+  test('fromBaileysMessageContent encrypted message edit is ignored instead of failed status', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.secret.${new Date().getTime()}`
+    const originalUnoId = `original.uno.secret.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      __unoapiMessageEdit: {
+        originalMessageId: originalUnoId,
+      },
+      message: {
+        secretEncryptedMessage: {
+          targetMessageKey: {
+            remoteJid,
+            fromMe: false,
+            id: originalUnoId,
+          },
+          secretEncType: 2,
+          encPayload: Buffer.from('payload'),
+          encIv: Buffer.from('iv'),
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+
+    expect(getMessageType(input)).toEqual('secretEncryptedMessage')
+    expect(output).toBeNull()
+  })
+
   test('fromBaileysMessageContent messages.update editedMessage wrapper keeps original context id', async () => {
     const remotePhoneNumber = '11115551212'
     const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`

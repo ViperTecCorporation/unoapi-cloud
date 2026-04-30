@@ -4,12 +4,13 @@ import { Outgoing } from './outgoing'
 import { Broadcast } from './broadcast'
 import { getConfig } from './config'
 import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, jidToRawPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
-import { WAMessage, delay, jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
+import { WAMessage, delay, jidNormalizedUser, isPnUser, proto } from '@whiskeysockets/baileys'
+import { aesDecryptGCM, hkdf } from '@whiskeysockets/baileys/lib/Utils/crypto.js'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { createHash } from 'crypto'
-import { getPollState, setPollState, getStatusMediaState, setStatusMediaState } from './redis'
+import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 
 const  delays: Map<String, number> = new Map()
 const POLL_CREATION_TYPES = new Set([
@@ -63,6 +64,226 @@ export class ListenerBaileys implements Listener {
 
   private pollOptionHash(name: string) {
     return createHash('sha256').update(Buffer.from(name || '')).digest().toString()
+  }
+
+  private toBuffer(value: any): Buffer | undefined {
+    try {
+      if (!value) return undefined
+      if (Buffer.isBuffer(value)) return value
+      if (value instanceof Uint8Array) return Buffer.from(value)
+      if (Array.isArray(value)) return Buffer.from(value)
+      if (value?.type === 'Buffer' && Array.isArray(value?.data)) return Buffer.from(value.data)
+      if (typeof value === 'string') return Buffer.from(value, 'base64')
+    } catch {}
+    return undefined
+  }
+
+  private uniq(values: Array<string | undefined | null>) {
+    return Array.from(new Set(values.map((v) => `${v || ''}`.trim()).filter(Boolean)))
+  }
+
+  private keyAuthorCandidates(key: any, ownJid: string) {
+    const normalizedOwn = jidNormalizedUser(ownJid)
+    if (key?.fromMe) {
+      return this.uniq([
+        normalizedOwn,
+        ownJid,
+        key?.participantAlt,
+        key?.participant,
+        key?.remoteJidAlt,
+        key?.remoteJid,
+      ])
+    }
+    return this.uniq([
+      key?.participantAlt,
+      key?.remoteJidAlt,
+      key?.participant,
+      key?.remoteJid,
+    ])
+  }
+
+  private async messageLookupJids(phone: string, store: any, currentMessage: any, targetKey: any) {
+    const seeds = this.uniq([
+      targetKey?.remoteJid,
+      targetKey?.remoteJidAlt,
+      targetKey?.participant,
+      targetKey?.participantAlt,
+      currentMessage?.key?.remoteJid,
+      currentMessage?.key?.remoteJidAlt,
+      currentMessage?.key?.participant,
+      currentMessage?.key?.participantAlt,
+    ])
+
+    const result = new Set<string>(seeds)
+    for (const jid of seeds) {
+      try {
+        if (jid.endsWith('@lid')) {
+          const pn = await store?.dataStore?.getPnForLid?.(phone, jid)
+          if (pn) result.add(pn)
+        }
+      } catch {}
+      try {
+        if (jid.endsWith('@s.whatsapp.net')) {
+          const lid = await store?.dataStore?.getLidForPn?.(phone, jid)
+          if (lid) result.add(lid)
+        }
+      } catch {}
+      try {
+        if (jid.endsWith('@s.whatsapp.net')) {
+          const digits = jid.split('@')[0].split(':')[0].replace(/\D/g, '')
+          if (digits) result.add(`${digits}@s.whatsapp.net`)
+        }
+      } catch {}
+    }
+
+    return Array.from(result).filter(Boolean)
+  }
+
+  private async decryptSecretEncryptedEdit(
+    phone: string,
+    store: any,
+    currentMessage: any,
+    originalProviderId: string,
+  ): Promise<any | undefined> {
+    try {
+      const secret = currentMessage?.message?.secretEncryptedMessage || currentMessage?.update?.message?.secretEncryptedMessage
+      const secretType = `${secret?.secretEncType || ''}`
+      if (!(secretType === '2' || secretType === 'MESSAGE_EDIT')) return undefined
+
+      const targetKey = secret?.targetMessageKey || {}
+      const lookupJids = await this.messageLookupJids(phone, store, currentMessage, targetKey)
+      if (!lookupJids.length || !originalProviderId) return undefined
+
+      const originalMessage: any = (
+        await store?.dataStore?.findMessageWithSecret?.(originalProviderId, lookupJids) ||
+        await store?.dataStore?.loadMessage?.(lookupJids[0], originalProviderId)
+      )
+      const originalSecret = this.toBuffer(originalMessage?.message?.messageContextInfo?.messageSecret)
+      const encPayload = this.toBuffer(secret?.encPayload)
+      const encIv = this.toBuffer(secret?.encIv)
+      if (!originalMessage || !originalSecret || !encPayload || !encIv) {
+        logger.info(
+          'Encrypted message edit cannot be decrypted yet: phone=%s eventId=%s targetId=%s hasOriginal=%s hasSecret=%s',
+          phone,
+          currentMessage?.key?.id || '<none>',
+          originalProviderId,
+          !!originalMessage,
+          !!originalSecret,
+        )
+        return undefined
+      }
+
+      const ownJid = `${phone.replace(/\D/g, '')}@s.whatsapp.net`
+      const originalSenderCandidates = this.keyAuthorCandidates(originalMessage?.key || targetKey, ownJid)
+      const modifierCandidates = this.keyAuthorCandidates(currentMessage?.key || {}, ownJid)
+      const modificationTypes = ['Message Edit', 'MESSAGE_EDIT', 'Edit Message', 'message_edit']
+
+      for (const modificationType of modificationTypes) {
+        for (const originalSender of originalSenderCandidates) {
+          for (const modifier of modifierCandidates) {
+            const info = Buffer.concat([
+              Buffer.from(originalProviderId, 'utf8'),
+              Buffer.from(originalSender, 'utf8'),
+              Buffer.from(modifier, 'utf8'),
+              Buffer.from(modificationType, 'utf8'),
+            ])
+            const key = hkdf(originalSecret, 32, { info: info.toString('latin1') })
+            const aadCandidates = [
+              Buffer.alloc(0),
+              Buffer.from(`${originalProviderId}\u0000${modifier}`),
+              Buffer.from(`${originalProviderId}\u0000${originalSender}`),
+              Buffer.from(`${originalProviderId}\u0000${originalSender}\u0000${modifier}`),
+            ]
+
+            for (const aad of aadCandidates) {
+              try {
+                const decrypted = aesDecryptGCM(encPayload, key, encIv, aad)
+                const decoded = proto.Message.decode(decrypted)
+                const decodedKeys = Object.keys(decoded || {}).filter((k) => (decoded as any)[k])
+                if (!decodedKeys.length) continue
+                logger.info(
+                  'Decrypted encrypted message edit: phone=%s eventId=%s targetId=%s keys=%s',
+                  phone,
+                  currentMessage?.key?.id || '<none>',
+                  originalProviderId,
+                  decodedKeys.join(','),
+                )
+                return decoded
+              } catch {}
+            }
+          }
+        }
+      }
+
+      logger.info(
+        'Encrypted message edit decryption failed with known key candidates: phone=%s eventId=%s targetId=%s',
+        phone,
+        currentMessage?.key?.id || '<none>',
+        originalProviderId,
+      )
+    } catch (e) {
+      logger.warn(e as any, 'Failed to decrypt encrypted message edit')
+    }
+    return undefined
+  }
+
+  private async fanoutMessageEditToMappedSessions(
+    currentPhone: string,
+    data: any,
+    mappedEdit?: { providerId: string; unoId: string },
+  ) {
+    const message = data?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+    if (!mappedEdit?.providerId || !message || message?.message_type !== 'message_edit') return
+
+    const mappings = await getUnoIdsForProviderAnySession(mappedEdit.providerId)
+    const currentDigits = `${currentPhone || ''}`.replace(/\D/g, '')
+    const currentContactWaId = `${data?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.wa_id || ''}`.replace(/\D/g, '')
+    const currentMessageFrom = `${message?.from || ''}`.replace(/\D/g, '')
+
+    for (const mapping of mappings) {
+      const targetPhone = `${mapping.phone || ''}`.replace(/\D/g, '')
+      if (!targetPhone || targetPhone === currentDigits) continue
+      if (!mapping.unoId || mapping.unoId === mappedEdit.unoId) continue
+
+      const payload = JSON.parse(JSON.stringify(data))
+      const value = payload?.entry?.[0]?.changes?.[0]?.value
+      const targetMessage = value?.messages?.[0]
+      const targetContact = value?.contacts?.[0]
+      if (!value || !targetMessage || !targetContact) continue
+
+      payload.entry[0].id = targetPhone
+      value.metadata = value.metadata || {}
+      value.metadata.display_phone_number = targetPhone
+      value.metadata.phone_number_id = targetPhone
+
+      targetMessage.context = targetMessage.context || {}
+      targetMessage.context.id = mapping.unoId
+      targetMessage.context.message_id = mapping.unoId
+
+      // If the original edit was received by the other session, invert the Cloud API
+      // perspective so Chatwoot treats the fanout event as that session's outgoing echo.
+      if (currentMessageFrom === targetPhone) {
+        targetMessage.from = targetPhone
+      }
+
+      if (currentContactWaId === targetPhone) {
+        targetContact.wa_id = currentDigits
+      } else if (currentDigits) {
+        targetContact.wa_id = currentDigits
+      }
+      targetContact.profile = targetContact.profile || {}
+      if (!targetContact.profile.name && currentDigits) targetContact.profile.name = currentDigits
+
+      logger.info(
+        'Message edit fanout: providerId=%s fromSession=%s toSession=%s originalUnoId=%s targetUnoId=%s',
+        mappedEdit.providerId,
+        currentDigits || currentPhone,
+        targetPhone,
+        mappedEdit.unoId,
+        mapping.unoId,
+      )
+      await this.outgoing.send(targetPhone, payload)
+    }
   }
 
   private async savePollCreationState(phone: string, store: any, message: WAMessage, messageType: string) {
@@ -622,29 +843,101 @@ export class ListenerBaileys implements Listener {
       } catch {}
     }
 
-    // message edit: map the edited/original provider id to the Uno id that downstream systems stored
+    let mappedEditForFanout: { providerId: string; unoId: string } | undefined
+    // message edit: map the edited/original id in both directions.
+    // Baileys edit events reference the original provider id, while webhook consumers store the Uno id.
     try {
-      const mapEditedOriginalId = async (container: any) => {
-        const protocol = container?.protocolMessage || container?.editedMessage?.message?.protocolMessage
-        const originalId = `${protocol?.key?.id || ''}`.trim()
-        if (`${protocol?.type || ''}` !== 'MESSAGE_EDIT' || !originalId) return undefined
-
+      const resolveEditedOriginalId = async (originalId: string) => {
         let unoId = await store.dataStore.loadUnoId(originalId)
+        let providerId = originalId
+
+        if (!unoId) {
+          const reverseProviderId = await store.dataStore.loadProviderId(originalId)
+          if (reverseProviderId) {
+            unoId = originalId
+            providerId = reverseProviderId
+          }
+        }
+
         if (!unoId) {
           unoId = uuid()
           await store.dataStore.setUnoId(originalId, unoId)
           logger.info('Unoapi generated edited original id %s for Baileys id %s', unoId, originalId)
         } else {
-          logger.debug('Unoapi edited original id %s to Baileys id %s', unoId, originalId)
+          logger.debug('Unoapi edited original id %s to Baileys id %s', unoId, providerId)
         }
+
+        return { providerId, unoId }
+      }
+
+      const mapEditedOriginalId = async (container: any) => {
+        const protocol = container?.protocolMessage || container?.editedMessage?.message?.protocolMessage
+        const originalId = `${protocol?.key?.id || ''}`.trim()
+        if (`${protocol?.type || ''}` !== 'MESSAGE_EDIT' || !originalId) return undefined
+
+        const { providerId, unoId } = await resolveEditedOriginalId(originalId)
         protocol.key.id = unoId
-        return { originalId, unoId }
+        return {
+          originalId: providerId,
+          unoId,
+          timestampMs: protocol?.timestampMs ? `${protocol.timestampMs}` : undefined,
+        }
+      }
+
+      const mapSecretEncryptedEditTargetId = async (container: any) => {
+        const secret = container?.secretEncryptedMessage
+        const originalId = `${secret?.targetMessageKey?.id || ''}`.trim()
+        const secretType = `${secret?.secretEncType || ''}`
+        const isMessageEdit = secretType === '2' || secretType === 'MESSAGE_EDIT'
+        if (!isMessageEdit || !originalId) return undefined
+
+        const { providerId, unoId } = await resolveEditedOriginalId(originalId)
+        const editedMessage = await this.decryptSecretEncryptedEdit(phone, store, i, providerId)
+        if (editedMessage) {
+          const targetKey = {
+            ...(secret?.targetMessageKey || {}),
+            id: unoId,
+          }
+          const timestampMs = (i as any)?.messageTimestamp ? `${Number((i as any).messageTimestamp) * 1000}` : undefined
+          ;(i as any).message = {
+            protocolMessage: {
+              key: targetKey,
+              type: 'MESSAGE_EDIT',
+              editedMessage,
+              ...(timestampMs ? { timestampMs } : {}),
+            },
+          }
+          try { delete (i as any).update } catch {}
+          return {
+            originalId: providerId,
+            unoId,
+            timestampMs,
+          }
+        }
+        secret.targetMessageKey.id = unoId
+        return {
+          originalId: providerId,
+          unoId,
+          timestampMs: undefined,
+        }
       }
 
       const mappedEdit = (
         await mapEditedOriginalId((i as any)?.message) ||
-        await mapEditedOriginalId((i as any)?.update?.message)
+        await mapEditedOriginalId((i as any)?.update?.message) ||
+        await mapSecretEncryptedEditTargetId((i as any)?.message) ||
+        await mapSecretEncryptedEditTargetId((i as any)?.update?.message)
       )
+      if (mappedEdit?.unoId) {
+        mappedEditForFanout = {
+          providerId: mappedEdit.originalId,
+          unoId: mappedEdit.unoId,
+        }
+        ;(i as any).__unoapiMessageEdit = {
+          originalMessageId: mappedEdit.unoId,
+          timestampMs: mappedEdit.timestampMs,
+        }
+      }
       if (mappedEdit?.unoId && key?.id === mappedEdit.originalId) {
         key.id = mappedEdit.unoId
       }
@@ -891,6 +1184,37 @@ export class ListenerBaileys implements Listener {
       }
 
       try {
+        const value: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
+        const toPnJid = (id?: string) => {
+          const digits = `${id || ''}`.replace(/\D/g, '')
+          return digits ? `${digits}@s.whatsapp.net` : undefined
+        }
+
+        if (Array.isArray(value.contacts)) {
+          for (const contact of value.contacts) {
+            if (!contact || contact.user_id) continue
+            const pnJid = toPnJid(contact.wa_id)
+            if (!pnJid) continue
+            const lid = await store?.dataStore?.getLidForPn?.(phone, pnJid)
+            if (lid) contact.user_id = lid
+          }
+        }
+
+        if (Array.isArray(value.messages)) {
+          for (const message of value.messages) {
+            if (!message || message.from_user_id) continue
+            const fromPn = `${message.from || ''}`.replace(/\D/g, '')
+            const sessionPn = `${phone || ''}`.replace(/\D/g, '')
+            if (!fromPn || fromPn === sessionPn) continue
+            const lid = await store?.dataStore?.getLidForPn?.(phone, `${fromPn}@s.whatsapp.net`)
+            if (lid) message.from_user_id = lid
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'Failed to enrich webhook stable user ids')
+      }
+
+      try {
         const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
         const m = Array.isArray(v.messages) ? v.messages[0] : undefined
         if (m?.type === 'interactive') {
@@ -903,6 +1227,11 @@ export class ListenerBaileys implements Listener {
           )
         }
       } catch {}
+      try {
+        await this.fanoutMessageEditToMappedSessions(phone, data, mappedEditForFanout)
+      } catch (e) {
+        logger.warn(e as any, 'Failed to fanout message edit to mapped sessions')
+      }
       // Guardar contra regressão/duplicata de status (não enviar 'sent' após 'delivered' e nem duplicar)
       try {
         const change = (data as any)?.entry?.[0]?.changes?.[0]?.value
