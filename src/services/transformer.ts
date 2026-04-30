@@ -1493,7 +1493,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const innerUpdateMsg = payload?.update?.message?.deviceSentMessage?.message || payload?.update?.message
     if (innerUpdateMsg) {
       const keys = Object.keys(innerUpdateMsg || {})
-      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k) || k === 'protocolMessage')
+      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k) || k === 'protocolMessage' || k === 'editedMessage')
       if (hasReadable) {
         const { update: _omit, ...rest } = payload
         const changedPayload = { ...rest, message: innerUpdateMsg, __unoapiMessageEdit: messageEditInfo }

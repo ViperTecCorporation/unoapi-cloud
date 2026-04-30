@@ -1761,6 +1761,61 @@ describe('service transformer', () => {
     })
   })
 
+  test('fromBaileysMessageContent messages.update editedMessage wrapper keeps original context id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.wrapper.${new Date().getTime()}`
+    const originalMessageId = `original.wrapper.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado wrapper.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      update: {
+        message: {
+          editedMessage: {
+            message: {
+              protocolMessage: {
+                key: {
+                  remoteJid,
+                  fromMe: false,
+                  id: originalMessageId,
+                },
+                type: 'MESSAGE_EDIT',
+                editedMessage: {
+                  conversation,
+                },
+                timestampMs,
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      from: remotePhoneNumber,
+      id: editEventId,
+      context: {
+        message_id: originalMessageId,
+        id: originalMessageId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
+  })
+
   test('getMessageType with viewOnceMessage', async () => {
     const input = {
       message: {
