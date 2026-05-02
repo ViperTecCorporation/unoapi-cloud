@@ -784,7 +784,8 @@ export class ListenerBaileys implements Listener {
     if (messageType && !['update', 'receipt'].includes(messageType)) {
       i = await config.getMessageMetadata(i)
       if (i.key && i.key) {
-        const idBaileys = i.key.id!
+        const metadataKeyId = `${i.key.id || ''}`.trim()
+        const idBaileys = originalBaileysMessageId || metadataKeyId
         let idUno = await store?.dataStore.loadUnoId(idBaileys)
         if (!idUno) {
           idUno = uuid()
@@ -792,10 +793,11 @@ export class ListenerBaileys implements Listener {
         } else {
           logger.debug('Reusing unoapi id %s for %s', idUno, idBaileys)
         }
+        const providerKey = { ...i.key, id: idBaileys }
         await store?.dataStore.setUnoId(idBaileys, idUno)
-        await store?.dataStore.setKey(idUno, i.key)
-        await store?.dataStore.setKey(idBaileys, i.key)
-        await store.dataStore.setMessage(i.key.remoteJid!, i)
+        await store?.dataStore.setKey(idUno, providerKey)
+        await store?.dataStore.setKey(idBaileys, providerKey)
+        await store.dataStore.setMessage(providerKey.remoteJid!, { ...i, key: providerKey })
         i.key.id = idUno
         if (isSaveMedia(i)) {
           if (shouldSkipMediaPersist(i)) {
@@ -1233,6 +1235,33 @@ export class ListenerBaileys implements Listener {
       try {
         const v: any = (data as any)?.entry?.[0]?.changes?.[0]?.value || {}
         const m = Array.isArray(v.messages) ? v.messages[0] : undefined
+        if (m?.message_type === 'message_edit') {
+          const contextId = `${m?.context?.message_id || m?.context?.id || ''}`.trim()
+          if (contextId) {
+            const unoContextId = await store?.dataStore?.loadUnoId?.(contextId)
+            const providerId = unoContextId ? contextId : await store?.dataStore?.loadProviderId?.(contextId)
+            const normalizedContextId = unoContextId || (providerId ? contextId : undefined)
+            if (normalizedContextId) {
+              m.context = {
+                ...(m.context || {}),
+                message_id: normalizedContextId,
+                id: normalizedContextId,
+              }
+              ;(i as any).__unoapiMessageEdit = {
+                ...((i as any).__unoapiMessageEdit || {}),
+                originalMessageId: normalizedContextId,
+              }
+              if (unoContextId) {
+                mappedEditForFanout = {
+                  providerId: contextId,
+                  unoId: normalizedContextId,
+                }
+              }
+            } else {
+              logger.warn('Message edit webhook original id is not mapped to Uno id: eventId=%s originalId=%s', m?.id || '<none>', contextId)
+            }
+          }
+        }
         if (m?.type === 'interactive') {
           logger.info(
             'INTERACTIVE out: from=%s to=%s subtype=%s id=%s',
