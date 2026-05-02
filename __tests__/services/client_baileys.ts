@@ -224,6 +224,55 @@ describe('service client baileys', () => {
     expect(response.ok.messages[0].id).toBe(`uno-${id}`)
   })
 
+  test('call send with message_edit resolves original Uno id to Baileys edit key', async () => {
+    const unoMessageId = 'uno-original-message'
+    const providerMessageId = 'provider-original-message'
+    const editMessageId = 'provider-edit-message'
+    const originalKey = {
+      id: providerMessageId,
+      remoteJid: '120363040468224422@g.us',
+      fromMe: true,
+      participant: '556600000000@s.whatsapp.net',
+    }
+    dataStore.loadProviderId.mockImplementation(async (id: string) => (
+      id === unoMessageId ? providerMessageId : undefined
+    ))
+    dataStore.loadKey.mockImplementation(async (id: string) => (
+      id === providerMessageId ? originalKey : undefined
+    ))
+    dataStore.loadMessage.mockResolvedValue({ key: originalKey })
+    send.mockResolvedValue({
+      key: { id: editMessageId, remoteJid: originalKey.remoteJid },
+      message: { protocolMessage: { type: 'MESSAGE_EDIT' } },
+    })
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'group',
+      to: '120363040468224422@g.us',
+      type: 'message_edit',
+      context: { message_id: unoMessageId },
+      text: { body: 'texto editado' },
+    }
+
+    await client.connect(0)
+    const response: Response = await client.send(payload, {})
+
+    expect(send).toHaveBeenCalledWith(
+      originalKey.remoteJid,
+      expect.objectContaining({
+        text: 'texto editado',
+        edit: originalKey,
+      }),
+      expect.objectContaining({
+        forceRemoteJid: originalKey.remoteJid,
+        skipBrSendOrder: true,
+      }),
+    )
+    expect(dataStore.loadProviderId).toHaveBeenCalledWith(unoMessageId)
+    expect(dataStore.loadKey).toHaveBeenCalledWith(providerMessageId)
+    expect(response.ok.messages[0].id).toBe(`uno-${editMessageId}`)
+  })
+
   test('refreshes group metadata cache after group participants update event', async () => {
     const groupJid = '120363040468224422@g.us'
     const metadata = {

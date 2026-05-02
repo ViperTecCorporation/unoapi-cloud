@@ -1314,6 +1314,57 @@ More then 14 days without open app in smartphone, the connection with whatsapp w
 ### to send messages:
 - write in rabbitmq queue outgoing in format
 
+### Edit sent messages
+
+Unoapi supports a Meta-like `message_edit` payload on the regular messages endpoint.
+This is an Unoapi/Baileys extension, not an official Meta Cloud API send payload.
+
+For 1:1 conversations:
+
+```json
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "5566996269251",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "Texto editado"
+  }
+}
+```
+
+For group conversations:
+
+```json
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "group",
+  "to": "120363012345678@g.us",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "@5566996269251 texto editado"
+  },
+  "mentions": ["5566996269251"]
+}
+```
+
+`context.message_id` must be the Unoapi id of the original sent message. Unoapi resolves it from Redis/DataStore to the original Baileys provider id/key and sends:
+
+```ts
+await sock.sendMessage(jid, {
+  text: 'Texto editado',
+  edit: originalMessageKey
+})
+```
+
 https://github.com/NaikAayush/whatsapp-cloud-api
 https://github.com/green-api/whatsapp-api-client-golang
 

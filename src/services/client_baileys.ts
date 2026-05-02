@@ -1931,7 +1931,7 @@ export class ClientBaileys implements Client {
           throw new Error(`Unknow message status ${status}`)
         }
       } else if (type) {
-        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction', 'baileys'].includes(type)) {
+        if (['text', 'message_edit', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction', 'baileys'].includes(type)) {
           let content
           let targetTo = to
           if (payload?.recipient_type === 'group' || `${targetTo || ''}`.endsWith('@g.us')) {
@@ -1999,6 +1999,56 @@ export class ClientBaileys implements Client {
             targetTo = reactionKey.remoteJid
             to = targetTo
             extraSendOptions.forceRemoteJid = reactionKey.remoteJid
+            extraSendOptions.skipBrSendOrder = true
+          } else if ('message_edit' === type) {
+            const messageId =
+              payload?.context?.message_id ||
+              payload?.context?.id ||
+              payload?.edit?.message_id ||
+              payload?.edit?.messageId ||
+              payload?.message_id
+            if (!messageId) {
+              throw new SendError(400, 'invalid_message_edit_payload: missing context.message_id')
+            }
+            const dataStore = this.store?.dataStore
+            let providerId: string | undefined
+            let editKey = undefined as any
+            try {
+              providerId = await dataStore?.loadProviderId?.(messageId)
+            } catch {}
+            if (!providerId) {
+              try {
+                const unoFromProvider = await dataStore?.loadUnoId?.(messageId)
+                if (unoFromProvider) providerId = messageId
+              } catch {}
+            }
+            if (providerId) {
+              editKey = await dataStore?.loadKey(providerId)
+            }
+            if (!editKey) {
+              editKey = await dataStore?.loadKey(messageId)
+            }
+            if (!editKey || !editKey.id || !editKey.remoteJid) {
+              throw new SendError(404, `message_edit_original_not_found: ${messageId}`)
+            }
+            if (providerId && editKey.id !== providerId) {
+              editKey = { ...editKey, id: providerId }
+            }
+            try {
+              const original = await dataStore?.loadMessage?.(editKey.remoteJid, editKey.id)
+              if (original?.key) {
+                editKey = { ...original.key, id: editKey.id }
+                if (typeof editKey.participant === 'string' && editKey.participant.trim() === '') {
+                  delete (editKey as any).participant
+                }
+              }
+            } catch {}
+            content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+            await this.remapMentionsToLidForGroup(targetTo, content as any, payload)
+            ;(content as any).edit = editKey
+            targetTo = editKey.remoteJid
+            to = targetTo
+            extraSendOptions.forceRemoteJid = editKey.remoteJid
             extraSendOptions.skipBrSendOrder = true
           } else if ('template' === type) {
             const template = new Template(this.getConfig)
@@ -2114,7 +2164,7 @@ export class ClientBaileys implements Client {
           }
           let quoted: WAMessage | undefined = undefined
           let disappearingMessagesInChat: boolean | number = false
-          const messageId = payload?.context?.message_id || payload?.context?.id
+          const messageId = type === 'message_edit' ? undefined : payload?.context?.message_id || payload?.context?.id
           if (messageId) {
             const dataStore = this.store?.dataStore
             let providerId: string | undefined

@@ -88,6 +88,54 @@ POST /v15.0/{phone}/messages
 }
 ```
 
+## Message Edit Payload
+
+Unoapi accepts a Meta-like `type: "message_edit"` payload on `POST /v15.0/{phone}/messages`.
+This is an Unoapi/Baileys extension; the official Meta Cloud API does not expose this send payload.
+
+1:1 example:
+
+```
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "5566996269251",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "Edited text"
+  }
+}
+```
+
+Group example:
+
+```
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "group",
+  "to": "120363012345678@g.us",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "@5566996269251 edited text"
+  },
+  "mentions": ["5566996269251"]
+}
+```
+
+Rules:
+- `context.message_id` must be the Unoapi id of the original sent message.
+- Unoapi resolves that id to the original Baileys provider id/key through DataStore/Redis.
+- The final Baileys call is equivalent to `sock.sendMessage(jid, { text, edit: originalMessageKey })`.
+- For group edits, `to` should be the group id (`@g.us`). Mentions follow the same normalization rules as group text messages.
+
 ## Status/Broadcast Testing
 
 Example (image Story):

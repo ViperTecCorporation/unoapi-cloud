@@ -2037,6 +2037,26 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent message_edit keeps text and mentions', async () => {
+    const input = {
+      type: 'message_edit',
+      recipient_type: 'group',
+      to: '120363012345678@g.us',
+      context: {
+        message_id: 'uno-original-id'
+      },
+      mentions: ['5566996269251'],
+      text: {
+        body: '@5566996269251 texto editado',
+      },
+    }
+    const output = {
+      text: '@5566996269251 texto editado',
+      mentions: ['5566996269251@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
   test('toBaileysMessageContent text auto mentionAll from @todos/@all on group', async () => {
     const input = {
       to: '120363012345678@g.us',

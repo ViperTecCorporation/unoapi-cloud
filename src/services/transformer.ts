@@ -573,6 +573,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     case 'baileys':
       return payload.message || {}
 
+    case 'message_edit':
     case 'text':
       response.text = customMessageCharactersFunction(
         hasMentionAllToken
