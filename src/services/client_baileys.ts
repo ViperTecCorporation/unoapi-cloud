@@ -54,6 +54,20 @@ import { binaryNodeToXml, decompressWapFrameIfRequired, extractFirstChildDecompr
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
 
+const sanitizeMessageEditKey = (key: any) => {
+  const sanitized: any = {
+    id: key.id,
+    remoteJid: key.remoteJid,
+    fromMe: !!key.fromMe,
+  }
+
+  if (!sanitized.fromMe && typeof key.participant === 'string' && key.participant.trim()) {
+    sanitized.participant = key.participant
+  }
+
+  return sanitized
+}
+
 interface Delay {
   (phone: string, to: string): Promise<void>
 }
@@ -2046,6 +2060,7 @@ export class ClientBaileys implements Client {
             if (editKey?.fromMe) {
               delete (editKey as any).participant
             }
+            editKey = sanitizeMessageEditKey(editKey)
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
             await this.remapMentionsToLidForGroup(targetTo, content as any, payload)
             ;(content as any).edit = editKey

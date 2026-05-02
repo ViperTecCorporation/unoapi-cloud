@@ -233,6 +233,8 @@ describe('service client baileys', () => {
       remoteJid: '120363040468224422@g.us',
       fromMe: true,
       participant: '556600000000@s.whatsapp.net',
+      participantPn: '556600000000@s.whatsapp.net',
+      participantLid: '999999999999@lid',
     }
     dataStore.loadProviderId.mockImplementation(async (id: string) => (
       id === unoMessageId ? providerMessageId : undefined
