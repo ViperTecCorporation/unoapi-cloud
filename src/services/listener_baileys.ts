@@ -5,14 +5,14 @@ import { Broadcast } from './broadcast'
 import { getConfig } from './config'
 import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, jidToRawPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage } from './transformer'
 import { WAMessage, delay, jidNormalizedUser, isPnUser, proto } from '@whiskeysockets/baileys'
-import { aesDecryptGCM, hkdf } from '@whiskeysockets/baileys/lib/Utils/crypto.js'
 import { Template } from './template'
 import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS } from '../defaults'
 import { v1 as uuid } from 'uuid'
-import { createHash } from 'crypto'
+import { createDecipheriv, createHash, hkdfSync } from 'crypto'
 import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 
 const  delays: Map<String, number> = new Map()
+const GCM_TAG_LENGTH = 128 >> 3
 const POLL_CREATION_TYPES = new Set([
   'pollCreationMessage',
   'pollCreationMessageV2',
@@ -48,6 +48,22 @@ const delayFunc = UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS && UNOAPI_DELAY_BETWEEN_ME
     }
   }
 } :  async (_phone, _to) => {}
+
+const hkdf = (buffer: Buffer, expandedLength: number, info: { salt?: Buffer | string, info?: Buffer | string } = {}) => {
+  const ikm = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
+  const salt = info?.salt ? Buffer.from(info.salt) : Buffer.alloc(0)
+  const inf = info?.info ? Buffer.from(info.info) : Buffer.alloc(0)
+  return Buffer.from(hkdfSync('sha256', ikm, salt, inf, expandedLength))
+}
+
+const aesDecryptGCM = (ciphertext: Buffer, key: Buffer, iv: Buffer, additionalData: Buffer) => {
+  const decipher = createDecipheriv('aes-256-gcm', key, iv)
+  const enc = ciphertext.slice(0, ciphertext.length - GCM_TAG_LENGTH)
+  const tag = ciphertext.slice(ciphertext.length - GCM_TAG_LENGTH)
+  decipher.setAAD(additionalData)
+  decipher.setAuthTag(tag)
+  return Buffer.concat([decipher.update(enc), decipher.final()])
+}
 
 export class ListenerBaileys implements Listener {
   private outgoing: Outgoing
