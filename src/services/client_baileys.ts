@@ -2043,6 +2043,9 @@ export class ClientBaileys implements Client {
                 }
               }
             } catch {}
+            if (editKey?.fromMe) {
+              delete (editKey as any).participant
+            }
             content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
             await this.remapMentionsToLidForGroup(targetTo, content as any, payload)
             ;(content as any).edit = editKey

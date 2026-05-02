@@ -9,6 +9,7 @@ import { OnNewLogin } from '../../src/services/socket'
 import { addToBlacklist } from '../../src/services/blacklist'
 import { Reload } from '../../src/services/reload'
 import { Logout } from '../../src/services/logout'
+import { Contact } from '../../src/services/contact'
 
 jest.setTimeout(30000)
 
@@ -35,7 +36,7 @@ const addToBlacklistMock = mock<addToBlacklist>()
 const sessionStore = mock<SessionStore>()
 const getConfigTest: getConfig = async (_phone: string) => defaultConfig
 
-const loadApp = async (metaGroupsEnabled: boolean): Promise<LoadedApp> => {
+const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact): Promise<LoadedApp> => {
   jest.resetModules()
 
   jest.doMock('../../src/defaults', () => {
@@ -78,7 +79,7 @@ const loadApp = async (metaGroupsEnabled: boolean): Promise<LoadedApp> => {
   const onNewLogin = mock<OnNewLogin>()
   const reload = mock<Reload>()
   const logout = mock<Logout>()
-  const app = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklistMock, reload, logout)
+  const app = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklistMock, reload, logout, undefined, undefined, contact)
 
   return {
     app,
@@ -499,6 +500,37 @@ describe('groups routes', () => {
     }))
   })
 
+  test('create group retries with verified phone jid when raw phone has WhatsApp digit drift', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const contact = mock<Contact>()
+    contact.verify.mockResolvedValue({
+      contacts: [{ input: '5566999554300', wa_id: '556699554300@s.whatsapp.net', status: 'valid' } as any],
+    })
+    const { app, incoming, outgoing } = await loadApp(true, contact)
+    const error = new Error('bad-request')
+    incoming.groupCreate = jest.fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ id: groupJid, subject: 'Equipe Comercial' })
+    incoming.groupInviteCode = jest.fn().mockResolvedValue('')
+    outgoing.send.mockResolvedValue(undefined)
+
+    const res = await request(app.server)
+      .post(`/v15.0/${phone}/groups`)
+      .send({
+        subject: 'Equipe Comercial',
+        participants: [{ wa_id: '5566999554300', user_id: '11343495192601@lid' }],
+      })
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupCreate).toHaveBeenNthCalledWith(1, phone, 'Equipe Comercial', [
+      '11343495192601@lid',
+    ])
+    expect(incoming.groupCreate).toHaveBeenNthCalledWith(2, phone, 'Equipe Comercial', [
+      '556699554300@s.whatsapp.net',
+    ])
+  })
+
   test('update group applies settings and emits settings webhook', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
@@ -638,6 +670,31 @@ describe('groups routes', () => {
     expect(incoming.groupParticipantsUpdate).toHaveBeenNthCalledWith(1, phone, groupJid, ['123456789012345@lid'], 'add')
     expect(incoming.groupParticipantsUpdate).toHaveBeenNthCalledWith(2, phone, groupJid, ['556699999999@s.whatsapp.net'], 'add')
     expect(res.body).toEqual({ group_id: groupJid, added: ['556699999999'], failed: [] })
+  })
+
+  test('add participants retries with verified phone jid when raw phone has WhatsApp digit drift', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const contact = mock<Contact>()
+    contact.verify.mockResolvedValue({
+      contacts: [{ input: '5566999554300', wa_id: '556699554300@s.whatsapp.net', status: 'valid' } as any],
+    })
+    const { app, incoming, outgoing, redis } = await loadApp(true, contact)
+    const error = new Error('bad-request')
+    incoming.groupParticipantsUpdate = jest.fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce([{ status: '200', jid: '556699554300@s.whatsapp.net' }])
+    redis.getLidForPn.mockResolvedValue('11343495192601@lid')
+    outgoing.send.mockResolvedValue(undefined)
+
+    const res = await request(app.server)
+      .post(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ participants: [{ wa_id: '5566999554300', user_id: '11343495192601@lid' }] })
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupParticipantsUpdate).toHaveBeenNthCalledWith(1, phone, groupJid, ['11343495192601@lid'], 'add')
+    expect(incoming.groupParticipantsUpdate).toHaveBeenNthCalledWith(2, phone, groupJid, ['556699554300@s.whatsapp.net'], 'add')
+    expect(res.body).toEqual({ group_id: groupJid, added: ['556699554300'], failed: [] })
   })
 
   test('invite link get and reset use Baileys invite APIs', async () => {

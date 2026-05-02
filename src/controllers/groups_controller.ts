@@ -4,6 +4,7 @@ import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, get
 import { normalizeGroupId, normalizeParticipantId } from '../services/transformer'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
+import { Contact } from '../services/contact'
 import logger from '../services/logger'
 
 const normalizeGroupJid = (input?: string): string => {
@@ -75,6 +76,19 @@ const participantInputCandidates = (participant?: any): string[] => {
   ].map((value) => `${value || ''}`.trim()).filter(Boolean)
 }
 
+const participantPhoneCandidates = (participant?: any): string[] => {
+  if (typeof participant === 'string' || typeof participant === 'number') return [`${participant}`.trim()].filter(Boolean)
+  if (!participant || typeof participant !== 'object') return []
+  return [
+    participant.wa_id,
+    participant.phone_number,
+    participant.phoneNumber,
+    participant.pn,
+    participant.jid,
+    participant.id,
+  ].map((value) => `${value || ''}`.trim()).filter((value) => value && !value.endsWith('@lid'))
+}
+
 const normalizeParticipantJidForBaileys = (rawJid?: any): string => {
   const value = participantInputValue(rawJid)
   if (!value) return ''
@@ -90,9 +104,33 @@ const normalizeParticipantCandidatesForBaileys = (participant?: any): string[] =
   return Array.from(new Set(candidates))
 }
 
-const normalizeParticipantsCandidatesForBaileys = (participants?: any): string[][] => {
-  return (Array.isArray(participants) ? participants : [])
-    .map((participant) => normalizeParticipantCandidatesForBaileys(participant))
+const verifiedParticipantPhoneCandidate = async (contact: Contact, phone: string, participant?: any): Promise<string> => {
+  const inputs = participantPhoneCandidates(participant)
+    .map((value) => value.replace(/\D/g, ''))
+    .filter((value) => value.length >= 8)
+  if (!inputs.length) return ''
+
+  try {
+    const response = await contact.verify(phone, inputs, undefined)
+    const valid = response.contacts.find((item: any) => `${item?.status || ''}` === 'valid' && item?.wa_id)
+    return valid?.wa_id ? normalizeParticipantJidForBaileys(valid.wa_id) : ''
+  } catch (error) {
+    logger.warn(error as any, 'GROUP_PARTICIPANT_VERIFY failed phone=%s inputs=%s', phone, JSON.stringify(inputs))
+    return ''
+  }
+}
+
+const normalizeParticipantCandidatesForBaileysWithVerification = async (contact: Contact, phone: string, participant?: any): Promise<string[]> => {
+  const candidates = normalizeParticipantCandidatesForBaileys(participant)
+  const verifiedPhone = await verifiedParticipantPhoneCandidate(contact, phone, participant)
+  if (verifiedPhone) candidates.splice(1, 0, verifiedPhone)
+  return Array.from(new Set(candidates))
+}
+
+const normalizeParticipantsCandidatesForBaileys = async (contact: Contact, phone: string, participants?: any): Promise<string[][]> => {
+  const normalized = await Promise.all((Array.isArray(participants) ? participants : [])
+    .map((participant) => normalizeParticipantCandidatesForBaileysWithVerification(contact, phone, participant)))
+  return normalized
     .filter((candidates) => candidates.length > 0)
 }
 
@@ -303,10 +341,12 @@ const resolveNameForJid = async (phone: string, jid: string): Promise<string> =>
 export class GroupsController {
   private incoming: Incoming
   private outgoing: Outgoing
+  private contact: Contact
 
-  constructor(incoming: Incoming, outgoing: Outgoing) {
+  constructor(incoming: Incoming, outgoing: Outgoing, contact: Contact) {
     this.incoming = incoming
     this.outgoing = outgoing
+    this.contact = contact
   }
 
   private ensureMetaEnabled(res: Response): boolean {
@@ -450,7 +490,7 @@ export class GroupsController {
       const subject = `${req.body?.subject || ''}`.trim()
       const description = `${req.body?.description || ''}`.trim()
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
-      const participantCandidates = normalizeParticipantsCandidatesForBaileys(participantInputs)
+      const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!subject) return res.status(400).json({ error: 'missing subject' })
@@ -656,7 +696,7 @@ export class GroupsController {
       const phone = `${req.params.phone || ''}`.trim()
       const groupJid = normalizeGroupJid(req.params.groupId)
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
-      const participantCandidates = normalizeParticipantsCandidatesForBaileys(participantInputs)
+      const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!groupJid) return res.status(400).json({ error: 'missing groupId param' })
@@ -764,7 +804,7 @@ export class GroupsController {
       const phone = `${req.params.phone || ''}`.trim()
       const groupJid = normalizeGroupJid(req.params.groupId)
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
-      const participantCandidates = normalizeParticipantsCandidatesForBaileys(participantInputs)
+      const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!groupJid) return res.status(400).json({ error: 'missing groupId param' })

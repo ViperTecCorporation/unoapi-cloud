@@ -261,7 +261,7 @@ describe('service client baileys', () => {
       originalKey.remoteJid,
       expect.objectContaining({
         text: 'texto editado',
-        edit: originalKey,
+        edit: { id: providerMessageId, remoteJid: originalKey.remoteJid, fromMe: true },
       }),
       expect.objectContaining({
         forceRemoteJid: originalKey.remoteJid,
@@ -271,6 +271,48 @@ describe('service client baileys', () => {
     expect(dataStore.loadProviderId).toHaveBeenCalledWith(unoMessageId)
     expect(dataStore.loadKey).toHaveBeenCalledWith(providerMessageId)
     expect(response.ok.messages[0].id).toBe(`uno-${editMessageId}`)
+  })
+
+  test('call send with message_edit removes participant from own individual edit key', async () => {
+    const unoMessageId = 'uno-original-individual-message'
+    const providerMessageId = 'provider-original-individual-message'
+    const editMessageId = 'provider-edit-individual-message'
+    const originalKey = {
+      id: providerMessageId,
+      remoteJid: '556696890270@s.whatsapp.net',
+      fromMe: true,
+      participant: '556600000000@s.whatsapp.net',
+    }
+    dataStore.loadProviderId.mockImplementation(async (id: string) => (
+      id === unoMessageId ? providerMessageId : undefined
+    ))
+    dataStore.loadKey.mockImplementation(async (id: string) => (
+      id === providerMessageId ? originalKey : undefined
+    ))
+    dataStore.loadMessage.mockResolvedValue({ key: originalKey })
+    send.mockResolvedValue({
+      key: { id: editMessageId, remoteJid: originalKey.remoteJid },
+      message: { protocolMessage: { type: 'MESSAGE_EDIT' } },
+    })
+
+    await client.connect(0)
+    await client.send({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '5566996890270',
+      type: 'message_edit',
+      context: { message_id: unoMessageId },
+      text: { body: 'texto editado' },
+    }, {})
+
+    expect(send).toHaveBeenCalledWith(
+      originalKey.remoteJid,
+      expect.objectContaining({
+        text: 'texto editado',
+        edit: { id: providerMessageId, remoteJid: originalKey.remoteJid, fromMe: true },
+      }),
+      expect.any(Object),
+    )
   })
 
   test('refreshes group metadata cache after group participants update event', async () => {
