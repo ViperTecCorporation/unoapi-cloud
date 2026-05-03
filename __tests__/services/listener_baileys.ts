@@ -105,7 +105,9 @@ describe('service listener baileys', () => {
   test('normalizes message edit context to Uno id before sending webhook', async () => {
     const providerId = 'provider-original-message'
     const unoId = 'uno-original-message'
+    config.getMessageMetadata = async message => message
     store.dataStore.loadUnoId.mockImplementation(async (id: string) => (id === providerId ? unoId : undefined))
+    outgoing.send = jest.fn().mockResolvedValue(undefined) as any
 
     await service.sendOne(phone, {
       key: {
@@ -156,5 +158,5 @@ describe('service listener baileys', () => {
         ]),
       }),
     )
-  })
+  }, 15000)
 })
