@@ -7,6 +7,14 @@ import { ListenerBaileys } from '../../src/services/listener_baileys'
 import { Outgoing } from '../../src/services/outgoing'
 import { Broadcast } from '../../src/services/broadcast'
 
+jest.mock('../../src/services/redis', () => ({
+  getPollState: jest.fn().mockResolvedValue(undefined),
+  setPollState: jest.fn().mockResolvedValue(undefined),
+  getStatusMediaState: jest.fn().mockResolvedValue(undefined),
+  setStatusMediaState: jest.fn().mockResolvedValue(undefined),
+  getUnoIdsForProviderAnySession: jest.fn().mockResolvedValue([]),
+}))
+
 let store: Store
 let getConfig: getConfig
 let config: Config
