@@ -9,6 +9,18 @@ import {
   readMessages,
   rejectCall,
   sendCallNode,
+  groupCreate,
+  groupUpdateSubject,
+  groupUpdateDescription,
+  groupUpdatePicture,
+  groupParticipantsUpdate,
+  groupInviteCode,
+  groupRequestParticipantsList,
+  groupRequestParticipantsUpdate,
+  groupLeave,
+  groupSettingUpdate,
+  groupJoinApprovalMode,
+  groupMetadata,
   OnQrCode,
   OnNotification,
   OnNewLogin,
@@ -21,13 +33,13 @@ import {
 } from './socket'
 import { Client, getClient, clients, Contact } from './client'
 import { Config, configs, defaultConfig, getConfig, getMessageMetadataDefault } from './config'
-import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid } from './transformer'
+import { toBaileysMessageContent, phoneNumberToJid, jidToPhoneNumber, getMessageType, TYPE_MESSAGES_TO_READ, TYPE_MESSAGES_MEDIA, ensurePn, jidToRawPhoneNumber, normalizeTransportJid, normalizeMessageContent, normalizeGroupId } from './transformer'
 import { v1 as uuid } from 'uuid'
 import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC } from '../defaults'
+import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, HISTORY_MAX_AGE_DAYS, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC, GROUP_METADATA_EVENT_REFRESH_ENABLED, GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS, GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS } from '../defaults'
 import { setContactSyncPending, getPnForLidFromAuthCache } from './redis'
 import { convertToOggPtt } from '../utils/audio_convert'
 import { convertToWebpSticker } from '../utils/sticker_convert'
@@ -41,6 +53,20 @@ import { binaryNodeToXml, decompressWapFrameIfRequired, extractFirstChildDecompr
 
 const attempts = 3
 const pendingClients: Map<string, Promise<Client>> = new Map()
+
+const sanitizeMessageEditKey = (key: any) => {
+  const sanitized: any = {
+    id: key.id,
+    remoteJid: key.remoteJid,
+    fromMe: !!key.fromMe,
+  }
+
+  if (!sanitized.fromMe && typeof key.participant === 'string' && key.participant.trim()) {
+    sanitized.participant = key.participant
+  }
+
+  return sanitized
+}
 
 interface Delay {
   (phone: string, to: string): Promise<void>
@@ -126,6 +152,11 @@ const fetchGroupMetadataDefault: fetchGroupMetadata = async (_jid: string) => {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+const groupMetadataDefault: groupMetadata = async (_jid: string) => {
+  throw sendError
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const existsDefault: exists = async (_jid: string) => {
   throw sendError
 }
@@ -134,20 +165,26 @@ const existsDefault: exists = async (_jid: string) => {
 const logoutDefault: logout = async () => {}
 
 const closeDefault = async () => logger.info(`Close connection`)
+const groupUnavailable = async () => { throw new Error('group management unavailable') }
 
-const buildSendOkResponse = (to: string, keyId: string) => ({
-  messaging_product: 'whatsapp',
-  contacts: [
-    {
-      wa_id: jidToPhoneNumber(to, ''),
-    },
-  ],
-  messages: [
-    {
-      id: keyId,
-    },
-  ],
-})
+const buildSendOkResponse = (to: string, keyId: string) => {
+  const target = `${to || ''}`.trim()
+  const waId = target.endsWith('@g.us') ? target : jidToPhoneNumber(target, '')
+  return {
+    messaging_product: 'whatsapp',
+    contacts: [
+      {
+        input: target,
+        wa_id: waId,
+      },
+    ],
+    messages: [
+      {
+        id: keyId,
+      },
+    ],
+  }
+}
 
 export class ClientBaileys implements Client {
   private voipPipelines = new Map<string, Promise<void>>()
@@ -617,7 +654,8 @@ export class ClientBaileys implements Client {
       }
       if (!signalingPayloadBase64) {
         // Fallback for signaling nodes that are not wrapped in an `enc` payload.
-        signalingPayloadBase64 = rawCallRootWapBytes.toString('base64')
+        const rootFallbackBytes = rawCallRootWapBytes || encodeBinaryNode(node)
+        signalingPayloadBase64 = rootFallbackBytes.toString('base64')
         payloadStrategy = 'root_fallback_wap'
       }
       try {
@@ -891,12 +929,28 @@ export class ClientBaileys implements Client {
   private exists = existsDefault
   private socketLogout: logout = logoutDefault
   private fetchGroupMetadata = fetchGroupMetadataDefault
+  private groupMetadataFn: groupMetadata = groupMetadataDefault
   private readMessages = readMessagesDefault
   private rejectCall: rejectCall | undefined = rejectCallDefault
   private sendCallNode: sendCallNode = sendCallNodeDefault
+  private groupCreateFn: groupCreate = groupUnavailable
+  private groupUpdateSubjectFn: groupUpdateSubject = groupUnavailable
+  private groupUpdateDescriptionFn: groupUpdateDescription = groupUnavailable
+  private groupUpdatePictureFn: groupUpdatePicture = groupUnavailable
+  private groupParticipantsUpdateFn: groupParticipantsUpdate = groupUnavailable
+  private groupInviteCodeFn: groupInviteCode = groupUnavailable
+  private groupRevokeInviteFn: groupInviteCode = groupUnavailable
+  private groupRequestParticipantsListFn: groupRequestParticipantsList = groupUnavailable
+  private groupRequestParticipantsUpdateFn: groupRequestParticipantsUpdate = groupUnavailable
+  private groupLeaveFn: groupLeave = groupUnavailable
+  private groupSettingUpdateFn: groupSettingUpdate = groupUnavailable
+  private groupJoinApprovalModeFn: groupJoinApprovalMode = groupUnavailable
   private listener: Listener
   private store: Store | undefined
   private calls = new Map<string, boolean>()
+  private groupMetadataRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private groupMetadataRefreshInFlight = new Set<string>()
+  private groupMetadataRefreshLastAt = new Map<string, number>()
   private getConfig: getConfig
   private onNewLogin
   private clientRegistry: Map<string, Client>
@@ -1021,6 +1075,61 @@ export class ClientBaileys implements Client {
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   private continueAfterSecondMessage: Delay = async (_phone, _to) => {}
 
+  private clearGroupMetadataRefreshTimers() {
+    for (const timer of this.groupMetadataRefreshTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.groupMetadataRefreshTimers.clear()
+    this.groupMetadataRefreshInFlight.clear()
+  }
+
+  private scheduleGroupMetadataRefresh(groupJid: string, reason: string) {
+    if (!GROUP_METADATA_EVENT_REFRESH_ENABLED) return
+    const jid = `${groupJid || ''}`.trim()
+    if (!jid || !jid.endsWith('@g.us')) return
+    if (!this.store?.dataStore?.setGroupMetada) return
+
+    const now = Date.now()
+    const debounceMs = Math.max(0, GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS || 0)
+    const minIntervalMs = Math.max(0, GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS || 0)
+    const lastRefreshAt = this.groupMetadataRefreshLastAt.get(jid) || 0
+    const remainingIntervalMs = lastRefreshAt ? Math.max(0, minIntervalMs - (now - lastRefreshAt)) : 0
+    const delayMs = Math.max(debounceMs, remainingIntervalMs)
+
+    const currentTimer = this.groupMetadataRefreshTimers.get(jid)
+    if (currentTimer) clearTimeout(currentTimer)
+
+    const timer = setTimeout(() => {
+      this.groupMetadataRefreshTimers.delete(jid)
+      void this.refreshGroupMetadataCache(jid, reason)
+    }, delayMs)
+    this.groupMetadataRefreshTimers.set(jid, timer)
+  }
+
+  private async refreshGroupMetadataCache(groupJid: string, reason: string) {
+    if (this.groupMetadataRefreshInFlight.has(groupJid)) return
+    this.groupMetadataRefreshInFlight.add(groupJid)
+    try {
+      const metadata = await this.groupMetadataFn(groupJid)
+      if (metadata) {
+        await this.store?.dataStore?.setGroupMetada(groupJid, metadata)
+        const participantsCount = Array.isArray((metadata as any)?.participants) ? (metadata as any).participants.length : undefined
+        logger.info(
+          'GROUP_METADATA cache refreshed: phone=%s group=%s reason=%s participants=%s',
+          this.phone,
+          groupJid,
+          reason,
+          participantsCount ?? '<unknown>',
+        )
+      }
+    } catch (error) {
+      logger.warn(error as any, 'Failed to refresh group metadata cache for %s (%s)', groupJid, reason)
+    } finally {
+      this.groupMetadataRefreshLastAt.set(groupJid, Date.now())
+      this.groupMetadataRefreshInFlight.delete(groupJid)
+    }
+  }
+
   constructor(phone: string, listener: Listener, getConfig: getConfig, onNewLogin: OnNewLogin, clientRegistry: Map<string, Client> = clients) {
     this.phone = phone
     this.listener = listener
@@ -1066,14 +1175,51 @@ export class ClientBaileys implements Client {
       logger.error('Socket connect return empty %s', this.phone)
       return
     }
-    const { send, read, event, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout } = result
+    const {
+      send,
+      read,
+      event,
+      rejectCall,
+      sendCallNode,
+      fetchImageUrl,
+      fetchGroupMetadata,
+      groupMetadata,
+      exists,
+      close,
+      logout,
+      groupCreate,
+      groupUpdateSubject,
+      groupUpdateDescription,
+      groupUpdatePicture,
+      groupParticipantsUpdate,
+      groupInviteCode,
+      groupRevokeInvite,
+      groupRequestParticipantsList,
+      groupRequestParticipantsUpdate,
+      groupLeave,
+      groupSettingUpdate,
+      groupJoinApprovalMode,
+    } = result
     this.event = event
     this.sendMessage = send
     this.readMessages = read
     this.rejectCall = rejectCall
     this.sendCallNode = sendCallNode
+    this.groupCreateFn = groupCreate || groupUnavailable
+    this.groupUpdateSubjectFn = groupUpdateSubject || groupUnavailable
+    this.groupUpdateDescriptionFn = groupUpdateDescription || groupUnavailable
+    this.groupUpdatePictureFn = groupUpdatePicture || groupUnavailable
+    this.groupParticipantsUpdateFn = groupParticipantsUpdate || groupUnavailable
+    this.groupInviteCodeFn = groupInviteCode || groupUnavailable
+    this.groupRevokeInviteFn = groupRevokeInvite || groupUnavailable
+    this.groupRequestParticipantsListFn = groupRequestParticipantsList || groupUnavailable
+    this.groupRequestParticipantsUpdateFn = groupRequestParticipantsUpdate || groupUnavailable
+    this.groupLeaveFn = groupLeave || groupUnavailable
+    this.groupSettingUpdateFn = groupSettingUpdate || groupUnavailable
+    this.groupJoinApprovalModeFn = groupJoinApprovalMode || groupUnavailable
     this.fetchImageUrl = this.config.sendProfilePicture ? fetchImageUrl : fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadata
+    this.groupMetadataFn = groupMetadata || groupMetadataDefault
     this.close = close
     this.exists = exists
     this.socketLogout = logout
@@ -1087,6 +1233,7 @@ export class ClientBaileys implements Client {
 
   async disconnect() {
     logger.debug('Disconnect client store for %s', this?.phone)
+    this.clearGroupMetadataRefreshTimers()
     this.store = undefined
 
     await this.close()
@@ -1098,6 +1245,7 @@ export class ClientBaileys implements Client {
     this.sendCallNode = sendCallNodeDefault
     this.fetchImageUrl = fetchImageUrlDefault
     this.fetchGroupMetadata = fetchGroupMetadataDefault
+    this.groupMetadataFn = groupMetadataDefault
     this.exists = existsDefault
     this.close = closeDefault
     this.config = defaultConfig
@@ -1106,6 +1254,20 @@ export class ClientBaileys implements Client {
   }
 
   async subscribe() {
+    this.event('groups.update', async (updates: any[] | any) => {
+      const list = Array.isArray(updates) ? updates : [updates]
+      for (const update of list) {
+        const groupJid = `${update?.id || ''}`.trim()
+        if (groupJid) this.scheduleGroupMetadataRefresh(groupJid, 'groups.update')
+      }
+    })
+
+    this.event('group-participants.update', async (update: any) => {
+      const groupJid = `${update?.id || ''}`.trim()
+      const action = `${update?.action || ''}`.trim()
+      if (groupJid) this.scheduleGroupMetadataRefresh(groupJid, action ? `group-participants.update:${action}` : 'group-participants.update')
+    })
+
     this.event('messages.upsert', async (payload: { messages: any[]; type }) => {
       try {
         const arr: any[] = (payload?.messages || []) as any[]
@@ -1469,13 +1631,103 @@ export class ClientBaileys implements Client {
     })
     if (!this.config.ignoreHistoryMessages) {
       logger.info('Config import history messages %', this.phone)
-      this.event('messaging-history.set', async ({ messages, isLatest }: { messages: proto.IWebMessageInfo[]; isLatest?: boolean }) => {
+      this.event('messaging-history.set', async ({
+        messages,
+        isLatest,
+        syncType,
+        chunkOrder,
+        progress,
+      }: {
+        messages: proto.IWebMessageInfo[]
+        isLatest?: boolean
+        syncType?: proto.HistorySync.HistorySyncType | null
+        chunkOrder?: number | null
+        progress?: number | null
+      }) => {
+        const sampleMediaMessage = (list: proto.IWebMessageInfo[] = []) => {
+          for (const item of list) {
+            try {
+              const normalized = normalizeMessageContent(item?.message)
+              const mt = normalized && getMessageType({ message: normalized as any })
+              const media = mt && TYPE_MESSAGES_MEDIA.includes(mt.replace('Message', ''))
+                ? (normalized as any)?.[mt]
+                : undefined
+              if (!media) continue
+              return {
+                id: `${item?.key?.id || ''}`.trim(),
+                remoteJid: `${item?.key?.remoteJid || ''}`.trim(),
+                type: mt,
+                timestamp: Number(item?.messageTimestamp || 0) || undefined,
+                hasMediaKey: !!media.mediaKey,
+                mediaKeyLength: media.mediaKey
+                  ? (() => {
+                      try {
+                        if (media.mediaKey instanceof Uint8Array) return media.mediaKey.length
+                        if (typeof media.mediaKey === 'string') return media.mediaKey.length
+                        if (Array.isArray(media.mediaKey?.data)) return media.mediaKey.data.length
+                        return Object.keys(media.mediaKey || {}).length || 0
+                      } catch {
+                        return 0
+                      }
+                    })()
+                  : 0,
+                hasDirectPath: !!media.directPath,
+                hasUrl: !!media.url,
+                mimetype: `${media.mimetype || ''}`.trim() || undefined,
+                fileName: `${media.fileName || ''}`.trim() || undefined,
+              }
+            } catch {}
+          }
+          return undefined
+        }
+        const summarizeMedia = (list: proto.IWebMessageInfo[] = []) => {
+          let withMedia = 0
+          let withMediaKey = 0
+          let withDirectPath = 0
+          let withUrl = 0
+          for (const item of list) {
+            try {
+              const normalized = normalizeMessageContent(item?.message)
+              const mt = normalized && getMessageType({ message: normalized as any })
+              const media = mt && TYPE_MESSAGES_MEDIA.includes(mt.replace('Message', ''))
+                ? (normalized as any)?.[mt]
+                : undefined
+              if (!media) continue
+              withMedia++
+              if (media.mediaKey) withMediaKey++
+              if (media.directPath) withDirectPath++
+              if (media.url) withUrl++
+            } catch {}
+          }
+          return { withMedia, withMediaKey, withDirectPath, withUrl }
+        }
+        const syncTypeName = typeof syncType === 'number'
+          ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
+          : `${syncType || 'unknown'}`
         const cutoffSec = Math.floor((Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) / 1000)
         const filtered = (messages || []).filter((m) => {
           const ts = Number(m?.messageTimestamp || 0)
           return Number.isFinite(ts) && ts >= cutoffSec
         })
-        logger.info('Importing history messages (<= %sd): %d -> %d, isLatest %s %s', HISTORY_MAX_AGE_DAYS, messages?.length || 0, filtered.length, isLatest, this.phone)
+        const rawSummary = summarizeMedia(messages || [])
+        const filteredSummary = summarizeMedia(filtered)
+        const rawSample = sampleMediaMessage(messages || [])
+        const filteredSample = sampleMediaMessage(filtered)
+        logger.info(
+          'Importing history messages syncType=%s chunkOrder=%s progress=%s (<= %sd): %d -> %d, isLatest %s media raw=%j filtered=%j sampleRaw=%j sampleFiltered=%j %s',
+          syncTypeName,
+          `${chunkOrder ?? '<none>'}`,
+          `${progress ?? '<none>'}`,
+          HISTORY_MAX_AGE_DAYS,
+          messages?.length || 0,
+          filtered.length,
+          isLatest,
+          rawSummary,
+          filteredSummary,
+          rawSample,
+          filteredSample,
+          this.phone,
+        )
         if (filtered.length) {
           this.listener.process(this.phone, filtered, 'history')
         }
@@ -1495,8 +1747,9 @@ export class ClientBaileys implements Client {
         try {
           await this.notifyVoipServiceCallEvent(event)
         } catch {}
+        const normalizedStatus = `${status || ''}`.toLowerCase()
         const terminalCallStatuses = new Set(['terminate', 'terminated', 'timeout', 'timed_out', 'reject', 'rejected', 'end', 'ended', 'hangup', 'missed'])
-        if (terminalCallStatuses.has(`${status || ''}`)) {
+        if (terminalCallStatuses.has(normalizedStatus)) {
           try {
             if (this.calls.delete(from)) {
               logger.info('CALL gate cleared immediately: from=%s id=%s status=%s', from, id, status)
@@ -1511,10 +1764,11 @@ export class ClientBaileys implements Client {
             this.calls.has(from),
             !!this.rejectCall,
             !!this.config.rejectCalls,
-            status,
+            normalizedStatus,
           )
         } catch {}
-        if (status == 'ringing' && !this.calls.has(from)) {
+        const incomingCallStatuses = new Set(['ringing', 'offer'])
+        if (incomingCallStatuses.has(normalizedStatus) && !this.calls.has(from)) {
           this.calls.set(from, true)
           if (this.config.rejectCalls && this.rejectCall) {
             try {
@@ -1691,9 +1945,13 @@ export class ClientBaileys implements Client {
           throw new Error(`Unknow message status ${status}`)
         }
       } else if (type) {
-        if (['text', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction'].includes(type)) {
+        if (['text', 'message_edit', 'image', 'audio', 'sticker', 'document', 'video', 'template', 'interactive', 'contacts', 'reaction', 'baileys'].includes(type)) {
           let content
           let targetTo = to
+          if (payload?.recipient_type === 'group' || `${targetTo || ''}`.endsWith('@g.us')) {
+            targetTo = normalizeGroupId(targetTo)
+            to = targetTo
+          }
           const extraSendOptions: any = {}
           if ('reaction' === type) {
             const reaction = payload?.reaction || {}
@@ -1755,6 +2013,60 @@ export class ClientBaileys implements Client {
             targetTo = reactionKey.remoteJid
             to = targetTo
             extraSendOptions.forceRemoteJid = reactionKey.remoteJid
+            extraSendOptions.skipBrSendOrder = true
+          } else if ('message_edit' === type) {
+            const messageId =
+              payload?.context?.message_id ||
+              payload?.context?.id ||
+              payload?.edit?.message_id ||
+              payload?.edit?.messageId ||
+              payload?.message_id
+            if (!messageId) {
+              throw new SendError(400, 'invalid_message_edit_payload: missing context.message_id')
+            }
+            const dataStore = this.store?.dataStore
+            let providerId: string | undefined
+            let editKey = undefined as any
+            try {
+              providerId = await dataStore?.loadProviderId?.(messageId)
+            } catch {}
+            if (!providerId) {
+              try {
+                const unoFromProvider = await dataStore?.loadUnoId?.(messageId)
+                if (unoFromProvider) providerId = messageId
+              } catch {}
+            }
+            if (providerId) {
+              editKey = await dataStore?.loadKey(providerId)
+            }
+            if (!editKey) {
+              editKey = await dataStore?.loadKey(messageId)
+            }
+            if (!editKey || !editKey.id || !editKey.remoteJid) {
+              throw new SendError(404, `message_edit_original_not_found: ${messageId}`)
+            }
+            if (providerId && editKey.id !== providerId) {
+              editKey = { ...editKey, id: providerId }
+            }
+            try {
+              const original = await dataStore?.loadMessage?.(editKey.remoteJid, editKey.id)
+              if (original?.key) {
+                editKey = { ...original.key, id: editKey.id }
+                if (typeof editKey.participant === 'string' && editKey.participant.trim() === '') {
+                  delete (editKey as any).participant
+                }
+              }
+            } catch {}
+            if (editKey?.fromMe) {
+              delete (editKey as any).participant
+            }
+            editKey = sanitizeMessageEditKey(editKey)
+            content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction)
+            await this.remapMentionsToLidForGroup(targetTo, content as any, payload)
+            ;(content as any).edit = editKey
+            targetTo = editKey.remoteJid
+            to = targetTo
+            extraSendOptions.forceRemoteJid = editKey.remoteJid
             extraSendOptions.skipBrSendOrder = true
           } else if ('template' === type) {
             const template = new Template(this.getConfig)
@@ -1870,24 +2182,80 @@ export class ClientBaileys implements Client {
           }
           let quoted: WAMessage | undefined = undefined
           let disappearingMessagesInChat: boolean | number = false
-          const messageId = payload?.context?.message_id || payload?.context?.id
+          const messageId = type === 'message_edit' ? undefined : payload?.context?.message_id || payload?.context?.id
           if (messageId) {
-            const key = await this.store?.dataStore?.loadKey(messageId)
-            try { logger.debug('Quoted message key %s!', key?.id) } catch {}
+            const dataStore = this.store?.dataStore
+            let providerId: string | undefined
+            let key: any = undefined
+            try {
+              providerId = await dataStore?.loadProviderId?.(messageId)
+            } catch {}
+            if (!providerId) {
+              try {
+                const unoFromProvider = await dataStore?.loadUnoId?.(messageId)
+                if (unoFromProvider) providerId = messageId
+              } catch {}
+            }
+            try {
+              logger.info(
+                {
+                  phone: this.phone,
+                  targetTo,
+                  messageId,
+                  providerId,
+                },
+                'reply quote lookup start'
+              )
+            } catch {}
+            if (providerId) {
+              key = await dataStore?.loadKey(providerId)
+            }
+            if (!key) {
+              key = await dataStore?.loadKey(messageId)
+            }
+            try { logger.debug('Quoted message key %s (providerId=%s)!', key?.id, providerId) } catch {}
             if (key?.id) {
-              const remoteJid = phoneNumberToJid(targetTo)
-              quoted = await this.store?.dataStore.loadMessage(remoteJid, key?.id)
-              if (!quoted) {
-                const unoId = await this.store?.dataStore?.loadUnoId(key?.id)
-                if (unoId) {
-                  quoted = await this.store?.dataStore.loadMessage(remoteJid, unoId)
+              const candidateIds = Array.from(new Set([
+                providerId,
+                key?.id,
+                messageId,
+                await dataStore?.loadProviderId?.(key?.id),
+                await dataStore?.loadUnoId?.(key?.id),
+              ].filter((v): v is string => typeof v === 'string' && !!v)))
+              const candidateJids = Array.from(new Set([
+                key?.remoteJid,
+                targetTo,
+                (() => { try { return phoneNumberToJid(targetTo) } catch { return undefined } })(),
+                (() => { try { return normalizeTransportJid(key?.remoteJid) } catch { return key?.remoteJid } })(),
+              ].filter((v): v is string => typeof v === 'string' && !!v)))
+
+              for (const candidateJid of candidateJids) {
+                for (const candidateId of candidateIds) {
+                  quoted = await dataStore?.loadMessage(candidateJid, candidateId)
+                  if (quoted) break
                 }
+                if (quoted) break
               }
+
               try {
                 const qid = quoted?.key?.id
                 const qjid = quoted?.key?.remoteJid
                 const qtype = quoted?.message ? Object.keys(quoted.message)[0] : 'unknown'
-                logger.debug('Quoted message loaded (jid=%s id=%s type=%s)', qjid, qid, qtype)
+                logger.info(
+                  {
+                    phone: this.phone,
+                    targetTo,
+                    messageId,
+                    providerId,
+                    quotedFound: !!quoted,
+                    quotedId: qid,
+                    quotedRemoteJid: qjid,
+                    quotedType: qtype,
+                    candidateJids,
+                    candidateIds,
+                  },
+                  'reply quote lookup result'
+                )
               } catch { logger.debug('Quoted message loaded') }
             }
           }
@@ -2212,7 +2580,8 @@ export class ClientBaileys implements Client {
                     statuses: [
                       {
                         id,
-                        recipient_id: jidToPhoneNumber(to || this.phone, ''),
+                        recipient_id: `${to || ''}`.endsWith('@g.us') ? to : jidToPhoneNumber(to || this.phone, ''),
+                        ...(`${to || ''}`.endsWith('@g.us') ? { recipient_type: 'group' } : {}),
                         status: 'failed',
                         timestamp: Math.floor(Date.now() / 1000),
                         errors: [
@@ -2564,6 +2933,157 @@ export class ClientBaileys implements Client {
       }
     }
     return message
+  }
+
+  public async groupCreate(subject: string, participants: string[]) {
+    return this.groupCreateFn(subject, participants)
+  }
+
+  public async groupUpdateSubject(jid: string, subject: string) {
+    return this.groupUpdateSubjectFn(jid, subject)
+  }
+
+  public async groupUpdateDescription(jid: string, description?: string) {
+    return this.groupUpdateDescriptionFn(jid, description)
+  }
+
+  public async groupUpdatePicture(jid: string, pictureUrl: string) {
+    return this.groupUpdatePictureFn(jid, pictureUrl)
+  }
+
+  public async groupParticipantsUpdate(jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') {
+    return this.groupParticipantsUpdateFn(jid, participants, action)
+  }
+
+  public async groupInviteCode(jid: string) {
+    return this.groupInviteCodeFn(jid)
+  }
+
+  public async groupRevokeInvite(jid: string) {
+    return this.groupRevokeInviteFn(jid)
+  }
+
+  public async groupRequestParticipantsList(jid: string) {
+    return this.groupRequestParticipantsListFn(jid)
+  }
+
+  public async groupRequestParticipantsUpdate(jid: string, participants: string[], action: 'approve' | 'reject') {
+    return this.groupRequestParticipantsUpdateFn(jid, participants, action)
+  }
+
+  public async groupLeave(jid: string) {
+    return this.groupLeaveFn(jid)
+  }
+
+  public async groupSettingUpdate(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') {
+    return this.groupSettingUpdateFn(jid, setting)
+  }
+
+  public async groupJoinApprovalMode(jid: string, mode: 'on' | 'off') {
+    return this.groupJoinApprovalModeFn(jid, mode)
+  }
+
+  public async groupMetadata(jid: string) {
+    return this.groupMetadataFn(jid)
+  }
+
+  public async recoverDelivery(payload: any, options: any = {}) {
+    const messageId = `${payload?.message_id || payload?.messageId || payload?.id || ''}`.trim()
+    if (!messageId) {
+      throw new SendError(400, 'delivery_recovery_message_id_required')
+    }
+
+    const dataStore = this.store?.dataStore
+    let providerId = ''
+    try { providerId = `${await dataStore?.loadProviderId?.(messageId) || ''}`.trim() } catch {}
+    if (!providerId) {
+      try {
+        const unoFromProvider = `${await dataStore?.loadUnoId?.(messageId) || ''}`.trim()
+        if (unoFromProvider) providerId = messageId
+      } catch {}
+    }
+
+    let key: any
+    if (providerId) {
+      try { key = await dataStore?.loadKey?.(providerId) } catch {}
+    }
+    if (!key) {
+      try { key = await dataStore?.loadKey?.(messageId) } catch {}
+    }
+
+    const targetRaw = `${payload?.to || key?.remoteJid || ''}`.trim()
+    if (!targetRaw) {
+      throw new SendError(404, `delivery_recovery_target_not_found: ${messageId}`)
+    }
+    const targetTo = targetRaw.endsWith('@g.us')
+      ? normalizeGroupId(targetRaw)
+      : (targetRaw.includes('@') ? targetRaw : phoneNumberToJid(targetRaw))
+
+    let content: AnyMessageContent | undefined
+    if (payload?.type) {
+      content = toBaileysMessageContent(payload, this.config.customMessageCharactersFunction) as AnyMessageContent
+    } else {
+      const lookupIds = Array.from(new Set([providerId, key?.id, messageId].filter(Boolean)))
+      const lookupJids = Array.from(new Set([key?.remoteJid, targetTo].filter(Boolean)))
+      for (const jid of lookupJids) {
+        for (const id of lookupIds) {
+          try {
+            const stored = await dataStore?.loadMessage?.(jid, id)
+            if (stored?.message) {
+              content = stored.message as AnyMessageContent
+              break
+            }
+          } catch {}
+        }
+        if (content) break
+      }
+    }
+    if (!content) {
+      throw new SendError(404, `delivery_recovery_message_content_not_found: ${messageId}`)
+    }
+
+    const resendId = providerId || key?.id || messageId
+    if (resendId && resendId !== messageId) {
+      try { await dataStore?.setUnoId?.(resendId, messageId) } catch {}
+    }
+
+    const recoveryOptions = {
+      ...options,
+      ...(payload?.options || {}),
+      messageId: resendId,
+      forceDeliveryRecovery: true,
+      forceSessionRefresh: true,
+      forceDeviceList: payload?.force_device_list !== false && payload?.forceDeviceList !== false,
+      useUserDevicesCache: false,
+    }
+    logger.warn(
+      'DELIVERY_RECOVERY start phone=%s to=%s messageId=%s providerId=%s forceDeviceList=%s',
+      this.phone,
+      targetTo,
+      messageId,
+      providerId || '<none>',
+      `${recoveryOptions.forceDeviceList}`,
+    )
+    const response = await this.sendMessage(targetTo, content, recoveryOptions)
+    if (!response?.key?.id) {
+      throw new SendError(500, `delivery_recovery_send_failed: ${messageId}`)
+    }
+    const keyOut = response.key
+    const externalId = await this.ensureUnoExternalMessageId(keyOut)
+    try { await dataStore?.setKey?.(keyOut.id, keyOut) } catch {}
+    try { await dataStore?.setMessage?.(keyOut.remoteJid, response) } catch {}
+    logger.warn('DELIVERY_RECOVERY sent phone=%s to=%s messageId=%s providerId=%s newProviderId=%s', this.phone, targetTo, messageId, providerId || '<none>', keyOut.id)
+    const ok: any = buildSendOkResponse(targetTo, externalId || messageId)
+    ok.recovery = {
+      attempted: true,
+      message_id: messageId,
+      provider_id: providerId || undefined,
+      sent_provider_id: keyOut.id,
+      target: targetTo,
+      force_session_refresh: true,
+      force_device_list: recoveryOptions.forceDeviceList,
+    }
+    return { ok }
   }
 
   public async contacts(numbers: string[]) {

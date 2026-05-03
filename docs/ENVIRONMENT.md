@@ -93,6 +93,28 @@ ACK_RETRY_ENABLED=false
 # ACK_RETRY_MAX_ATTEMPTS=1
 ```
 
+## Low-cost delivery recovery
+
+- `DELIVERY_STALE_RECOVERY_ENABLED` — Enables automatic recovery for 1:1 messages that remain only as `sent`. Default `true`.
+- `DELIVERY_STALE_RECOVERY_MS` — Minimum age before recovery is attempted. Default `45000`.
+- `DELIVERY_STALE_RECOVERY_SCAN_MS` — One scan interval per session. Default `15000`.
+- `DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS` — Max resend attempts per stuck message. Default `1`.
+- `DELIVERY_STALE_RECOVERY_BATCH_SIZE` — Max stale messages recovered per scan. Default `3`.
+- `DELIVERY_STALE_RECOVERY_MAX_PENDING` — Local queue cap per session. Default `2000`.
+- `DELIVERY_STALE_RECOVERY_GROUPS` — Also recover group sends. Default `false`.
+
+This is lighter than `DELIVERY_WATCHDOG_ENABLED`: it does not create one timer per message and only refreshes Signal/device-list when the stored status is still `sent` after the configured window.
+
+Example:
+```
+DELIVERY_WATCHDOG_ENABLED=false
+DELIVERY_STALE_RECOVERY_ENABLED=true
+DELIVERY_STALE_RECOVERY_MS=45000
+DELIVERY_STALE_RECOVERY_SCAN_MS=15000
+DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS=1
+DELIVERY_STALE_RECOVERY_BATCH_SIZE=3
+```
+
 ## One‑to‑One (Direct) Sending
 
 - `ONE_TO_ONE_ADDRESSING_MODE` — Prefer addressing for direct chats. `pn` | `lid`. Default `pn`.
@@ -123,6 +145,11 @@ Large groups (No-sessions mitigation & throttles)
   - Example: `GROUP_ASSERT_CHUNK_SIZE=80`
 - `GROUP_ASSERT_FLOOD_WINDOW_MS` Ã¢â‚¬â€ Flood window to avoid repeated heavy asserts per group. Default `5000`.
   - Example: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
+- `GROUP_METADATA_EVENT_REFRESH_ENABLED` — Refresh the Redis group metadata cache after Baileys `groups.update` and `group-participants.update` events. Default `true`.
+  - This keeps member counts closer to WhatsApp without forcing every `/groups/:id/participants` read to hit Baileys.
+- `GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS` — Delay before refreshing a changed group metadata entry. Default `1500`.
+- `GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS` — Minimum interval between full metadata refreshes for the same group. Default `60000`.
+  - Increase this if large groups generate many participant events and the VPS is under pressure.
 - `NO_SESSION_RETRY_BASE_DELAY_MS` Ã¢â‚¬â€ Base delay before retrying send after asserts. Default `150`.
 - `NO_SESSION_RETRY_PER_200_DELAY_MS` Ã¢â‚¬â€ Extra delay per 200 targets. Default `300`.
 - `NO_SESSION_RETRY_MAX_DELAY_MS` Ã¢â‚¬â€ Cap for adaptive delay. Default `2000`.
@@ -148,6 +175,8 @@ When groups get large, per-recipient receipts (read/played/delivered per partici
   - Set `false` to receive perÃ¢â‚¬â€˜user read/played/delivery receipts in groups.
 - `GROUP_ONLY_DELIVERED_STATUS` Ã¢â‚¬â€ On `messages.update` for groups, forward only `DELIVERY_ACK` (delivered). Default `true`.
   - Set `false` to forward all status updates (including read/played) for groups.
+- `UNOAPI_META_GROUPS_ENABLED` - Enables the Meta-like group API shape, group details route, and group management endpoints. Default `false`.
+  - Group management uses the local Baileys client when available; AMQP deployments use a synchronous RPC command to the session owner.
 
 Example (keep load low in big groups):
 ```env
@@ -211,7 +240,7 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 
 - Webhooks prefer PN. When PN cannot be resolved safely, LID/JID is returned as a fallback.
 - Internally, the API uses LID when available for 1:1 and groups. For 1:1, PNÃ¢â€ â€™LID mappings are learned on-the-fly (assertSessions/exists, and events).
-- Profile pictures are stored and retrieved by a canonical PN whenever possible (same for S3 keys), so PN and LID variants reference the same asset.
+- Profile pictures are stored and retrieved by canonical PN and, when known, by stable LID/user id as separate keys (same for S3 keys), so PN and BSUID lookups can both resolve the image.
 
 ## AntiÃ¢â‚¬â€˜Spam / Rate Limits
 
@@ -268,6 +297,18 @@ Some providers/devices may occasionally emit the same WA message more than once 
 - `INBOUND_DEDUP_WINDOW_MS` Ã¢â‚¬â€ Skip processing a message if another with the same `remoteJid` and `id` arrives within this window (ms). Default `7000`.
   - Example: `INBOUND_DEDUP_WINDOW_MS=5000`
 
+### Baileys app-state sync
+
+- `BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT` - Clears Baileys `app-state-sync-version` before each connect. Default `false`.
+  - Keep disabled in normal operation because clearing it forces WhatsApp/Baileys to rebuild app-state snapshots and can increase memory/CPU during reconnect storms.
+  - Enable only as an emergency self-heal when logs show stale app-state decode failures such as `failed to find key to decode mutation`.
+- `BAILEYS_ALLOW_FULL_HISTORY_SYNC` - Forces Baileys `FULL`, `INITIAL_BOOTSTRAP`, and `ON_DEMAND` history sync even when the session already has the Redis history-sync marker. Default `false`.
+  - New unmarked sessions can still do their first full/bootstrap sync when `IGNORE_HISTORY_MESSAGES=false`.
+  - Uno writes `unoapi-history-sync:<phone>:started` when heavy history sync starts, and later reconnects skip heavy sync for that same session unless this flag is enabled.
+  - On application startup, existing configured sessions are marked automatically. When a session is removed/logout and its config/auth is deleted, this marker is deleted too.
+- `AUTO_CONNECT_CONCURRENCY` - Maximum sessions connecting in parallel during service startup. Default `1`.
+  - Keep low on small containers to avoid reconnect storms and memory spikes.
+
 ### Outgoing idempotency
 
 Skip sending the same message again when a job retry happens after a successful send.
@@ -303,8 +344,8 @@ Skip sending the same message again when a job retry happens after a successful 
   - `SEND_PROFILE_PICTURE` Ã¢â‚¬â€ Include profile pictures in webhook payloads. Default `true`.
 
 - Storage backends
-  - S3 (preferred): enabled when `STORAGE_ENDPOINT` is set. Uses `@aws-sdk/client-s3` with credentials from `STORAGE_*` envs. Files are written as `<phone>/profile-pictures/<canonical>.jpg` where `<canonical>` is the contact number (digits only) for users, or the group JID for groups.
-  - Filesystem: default when no S3 endpoint is configured. Files are stored under `<baseStore>/medias/<phone>/profile-pictures/<canonical>.jpg`.
+  - S3 (preferred): enabled when `STORAGE_ENDPOINT` is set. Uses `@aws-sdk/client-s3` with credentials from `STORAGE_*` envs. Files are written as `<phone>/profile-pictures/<pn>.jpg` and also `<phone>/profile-pictures/<lid>.jpg` when a stable LID/user id is known; groups use the group JID.
+  - Filesystem: default when no S3 endpoint is configured. Files are stored under `<baseStore>/medias/<phone>/profile-pictures/<pn-or-lid>.jpg`.
 
 - URLs returned to webhooks
   - S3: A preÃ¢â‚¬â€˜signed URL is generated per request using `DATA_URL_TTL` (seconds). Link expires after TTL.

@@ -25,7 +25,7 @@ import { isIndividualJid, isValidPhoneNumber, jidToPhoneNumber, phoneNumberToJid
 import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { 
+import {
   DEFAULT_BROWSER,
   LOG_LEVEL,
   CONNECTING_TIMEOUT_MS,
@@ -43,9 +43,21 @@ import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_IN
 import { ONE_TO_ONE_ADDRESSING_MODE, BR_SEND_ORDER_ENABLED } from '../defaults'
 import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
 import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
-import { DELIVERY_WATCHDOG_ENABLED, DELIVERY_WATCHDOG_MS, DELIVERY_WATCHDOG_MAX_ATTEMPTS, DELIVERY_WATCHDOG_GROUPS } from '../defaults'
+import {
+  DELIVERY_WATCHDOG_ENABLED,
+  DELIVERY_WATCHDOG_MS,
+  DELIVERY_WATCHDOG_MAX_ATTEMPTS,
+  DELIVERY_WATCHDOG_GROUPS,
+  DELIVERY_STALE_RECOVERY_ENABLED,
+  DELIVERY_STALE_RECOVERY_MS,
+  DELIVERY_STALE_RECOVERY_SCAN_MS,
+  DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS,
+  DELIVERY_STALE_RECOVERY_MAX_PENDING,
+  DELIVERY_STALE_RECOVERY_BATCH_SIZE,
+  DELIVERY_STALE_RECOVERY_GROUPS,
+} from '../defaults'
 import { SESSION_DIR } from './session_store_file'
-import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache } from './redis'
+import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache, getHistorySyncMarker, setHistorySyncMarker } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
 import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
@@ -62,6 +74,30 @@ import {
 } from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
+
+export const historySyncTypeName = (syncType: proto.HistorySync.HistorySyncType | undefined): string => {
+  return typeof syncType === 'number'
+    ? proto.HistorySync.HistorySyncType[syncType] || `${syncType}`
+    : `${syncType || 'unknown'}`
+}
+
+export const shouldAcceptHistorySync = (
+  syncType: proto.HistorySync.HistorySyncType | undefined,
+  config: Pick<Partial<Config>, 'ignoreHistoryMessages' | 'allowFullHistorySync'>,
+  state: { historyAlreadySynced?: boolean; historySyncInProgress?: boolean } = {},
+): boolean => {
+  if (syncType === undefined) return false
+  if (syncType === proto.HistorySync.HistorySyncType.PUSH_NAME) return true
+  if (config.ignoreHistoryMessages) return false
+  if (syncType === proto.HistorySync.HistorySyncType.RECENT) return true
+  if (state.historySyncInProgress) return true
+  if (state.historyAlreadySynced && !config.allowFullHistorySync) return false
+  return [
+    proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
+    proto.HistorySync.HistorySyncType.ON_DEMAND,
+    proto.HistorySync.HistorySyncType.FULL,
+  ].includes(syncType)
+}
 
 const EVENTS = [
   'connection.update',
@@ -124,8 +160,56 @@ export interface fetchGroupMetadata {
   (_jid: string): Promise<GroupMetadata | undefined>
 }
 
+export interface groupMetadata {
+  (_jid: string): Promise<GroupMetadata | undefined>
+}
+
 export interface exists {
   (_jid: string): Promise<string | undefined>
+}
+
+export interface groupCreate {
+  (_subject: string, _participants: string[]): Promise<GroupMetadata>
+}
+
+export interface groupUpdateSubject {
+  (_jid: string, _subject: string): Promise<void>
+}
+
+export interface groupUpdateDescription {
+  (_jid: string, _description?: string): Promise<void>
+}
+
+export interface groupUpdatePicture {
+  (_jid: string, _pictureUrl: string): Promise<void>
+}
+
+export interface groupParticipantsUpdate {
+  (_jid: string, _participants: string[], _action: 'add' | 'remove' | 'promote' | 'demote'): Promise<any[]>
+}
+
+export interface groupInviteCode {
+  (_jid: string): Promise<string | undefined>
+}
+
+export interface groupRequestParticipantsList {
+  (_jid: string): Promise<any[]>
+}
+
+export interface groupRequestParticipantsUpdate {
+  (_jid: string, _participants: string[], _action: 'approve' | 'reject'): Promise<any[]>
+}
+
+export interface groupLeave {
+  (_jid: string): Promise<void>
+}
+
+export interface groupSettingUpdate {
+  (_jid: string, _setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
+}
+
+export interface groupJoinApprovalMode {
+  (_jid: string, _mode: 'on' | 'off'): Promise<void>
 }
 
 export interface close {
@@ -181,6 +265,8 @@ export const connect = async ({
   })()
   const whatsappVersion = config.whatsappVersion
   let resolvedWhatsappVersion = whatsappVersion
+  let historyAlreadySynced = false
+  let historySyncInProgress = false
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
   // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid").
@@ -220,8 +306,14 @@ export const connect = async ({
   }
   // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
   const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
+  // Track recent 1:1 sends so PN->LID fallback on 463/479 works even when ACK_RETRY is disabled
+  const pendingOneToOneErrorFallbacks: Map<string, { to: string; message: AnyMessageContent; options: any; timer?: NodeJS.Timeout }> = new Map()
+  // Track 1:1 PN->LID fallback retries triggered by server ack errors such as 463/479
+  const pendingOneToOneAddressingFallback = new Set<string>()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
   const pendingDeliveryWatch: Map<string, { to: string; message: AnyMessageContent; options: any; attempt: number; timer?: NodeJS.Timeout }> = new Map()
+  const pendingStaleDeliveryRecovery: Map<string, { to: string; message: AnyMessageContent; options: any; createdAt: number; dueAt: number; attempts: number }> = new Map()
+  let staleDeliveryRecoveryTimer: NodeJS.Timeout | undefined
   // Background LID->PN resolver (per session)
   const lidResolveQueue: Map<string, { next: number; attempts: number; lastSeen: number }> = new Map()
   let lidResolverTimer: NodeJS.Timeout | undefined
@@ -354,7 +446,7 @@ export const connect = async ({
       if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
       try {
         const attemptNo = entry.attemptIndex + 1
-        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, to, delayMs)
+        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, entry.to, delayMs)
       } catch {}
       entry.timer = setTimeout(async () => {
         try {
@@ -362,18 +454,18 @@ export const connect = async ({
           // Assert sessions for target (include PN variant and self when applicable)
           try {
             const attemptNo = entry.attemptIndex + 1
-            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, to)
+            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, entry.to)
           } catch {}
           try {
             const assertOneToOne = async () => {
               const set = new Set<string>()
-              set.add(to)
+              set.add(entry.to)
               try {
-                if (isLidUser(to)) {
-                  try { set.add(jidNormalizedUser(to)) } catch {}
-                } else if (isPnUser(to)) {
+                if (isLidUser(entry.to)) {
+                  try { set.add(jidNormalizedUser(entry.to)) } catch {}
+                } else if (isPnUser(entry.to)) {
                   try {
-                    const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                    const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
                     if (lid && typeof lid === 'string') set.add(lid)
                   } catch {}
                 }
@@ -412,26 +504,26 @@ export const connect = async ({
               if (lidsU.length) await assertChunked(lidsU)
               if (pnsU.length) await assertChunked(pnsU)
             }
-            if (typeof to === 'string' && to.endsWith('@g.us')) await assertGroup()
+            if (typeof entry.to === 'string' && entry.to.endsWith('@g.us')) await assertGroup()
             else await assertOneToOne()
           } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
           // Resend with the same id (prefer LID when configured and mapping exists)
           const opts = { ...(entry.options || {}), messageId }
-          let resendTo = to
+          let resendTo = entry.to
           try {
-            if (typeof to === 'string' && isIndividualJid(to) && ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
-              if (isPnUser(to)) {
+            if (typeof entry.to === 'string' && isIndividualJid(entry.to) && ONE_TO_ONE_ADDRESSING_MODE !== 'pn') {
+              if (isPnUser(entry.to)) {
                 try {
-                  const lid = await (dataStore as any).getLidForPn?.(phone, to)
+                  const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
                   if (lid && typeof lid === 'string') {
                     resendTo = lid
                     ;(opts as any).addressingMode = WAMessageAddressingMode.LID
-                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', to, resendTo) } catch {}
+                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', entry.to, resendTo) } catch {}
                   } else {
                     ;(opts as any).addressingMode = WAMessageAddressingMode.PN
                   }
                 } catch {}
-              } else if (isLidUser(to)) {
+              } else if (isLidUser(entry.to)) {
                 ;(opts as any).addressingMode = WAMessageAddressingMode.LID
               }
             }
@@ -446,7 +538,7 @@ export const connect = async ({
             // Exhausted attempts: notify own number and log
             try {
               const selfJid = phoneNumberToJid(phone)
-              const text = `Falha ao entregar a mensagem ${messageId} para ${to} após 3 tentativas.`
+              const text = `Falha ao entregar a mensagem ${messageId} para ${entry.to} após 3 tentativas.`
               logger.error('ACK timeout: %s', text)
               try { await sock?.sendMessage(selfJid, { text }, {}) } catch (e) { logger.warn(e as any, 'Erro ao notificar falha no próprio número') }
             } catch (e) { logger.warn(e as any, 'Erro ao preparar notificação de falha') }
@@ -631,6 +723,126 @@ export const connect = async ({
     }
     scheduleNext()
   }
+
+  const isDeliveredLikeStatus = (status?: string) => {
+    const s = `${status || ''}`.toLowerCase()
+    return s === 'delivered' || s === 'read' || s === 'deleted' || s === 'failed'
+  }
+
+  const ensureStaleDeliveryRecoveryTimer = () => {
+    if (staleDeliveryRecoveryTimer || !DELIVERY_STALE_RECOVERY_ENABLED) return
+    const intervalMs = Math.max(5000, DELIVERY_STALE_RECOVERY_SCAN_MS || 30000)
+    staleDeliveryRecoveryTimer = setInterval(async () => {
+      try {
+        if (!pendingStaleDeliveryRecovery.size) return
+        const now = Date.now()
+        const batch = Array.from(pendingStaleDeliveryRecovery.entries())
+          .filter(([, entry]) => entry.dueAt <= now)
+          .slice(0, Math.max(1, DELIVERY_STALE_RECOVERY_BATCH_SIZE || 1))
+        for (const [messageId, entry] of batch) {
+          try {
+            const currentStatus = `${await dataStore.loadStatus(messageId) || ''}`.toLowerCase()
+            if (isDeliveredLikeStatus(currentStatus)) {
+              pendingStaleDeliveryRecovery.delete(messageId)
+              logger.info('STALE_DELIVERY recovery: clear id=%s status=%s', messageId, currentStatus)
+              continue
+            }
+            if (currentStatus !== 'sent') {
+              entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+              logger.debug('STALE_DELIVERY recovery: wait id=%s status=%s', messageId, currentStatus || '<none>')
+              continue
+            }
+            if (entry.attempts >= Math.max(0, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS || 0)) {
+              pendingStaleDeliveryRecovery.delete(messageId)
+              logger.warn('STALE_DELIVERY recovery: exhausted id=%s to=%s status=%s', messageId, entry.to, currentStatus)
+              continue
+            }
+            entry.attempts += 1
+            entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+            logger.warn('STALE_DELIVERY recovery: attempt=%s id=%s to=%s status=%s', entry.attempts, messageId, entry.to, currentStatus)
+            try { await purgeSignalSessionsFor(entry.to, true) } catch {}
+            const targets = new Set<string>()
+            targets.add(entry.to)
+            try { if (isLidUser(entry.to)) targets.add(jidNormalizedUser(entry.to)) } catch {}
+            try {
+              const self = state?.creds?.me?.id
+              if (self) {
+                targets.add(self)
+                try { targets.add(jidNormalizedUser(self)) } catch {}
+              }
+            } catch {}
+            try {
+              const list = Array.from(targets).filter(Boolean)
+              if (list.length) await (sock as any).assertSessions(list, true)
+            } catch (e) {
+              logger.warn(e as any, 'STALE_DELIVERY recovery: assert failed id=%s', messageId)
+            }
+            try {
+              await sock?.sendMessage(entry.to, entry.message, {
+                ...(entry.options || {}),
+                messageId,
+                forceDeliveryRecovery: true,
+                forceSessionRefresh: true,
+                forceDeviceList: true,
+                useUserDevicesCache: false,
+              })
+              logger.warn('STALE_DELIVERY recovery: resent id=%s to=%s', messageId, entry.to)
+            } catch (e) {
+              logger.warn(e as any, 'STALE_DELIVERY recovery: resend failed id=%s to=%s', messageId, entry.to)
+            }
+          } catch (e) {
+            logger.warn(e as any, 'STALE_DELIVERY recovery: item failed id=%s', messageId)
+          }
+        }
+      } catch (e) {
+        logger.warn(e as any, 'STALE_DELIVERY recovery: interval failed')
+      }
+    }, intervalMs) as unknown as NodeJS.Timeout
+    try { (staleDeliveryRecoveryTimer as any)?.unref?.() } catch {}
+    try { logger.info('STALE_DELIVERY recovery enabled: delay=%sms scan=%sms attempts=%s batch=%s', DELIVERY_STALE_RECOVERY_MS, intervalMs, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS, DELIVERY_STALE_RECOVERY_BATCH_SIZE) } catch {}
+  }
+
+  const scheduleStaleDeliveryRecovery = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
+    try {
+      if (!DELIVERY_STALE_RECOVERY_ENABLED || SIGNAL_CACHE_SAFE_MODE) return
+      if (!messageId || !to) return
+      const isGroup = typeof to === 'string' && to.endsWith('@g.us')
+      if (isGroup && !DELIVERY_STALE_RECOVERY_GROUPS) return
+      if (!isGroup && !isIndividualJid(to)) return
+      const maxPending = Math.max(100, DELIVERY_STALE_RECOVERY_MAX_PENDING || 0)
+      if (!pendingStaleDeliveryRecovery.has(messageId) && pendingStaleDeliveryRecovery.size >= maxPending) {
+        let oldestKey = ''
+        let oldestAt = Infinity
+        for (const [key, entry] of pendingStaleDeliveryRecovery.entries()) {
+          if (entry.createdAt < oldestAt) {
+            oldestAt = entry.createdAt
+            oldestKey = key
+          }
+        }
+        if (oldestKey) pendingStaleDeliveryRecovery.delete(oldestKey)
+      }
+      const now = Date.now()
+      const delayMs = Math.max(30000, DELIVERY_STALE_RECOVERY_MS || 120000)
+      pendingStaleDeliveryRecovery.set(messageId, {
+        to,
+        message,
+        options: { ...(options || {}) },
+        createdAt: now,
+        dueAt: now + delayMs,
+        attempts: 0,
+      })
+      ensureStaleDeliveryRecoveryTimer()
+    } catch {}
+  }
+
+  const clearStaleDeliveryRecovery = (messageId: string, status?: string) => {
+    try {
+      if (!messageId) return
+      if (pendingStaleDeliveryRecovery.delete(messageId)) {
+        logger.info('STALE_DELIVERY recovery: clear id=%s status=%s', messageId, status || '<none>')
+      }
+    } catch {}
+  }
   const firstSaveCreds = async () => {
     if (state?.creds?.me?.id) {
       // Normalize possible LID JID to PN JID before extracting phone
@@ -771,6 +983,12 @@ export const connect = async ({
     touchSocketActivity()
     status.attempt = 1
     await sessionStore.setStatus(phone, 'online')
+    if (historySyncInProgress) {
+      await setHistorySyncMarker(phone, {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      })
+    }
     logger.info(`${phone} connected`)
     const message = t(
       'connected',
@@ -1048,12 +1266,19 @@ export const connect = async ({
               try {
                 const kid = u?.key?.id || u?.id
                 const st = u?.update?.status ?? u?.status
+                const stubParams = Array.isArray(u?.update?.messageStubParameters) ? u.update.messageStubParameters : []
+                const preserveAckRetry = stubParams.includes('463') || stubParams.includes('479')
                 if (kid && (st !== undefined && st !== null)) {
                   const tracked = pendingAckResend.get(kid)
-                  if (tracked) {
+                  if (tracked && !preserveAckRetry) {
                     try { logger.info('ACK watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
                     try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
                     pendingAckResend.delete(kid)
+                  }
+                  const fallbackTracked = pendingOneToOneErrorFallbacks.get(kid)
+                  if (fallbackTracked && !preserveAckRetry) {
+                    try { if (fallbackTracked.timer) clearTimeout(fallbackTracked.timer) } catch {}
+                    pendingOneToOneErrorFallbacks.delete(kid)
                   }
                   // Clear delivery watchdog only on delivered/read
                   const delivered = (() => {
@@ -1068,6 +1293,7 @@ export const connect = async ({
                       try { if (dw.timer) clearTimeout(dw.timer) } catch {}
                       pendingDeliveryWatch.delete(kid)
                     }
+                    clearStaleDeliveryRecovery(kid, `${st}`)
                   }
                 }
               } catch {}
@@ -1105,6 +1331,73 @@ export const connect = async ({
                     }
                   } catch (e) {
                     logger.warn(e as any, 'Fallback resend failed')
+                  }
+                }
+              }
+              if (
+                Array.isArray(params) &&
+                key?.fromMe &&
+                key?.id &&
+                typeof key?.remoteJid === 'string' &&
+                isIndividualJid(key.remoteJid) &&
+                isPnUser(key.remoteJid) &&
+                (params.includes('463') || params.includes('479'))
+              ) {
+                const pending = pendingAckResend.get(key.id)
+                const fallbackPending = pending || pendingOneToOneErrorFallbacks.get(key.id)
+                if (fallbackPending && !pendingOneToOneAddressingFallback.has(key.id)) {
+                  let lid: string | undefined
+                  try { lid = await (dataStore as any).getLidForPn?.(phone, key.remoteJid) } catch {}
+                  if (lid && typeof lid === 'string' && isLidUser(lid as any)) {
+                    pendingOneToOneAddressingFallback.add(key.id)
+                    setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    fallbackPending.to = lid
+                    fallbackPending.options = {
+                      ...(fallbackPending.options || {}),
+                      addressingMode: WAMessageAddressingMode.LID,
+                      useUserDevicesCache: false,
+                    }
+                    try {
+                      const assertTargets = new Set<string>()
+                      assertTargets.add(lid)
+                      assertTargets.add(key.remoteJid)
+                      const self = state?.creds?.me?.id
+                      if (self) {
+                        assertTargets.add(self)
+                        try { assertTargets.add(jidNormalizedUser(self)) } catch {}
+                      }
+                      await (sock as any).assertSessions(Array.from(assertTargets), true)
+                    } catch (e) {
+                      logger.warn(e as any, 'Ignore error asserting sessions before PN->LID fallback resend')
+                    }
+                    try {
+                      logger.warn(
+                        '1:1 fallback resend after ack error=%s for msg=%s: PN %s -> LID %s',
+                        params.join(','),
+                        key.id,
+                        key.remoteJid,
+                        lid,
+                      )
+                    } catch {}
+                    try {
+                      await sock?.sendMessage(lid, fallbackPending.message, {
+                        ...(fallbackPending.options || {}),
+                        messageId: key.id,
+                        addressingMode: WAMessageAddressingMode.LID,
+                        useUserDevicesCache: false,
+                      })
+                    } catch (e) {
+                      logger.warn(e as any, '1:1 PN->LID fallback resend failed')
+                    }
+                  } else {
+                    try {
+                      logger.warn(
+                        '1:1 ack error=%s for msg=%s on PN %s, but no mapped LID was found for fallback',
+                        params.join(','),
+                        key.id,
+                        key.remoteJid,
+                      )
+                    } catch {}
                   }
                 }
               }
@@ -1354,6 +1647,8 @@ export const connect = async ({
     logger.info(`${phone} close`)
     try { if (lidResolverTimer) { clearInterval(lidResolverTimer); lidResolverTimer = undefined } } catch {}
     try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined } } catch {}
+    try { if (staleDeliveryRecoveryTimer) { clearInterval(staleDeliveryRecoveryTimer); staleDeliveryRecoveryTimer = undefined } } catch {}
+    try { pendingStaleDeliveryRecovery.clear() } catch {}
     EVENTS.forEach((e: any) => {
       try {
         sock?.ev?.removeAllListeners(e)
@@ -1454,6 +1749,8 @@ export const connect = async ({
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     const forceRemoteJid = options?.forceRemoteJid
     const skipBrSendOrder = options?.skipBrSendOrder
+    const forceSessionRefresh = !!(options?.forceSessionRefresh || options?.forceDeliveryRecovery)
+    const forceSessionDeviceList = options?.forceDeviceList !== false
     let idCandidate = forceRemoteJid || to
     try {
       if (!forceRemoteJid && isIndividualJid(idCandidate)) {
@@ -1651,9 +1948,9 @@ export const connect = async ({
           } catch {}
         }
         const doPreassert =
-          ONE_TO_ONE_PREASSERT_ENABLED &&
+          (forceSessionRefresh || ONE_TO_ONE_PREASSERT_ENABLED) &&
           !SIGNAL_CACHE_SAFE_MODE &&
-          redisAllow &&
+          (forceSessionRefresh || redisAllow) &&
           (now - last >= Math.max(0, ONE_TO_ONE_PREASSERT_COOLDOWN_MS || 0))
         const set = new Set<string>()
         set.add(id)
@@ -1702,16 +1999,15 @@ export const connect = async ({
         } catch {}
         const targets = Array.from(set)
         if (doPreassert && targets.length) {
-          // Opcional: forçar refresh da lista de devices antes do assert (evitar cache desatualizado)
-          if (ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
-            try { await purgeSignalSessionsFor(id, true) } catch {}
+          if (forceSessionRefresh || ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST) {
+            try { await purgeSignalSessionsFor(id, forceSessionDeviceList) } catch {}
           }
           await (sock as any).assertSessions(targets, true)
           lastOneToOneAssertAt.set(cdKey, now)
-          if (redisTtlSec > 0 && redisKey) {
+          if (!forceSessionRefresh && redisTtlSec > 0 && redisKey) {
             try { await redisSetAndExpire(redisKey, '1', redisTtlSec) } catch {}
           }
-          logger.debug('Preasserted %s sessions for 1:1 %s', targets.length, id)
+          logger.debug('Preasserted %s sessions for 1:1 %s (forceSessionRefresh=%s)', targets.length, id, forceSessionRefresh)
           try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
         } else {
           logger.debug('Skip preassert 1:1 (enabled=%s, sinceLast=%sms, cooldown=%sms) for %s', ONE_TO_ONE_PREASSERT_ENABLED, (now - last), ONE_TO_ONE_PREASSERT_COOLDOWN_MS, id)
@@ -2051,8 +2347,23 @@ export const connect = async ({
       try {
         const mid = (full as any)?.key?.id as string | undefined
         if (mid) {
+          if (typeof id === 'string' && isIndividualJid(id)) {
+            const existing = pendingOneToOneErrorFallbacks.get(mid)
+            if (existing?.timer) {
+              try { clearTimeout(existing.timer) } catch {}
+            }
+            const entry = { to: id, message, options: { ...opts }, timer: undefined as NodeJS.Timeout | undefined }
+            entry.timer = setTimeout(() => {
+              try {
+                const current = pendingOneToOneErrorFallbacks.get(mid)
+                if (current?.timer === entry.timer) pendingOneToOneErrorFallbacks.delete(mid)
+              } catch {}
+            }, 90_000) as unknown as NodeJS.Timeout
+            pendingOneToOneErrorFallbacks.set(mid, entry)
+          }
           scheduleAckWatch(id, mid, message, opts)
           scheduleDeliveryWatch(id, mid, message, opts)
+          scheduleStaleDeliveryRecovery(id, mid, message, opts)
         }
       } catch {}
       // Se habilitado, marcar como lida a última mensagem recebida deste chat ao responder
@@ -2322,12 +2633,77 @@ export const connect = async ({
     await (sock as any)?.sendNode?.(node)
   }
 
+  const groupCreate: groupCreate = async (subject: string, participants: string[]) => {
+    await validateStatus()
+    return (sock as any).groupCreate(subject, participants)
+  }
+
+  const groupUpdateSubject: groupUpdateSubject = async (jid: string, subject: string) => {
+    await validateStatus()
+    return (sock as any).groupUpdateSubject(jid, subject)
+  }
+
+  const groupUpdateDescription: groupUpdateDescription = async (jid: string, description?: string) => {
+    await validateStatus()
+    return (sock as any).groupUpdateDescription(jid, description)
+  }
+
+  const groupUpdatePicture: groupUpdatePicture = async (jid: string, pictureUrl: string) => {
+    await validateStatus()
+    return (sock as any).updateProfilePicture(jid, { url: pictureUrl })
+  }
+
+  const groupParticipantsUpdate: groupParticipantsUpdate = async (jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') => {
+    await validateStatus()
+    return (sock as any).groupParticipantsUpdate(jid, participants, action)
+  }
+
+  const groupInviteCode: groupInviteCode = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupInviteCode(jid)
+  }
+
+  const groupRevokeInvite: groupInviteCode = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupRevokeInvite(jid)
+  }
+
+  const groupRequestParticipantsList: groupRequestParticipantsList = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupRequestParticipantsList(jid)
+  }
+
+  const groupRequestParticipantsUpdate: groupRequestParticipantsUpdate = async (jid: string, participants: string[], action: 'approve' | 'reject') => {
+    await validateStatus()
+    return (sock as any).groupRequestParticipantsUpdate(jid, participants, action)
+  }
+
+  const groupLeave: groupLeave = async (jid: string) => {
+    await validateStatus()
+    return (sock as any).groupLeave(jid)
+  }
+
+  const groupSettingUpdate: groupSettingUpdate = async (jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') => {
+    await validateStatus()
+    return (sock as any).groupSettingUpdate(jid, setting)
+  }
+
+  const groupJoinApprovalMode: groupJoinApprovalMode = async (jid: string, mode: 'on' | 'off') => {
+    await validateStatus()
+    return (sock as any).groupJoinApprovalMode(jid, mode)
+  }
+
   const fetchImageUrl: fetchImageUrl = async (jid: string) => {
     return dataStore.loadImageUrl(jid, sock!)
   }
 
   const fetchGroupMetadata: fetchGroupMetadata = async (jid: string) => {
     return dataStore.loadGroupMetada(jid, sock!)
+  }
+
+  const groupMetadata: groupMetadata = async (jid: string) => {
+    await validateStatus()
+    return sock?.groupMetadata(jid)
   }
 
   const connect = async () => {
@@ -2360,11 +2736,44 @@ export const connect = async ({
         logger.warn(e as any, 'Proxy configured but undici ProxyAgent not available; fetch uploads will not use proxy')
       }
     }
+    historyAlreadySynced = await getHistorySyncMarker(phone)
+    historySyncInProgress = false
+    const allowFullHistoryForSession = !config.ignoreHistoryMessages && (!historyAlreadySynced || config.allowFullHistorySync)
     const socketConfig: UserFacingSocketConfig = {
       auth: state,
       logger: loggerBaileys,
       markOnlineOnConnect: config.markOnlineOnConnect !== false,
-      syncFullHistory: !config.ignoreHistoryMessages,
+      syncFullHistory: allowFullHistoryForSession,
+      shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
+        const syncType = msg?.syncType as proto.HistorySync.HistorySyncType | undefined
+        const syncTypeName = historySyncTypeName(syncType)
+        const shouldSync = shouldAcceptHistorySync(syncType, config, { historyAlreadySynced, historySyncInProgress })
+        if (shouldSync && [
+          proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP,
+          proto.HistorySync.HistorySyncType.ON_DEMAND,
+          proto.HistorySync.HistorySyncType.FULL,
+        ].includes(syncType as any)) {
+          historySyncInProgress = true
+          setHistorySyncMarker(phone, {
+            status: 'started',
+            syncType: syncTypeName,
+            startedAt: new Date().toISOString(),
+          }).catch(() => {})
+        }
+        try {
+          logger.info(
+            'History sync decision %s syncType=%s chunkOrder=%s progress=%s phone=%s historyAlreadySynced=%s historySyncInProgress=%s',
+            shouldSync ? 'accept' : 'skip',
+            syncTypeName,
+            `${msg?.chunkOrder ?? '<none>'}`,
+            `${msg?.progress ?? '<none>'}`,
+            phone,
+            historyAlreadySynced,
+            historySyncInProgress,
+          )
+        } catch {}
+        return shouldSync
+      },
       getMessage,
       shouldIgnoreJid: config.shouldIgnoreJid,
       retryRequestDelayMs: config.retryRequestDelayMs,
@@ -2415,20 +2824,20 @@ export const connect = async ({
       socketConfig.browser = browser
     }
 
-    // Self-heal: clear potentially stale app-state sync versions to avoid
-    // "failed to find key to decode mutation" on snapshot decode.
-    try {
-      await (state as any)?.keys?.set?.({
-        'app-state-sync-version': {
-          // clearing known collections causes Baileys to fetch fresh snapshot
-          'regular_high': undefined,
-          'regular_low': undefined,
-          'critical_unblock_low': undefined,
-        }
-      })
-      logger.debug('Cleared app-state-sync-version entries (regular_high/regular_low/critical_unblock_low) before connect')
-    } catch (e) {
-      logger.debug('Ignore error clearing app-state-sync-version before connect: %s', (e as any)?.message || e)
+    if (config.clearAppStateSyncOnConnect) {
+      // Emergency self-heal for stale app-state keys; forces Baileys to fetch a fresh snapshot.
+      try {
+        await (state as any)?.keys?.set?.({
+          'app-state-sync-version': {
+            'regular_high': undefined,
+            'regular_low': undefined,
+            'critical_unblock_low': undefined,
+          }
+        })
+        logger.debug('Cleared app-state-sync-version entries (regular_high/regular_low/critical_unblock_low) before connect')
+      } catch (e) {
+        logger.debug('Ignore error clearing app-state-sync-version before connect: %s', (e as any)?.message || e)
+      }
     }
 
     try {
@@ -2516,5 +2925,30 @@ export const connect = async ({
     return
   }
 
-  return { event, status, send, read, rejectCall, sendCallNode, fetchImageUrl, fetchGroupMetadata, exists, close, logout }
+  return {
+    event,
+    status,
+    send,
+    read,
+    rejectCall,
+    sendCallNode,
+    fetchImageUrl,
+    fetchGroupMetadata,
+    groupMetadata,
+    exists,
+    close,
+    logout,
+    groupCreate,
+    groupUpdateSubject,
+    groupUpdateDescription,
+    groupUpdatePicture,
+    groupParticipantsUpdate,
+    groupInviteCode,
+    groupRevokeInvite,
+    groupRequestParticipantsList,
+    groupRequestParticipantsUpdate,
+    groupLeave,
+    groupSettingUpdate,
+    groupJoinApprovalMode,
+  }
 }

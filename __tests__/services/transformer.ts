@@ -371,6 +371,11 @@ describe('service transformer', () => {
                   {
                     from: remotePhoneNumer,
                     id,
+                    context: {
+                      message_id: '3AD0FEAAF5915DAEAA07',
+                      id: '3AD0FEAAF5915DAEAA07',
+                    },
+                    message_type: 'message_edit',
                     timestamp: messageTimestamp,
                     text: { body },
                     type: 'text',
@@ -387,6 +392,44 @@ describe('service transformer', () => {
       ],
     }
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent exposes username metadata and LID stable ids', async () => {
+    const phoneNumer = '5549998360838'
+    const remoteLid = '24788516941@lid'
+    const username = '@maria.vendas'
+    const body = `${new Date().getTime()}`
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid: remoteLid,
+        remoteJidUsername: username,
+        fromMe: false,
+        id,
+      },
+      message: { conversation: body },
+      messageTimestamp,
+    }
+
+    const value = fromBaileysMessageContent(phoneNumer, input)[0].entry[0].changes[0].value
+
+    expect(value.contacts[0]).toEqual({
+      profile: {
+        name: username,
+        username,
+      },
+      wa_id: '',
+      user_id: remoteLid,
+    })
+    expect(value.messages[0]).toEqual({
+      from_user_id: remoteLid,
+      from: '',
+      id,
+      timestamp: messageTimestamp,
+      text: { body },
+      type: 'text',
+    })
   })
 
   test('fromBaileysMessageContent with messageContextInfo', async () => {
@@ -1644,6 +1687,11 @@ describe('service transformer', () => {
                   {
                     from: phoneNumer.replace('+', ''),
                     id,
+                    context: {
+                      message_id: id2,
+                      id: id2,
+                    },
+                    message_type: 'message_edit',
                     timestamp: messageTimestamp,
                     text: { body: conversation },
                     type: 'text',
@@ -1658,6 +1706,206 @@ describe('service transformer', () => {
       ],
     }
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
+  })
+
+  test('fromBaileysMessageContent messages.update protocol edit keeps original context id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.${new Date().getTime()}`
+    const originalMessageId = `original.${new Date().getTime()}`
+    const pushName = `Fernanda ${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp,
+      pushName,
+      update: {
+        message: {
+          protocolMessage: {
+            key: {
+              remoteJid,
+              fromMe: false,
+              id: originalMessageId,
+            },
+            type: 'MESSAGE_EDIT',
+            editedMessage: {
+              conversation,
+            },
+            timestampMs,
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      from: remotePhoneNumber,
+      id: editEventId,
+      context: {
+        message_id: originalMessageId,
+        id: originalMessageId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
+  })
+
+  test('fromBaileysMessageContent message edit prefers Uno mapped original id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.mapped.${new Date().getTime()}`
+    const originalBaileysId = `original.baileys.${new Date().getTime()}`
+    const originalUnoId = `original.uno.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado mapped.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      __unoapiMessageEdit: {
+        originalMessageId: originalUnoId,
+        timestampMs,
+      },
+      update: {
+        message: {
+          protocolMessage: {
+            key: {
+              remoteJid,
+              fromMe: false,
+              id: originalBaileysId,
+            },
+            type: 'MESSAGE_EDIT',
+            editedMessage: {
+              conversation,
+            },
+            timestampMs,
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      id: editEventId,
+      context: {
+        message_id: originalUnoId,
+        id: originalUnoId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
+  })
+
+  test('fromBaileysMessageContent encrypted message edit is ignored instead of failed status', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.secret.${new Date().getTime()}`
+    const originalUnoId = `original.uno.secret.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      __unoapiMessageEdit: {
+        originalMessageId: originalUnoId,
+      },
+      message: {
+        secretEncryptedMessage: {
+          targetMessageKey: {
+            remoteJid,
+            fromMe: false,
+            id: originalUnoId,
+          },
+          secretEncType: 2,
+          encPayload: Buffer.from('payload'),
+          encIv: Buffer.from('iv'),
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+
+    expect(getMessageType(input)).toEqual('secretEncryptedMessage')
+    expect(output).toBeNull()
+  })
+
+  test('fromBaileysMessageContent messages.update editedMessage wrapper keeps original context id', async () => {
+    const remotePhoneNumber = '11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const editEventId = `edit.wrapper.${new Date().getTime()}`
+    const originalMessageId = `original.wrapper.${new Date().getTime()}`
+    const phoneNumer = '5549998093075'
+    const conversation = `texto editado wrapper.${new Date().getTime()}`
+    const timestampMs = `${Date.now()}`
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id: editEventId,
+      },
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+      pushName: 'Fernanda',
+      update: {
+        message: {
+          editedMessage: {
+            message: {
+              protocolMessage: {
+                key: {
+                  remoteJid,
+                  fromMe: false,
+                  id: originalMessageId,
+                },
+                type: 'MESSAGE_EDIT',
+                editedMessage: {
+                  conversation,
+                },
+                timestampMs,
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+
+    expect(message).toMatchObject({
+      from: remotePhoneNumber,
+      id: editEventId,
+      context: {
+        message_id: originalMessageId,
+        id: originalMessageId,
+      },
+      message_type: 'message_edit',
+      edit_timestamp: timestampMs,
+      text: { body: conversation },
+      type: 'text',
+    })
   })
 
   test('getMessageType with viewOnceMessage', async () => {
@@ -1785,6 +2033,26 @@ describe('service transformer', () => {
     const output = {
       text: body,
       mentions: ['5566996269251@s.whatsapp.net', '15551234567@s.whatsapp.net'],
+    }
+    expect(toBaileysMessageContent(input)).toEqual(output)
+  })
+
+  test('toBaileysMessageContent message_edit keeps text and mentions', async () => {
+    const input = {
+      type: 'message_edit',
+      recipient_type: 'group',
+      to: '120363012345678@g.us',
+      context: {
+        message_id: 'uno-original-id'
+      },
+      mentions: ['5566996269251'],
+      text: {
+        body: '@5566996269251 texto editado',
+      },
+    }
+    const output = {
+      text: '@5566996269251 texto editado',
+      mentions: ['5566996269251@s.whatsapp.net'],
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
@@ -1936,6 +2204,81 @@ describe('service transformer', () => {
     }
   })
 
+  test('fromBaileysMessageContent emits Meta-like text webhook for view once unavailable stub', async () => {
+    const phoneNumer = '5549998093075'
+    const remoteJid = '24788516941@lid'
+    const username = '@maria.vendas'
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        remoteJidUsername: username,
+        fromMe: false,
+        id,
+        isViewOnce: true,
+      },
+      messageTimestamp,
+      pushName: 'Contato view once',
+      messageStubType: 'FUTUREPROOF',
+      messageStubParameters: ['view_once_unavailable'],
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = output.entry[0].changes[0].value
+    const message = value.messages[0]
+
+    expect(value.contacts[0]).toEqual({
+      profile: {
+        name: 'Contato view once',
+        username,
+      },
+      wa_id: '',
+      user_id: remoteJid,
+    })
+    expect(value.statuses).toEqual([])
+    expect(message).toEqual({
+      from_user_id: remoteJid,
+      from: '',
+      id,
+      timestamp: messageTimestamp,
+      text: { body: 'Mídia de visualização única indisponível neste dispositivo.' },
+      type: 'text',
+    })
+  })
+
+  test('fromBaileysMessageContent emits Meta-like text webhook for view once unavailable update', async () => {
+    const phoneNumer = '5549998093075'
+    const remotePhoneNumber = '+11115551212'
+    const remoteJid = `${remotePhoneNumber}@s.whatsapp.net`
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: true,
+        id,
+        isViewOnce: true,
+      },
+      messageTimestamp,
+      update: {
+        messageStubType: 'FUTUREPROOF',
+        messageStubParameters: ['view_once_unavailable'],
+      },
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = output.entry[0].changes[0].value
+    const message = value.messages[0]
+
+    expect(value.statuses).toEqual([])
+    expect(message.from).toBe(phoneNumer)
+    expect(message.id).toBe(id)
+    expect(message.timestamp).toBe(messageTimestamp)
+    expect(message.type).toBe('text')
+    expect(message.text).toEqual({ body: 'Mídia de visualização única indisponível neste dispositivo.' })
+  })
+
   test('isValidPhoneNumber return false when 8 digits phone brazilian', async () => {
     expect(isValidPhoneNumber('554988290955')).toEqual(false)
   })
@@ -2049,6 +2392,73 @@ describe('service transformer', () => {
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
 
+  test('toBaileysMessageContent preserves raw Baileys payload', async () => {
+    const rawMessage = {
+      viewOnce: true,
+      interactiveMessage: {
+        body: { text: 'Confirmar acao?' },
+        nativeFlowMessage: {
+          buttons: [
+            {
+              name: 'quick_reply',
+              buttonParamsJson: '{"display_text":"Confirmar","id":"confirmar_1"}',
+            },
+          ],
+        },
+      },
+    }
+
+    expect(toBaileysMessageContent({
+      type: 'baileys',
+      to: '5511999999999@s.whatsapp.net',
+      message: rawMessage,
+    })).toEqual(rawMessage)
+  })
+
+  test('toBaileysMessageContent preserves interactive listType override', async () => {
+    const input = {
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: 'Escolha um item' },
+        action: {
+          button: 'Abrir lista',
+          listType: 1,
+          sections: [
+            {
+              title: 'Opcoes',
+              rows: [
+                {
+                  id: 'single_1',
+                  title: 'Single 1',
+                  description: 'Teste SINGLE_SELECT',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }
+
+    expect(toBaileysMessageContent(input)).toEqual(expect.objectContaining({
+      buttonText: 'Abrir lista',
+      listType: 1,
+      sections: [
+        {
+          title: 'Opcoes',
+          rows: [
+            {
+              rowId: 'single_1',
+              title: 'Single 1',
+              description: 'Teste SINGLE_SELECT',
+            },
+          ],
+        },
+      ],
+      text: 'Escolha um item',
+    }))
+  })
+
   test('toBaileysMessageContent interactive carousel', async () => {
     const input = {
       type: 'interactive',
@@ -2160,8 +2570,32 @@ describe('service transformer', () => {
     const resp = fromBaileysMessageContent(phoneNumer, input)[0]
     const value = resp.entry[0].changes[0].value
     expect(value.contacts[0].group_id).toEqual(groupJid)
+    expect(value.messages[0].group_id).toEqual(groupJid)
     expect(value.contacts[0].wa_id).toEqual(remotePhoneNumber)
     expect(value.messages[0].from).toEqual(remotePhoneNumber)
+  })
+
+  test('fromBaileysMessageContent group status uses group recipient contract', async () => {
+    const phoneNumer = '5566996269251'
+    const remotePhoneNumber = '5587981148453'
+    const groupJid = '120363036972484891@g.us'
+    const input = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: true,
+        id: 'wamid.UNO.group-status',
+        participant: `${remotePhoneNumber}@s.whatsapp.net`,
+      },
+      update: {
+        status: 3,
+      },
+      messageTimestamp: 1774650365,
+    }
+    const resp = fromBaileysMessageContent(phoneNumer, input)[0]
+    const status = resp.entry[0].changes[0].value.statuses[0]
+    expect(status.recipient_id).toEqual(groupJid)
+    expect(status.recipient_type).toEqual('group')
+    expect(status.status).toEqual('delivered')
   })
 
   test('fromBaileysMessageContent statusMentionMessage', async () => {
@@ -2371,6 +2805,7 @@ describe('service transformer', () => {
     }
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
   })
+
 // {"key":{"remoteJid":"555533800800@s.whatsapp.net","fromMe":false,"id":"1BE283407E62E5A073"},"messageTimestamp":1753900800,"pushName":"555533800800","broadcast":false,"message":{"messageContextInfo":{"deviceListMetadata":{"recipientKeyHash":"BuoOcp2GlUsdsQ==","recipientTimestamp":"1753278139","recipientKeyIndexes":[0,5]},"deviceListMetadataVersion":2},"buttonsMessage":{"contentText":"Para confirmar, estou falando com *IM Agronegócios* e o seu CNPJ é *41.281.5xx/xxxx-xx*?","buttons":[{"buttonId":"1","buttonText":{"displayText":"Sim"},"type":"RESPONSE"},{"buttonId":"2","buttonText":{"displayText":"Não"},"type":"RESPONSE"}],"headerType":"EMPTY"}},"verifiedBizName":"Unifique"}
 // {"key":{"remoteJid":"555533800800@s.whatsapp.net","fromMe":true,"id":"3EB02FCD7C12A71F06DE34"}, "messageTimestamp":1753900805,"pushName":"Im Agronegócios","broadcast":false,"status":2, "message":{"buttonsResponseMessage":{"selectedButtonId":"1","selectedDisplayText":"Sim","contextInfo":{"stanzaId":"1BE283407E62E5A073","participant":"555533800800@s.whatsapp.net","quotedMessage":{"messageContextInfo":{},"buttonsMessage":{"contentText":"Para confirmar, estou falando com *IM Agronegócios* e o seu CNPJ é *41.281.5xx/xxxx-xx*?","buttons":[{"buttonId":"1","buttonText":{"displayText":"Sim"},"type":"RESPONSE"},{"buttonId":"2","buttonText":{"displayText":"Não"},"type":"RESPONSE"}],"headerType":"EMPTY"}}},"type":"DISPLAY_TEXT"}}}
 })

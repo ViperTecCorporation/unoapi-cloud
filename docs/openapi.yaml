@@ -149,6 +149,16 @@ paths:
                   type: text
                   text:
                     body: "Oi @5566996269251 e @5566996222471"
+              messageEdit:
+                summary: Editar mensagem enviada
+                value:
+                  messaging_product: whatsapp
+                  to: "5511999999999"
+                  type: message_edit
+                  context:
+                    message_id: "uno-message-id-original"
+                  text:
+                    body: "Texto editado"
               image:
                 summary: Imagem por link
                 value:
@@ -731,6 +741,34 @@ components:
               items: { type: string }
               description: 'Atalho opcional equivalente a text.mentions'
 
+    MessageEdit:
+      allOf:
+        - $ref: '#/components/schemas/MessageCommon'
+        - type: object
+          required: [context, text]
+          properties:
+            type: { const: message_edit }
+            context:
+              type: object
+              required: [message_id]
+              properties:
+                message_id:
+                  type: string
+                  description: 'ID Unoapi da mensagem original. A Unoapi resolve esse ID para a key original do Baileys em cache antes de chamar sendMessage(..., { edit: key }).'
+            text:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+                mentions:
+                  type: array
+                  items: { type: string }
+                  description: 'Opcional. Lista de números ou JIDs para menção no texto editado.'
+            mentions:
+              type: array
+              items: { type: string }
+              description: 'Atalho opcional equivalente a text.mentions.'
+
     MessageImage:
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
@@ -891,6 +929,7 @@ components:
     MessageRequest:
       oneOf:
         - $ref: '#/components/schemas/MessageText'
+        - $ref: '#/components/schemas/MessageEdit'
         - $ref: '#/components/schemas/MessageImage'
         - $ref: '#/components/schemas/MessageVideo'
         - $ref: '#/components/schemas/MessageSticker'

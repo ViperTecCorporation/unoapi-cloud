@@ -4,6 +4,7 @@ import { setConfig } from '../services/redis'
 import logger from '../services/logger'
 import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
+import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 
 export class RegistrationController {
   private static readonly REGISTER_DEBOUNCE_MS = 15000
@@ -26,7 +27,7 @@ export class RegistrationController {
     logger.debug('register params %s', JSON.stringify(req.params))
     logger.debug('register body %s', JSON.stringify(req.body))
     logger.debug('register query %s', JSON.stringify(req.query))
-    const { phone } = req.params
+    const phone = await resolveSessionPhoneByMetaId(req.params.phone)
     try {
       await setConfig(phone, req.body)
       const now = Date.now()
@@ -66,7 +67,7 @@ export class RegistrationController {
     logger.debug('deregister params %s', JSON.stringify(req.params))
     logger.debug('deregister body %s', JSON.stringify(req.body))
     logger.debug('deregister query %s', JSON.stringify(req.query))
-    const { phone } = req.params
+    const phone = await resolveSessionPhoneByMetaId(req.params.phone)
     await this.logout.run(phone)
     return res.status(204).send()
   }

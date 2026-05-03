@@ -103,7 +103,10 @@ Large-group heuristics
 
 ### LID ⇄ PN Handling (Meow compatibility)
 
-- For consistent webhooks and UX, the system prioritizes PN (digits only) in `wa_id`, `from`, and `recipient_id`.
+- For consistent webhooks and UX, the system keeps `wa_id`, `from`, and `recipient_id` as phone-only fields. If a PN cannot be resolved safely, `wa_id`/`from` stay empty and LID is exposed through `user_id`/`from_user_id`.
+- When Baileys provides WhatsApp username fields, the username is treated as profile metadata, not as the primary identifier. The stable identifier remains LID: `contacts[].user_id` and `messages[].from_user_id` are populated with `@lid` when available, and `contacts[].profile.username` carries the username.
+- Meta-like group participant and join-request routes expose the same identity model with additive fields: `user_id` for the participant `@lid`, `username` for WhatsApp username, and the existing `wa_id` field kept for compatibility.
+- `contacts[].profile.name` is filled with the first available value in this order: business/push name, username, `wa_id`, then `user_id` (`@lid`).
 - LID→PN mapping is achieved via:
   - Enriched fields (`senderPn/participantPn`) provided by the Baileys client.
   - Normalization using `jidNormalizedUser`.
@@ -182,8 +185,7 @@ Flags and configuration
 
 - Where it runs
   - `src/services/transformer.ts` (fromBaileysMessageContent): resolves sender phone using PN fields, groupMetadata participants and, finally, normalized LID.
-  - `src/services/outgoing_cloud_api.ts`: before sending webhook, converts
-    - `contacts[*].wa_id` • `messages[*].from` • `statuses[*].recipient_id` to PN if possible; if `@lid` and cache empty, derives PN via `jidNormalizedUser` and updates mapping.
+  - `src/services/outgoing_cloud_api.ts`: before sending webhook, keeps `contacts[*].wa_id` and `messages[*].from` phone-only. If a PN cannot be resolved safely, these fields stay empty and the LID remains in `user_id`/`from_user_id`.
   - `src/jobs/transcriber.ts`: applies the same conversion before forwarding the transcription webhook.
 
 - Mapping storage
@@ -230,7 +232,7 @@ Flow overview (when SEND_PROFILE_PICTURE=true):
    │                         persist via mediaStore.saveProfilePicture
    │                                     │
    ├───────── S3 backend ────────────────┴──────── filesystem backend ────────┐
-   │  PutObject to <phone>/profile-pictures/<canonical>.jpg                    │
+   │  PutObject to <phone>/profile-pictures/<pn>.jpg and <lid>.jpg when known  │
    │  return signed URL (expires DATA_URL_TTL)                                │
    │                                                                           │
    │                                              write file under <baseStore>/medias

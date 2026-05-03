@@ -7,6 +7,7 @@ import {
   delAuth,
   setMessage,
   getMessage,
+  getMessageWithSecretAnySession,
   setJid,
   getJid,
   getKey,
@@ -138,6 +139,32 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
     const wm = m as proto.IWebMessageInfo
     return wm
   }
+  store.findMessageWithSecret = async (id: string, jids: string[]) => {
+    const candidates = Array.from(new Set((jids || []).map((jid) => `${jid || ''}`.trim()).filter(Boolean)))
+    let fallback: proto.IWebMessageInfo | undefined
+    for (const jid of candidates) {
+      try {
+        const direct = await getMessage<proto.IWebMessageInfo>(phone, jid, id)
+        if (direct?.message?.messageContextInfo?.messageSecret) return direct
+        if (direct && !fallback) fallback = direct
+      } catch {}
+
+      try {
+        const normalized = isIndividualJid(jid) ? phoneNumberToJid(jidToPhoneNumber(jid)) : jid
+        if (normalized && normalized !== jid) {
+          const normalizedMessage = await getMessage<proto.IWebMessageInfo>(phone, normalized, id)
+          if (normalizedMessage?.message?.messageContextInfo?.messageSecret) return normalizedMessage
+          if (normalizedMessage && !fallback) fallback = normalizedMessage
+        }
+      } catch {}
+    }
+    try {
+      const anySessionMessage = await getMessageWithSecretAnySession<proto.IWebMessageInfo>(id)
+      if (anySessionMessage?.message?.messageContextInfo?.messageSecret) return anySessionMessage
+      if (anySessionMessage && !fallback) fallback = anySessionMessage
+    } catch {}
+    return fallback
+  }
   store.setMessage = async (remoteJid: string, message: WAMessage) => {
     const newJid = isIndividualJid(remoteJid) ? phoneNumberToJid(jidToPhoneNumber(remoteJid)) : remoteJid
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -207,6 +234,12 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
       const providerId = await getProviderId(phone, id)
       if (providerId) {
         return getMessageStatus(phone, providerId)
+      }
+    } catch {}
+    try {
+      const unoId = await getUnoId(phone, id)
+      if (unoId) {
+        return getMessageStatus(phone, unoId)
       }
     } catch {}
     return direct

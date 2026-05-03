@@ -264,21 +264,30 @@ export class OutgoingCloudApi implements Outgoing {
       message = adaptStatusReplyMediaForChatwoot(message)
     }
     const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
-    // Garantir que contacts[*].wa_id nunca venha vazio: usar recipient_id ou from como fallback
+    // Keep Cloud API phone fields phone-only. LID/BSUID must travel in user_id/from_user_id.
     try {
+      const phoneOnly = (value?: string): string => {
+        const raw = `${value || ''}`.trim()
+        if (!raw || raw.includes('@lid')) return ''
+        const digits = raw.replace(/\D/g, '')
+        return digits ? raw : ''
+      }
       if (Array.isArray(v.contacts) && v.contacts.length > 0) {
         const c = v.contacts[0] || {}
         const raw = (c.wa_id || '').toString().trim()
-        if (!raw) {
+        if (raw.includes('@lid')) {
+          c.wa_id = ''
+        }
+        if (!c.wa_id) {
           let fallback: string | undefined
           try {
             if (Array.isArray(v.statuses) && v.statuses[0]?.recipient_id) {
-              fallback = `${v.statuses[0].recipient_id}`
+              fallback = phoneOnly(`${v.statuses[0].recipient_id}`)
             }
           } catch {}
           try {
             if (!fallback && Array.isArray(v.messages) && v.messages[0]?.from) {
-              fallback = `${v.messages[0].from}`
+              fallback = phoneOnly(`${v.messages[0].from}`)
             }
           } catch {}
           if (fallback && fallback.toString().trim()) {
@@ -289,9 +298,8 @@ export class OutgoingCloudApi implements Outgoing {
     } catch {}
     // Sanitize phone fields ONLY right before sending (do not affect routing decisions)
     try { normalizeWebhookValueIds(v) } catch {}
-    // Mapping preferences são aplicadas abaixo; digits->LID repair e heurísticas são condicionadas à preferência de LID/PN
-    // Repair (when not preferring PN): if 'from'/wa_id/recipient_id are bare digits but we already have a LID mapping in cache,
-    // prefer the mapped @lid to avoid inconsistencies (naked LID-digits without suffix)
+    // Mapping preferences are applied below only where a field is not a Cloud API phone field.
+    // wa_id/from remain phone-only; LID/BSUID belongs in user_id/from_user_id.
     if (!WEBHOOK_PREFER_PN_OVER_LID) try {
       const config = await this.getConfig(phone)
       const store = await config.getStore(phone, config)
@@ -309,16 +317,7 @@ export class OutgoingCloudApi implements Outgoing {
         } catch {}
         return val
       }
-      if (Array.isArray(v.contacts)) {
-        for (const c of v.contacts) {
-          if (c && typeof c.wa_id === 'string') c.wa_id = await toLidIfMapped(c.wa_id)
-        }
-      }
-      if (Array.isArray(v.messages)) {
-        for (const m of v.messages) {
-          if (m && typeof m.from === 'string') m.from = await toLidIfMapped(m.from)
-        }
-      }
+      // wa_id/from are Cloud API phone fields now; do not convert them to @lid.
       if (Array.isArray(v.statuses)) {
         for (const s of v.statuses) {
           if (s && typeof s.recipient_id === 'string') s.recipient_id = await toLidIfMapped(s.recipient_id)
@@ -447,57 +446,7 @@ export class OutgoingCloudApi implements Outgoing {
         }
       }
     } catch {}
-    // HeurÃ­sticas finais: somente quando preferimos LID nos webhooks
-    if (!WEBHOOK_PREFER_PN_OVER_LID) try {
-      const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
-      const isDigits = (s?: string) => !!s && /^\d+$/.test(s)
-      const clean = (j?: string) => {
-        const val = `${j || ''}`
-        if (!val) return val
-        try { return formatJid(val) } catch { return val }
-      }
-      const parseLidFromPicture = (url?: string): string | undefined => {
-        try {
-          const u = `${url || ''}`
-          const idx = u.indexOf('/profile-pictures/')
-          if (idx >= 0) {
-            const rest = u.substring(idx + '/profile-pictures/'.length)
-            const name = rest.split('?')[0].split('#')[0]
-            const base = decodeURIComponent(name)
-            const jid = base.split('.')[0] // e.g., 94047..@lid.jpg
-            if (jid && jid.includes('@lid')) return clean(jid)
-          }
-        } catch {}
-        return undefined
-      }
-      if (Array.isArray(v.contacts)) {
-        for (const c of v.contacts) {
-          try {
-            if (c && typeof c.wa_id === 'string' && isDigits(c.wa_id)) {
-              let lid = undefined as string | undefined
-              // 1) nome do perfil jÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ vem com @lid em alguns casos
-              try {
-                const nm = `${c?.profile?.name || ''}`
-                if (nm.includes('@lid')) lid = clean(nm)
-              } catch {}
-              // 2) extrair do link da foto de perfil
-              if (!lid) lid = parseLidFromPicture(c?.profile?.picture)
-              if (lid && lid.endsWith('@lid')) {
-                c.wa_id = lid
-              }
-            }
-          } catch {}
-        }
-      }
-      if (Array.isArray(v.messages) && v.messages.length === 1 && isDigits(v.messages[0]?.from)) {
-        try {
-          const c = Array.isArray(v.contacts) ? v.contacts[0] : undefined
-          if (c && typeof c?.wa_id === 'string' && c.wa_id.includes('@lid')) {
-            v.messages[0].from = clean(c.wa_id)
-          }
-        } catch {}
-      }
-    } catch {}
+    // wa_id/from are intentionally left blank when no valid phone is available.
     // Aplicar schema Typebot (Cloud API estrito) se habilitado no webhook
     if (webhook.typebot) {
       message = normalizePayloadForTypebot(message, phone)

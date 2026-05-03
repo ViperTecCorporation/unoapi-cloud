@@ -30,6 +30,43 @@ const MESSAGE_STUB_TYPE_ERRORS = [
   'No matching sessions found for message'.toLowerCase(),
 ]
 
+const isViewOnceUnavailableStub = (payload: any): boolean => {
+  const source = payload?.update || payload || {}
+  const stubParams = Array.isArray(source?.messageStubParameters)
+    ? source.messageStubParameters.map((p: any) => `${p}`)
+    : []
+  return stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')
+}
+
+const extractMessageEditInfo = (payload: any): { originalMessageId?: string; timestampMs?: string } | undefined => {
+  const candidates = [
+    payload?.__unoapiMessageEdit,
+    payload?.message?.protocolMessage,
+    payload?.message?.editedMessage?.message?.protocolMessage,
+    payload?.update?.message?.protocolMessage,
+    payload?.update?.message?.editedMessage?.message?.protocolMessage,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (candidate.originalMessageId) return candidate
+    const isEdit = `${candidate?.type || ''}` === 'MESSAGE_EDIT' || !!candidate?.editedMessage
+    const originalMessageId = `${candidate?.key?.id || ''}`.trim()
+    if (isEdit && originalMessageId) {
+      return {
+        originalMessageId,
+        timestampMs: candidate?.timestampMs ? `${candidate.timestampMs}` : undefined,
+      }
+    }
+  }
+  return undefined
+}
+
+const isSecretEncryptedMessageEdit = (message: any): boolean => {
+  const secretType = `${message?.secretEncType || ''}`
+  return secretType === '2' || secretType === 'MESSAGE_EDIT'
+}
+
 export class BindTemplateError extends Error {
   constructor() {
     super('')
@@ -100,6 +137,7 @@ export const TYPE_MESSAGES_TO_READ = [
   'pollResultSnapshotMessageV3',
   'statusQuotedMessage',
   'statusAddYours',
+  'secretEncryptedMessage',
 ]
 
 const OTHER_MESSAGES_TO_PROCESS = [
@@ -532,6 +570,10 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
     .filter((value: string) => !!value)
   const mentionsUnique = Array.from(new Set(mentions))
   switch (type) {
+    case 'baileys':
+      return payload.message || {}
+
+    case 'message_edit':
     case 'text':
       response.text = customMessageCharactersFunction(
         hasMentionAllToken
@@ -616,6 +658,9 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
         response.footer = footer.text || ''
         response.title = header.text || ''
         response.buttonText = action.button || 'Selecione'
+        if (typeof action.listType !== 'undefined') {
+          response.listType = action.listType
+        }
         response.sections = action.sections.map((section: any) => ({
           title: section.title || '',
           rows: (section.rows || []).map((row: any) => ({
@@ -907,6 +952,26 @@ export const phoneNumberToJid = (phoneNumber: string) => {
   }
 }
 
+export const normalizeGroupId = (input: string): string => {
+  const raw = `${input || ''}`.trim()
+  if (!raw) return ''
+  if (raw.endsWith('@g.us')) return raw
+  const digits = raw.replace(/\D/g, '')
+  return digits ? `${digits}@g.us` : raw
+}
+
+export const normalizeParticipantId = (jid: string): string => {
+  const value = `${jid || ''}`.trim()
+  if (!value) return ''
+  if (value.endsWith('@s.whatsapp.net')) {
+    return value.split('@')[0].split(':')[0].replace(/\D/g, '')
+  }
+  if (value.endsWith('@lid')) {
+    return value
+  }
+  return value.replace(/\D/g, '') || value
+}
+
 // Converte PN/JID para PN JID de transporte sem heurística extra (ex.: sem inserir 9º dígito BR).
 // Deve ser usado para caches internos/JIDMAP, preservando o valor como chega do Baileys.
 export const toRawPnJid = (value?: string): string => {
@@ -1073,6 +1138,52 @@ export const getNumberAndId = (payload: any): [string, string] => {
   return [phone!, id]
 }
 
+const firstNonEmptyString = (...values: any[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
+const normalizeLidUserId = (value?: string): string | undefined => {
+  if (!value || typeof value !== 'string') return undefined
+  try {
+    const jid = value.includes('@') ? formatJid(value) : value
+    return isLidUser(jid as any) ? jid : undefined
+  } catch {
+    return value.endsWith('@lid') ? value : undefined
+  }
+}
+
+const extractBaileysStableUserId = (payload: any, senderId?: string): string | undefined => {
+  const key = payload?.key || {}
+  return firstNonEmptyString(
+    normalizeLidUserId(key.senderLid),
+    normalizeLidUserId(key.participantLid),
+    normalizeLidUserId(key.recipientLid),
+    normalizeLidUserId(key.participant),
+    normalizeLidUserId(payload?.participant),
+    normalizeLidUserId(key.remoteJid),
+    normalizeLidUserId(senderId),
+  )
+}
+
+const extractBaileysUsername = (payload: any): string | undefined => {
+  const key = payload?.key || {}
+  return firstNonEmptyString(
+    key.participantUsername,
+    key.remoteJidUsername,
+    key.senderUsername,
+    payload?.participantUsername,
+    payload?.remoteJidUsername,
+    payload?.senderUsername,
+    payload?.contact?.username,
+    payload?.username,
+  )
+}
+
 export const formatJid = (jid: string) => {
   const jidSplit = jid.split('@')
   return `${jidSplit[0].split(':')[0]}@${jidSplit[1]}`
@@ -1163,6 +1274,11 @@ export const getGroupId = (payload: object) => {
         data.entry[0].changes[0].value.contacts
         && data.entry[0].changes[0].value.contacts[0]
         && data.entry[0].changes[0].value.contacts[0].group_id
+      )
+      || (
+        data.entry[0].changes[0].value.messages
+        && data.entry[0].changes[0].value.messages[0]
+        && data.entry[0].changes[0].value.messages[0].group_id
       )
     )
 }
@@ -1263,7 +1379,7 @@ export const jidToPhoneNumberIfUser = (value: any): string => {
 
 // Normaliza IDs para webhook mantendo grupos intactos e convertendo usuários para PN com regra BR do 9º dígito
 // - Mantém '@g.us' sem alterações (group_id, group_picture, etc.)
-// - Converte '@lid' -> PN JID e depois -> PN
+// - Não expõe '@lid' em campos de telefone; LID fica em user_id/from_user_id
 // - Converte JID de usuário -> PN
 // - Aplica 9º dígito no Brasil somente para PN de usuários (55 + DDD + 8 dígitos iniciando em [6-9])
 export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
@@ -1286,10 +1402,10 @@ export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
     if (!val) return val
     // Não normalizar grupos
     if (val.includes('@g.us')) return val
-    // Não normalizar LID -> PN aqui: manter @lid quando não houver mapeamento explícito
+    // Não expor LID em campos Cloud API de telefone; usar user_id/from_user_id para isso.
     try {
       if (val.includes('@lid')) {
-        return val
+        return ''
       }
     } catch {}
     // Converter JID de usuário para PN quando aplicável
@@ -1378,15 +1494,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const { key: { id: whatsappMessageId, fromMe } } = payload
     const [chatJid, senderPhone, senderId] = getChatAndNumberAndId(payload)
     const messageType = getMessageType(payload)
+    const messageEditInfo = extractMessageEditInfo(payload)
     // Device-sent messages (from the phone) may arrive under messages.update with message content.
     // Unwrap to a plain message payload and DROP the update field to avoid recursion.
     const innerUpdateMsg = payload?.update?.message?.deviceSentMessage?.message || payload?.update?.message
     if (innerUpdateMsg) {
       const keys = Object.keys(innerUpdateMsg || {})
-      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k))
+      const hasReadable = keys.find((k) => TYPE_MESSAGES_TO_READ.includes(k) || k === 'protocolMessage' || k === 'editedMessage')
       if (hasReadable) {
         const { update: _omit, ...rest } = payload
-        const changedPayload = { ...rest, message: innerUpdateMsg }
+        const changedPayload = { ...rest, message: innerUpdateMsg, __unoapiMessageEdit: messageEditInfo }
         return fromBaileysMessageContent(phone, changedPayload, config)
       }
     }
@@ -1394,7 +1511,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     const innerDeviceMsg = payload?.message?.deviceSentMessage?.message
     if (innerDeviceMsg) {
       const { update: _omitDev, ...restDev } = payload || {}
-      const changedPayload = { ...restDev, message: innerDeviceMsg }
+      const changedPayload = { ...restDev, message: innerDeviceMsg, __unoapiMessageEdit: messageEditInfo }
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     // Also unwrap editedMessage wrappers into their inner original message content
@@ -1434,15 +1551,31 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         }
       } catch {}
       const { update: _omitEdit, ...restEdit } = payload || {}
-      const changedPayload = { ...restEdit, message: innerEditedMsg }
+      const changedPayload = { ...restEdit, message: innerEditedMsg, __unoapiMessageEdit: messageEditInfo }
       return fromBaileysMessageContent(phone, changedPayload, config)
     }
     const binMessage = payload.update || payload.receipt || (messageType && payload.message && payload.message[messageType])
+    const senderStableUserId = extractBaileysStableUserId(payload, senderId)
+    const senderUsername = extractBaileysUsername(payload)
+    const contactWaId = (
+      // 1) outro lado (derivado do remoteJid já normalizado)
+      ensurePn(senderPhone) ||
+      // 2) alternativas explícitas quando presentes
+      ensurePn(payload?.key?.participantPn) ||
+      ensurePn(payload?.participantPn) ||
+      ensurePn(payload?.key?.senderPn) ||
+      // 3) fallbacks a partir de JIDs brutos
+      ensurePn(senderId) ||
+      ensurePn(payload?.key?.remoteJid) ||
+      ensurePn(payload?.key?.remoteJidAlt) ||
+      ensurePn(payload?.key?.participantAlt) ||
+      ensurePn(payload?.participantAlt)
+    ) || ''
     let profileName
     if (fromMe) {
-      profileName = senderPhone
+      profileName = firstNonEmptyString(senderPhone, contactWaId, senderStableUserId)
     } else {
-      profileName = payload.verifiedBizName || payload.pushName || senderPhone
+      profileName = firstNonEmptyString(payload.verifiedBizName, payload.pushName, senderUsername, contactWaId, senderStableUserId)
     }
     let cloudApiStatus
     let messageTimestamp = payload.messageTimestamp
@@ -1475,6 +1608,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               () => {
                 // Em eventos de status (update/receipt), nao incluir picture
                 const p: any = { name: profileName }
+                if (senderUsername) p.username = senderUsername
                 const mt = `${messageType || ''}`
                 if (!['update', 'receipt'].includes(mt)) {
                   const pic = payload.profilePicture
@@ -1486,20 +1620,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               }
             )(),
             ...groupMetadata,
-            wa_id: (
-              // 1) outro lado (derivado do remoteJid já normalizado)
-              ensurePn(senderPhone) ||
-              // 2) alternativas explícitas quando presentes
-              ensurePn(payload?.key?.participantPn) ||
-              ensurePn(payload?.participantPn) ||
-              ensurePn(payload?.key?.senderPn) ||
-              // 3) fallbacks a partir de JIDs brutos
-              ensurePn(senderId) ||
-              ensurePn(payload?.key?.remoteJid) ||
-              ensurePn(payload?.key?.remoteJidAlt) ||
-              ensurePn(payload?.key?.participantAlt) ||
-              ensurePn(payload?.participantAlt)
-            ) || (payload?.key?.participant || payload?.key?.remoteJid || senderId),
+            wa_id: contactWaId,
+            ...(senderStableUserId ? { user_id: senderStableUserId } : {}),
           },
         ],
         statuses,
@@ -1521,7 +1643,30 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       from: undefined as any,
       id: whatsappMessageId,
     }
-    // Build 'from' prioritizing PN; when not possible, keep @lid (not bare digits)
+    const emitViewOnceUnavailableMessage = () => {
+      const k: any = (payload as any)?.key || {}
+      message.type = 'text'
+      message.text = {
+        body: 'Mídia de visualização única indisponível neste dispositivo.',
+      }
+      logger.info('view_once_unavailable detected msgId=%s remoteJid=%s fromMe=%s hasMediaKey=%s hasDirectPath=%s reason=%s',
+        k?.id || whatsappMessageId || '<none>',
+        k?.remoteJid || '<none>',
+        !!k?.fromMe,
+        false,
+        false,
+        'server_delivered_unavailable_placeholder',
+      )
+      change.value.messages.push(message)
+      return [data, senderPhone, senderId] as [any, string, string]
+    }
+    if (senderStableUserId && !fromMe) {
+      message.from_user_id = senderStableUserId
+    }
+    if (groupMetadata.group_id) {
+      message.group_id = normalizeGroupId(groupMetadata.group_id)
+    }
+    // Build 'from' prioritizing PN; when not possible, keep it empty and expose LID in from_user_id.
     try {
       if (fromMe) {
         message.from = phone.replace('+', '')
@@ -1535,19 +1680,11 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         if (fpn) {
           message.from = fpn
         } else {
-          // Prefer a JID with suffix when available (e.g., @lid) instead of bare digits
-          const kj: any = (payload as any)?.key || {}
-          const jidFallback = kj?.participant || kj?.remoteJid || senderId
-          if (typeof jidFallback === 'string' && jidFallback.includes('@')) {
-            message.from = jidFallback
-          } else {
-            // last resort: use senderId or digits as provided
-            message.from = senderId || jidFallback || ''
-          }
+          message.from = ''
         }
       }
     } catch {
-      message.from = fromMe ? phone.replace('+', '') : (senderId || '')
+      message.from = fromMe ? phone.replace('+', '') : ''
     }
     if (payload.messageTimestamp) {
       message['timestamp'] = payload.messageTimestamp.toString()
@@ -1636,7 +1773,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const editedMessage = binMessage.message.protocolMessage ? binMessage.message.protocolMessage[messageType] : binMessage.message
         // Keep envelope key.id (Cloud API expects current event id), only replace message content
         const { update: _omitUpdate1, ...restEdited } = payload || {}
-        const editedMessagePayload: any = { ...restEdited, message: editedMessage }
+        const editedMessagePayload: any = { ...restEdited, message: editedMessage, __unoapiMessageEdit: messageEditInfo }
         const editedMessageType = getMessageType(editedMessagePayload)
         const editedBinMessage = getBinMessage(editedMessagePayload)
         if (editedMessageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(editedMessageType) && !editedBinMessage?.message?.url && editedBinMessage?.message?.caption) {
@@ -1677,11 +1814,24 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
             }
           } catch {}
           const { update: _omitUpdate2, ...restProto } = payload || {}
-          return fromBaileysMessageContent(phone, { ...restProto, message: inner }, config)
+          return fromBaileysMessageContent(phone, { ...restProto, message: inner, __unoapiMessageEdit: messageEditInfo }, config)
         } else {
           logger.debug(`Ignore message type ${messageType}`)
           return [null, senderPhone, senderId]
         }
+
+      case 'secretEncryptedMessage':
+        if (isSecretEncryptedMessageEdit(binMessage)) {
+          const targetId = `${(binMessage as any)?.targetMessageKey?.id || messageEditInfo?.originalMessageId || ''}`.trim()
+          logger.info(
+            'Ignore encrypted message edit until decrypted content is available: eventId=%s targetId=%s',
+            whatsappMessageId || '<none>',
+            targetId || '<none>',
+          )
+          return [null, senderPhone, senderId]
+        }
+        logger.debug(`Ignore message type ${messageType}`)
+        return [null, senderPhone, senderId]
 
       case 'ephemeralMessage':
       case 'viewOnceMessage':
@@ -1714,15 +1864,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       case 'messageStubType': {
-        const stubParams = Array.isArray((payload as any)?.messageStubParameters)
-          ? (payload as any).messageStubParameters.map((p: any) => `${p}`)
-          : []
-        if (stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')) {
-          message.text = { body: 'Conteúdo de visualização única indisponível aqui. Confira no aparelho celular.' }
-          message.unsupported = { reason: 'view_once_not_available_on_companion' }
-          message.type = 'text'
-          change.value.messages.push(message)
-          return [data, senderPhone, senderId]
+        if (isViewOnceUnavailableStub(payload)) {
+          return emitViewOnceUnavailableMessage()
         }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
@@ -1980,6 +2123,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         // Suporta formatos com payload.status OU payload.update.status
         // Evita acessar update quando inexistente
         const u: any = (payload && (payload as any).update) || {}
+        if (isViewOnceUnavailableStub(payload)) {
+          return emitViewOnceUnavailableMessage()
+        }
         const baileysStatus = (payload as any)?.status ?? u?.status
         if (
           typeof baileysStatus === 'undefined' &&
@@ -2043,7 +2189,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
               }
             }
         }
-        break
+      break
       case 'listResponseMessage':
         message.text = {
           body: payload.message.listResponseMessage.title,
@@ -2485,6 +2631,10 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         recipient_id: recipientPn || senderId,
         status: cloudApiStatus,
       }
+      if (groupMetadata.group_id) {
+        state.recipient_id = normalizeGroupId(groupMetadata.group_id)
+        state.recipient_type = 'group'
+      }
       // Defensivo: se recipient_id ficou vazio ou igual ao número do próprio canal,
       // force usar o PN do outro lado (senderPhone derivado do remoteJid)
       try {
@@ -2535,6 +2685,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       // {"key":{"remoteJid":"554936213177@s.whatsapp.net","fromMe":false,"id":"1EBD1D8356472403AFE7102D05D6B21B"},"messageTimestamp":1698057926,"pushName":"Odonto Excellence","broadcast":false,"message":{"extendedTextMessage":{"text":"https://fb.me/4QHYHT0Fv","matchedText":"https://fb.me/4QHYHT0Fv","previewType":"NONE","contextInfo":{"forwardingScore":1,"isForwarded":true,"externalAdReply":{"title":"Converse conosco!","body":"🤩 PRÓTESE FLEXÍVEL: VOCÊ JÁ CONHECE? 🤩\\n\\n✅ Maior Conforto\\n✅ Mais Natural\\n✅ Mais Bonita\\n✅ Sem Grampos Aparentes\\n\\nEstes são os benefícios que a PRÓTESE FLEXÍVEL pode te proporcionar. Tenha a sua LIBERDADE de volta, e volte a sorrir e a comer com tranquilidade!!! 🍎🌽🥩🍗\\n\\n⭐ ESSA É SUA CHANCE, NÃO DEIXE PASSAR!\\n\\n📲 Garanta sua avaliação e vamos falar a respeito dessa possibilidade de TRANSFORMAÇÃO!! 💖","mediaType":"VIDEO","thumbnailUrl":"https://scontent.xx.fbcdn.net/v/t15.5256-10/341500845_517424053756219_5530967817243282036_n.jpg?stp=dst-jpg_s851x315&_nc_cat=105&ccb=1-7&_nc_sid=0808e3&_nc_ohc=K-u3hFrS1xcAX-NaRwd&_nc_ad=z-m&_nc_cid=0&_nc_ht=scontent.xx&oh=00_AfDNIQXVcym0OF49i-UJSEX0rri9IlrwXPQkcXOpTfH-xQ&oe=653A3E2F","mediaUrl":"https://www.facebook.com/OdontoExcellenceSaoMiguel/videos/179630185187923/","thumbnail":"/9j/4AAQSkZJRgABAQAAAQABAAD/7QCEUGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAGgcAigAYkZCTUQwYTAwMGE2YzAxMDAwMGQ5MDEwMDAwNzMwMjAwMDBiZDAyMDAwMGZkMDIwMDAwODMwMzAwMDAxZDA0MDAwMDU0MDQwMDAwOTYwNDAwMDBkYTA0MDAwMGQyMDUwMDAwAP/bAEMABgQFBgUEBgYFBgcHBggKEAoKCQkKFA4PDBAXFBgYFxQWFhodJR8aGyMcFhYgLCAjJicpKikZHy0wLSgwJSgpKP/bAEMBBwcHCggKEwoKEygaFhooKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKP/CABEIADIAMgMBIgACEQEDEQH/xAAaAAADAQEBAQAAAAAAAAAAAAAABAUGAwEC/8QAFwEBAQEBAAAAAAAAAAAAAAAAAQIDBP/aAAwDAQACEAMQAAAB7LotYdhMZYrOdwuhecNATMOzmNYureQ4GdHHXONXmxwSJaaQdvKOdak0MuMJQExenyFK1ADneUCsEgM+v//EACAQAAICAgICAwAAAAAAAAAAAAECAAMEERMhBRIUIjH/2gAIAQEAAQUC3031hfqx9ytG4iZuLb3vrgdyfGXNER6i+IjThSFwRh07WnWlEyKxbXe5xLPnLFb2lFjTfEj5Lqfn9M9OSp8RVvFx/vlXqinyF5OJkKQ11Ix7by7aee6CWqjwr6u4BRVIHIQeZo37L+pV+CZQHpP/xAAgEQACAQMEAwAAAAAAAAAAAAAAAgEDEjEQERMhMkFR/9oACAEDAQE/AWSGOOFzJUT3BaIkxgslsCq6FwsRBU2iOhdvp1pXwU/LT//EAB0RAAICAQUAAAAAAAAAAAAAAAABEBEhAgMSMUH/2gAIAQIBAT8BTGxZUbjvoWkqizj6VkRcuP/EACQQAAEDAwQCAwEAAAAAAAAAAAEAAhEDECESMUFRImEEIDKB/9oACAEBAAY/Ar+1J3F828RKa4aRHBUVGwpavysoPdJnhYs5pxPK01P4e1vZjGtwhjJUNXk2UW1WYPaxUcpcITG03eY64TdWw6CfU+Q4NKjVJ9IFohb24atMyjnKww/UQhaYzb//xAAfEAEAAwEAAgMBAQAAAAAAAAABABEhMWFxQVGRoRD/2gAIAQEAAT8hqsZpCOo1gfCKSW36f7RQYbuVXsGLPSbTxVksdfnjOxb/ACFWm/UxiC46BchpDwjVaM43GfSWyx9cNsBitlCoVAsKMtA9Uv1UEYf4ngAkKSM+DJsWuAza92sGRD8NFxGszcyE+XkXYp8sUbp+T25b0eScE8oBYH1OPB8jMi309ngYoOzZ4fE3d9TmUFGu1Byf/9oADAMBAAIAAwAAABCpUH4aO33xxv8AdjiD/8QAGhEBAQEBAQEBAAAAAAAAAAAAAQARMSEQcf/aAAgBAwEBPxATSPdACcX511eQmAIml+bAHhLEM2x9NWQ5crh8/8QAGhEBAQEAAwEAAAAAAAAAAAAAAQARECExQf/aAAgBAgEBPxBTpgSHlZMcjZCWlidvac6tHvEvt44//8QAIhABAAICAwEAAQUAAAAAAAAAAQARITFBUXFhkaGxwdHh/9oACAEBAAE/ELgC6IhR1ESCHFWGi8xRFxrP+D+8pJeObUEMSiHbfsaiXJlL/JU8W88CEAakQX4OmXygd1e0CCqM/UPBXx8gSHoA49g3iVFEDuzfdRK6UiCvhPGBDJqBi+feyWmG+okWXwHcu5BhA0ZqIF5VuouFW0XqUB/Vg/2Ic4Sw7B4bMj9Imnqgujq3c1ClB+sMFSoUAVS6v5Cs1Vazt3fkU1aHEUweytNAnJsrfVzTNey/SIkytuMRZpdEXSy4G4qghkGk4hVrKwtXryAQAbSymCI0jhCj+CI5KzdABLFtwWEULXJYQxAjl0wYr/MSmXU//9k=","sourceType":"ad","sourceId":"120200422938230365","sourceUrl":"https://fb.me/4QHYHT0Fv","containsAutoReply":false,"renderLargerThumbnail":true,"showAdAttribution":true,"ctwaClid":"ARA5EWTktP0VPr7ZyKkYKKQN_HfFye5re1giQ6os1ZjiFa0Pdftvs-ESdUtWgOjkEoBsJ_mCh86z8dBguiatoESpGwM"}},"inviteLinkGroupTypeV2":"DEFAULT"},"messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"BmI9Pyppe2nL+A==","senderTimestamp":"1696945176","recipientKeyHash":"ltZ5vMXiILth5A==","recipientTimestamp":"1697942459"},"deviceListMetadataVersion":2}},"verifiedBizName":"Odonto Excellence"}
+      const editInfo = extractMessageEditInfo(payload)
+      if (editInfo?.originalMessageId) {
+        message.message_type = 'message_edit'
+        message.context = {
+          message_id: editInfo.originalMessageId,
+          id: editInfo.originalMessageId,
+        }
+        if (editInfo.timestampMs) message.edit_timestamp = editInfo.timestampMs
+      }
+
       const externalAdReply = binMessage?.contextInfo?.externalAdReply
       if (externalAdReply) {
         message.referral = {

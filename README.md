@@ -18,9 +18,12 @@ The media files are saved in file system at folder data with the session or in s
 ## Addressing, Webhooks, Pictures and JIDMAP
 
 - LID/PN handling
-  - Webhooks prefer PN (digits) in `wa_id`, `from` and `recipient_id`; when PN cannot be inferred safely, a LID/JID is returned as fallback.
+  - Webhooks keep `wa_id`, `from` and `recipient_id` as phone-only fields. When PN cannot be inferred safely, `wa_id`/`from` are left empty and LID is exposed through `user_id`/`from_user_id`.
   - Internally, the API uses LID whenever possible (1:1 and groups) to reduce “no sessions” and decryption issues, while keeping webhooks PN‑first for compatibility.
   - A PN?LID cache is maintained per session (file/redis) and is updated from Baileys events and observations.
+  - When Baileys exposes WhatsApp usernames, Uno keeps the LID as the stable identifier and adds the username as profile metadata. In Cloud-like webhooks this means `contacts[].user_id` and `messages[].from_user_id` receive the `@lid`, while `contacts[].profile.username` receives the username.
+  - Meta-like group participant and join-request routes follow the same rule: `user_id` receives the participant `@lid` when known, `username` carries the WhatsApp username, and the legacy `wa_id` field is preserved.
+  - `contacts[].profile.name` fallback order is: Baileys business/push name, then username, then `wa_id`, then `user_id` (`@lid`). This avoids empty names for username/LID-only contacts.
 
 - Group sends
   - Default addressingMode is LID. You can force via `GROUP_SEND_ADDRESSING_MODE=lid|pn`.
@@ -46,7 +49,7 @@ See more details in docs/pt-BR/JIDMAP.md.### One‑to‑One (Direct) Sending
 - Control addressing for direct chats (1:1) using `ONE_TO_ONE_ADDRESSING_MODE`.
   - `pn` (default): send via PN. Recommended — avoids cases where `@lid` opens a separate thread or hides the message on some devices.
   - `lid`: prefer sending via LID when available (may reduce first-contact session issues, but can cause split threads in some clients).
-- Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved.
+- Webhooks still prefer PN in `wa_id`, `from`, `recipient_id` when resolved; unresolved LIDs are exposed through `user_id`/`from_user_id`.
   - You can control webhook normalization with `WEBHOOK_PREFER_PN_OVER_LID` (default `true`).
 
 Example:
@@ -79,7 +82,7 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
   - Edited messages are unwrapped to their original content (no recursion); device‑sent updates with inline content are converted to normal message payloads.
 
 - Profile pictures
-  - Stored and looked up by a canonical PN identifier whenever possible, so PN and LID variants point to the same file. The same applies to S3 keys.
+  - Stored and looked up by both canonical PN and stable LID/user id when known, so webhook consumers can resolve profile pictures by phone or BSUID. The same applies to S3 keys.
 
 Notes on Rate Limiting
 - Optional per‑session and per‑destination caps are available via env. When exceeded, messages may be scheduled in RabbitMQ instead of returning 429.
@@ -199,6 +202,61 @@ http://localhost:9876/v15.0/554931978550/messages \
   }
 }'
 ```
+
+Official Meta-like carousel template
+
+The template must exist in the local template store with a `CAROUSEL`
+component. Uno renders the approved template text with the send-time
+parameters and converts it to a Baileys `interactiveMessage.carouselMessage`.
+
+```sh
+curl -i -X POST \
+http://localhost:9876/v15.0/554931978550/messages \
+-H 'Content-Type: application/json' \
+-H 'Authorization: 1' \
+-d '{
+  "messaging_product": "whatsapp",
+  "to": "5549988290955",
+  "type": "template",
+  "template": {
+    "name": "promo_carousel",
+    "language": { "code": "pt_BR" },
+    "components": [
+      {
+        "type": "body",
+        "parameters": [{ "type": "text", "text": "Rodrigo" }]
+      },
+      {
+        "type": "carousel",
+        "cards": [
+          {
+            "card_index": 0,
+            "components": [
+              {
+                "type": "header",
+                "parameters": [
+                  { "type": "image", "image": { "link": "https://example.com/produto.jpg" } }
+                ]
+              },
+              {
+                "type": "body",
+                "parameters": [{ "type": "text", "text": "1" }]
+              },
+              {
+                "type": "button",
+                "sub_type": "quick_reply",
+                "index": "0",
+                "parameters": [{ "type": "payload", "payload": "produto_1" }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}'
+```
+
 To Send a Status
 Requisitos:
 to = 'status@broadcast'
@@ -441,6 +499,27 @@ http://localhost:9876/v15.0/5549988290955/messages \
 
 Group cache endpoints (participants by session):
 
+Set `UNOAPI_META_GROUPS_ENABLED=true` to enable the Meta-like group response
+shape and the group details route.
+
+With `UNOAPI_META_GROUPS_ENABLED=true`, Uno also exposes Meta-like group
+management endpoints backed by Baileys:
+
+- `POST /v15.0/{phone}/groups` creates a group.
+- `GET /v15.0/{phone}/groups/{groupId}` returns group details.
+- `POST /v15.0/{phone}/groups/{groupId}` updates subject, description, picture URL, announcement/locked settings, and join approval mode.
+- `DELETE /v15.0/{phone}/groups/{groupId}/participants` removes participants.
+- `GET /v15.0/{phone}/groups/{groupId}/invite_link` returns the invite link.
+- `POST /v15.0/{phone}/groups/{groupId}/invite_link` resets the invite link.
+- `GET /v15.0/{phone}/groups/{groupId}/join_requests` lists pending join requests.
+- `POST /v15.0/{phone}/groups/{groupId}/join_requests` approves join requests.
+- `DELETE /v15.0/{phone}/groups/{groupId}/join_requests` rejects join requests.
+- `DELETE /v15.0/{phone}/groups/{groupId}` leaves/deletes the group for the current session.
+
+Group management runs through Baileys directly when the HTTP process owns the
+session. In AMQP deployments, the HTTP process sends a synchronous RPC command
+to the session owner and returns the Baileys result.
+
 ```sh
 curl -i -X GET \
 http://localhost:9876/v15.0/5549988290955/groups \
@@ -457,7 +536,9 @@ http://localhost:9876/v15.0/5549988290955/groups/120363040468224422@g.us/partici
 
 Participants response includes:
 - `jid`: participant identifier (`5566...` for PN contacts, `...@lid` for LID contacts)
+- `wa_id`: participant id for Meta-like consumers
 - `name`: participant name when available in contact cache
+- `picture`, `lid`, `is_admin`, and `role` when available with `UNOAPI_META_GROUPS_ENABLED=true`
 
 Example response:
 
@@ -474,6 +555,120 @@ Example response:
   ]
 }
 ```
+
+### Group message webhook compatibility
+
+`UNOAPI_META_GROUPS_ENABLED` does not duplicate webhooks. Uno sends one webhook
+per event. The flag controls the newer Meta-like group routes and enriches the
+group contract where possible, while keeping the existing message webhook shape
+compatible with older consumers.
+
+With `UNOAPI_META_GROUPS_ENABLED=false`, group message webhooks keep the legacy
+compatible shape. The participant remains in `contacts[0].wa_id` and
+`messages[0].from`; the group is identified by `group_id` when available.
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "5566999999999",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "5566999999999",
+              "phone_number_id": "5566999999999"
+            },
+            "contacts": [
+              {
+                "wa_id": "556688888888",
+                "group_id": "120363040468224422@g.us",
+                "profile": {
+                  "name": "Maria",
+                  "picture": ""
+                }
+              }
+            ],
+            "messages": [
+              {
+                "from": "556688888888",
+                "id": "MESSAGE_ID",
+                "timestamp": "1710000000",
+                "text": {
+                  "body": "Oi grupo"
+                },
+                "type": "text",
+                "group_id": "120363040468224422@g.us"
+              }
+            ],
+            "statuses": [],
+            "errors": []
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
+```
+
+With `UNOAPI_META_GROUPS_ENABLED=true`, the message webhook remains a single
+payload and preserves the same participant/group split, but may include richer
+group fields from cache/metadata.
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "5566999999999",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "5566999999999",
+              "phone_number_id": "5566999999999"
+            },
+            "contacts": [
+              {
+                "wa_id": "556688888888",
+                "group_id": "120363040468224422@g.us",
+                "group_subject": "Equipe Comercial",
+                "group_picture": "https://example.com/group.jpg",
+                "profile": {
+                  "name": "Maria",
+                  "picture": "https://example.com/maria.jpg"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "from": "556688888888",
+                "id": "MESSAGE_ID",
+                "timestamp": "1710000000",
+                "text": {
+                  "body": "Oi grupo"
+                },
+                "type": "text",
+                "group_id": "120363040468224422@g.us"
+              }
+            ],
+            "statuses": [],
+            "errors": []
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Status webhooks for group sends also become more explicit with the flag enabled:
+`recipient_id` may be the group JID and `recipient_type` may be `group`.
 
 To mark message as read
 
@@ -682,6 +877,8 @@ Visit `http://localhost:9876/ping` wil be render a "pong!"
 
 - Architecture: see `docs/ARCHITECTURE.md`
 - Development: see `docs/DEVELOPMENT.md`
+- Odoo/official connector compatibility: see `docs/COMPAT_ODOO.md` (PT-BR: `docs/pt-BR/COMPAT_ODOO.md`)
+- WhatsApp Embedded Signup helper: see `docs/WHATSAPP_EMBEDDED.md` (PT-BR: `docs/pt-BR/WHATSAPP_EMBEDDED.md`)
 - Status/Broadcast details: see `docs/STATUS_BROADCAST.md`
 - Environment variables: see `docs/ENVIRONMENT.md` (PT-BR: `docs/pt-BR/AMBIENTE.md`)
 - Changelog: see `CHANGELOG.md` (PT-BR: `docs/pt-BR/CHANGELOG.md`)
@@ -834,6 +1031,8 @@ IGNORE_STATUS_MESSAGE=false to send stories in socket to webhook, default true
 READ_ON_RECEIPT=false mark message as read on receipt
 IGNORE_BROADCAST_MESSAGES=false to send broadcast messages in socket to webhook, default false
 IGNORE_HISTORY_MESSAGES=false to import messages when connect, default is true
+BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false clears Baileys app-state sync markers before connect, forcing fresh app-state snapshots. Keep false by default; enable only as an emergency self-heal for stale app-state decode errors.
+BAILEYS_ALLOW_FULL_HISTORY_SYNC=false forces Baileys FULL/INITIAL_BOOTSTRAP/ON_DEMAND history sync even when the session already has the Redis history-sync marker. New unmarked sessions can do their first full sync with IGNORE_HISTORY_MESSAGES=false.
 IGNORE_OWN_MESSAGES=false to send own messages in socket to webhook, default true
 IGNORE_YOURSELF_MESSAGES=true to ignore messages for yourself, default is true, possible loop if was false
 COMPOSING_MESSAGE=true enable composing before send message as text length, default false
@@ -843,6 +1042,7 @@ MESSAGE_CALLS_WEBHOOK=message to send webook when receive a call, default is emp
 SEND_CONNECTION_STATUS=true to send all connection status to webhook, false to send only important messages, default is true
 IGNORE_DATA_STORE=ignore save/retrieve data(message, contacts, groups...)
 AUTO_CONNECT=true, auto connect on start service
+AUTO_CONNECT_CONCURRENCY=1, max sessions connecting in parallel during service startup, default 1
 AUTO_RESTART_MS=miliseconds to restart connection, default is 0 and not auto restart
 THROW_WEBHOOK_ERROR=false send webhook error do self whatsapp, default is false, if true throw exception
 NOTIFY_FAILED_MESSAGES=true send message to your self in whatsapp when message failed and enqueued in dead queue
@@ -1114,6 +1314,57 @@ More then 14 days without open app in smartphone, the connection with whatsapp w
 ### to send messages:
 - write in rabbitmq queue outgoing in format
 
+### Edit sent messages
+
+Unoapi supports a Meta-like `message_edit` payload on the regular messages endpoint.
+This is an Unoapi/Baileys extension, not an official Meta Cloud API send payload.
+
+For 1:1 conversations:
+
+```json
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "5566996269251",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "Texto editado"
+  }
+}
+```
+
+For group conversations:
+
+```json
+POST /v15.0/{phone}/messages
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "group",
+  "to": "120363012345678@g.us",
+  "type": "message_edit",
+  "context": {
+    "message_id": "uno-message-id-original"
+  },
+  "text": {
+    "body": "@5566996269251 texto editado"
+  },
+  "mentions": ["5566996269251"]
+}
+```
+
+`context.message_id` must be the Unoapi id of the original sent message. Unoapi resolves it from Redis/DataStore to the original Baileys provider id/key and sends:
+
+```ts
+await sock.sendMessage(jid, {
+  text: 'Texto editado',
+  edit: originalMessageKey
+})
+```
+
 https://github.com/NaikAayush/whatsapp-cloud-api
 https://github.com/green-api/whatsapp-api-client-golang
 
@@ -1201,6 +1452,16 @@ When history import is enabled, you can limit which historical messages are proc
 ```env
 # enable history import in your runtime config (example)
 IGNORE_HISTORY_MESSAGES=false
+
+# emergency only: forces Baileys to rebuild app-state snapshots on connect
+BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT=false
+
+# force/redo full import even when the session already has the Redis history-sync marker
+BAILEYS_ALLOW_FULL_HISTORY_SYNC=false
+
+# marker created automatically per session when FULL/INITIAL_BOOTSTRAP/ON_DEMAND starts:
+# unoapi-history-sync:<phone>:started
+# on startup, existing configured sessions are marked automatically; removing/logout session deletes this marker
 
 # only import messages newer than the last N days (default 30)
 HISTORY_MAX_AGE_DAYS=30

@@ -53,4 +53,100 @@ describe('service listener baileys', () => {
     await service.process(phone, [textPayload], 'notify')
     expect(func).toHaveBeenCalledTimes(1)
   })
+
+  test('stores original Baileys id even when metadata normalizer changes the webhook id', async () => {
+    const providerId = 'provider-original-message'
+    const normalizedId = 'uno-normalized-message'
+    config.getMessageMetadata = async message => ({
+      ...message,
+      key: {
+        ...message['key'],
+        id: normalizedId,
+      },
+    })
+
+    await service.sendOne(phone, {
+      key: {
+        remoteJid: '556699999999@s.whatsapp.net',
+        fromMe: false,
+        id: providerId,
+      },
+      message: {
+        conversation: 'Mensagem normal',
+      },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+    })
+
+    expect(store.dataStore.setUnoId).toHaveBeenCalledWith(providerId, expect.any(String))
+    expect(store.dataStore.setKey).toHaveBeenCalledWith(providerId, expect.objectContaining({ id: providerId }))
+    expect(store.dataStore.setMessage).toHaveBeenCalledWith(
+      '556699999999@s.whatsapp.net',
+      expect.objectContaining({
+        key: expect.objectContaining({ id: providerId }),
+      }),
+    )
+    expect(store.dataStore.setUnoId).not.toHaveBeenCalledWith(normalizedId, expect.any(String))
+    expect(outgoing.send).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        entry: expect.any(Array),
+      }),
+    )
+  })
+
+  test('normalizes message edit context to Uno id before sending webhook', async () => {
+    const providerId = 'provider-original-message'
+    const unoId = 'uno-original-message'
+    store.dataStore.loadUnoId.mockImplementation(async (id: string) => (id === providerId ? unoId : undefined))
+
+    await service.sendOne(phone, {
+      key: {
+        remoteJid: '556699999999@s.whatsapp.net',
+        fromMe: false,
+        id: 'provider-edit-event',
+      },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      update: {
+        message: {
+          protocolMessage: {
+            key: {
+              remoteJid: '556699999999@s.whatsapp.net',
+              fromMe: false,
+              id: providerId,
+            },
+            type: 'MESSAGE_EDIT',
+            editedMessage: {
+              conversation: 'Mensagem editada',
+            },
+            timestampMs: `${Date.now()}`,
+          },
+        },
+      },
+    })
+
+    expect(outgoing.send).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        entry: expect.arrayContaining([
+          expect.objectContaining({
+            changes: expect.arrayContaining([
+              expect.objectContaining({
+                value: expect.objectContaining({
+                  messages: expect.arrayContaining([
+                    expect.objectContaining({
+                      message_type: 'message_edit',
+                      context: {
+                        message_id: unoId,
+                        id: unoId,
+                      },
+                    }),
+                  ]),
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    )
+  })
 })

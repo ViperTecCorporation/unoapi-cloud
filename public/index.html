@@ -1102,7 +1102,75 @@
 
         $(document).ready(function () {
             var table;
+            var sessionsFetchInFlight = false;
+            var sessionsByActionId = {};
             const storedToken = localStorage.getItem(tokenKey);
+            const editModalEl = document.getElementById('editModal');
+            if (editModalEl) {
+                editModalEl.addEventListener('hide.bs.modal', function () {
+                    if (editModalEl.contains(document.activeElement)) {
+                        try { document.activeElement.blur(); } catch {}
+                    }
+                });
+            }
+            function showModalById(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(el).show();
+                    return;
+                }
+                if (window.$ && $.fn.modal) {
+                    $('#' + id).modal('show');
+                }
+            }
+            function hideModalById(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    const instance = bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+                    if (instance) instance.hide();
+                    return;
+                }
+                if (window.$ && $.fn.modal) {
+                    $('#' + id).modal('hide');
+                }
+            }
+            window.showModalById = showModalById;
+            window.hideModalById = hideModalById;
+            function asSessionPayload(data) {
+                if (data && data.data && !Array.isArray(data.data)) return data.data;
+                if (data && data.session) return data.session;
+                return data || {};
+            }
+            function htmlAttr(value) {
+                return `${value ?? ''}`
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
+            function htmlText(value) {
+                return htmlAttr(value);
+            }
+            function sessionActionId(session) {
+                const candidates = [
+                    session && session.id,
+                    session && session.phone,
+                    session && session.session_phone,
+                    session && session.display_phone_number,
+                ];
+                for (const candidate of candidates) {
+                    const value = `${candidate ?? ''}`.trim();
+                    if (value && value.toLowerCase() !== 'unavailable') return value;
+                }
+                return '';
+            }
+            function sessionDisplayPhone(session, actionId) {
+                const value = `${session && session.display_phone_number ? session.display_phone_number : ''}`.trim();
+                if (value && value.toLowerCase() !== 'unavailable') return value;
+                return actionId;
+            }
 
             if (storedToken) {
                 fetchSessions(storedToken, true);
@@ -1179,6 +1247,8 @@
 
             //Create DataTable And Fetch Conected Sessions
             function fetchSessions(token, hideForm = true) {
+                if (sessionsFetchInFlight) return;
+                sessionsFetchInFlight = true;
                 if (!$.fn.dataTable.isDataTable('#sessionsTable')) {
                     const dtLang = (currentLang === 'pt-BR') ? {
                         decimal: "",
@@ -1249,21 +1319,21 @@
                 var raw = (status || '').toString();
                 var s = raw.toLowerCase();
                 if (s === 'online') {
-                    return `<span class="status status-online" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-online" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'offline' || s === 'disconnected') {
-                    return `<span class="status status-offline" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-offline" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'connecting') {
-                    return `<span class="status status-connecting" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-connecting" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'standby') {
-                    return `<span class="status status-standby" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-standby" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
                 if (s === 'restart_required') {
-                    return `<span class="status status-restart_required" title="${raw}"><span class="dot"></span><span>${raw}</span></span>`;
+                    return `<span class="status status-restart_required" title="${htmlAttr(raw)}"><span class="dot"></span><span>${htmlText(raw)}</span></span>`;
                 }
-                return `<span class="status" title="${raw}"><span class="dot" style="background: var(--muted)"></span><span>${raw}</span></span>`;
+                return `<span class="status" title="${htmlAttr(raw)}"><span class="dot" style="background: var(--muted)"></span><span>${htmlText(raw)}</span></span>`;
             }
 
             // Populate Datatable with session numbers
@@ -1281,11 +1351,14 @@
                             $('#navbarDropdown').removeClass('d-none');
                             $('#login').addClass('d-none');
                         }
-                        populateTable(resp.data); // Popula a tabela com os dados
+                        populateTable(Array.isArray(resp?.data) ? resp.data : []); // Popula a tabela com os dados
                     })
                     .catch(() => {
                         $('#errorMessage').removeClass('d-none');
                         $('#sessionsTable').addClass('d-none');
+                    })
+                    .finally(() => {
+                        sessionsFetchInFlight = false;
                     });
             }
 
@@ -1296,17 +1369,30 @@
 
                 // Limpa os dados antigos da tabela antes de adicionar os novos
                 table.clear();
+                sessionsByActionId = {};
+
+                const safeCell = (value, fallback = '-') => {
+                    const text = `${value ?? ''}`.trim();
+                    return text || fallback;
+                };
 
                 sessions.forEach(session => {
+                    session = session || {};
+                    const actionId = sessionActionId(session);
+                    if (!actionId) return;
+                    sessionsByActionId[actionId] = session;
+                    const displayPhone = sessionDisplayPhone(session, actionId);
+                    const actionAttr = htmlAttr(actionId);
                     table.row.add([
-                        session.label,
-                        session.display_phone_number,
+                        htmlText(safeCell(session.label, displayPhone)),
+                        htmlText(displayPhone),
                         renderStatus(session.status),
-                        session.server,
+                        htmlText(safeCell(session.server)),
                         `
-                        <button class=\"btn btn-sm btn-warning edit-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#editModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${session.display_phone_number}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
-                    ]).draw(false);
+                        <button class=\"btn btn-sm btn-warning edit-btn\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-edit\"></i> ${t('btnEdit')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success connect-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#connectModal\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-link\"></i> ${t('btnConnect')}\n                        </button>\n                        <button class=\"btn btn-sm btn-danger delete-btn\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-trash\"></i> ${t('btnDelete')}\n                        </button>\n                        <button class=\"btn btn-sm btn-success message-btn\" data-bs-target=\"#messageModal\" data-number=\"${actionAttr}\">\n                            <i class=\"fas fa-message\"></i> ${t('btnTest')}\n                        </button>`
+                    ]);
                 });
+                table.draw(false);
             }
 
             //deregister function
@@ -1336,12 +1422,23 @@
             });
 
             //Edit button
-            $('#sessionsTable tbody').on('click', '.edit-btn', function () {
-                const number = $(this).data('number');
-                const token = localStorage.getItem(tokenKey);
+            $('#sessionsTable tbody').on('click', '.edit-btn', function (event) {
+                event.preventDefault();
+                const number = $(this).attr('data-number') || $(this).data('number');
+                const token = getActiveToken();
 
                 if (token) {
-                    fetch(`${apiUrl}/v15.0/${number}`, {
+                    $('#editModal').data('number', number);
+                    const cachedSession = sessionsByActionId[number];
+                    if (cachedSession) {
+                        try {
+                            populateEditForm(cachedSession);
+                        } catch (error) {
+                            console.error('Erro ao preencher modal de edição da sessão pelo cache', error, cachedSession);
+                        }
+                        showModalById('editModal');
+                    }
+                    fetch(`${apiUrl}/v15.0/${encodeURIComponent(number)}`, {
                         headers: { Authorization: `Bearer ${token}` }
                     })
                     .then(response => {
@@ -1349,35 +1446,41 @@
                         return response.json();
                     })
                     .then(data => {
-                        populateEditForm(data);
-
-                        $('#editModal').data('number', number); 
-
-                        $('#editModal').modal('show');
+                        try {
+                            populateEditForm(asSessionPayload(data));
+                        } catch (error) {
+                            console.error('Erro ao preencher modal de edição da sessão', error, data);
+                            alert((currentLang === 'pt-BR' ? 'A modal abriu, mas algumas configurações não puderam ser preenchidas: ' : 'The modal opened, but some settings could not be filled: ') + (error && error.message ? error.message : error));
+                        }
+                        showModalById('editModal');
                     })
-                    .catch(error => alert(error.message));
+                    .catch(error => {
+                        console.error('Erro ao buscar dados da sessão para edição', error);
+                        if (!cachedSession) alert(error.message);
+                    });
                 }
             });
 
             //Message button
             $('#sessionsTable tbody').on('click', '.message-btn', function () {
                 const number = $(this).data('number');
-                $('#messageModal').data('number', number); 
-                $('#messageModal').modal('show');
+                $('#messageModal').data('number', number);
+                showModalById('messageModal');
             });
 
             //Edit form for session number
             function populateEditForm(session) {
-                $('#label').val(session.label);
-                $('#authToken').val(session.authToken);
-                $('#wavoipToken').val(session.wavoipToken);
-                $('#openaiApiKey').val(session.openaiApiKey);
-                $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel);
-                $('#groqApiKey').val(session.groqApiKey);
-                $('#groqApiTranscribeModel').val(session.groqApiTranscribeModel);
-                $('#groqApiBaseUrl').val(session.groqApiBaseUrl);
-                $('#rejectCallsWebhook').val(session.rejectCallsWebhook);
-                $('#rejectCalls').val(session.rejectCalls);
+                session = session || {};
+                $('#label').val(session.label || '');
+                $('#authToken').val(session.authToken ?? '');
+                $('#wavoipToken').val(session.wavoipToken ?? '');
+                $('#openaiApiKey').val(session.openaiApiKey ?? '');
+                $('#openaiApiTranscribeModel').val(session.openaiApiTranscribeModel ?? '');
+                $('#groqApiKey').val(session.groqApiKey ?? '');
+                $('#groqApiTranscribeModel').val(session.groqApiTranscribeModel ?? '');
+                $('#groqApiBaseUrl').val(session.groqApiBaseUrl ?? '');
+                $('#rejectCallsWebhook').val(session.rejectCallsWebhook ?? '');
+                $('#rejectCalls').val(session.rejectCalls ?? '');
                 $('#ignoreGroupMessages').prop('checked', session.ignoreGroupMessages);
                 $('#ignoreNewsletterMessages').prop('checked', session.ignoreNewsletterMessages);
                 $('#ignoreHistoryMessages').prop('checked', session.ignoreHistoryMessages);
@@ -1396,14 +1499,14 @@
                 try { $('#coexistenceEnabled').prop('checked', !!session.coexistenceEnabled); } catch {}
                 try { $('#coexistenceWindowSeconds').val(session.coexistenceWindowSeconds ?? 86400); } catch {}
                 $('#ignoreBroadcastMessages').prop('checked', session.ignoreBroadcastMessages);
-                $('#connectionType').val(session.connectionType);
-                $('#proxyUrl').val(session.proxyUrl);
+                $('#connectionType').val(session.connectionType ?? '');
+                $('#proxyUrl').val(session.proxyUrl ?? '');
                 try { $('#webhookForwardUrl').val(session.webhookForward?.url || '') } catch {}
                 try { $('#webhookForwardVersion').val(session.webhookForward?.version || '') } catch {}
-                try { $('#webhookForwardPhoneNumberId').val(session.webhookForward?.phoneNumberId || '') } catch {}
+                try { $('#webhookForwardPhoneNumberId').val(`${session.webhookForward?.phoneNumberId || ''}`.trim()) } catch {}
                 try { $('#webhookForwardToken').val(session.webhookForward?.token || '') } catch {}
-                try { $('#webhookForwardBusinessAccountId').val(session.webhookForward?.businessAccountId || '') } catch {}
-                $('#server').val(session.server);
+                try { $('#webhookForwardBusinessAccountId').val(`${session.webhookForward?.businessAccountId || ''}`.trim()) } catch {}
+                $('#server').val(session.server ?? '');
                 // Se houver payload do Embedded guardado, aplica e mantém alerta visível
                 applyEmbeddedToForm(true);
                 // Rate limits (anti-spam)
@@ -1418,16 +1521,17 @@
 
                 if (session.webhooks && Array.isArray(session.webhooks)) {
                     session.webhooks.forEach(webhook => {
+                        webhook = webhook || {};
                         const webhookTemplate = `
                             <div class=\"webhook mb-3\">
                                 <label for=\"webhookId\" class=\"form-label\" data-i18n=\"whId\">ID</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-id\" value=\"${webhook.id}\" placeholder=\"Webhook ID\" data-i18n-placeholder=\"whIdPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-id\" value=\"${htmlAttr(webhook.id)}\" placeholder=\"Webhook ID\" data-i18n-placeholder=\"whIdPh\">
                                 <label for=\"webhookUrl\" class=\"form-label\" data-i18n=\"whUrlAbs\">Absolute URL</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-url\" value=\"${webhook.urlAbsolute}\" placeholder=\"Webhook Absolute URL\" data-i18n-placeholder=\"whUrlAbsPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-url\" value=\"${htmlAttr(webhook.urlAbsolute)}\" placeholder=\"Webhook Absolute URL\" data-i18n-placeholder=\"whUrlAbsPh\">
                                 <label for=\"webhookToken\" class=\"form-label\" data-i18n=\"whToken\">Token</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-token\" value=\"${webhook.token}\" placeholder=\"Webhook Token\" data-i18n-placeholder=\"whTokenPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-token\" value=\"${htmlAttr(webhook.token)}\" placeholder=\"Webhook Token\" data-i18n-placeholder=\"whTokenPh\">
                                 <label for=\"webhookHeader\" class=\"form-label\" data-i18n=\"whHeader\">Header</label>
-                                <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${webhook.header}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
+                                <input type=\"text\" class=\"form-control mb-2 webhook-header\" value=\"${htmlAttr(webhook.header)}\" placeholder=\"Webhook Header\" data-i18n-placeholder=\"whHeaderPh\">
                                 <label for=\"sendNewMessages\" class=\"form-label\" data-i18n=\"whSendNew\">Send New Messages</label>
                                 <label class="switch">
                                     <input type="checkbox" class="webhook-sendNewMessages" ${webhook.sendNewMessages ? 'checked' : ''}>
@@ -1469,7 +1573,7 @@
                                 </div>
                                 <label for=\"addToBlackListOnOutgoingMessageWithTtl\" class=\"form-label\" data-i18n=\"whAddBlacklist\">Add to blacklist when there is an outgoing message for X seconds</label>
                                 <label>
-                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${webhook.addToBlackListOnOutgoingMessageWithTtl || ''}\" class=\"form-control\">
+                                    <input type=\"text\" class=\"webhook-addToBlackListOnOutgoingMessageWithTtl\" value=\"${htmlAttr(webhook.addToBlackListOnOutgoingMessageWithTtl)}\" class=\"form-control\">
                                 </label>
                                 <button type="button" class="btn btn-danger btn-sm mt-2 remove-webhook" data-i18n=\"remove\">Remove</button>
                             </div>`;
@@ -1519,9 +1623,9 @@
                         webhookForward: {
                           url: $('#webhookForwardUrl').val(),
                           version: $('#webhookForwardVersion').val(),
-                          phoneNumberId: $('#webhookForwardPhoneNumberId').val(),
+                          phoneNumberId: `${$('#webhookForwardPhoneNumberId').val() || ''}`.trim(),
                           token: $('#webhookForwardToken').val(),
-                          businessAccountId: $('#webhookForwardBusinessAccountId').val(),
+                          businessAccountId: `${$('#webhookForwardBusinessAccountId').val() || ''}`.trim(),
                         },
                         server: $('#server').val(),
                         // rate limits
@@ -1565,7 +1669,10 @@
                         return response.json();
                     })
                     .then(() => {
-                        $('#editModal').modal('hide');
+                        if (editModalEl && editModalEl.contains(document.activeElement)) {
+                            try { document.activeElement.blur(); } catch {}
+                        }
+                        hideModalById('editModal');
                         fetchSessions(token, true);
                     })
                     .catch(error => alert(error.message));
@@ -1578,9 +1685,7 @@
             $(document).on('click', '.connect-btn', function () {
                 const number = $(this).data('number');
                 const token = getActiveToken();
-                const connectModalEl = document.getElementById('connectModal');
-                const connectModal = bootstrap.Modal.getOrCreateInstance(connectModalEl);
-                connectModal.show();
+                showModalById('connectModal');
 
                 if (token) {
                     // Subscribe immediately so we do not lose the first QR event.
@@ -1743,6 +1848,10 @@
 
         // show number add modal
         function addInstance() {
+            if (window.showModalById) {
+                window.showModalById('addInstanceModal');
+                return;
+            }
             const addInstanceModal = new bootstrap.Modal(document.getElementById('addInstanceModal'));
             addInstanceModal.show();
         }
@@ -1754,10 +1863,18 @@
                 const editModal = $('#editModal'); 
                 editModal.data('number', numberInput); 
 
-                bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
+                if (window.hideModalById) {
+                    window.hideModalById('addInstanceModal');
+                } else {
+                    bootstrap.Modal.getInstance(document.getElementById('addInstanceModal')).hide();
+                }
 
-                const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
-                editInstanceModal.show();
+                if (window.showModalById) {
+                    window.showModalById('editModal');
+                } else {
+                    const editInstanceModal = new bootstrap.Modal(document.getElementById('editModal'));
+                    editInstanceModal.show();
+                }
 
             } else {
                 alert(currentLang==='pt-BR' ? 'Por favor, insira um número válido.' : 'Please enter a valid number.');

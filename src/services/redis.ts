@@ -125,6 +125,7 @@ export const getRedis = async (redisUrl = REDIS_URL) => {
 
 const appVersionKey = () => `${BASE_KEY}app:version:last`
 const appMigrationLockKey = (name: string) => `${BASE_KEY}app:migration:${name}:lock`
+export const historySyncMarkerKey = (phone: string) => `${BASE_KEY}history-sync:${phone}:started`
 
 const parseSemverLike = (raw?: string): [number, number, number] => {
   const cleaned = `${raw || ''}`.trim().replace(/^v/i, '').split('-')[0]
@@ -186,8 +187,58 @@ const clearGlobalJidMapOnLegacyUpgrade = async (): Promise<void> => {
   }
 }
 
+export const getHistorySyncMarker = async (phone: string): Promise<boolean> => {
+  try {
+    return !!(await redisGet(historySyncMarkerKey(phone)))
+  } catch (e) {
+    logger.debug(e as any, 'Could not read history sync marker for %s', phone)
+    return false
+  }
+}
+
+export const setHistorySyncMarker = async (phone: string, value: any) => {
+  try {
+    return await redisSetAndExpire(historySyncMarkerKey(phone), JSON.stringify(value || {}), SESSION_TTL)
+  } catch (e) {
+    logger.debug(e as any, 'Could not set history sync marker for %s', phone)
+  }
+}
+
+export const delHistorySyncMarker = async (phone: string) => {
+  try {
+    return await redisDel(historySyncMarkerKey(phone))
+  } catch (e) {
+    logger.debug(e as any, 'Could not delete history sync marker for %s', phone)
+  }
+}
+
+const seedHistorySyncMarkersForExistingSessions = async (): Promise<void> => {
+  const lockKey = appMigrationLockKey('seed-history-sync-markers-existing-sessions')
+  const acquired = await redisSetIfNotExists(lockKey, `${Date.now()}`, 600)
+  if (!acquired) return
+  const keys = await redisScanSome(configKey('*'), 100000)
+  let seeded = 0
+  for (const key of keys || []) {
+    const phone = `${key || ''}`.replace(configKey(''), '')
+    if (!phone || phone === 'auth-token-index') continue
+    try {
+      if (await redisGet(historySyncMarkerKey(phone))) continue
+      await setHistorySyncMarker(phone, {
+        status: 'completed',
+        seededAt: new Date().toISOString(),
+        source: 'startup-existing-session',
+      })
+      seeded += 1
+    } catch {}
+  }
+  try {
+    logger.warn('Startup migration: seeded %s history sync marker(s) for existing sessions', seeded)
+  } catch {}
+}
+
 const runStartupRedisMigrations = async (): Promise<void> => {
   await clearGlobalJidMapOnLegacyUpgrade()
+  await seedHistorySyncMarkersForExistingSessions()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {
@@ -446,7 +497,7 @@ export const redisSetAndExpire = async function (key: string, value: any, ttl: n
 
 // Helper: SCAN keys with pattern, returning up to `limit` keys (non-blocking vs KEYS)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const redisScanSome = async (pattern: string, limit: number): Promise<string[]> => {
+export const redisScanSome = async (pattern: string, limit: number): Promise<string[]> => {
   try {
     const c: any = await getRedis()
     let cursor = '0'
@@ -1003,6 +1054,12 @@ export const setConfig = async (phone: string, value: any) => {
       await setPhoneNumberIdMapping(phone, phoneNumberId)
     }
   } catch (e) { logger.debug(e as any, 'ignore setPhoneNumberIdMapping error') }
+  try {
+    const businessAccountId = (config as any)?.webhookForward?.businessAccountId
+    if (businessAccountId) {
+      await setBusinessAccountIdMapping(phone, businessAccountId)
+    }
+  } catch (e) { logger.debug(e as any, 'ignore setBusinessAccountIdMapping error') }
   configs.delete(phone)
   return config
 }
@@ -1017,6 +1074,7 @@ export const delConfig = async (phone: string) => {
     }
   } catch {}
   await redisDel(key)
+  await delHistorySyncMarker(phone)
   await publishConfigUpdate(phone)
 }
 
@@ -1043,6 +1101,7 @@ export const delAuth = async (phone: string) => {
     logger.trace(`Deleted key ${key}!`)
   }
   await redisDel(indexKey)
+  await delHistorySyncMarker(phone)
 }
 
 export const getAuth = async (phone: string, parse = (value: string) => JSON.parse(value)) => {
@@ -1201,6 +1260,50 @@ export const getMessage = async <T>(phone: string, jid: string, id: string): Pro
     // last resort: ignore corrupt entry
     return undefined
   }
+}
+
+export const getMessageWithSecretAnySession = async <T>(id: string): Promise<T | undefined> => {
+  const messageId = `${id || ''}`.trim()
+  if (!messageId) return undefined
+  const keys = await redisScanSome(`${BASE_KEY}message:*:*:${messageId}`, 50)
+  let fallback: T | undefined
+  for (const key of keys) {
+    try {
+      const stored = await redisGet(key)
+      if (!stored) continue
+      let msg: any
+      if (stored.trim().startsWith('{') || stored.trim().startsWith('[')) {
+        msg = JSON.parse(stored)
+      } else {
+        msg = proto.WebMessageInfo.decode(Buffer.from(stored, 'base64'))
+      }
+      if (msg?.message?.messageContextInfo?.messageSecret) return msg as T
+      if (msg && !fallback) fallback = msg as T
+    } catch {}
+  }
+  return fallback
+}
+
+export const getUnoIdsForProviderAnySession = async (id: string): Promise<Array<{ phone: string; unoId: string }>> => {
+  const providerId = `${id || ''}`.trim()
+  if (!providerId) return []
+  const keys = await redisScanSome(`${BASE_KEY}id:*:${providerId}`, 50)
+  const mappings: Array<{ phone: string; unoId: string }> = []
+  const seen = new Set<string>()
+  for (const key of keys) {
+    try {
+      const unoId = `${await redisGet(key) || ''}`.trim()
+      if (!unoId) continue
+      const parts = key.split(':')
+      const phone = `${parts[1] || ''}`.trim()
+      if (!phone) continue
+      const dedupKey = `${phone}:${unoId}`
+      if (seen.has(dedupKey)) continue
+      seen.add(dedupKey)
+      mappings.push({ phone, unoId })
+    } catch {}
+  }
+  return mappings
 }
 
 // Persistência de última mensagem recebida por chat
@@ -1515,6 +1618,7 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session
 const phoneNumberIdKey = (id: string) => `${BASE_KEY}meta:phone_number_id:${id}`
+const businessAccountIdKey = (id: string) => `${BASE_KEY}meta:business_account_id:${id}`
 export const setPhoneNumberIdMapping = async (phone: string, phoneNumberId: string) => {
   if (!phoneNumberId) return
   try {
@@ -1529,6 +1633,23 @@ export const getPhoneByPhoneNumberId = async (phoneNumberId: string) => {
     return await redisGet(phoneNumberIdKey(phoneNumberId))
   } catch (e) {
     logger.warn(e as any, 'Failed to get phone by phoneNumberId')
+    return undefined
+  }
+}
+export const setBusinessAccountIdMapping = async (phone: string, businessAccountId: string) => {
+  if (!businessAccountId) return
+  try {
+    await redisSetAndExpire(businessAccountIdKey(businessAccountId), phone, SESSION_TTL >= 0 ? SESSION_TTL : DATA_TTL)
+  } catch (e) {
+    logger.warn(e as any, 'Failed to set businessAccountId mapping')
+  }
+}
+export const getPhoneByBusinessAccountId = async (businessAccountId: string) => {
+  if (!businessAccountId) return undefined
+  try {
+    return await redisGet(businessAccountIdKey(businessAccountId))
+  } catch (e) {
+    logger.warn(e as any, 'Failed to get phone by businessAccountId')
     return undefined
   }
 }

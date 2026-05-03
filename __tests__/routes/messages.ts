@@ -70,6 +70,102 @@ describe('messages routes', () => {
     )
   })
 
+  test('normalizes raw Baileys interactive payload before sending', async () => {
+    const sendSpy = jest.spyOn(incoming, 'send')
+    const r: Response = { ok: { success: true } }
+    jest.spyOn(incoming, 'send').mockResolvedValue(r)
+    const raw = {
+      jid: '5511999999999@s.whatsapp.net',
+      message: {
+        text: 'Escolha uma opcao:',
+        buttons: [
+          {
+            buttonId: 'opcao_1',
+            buttonText: { displayText: 'Opcao 1' },
+            type: 1,
+          },
+        ],
+      },
+    }
+
+    const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(raw)
+
+    expect(res.status).toEqual(200)
+    expect(sendSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        ...raw,
+        to: raw.jid,
+        type: 'baileys',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        requestId: expect.any(String),
+      }),
+    )
+  })
+
+  test('accepts Graph-like phone_number_id messages route', async () => {
+    const sendSpy = jest.spyOn(incoming, 'send')
+    const r: Response = { ok: { success: true } }
+    jest.spyOn(incoming, 'send').mockResolvedValue(r)
+    const phoneNumberId = `phone-id-${new Date().getTime()}`
+
+    const res = await request(app.server).post(`/v19.0/${phoneNumberId}/messages`).send({
+      messaging_product: 'whatsapp',
+      to: '5566999999999',
+      type: 'text',
+      text: { body: 'teste' },
+    })
+
+    expect(res.status).toEqual(200)
+    expect(sendSpy).toHaveBeenCalledWith(
+      phoneNumberId,
+      expect.objectContaining({
+        type: 'text',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({ endpoint: 'messages' }),
+    )
+  })
+
+  test('delivery recovery route forces session refresh for the original message id', async () => {
+    const recoverSpy = jest.spyOn(incoming, 'recoverDelivery').mockResolvedValue({
+      ok: {
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'uno-message-1' }],
+        recovery: { attempted: true },
+      },
+    } as any)
+
+    const res = await request(app.server)
+      .post(`/v19.0/${phone}/messages/uno-message-1/recover_delivery`)
+      .send({
+        to: '5566996810064',
+        type: 'text',
+        text: { body: 'reenviar agora' },
+      })
+
+    expect(res.status).toEqual(200)
+    expect(recoverSpy).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        message_id: 'uno-message-1',
+        to: '5566996810064',
+        type: 'text',
+        _requestId: expect.any(String),
+      }),
+      expect.objectContaining({
+        endpoint: 'messages',
+        forceDeliveryRecovery: true,
+        forceSessionRefresh: true,
+        forceDeviceList: true,
+        useUserDevicesCache: false,
+      }),
+    )
+  })
+
   test('whatsapp with 400 status', async () => {
     jest.spyOn(incoming, 'send').mockRejectedValue(new Error('cannot login'))
     const res = await request(app.server).post(`/v15.0/${phone}/messages`).send(json)

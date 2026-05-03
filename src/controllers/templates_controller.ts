@@ -4,6 +4,8 @@ import { Request, Response } from 'express'
 import { getConfig } from '../services/config'
 import logger from '../services/logger'
 import fetch, { Response as FetchResponse, RequestInit } from 'node-fetch'
+import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
+import { sendGraphError } from '../services/graph_error'
 
 export class TemplatesController {
   private getConfig: getConfig
@@ -39,30 +41,33 @@ export class TemplatesController {
     logger.debug('delete_template body %s', JSON.stringify(req.body))
     logger.debug('delete_template query %s', JSON.stringify(req.query))
 
-    const { phone, templateId } = req.params
+    const { templateId } = req.params
+    const phone = `${req.params.phone || req.params.business_account_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
     try {
-      const config = await this.getConfig(phone)
-      const store = await config.getStore(phone, config)
+      const config = await this.getConfig(sessionPhone)
+      const store = await config.getStore(sessionPhone, config)
       const templates = await store.dataStore.loadTemplates()
       const filtered = templates.filter((template: any) => {
         return `${template?.id}` !== `${templateId}` && `${template?.name}` !== `${templateId}`
       })
 
       if (filtered.length === templates.length) {
-        return res.status(404).json({ status: 'error', message: `template ${templateId} not found` })
+        return sendGraphError(res, 404, `template ${templateId} not found`, { code: 100, type: 'GraphMethodException' })
       }
 
       await store.dataStore.setTemplates(filtered)
       return res.status(200).json({ status: 'success', data: filtered })
     } catch (e) {
-      return res.status(400).json({ status: 'error', message: `${phone} could not delete template, error: ${e.message}` })
+      return sendGraphError(res, 400, `${sessionPhone} could not delete template, error: ${e.message}`, { code: 131000, type: 'GraphMethodException' })
     }
   }
 
   private async loadTemplates(req: Request, res: Response) {
-    const { phone } = req.params
+    const phone = `${req.params.phone || req.params.business_account_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
     try {
-      const config = await this.getConfig(phone)
+      const config = await this.getConfig(sessionPhone)
       if (config.connectionType == 'forward') {
         const url = `${config.webhookForward.url}/${config.webhookForward.version}/${config.webhookForward.businessAccountId}/message_templates?access_token=${config.webhookForward.token}`
         logger.debug('message_templates forward get templates in url %s', url)
@@ -81,30 +86,31 @@ export class TemplatesController {
         res.setHeader('content-type', 'application/json; charset=UTF-8')
         return response.body.pipe(res)
       } else {
-        const store = await config.getStore(phone, config)
+        const store = await config.getStore(sessionPhone, config)
         const templates = await store.dataStore.loadTemplates()
         return res.status(200).json({ data: templates })
       }
 
     } catch (e) {
-      return res.status(400).json({ status: 'error', message: `${phone} could not create template, error: ${e.message}` })
+      return sendGraphError(res, 400, `${sessionPhone} could not create template, error: ${e.message}`, { code: 131000, type: 'GraphMethodException' })
     }
   }
 
   private async saveTemplate(req: Request, res: Response) {
-    const { phone } = req.params
+    const phone = `${req.params.phone || req.params.business_account_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
     const template = req.body
 
     try {
       if (!template || typeof template !== 'object' || Array.isArray(template)) {
-        return res.status(400).json({ status: 'error', message: 'template body must be a JSON object' })
+        return sendGraphError(res, 400, 'template body must be a JSON object', { code: 100, type: 'GraphMethodException' })
       }
       if (!template.id) {
-        return res.status(400).json({ status: 'error', message: 'template id is required' })
+        return sendGraphError(res, 400, 'template id is required', { code: 100, type: 'GraphMethodException' })
       }
 
-      const config = await this.getConfig(phone)
-      const store = await config.getStore(phone, config)
+      const config = await this.getConfig(sessionPhone)
+      const store = await config.getStore(sessionPhone, config)
       const templates = await store.dataStore.loadTemplates()
       const nextTemplates = templates.filter((current: any) => `${current?.id}` !== `${template.id}`)
       nextTemplates.push(template)
@@ -112,7 +118,7 @@ export class TemplatesController {
       await store.dataStore.setTemplates(nextTemplates)
       return res.status(200).json({ status: 'success', data: template })
     } catch (e) {
-      return res.status(400).json({ status: 'error', message: `${phone} could not create template, error: ${e.message}` })
+      return sendGraphError(res, 400, `${sessionPhone} could not create template, error: ${e.message}`, { code: 131000, type: 'GraphMethodException' })
     }
   }
 }

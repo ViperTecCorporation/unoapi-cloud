@@ -81,6 +81,8 @@ export const WEBHOOK_SEND_UPDATE_MESSAGES =
   process.env.WEBHOOK_SEND_UPDATE_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_UPDATE_MESSAGES == 'true'
 export const WEBHOOK_SEND_NEWSLETTER_MESSAGES =
   process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEWSLETTER_MESSAGES == 'true'
+export const UNOAPI_META_GROUPS_ENABLED =
+  process.env.UNOAPI_META_GROUPS_ENABLED === _undefined ? true : process.env.UNOAPI_META_GROUPS_ENABLED == 'true'
 export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
   process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
 export const WEBHOOK_INCLUDE_MEDIA_DATA =
@@ -122,6 +124,10 @@ export const BAILEYS_IDLE_RECONNECT_ENABLED =
   process.env.BAILEYS_IDLE_RECONNECT_ENABLED === _undefined ? false : process.env.BAILEYS_IDLE_RECONNECT_ENABLED == 'true'
 export const BAILEYS_IDLE_RECONNECT_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_MS || `${30 * 60 * 1000}`)
 export const BAILEYS_IDLE_RECONNECT_CHECK_MS = parseInt(process.env.BAILEYS_IDLE_RECONNECT_CHECK_MS || '60000')
+export const BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT =
+  process.env.BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT === _undefined
+    ? false
+    : process.env.BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT == 'true'
 export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_REQUEST_DELAY || process.env.UNOAPI_RETRY_REQUEST_DELAY_MS || '5000')
 // export const QR_TIMEOUT = parseInt(process.env.QR_TIMEOUT || '30000')
 // export const SLEEP_TIME = parseInt(process.env.SLEEP_TIME || '5000')
@@ -180,6 +186,7 @@ export const MESSAGE_CALLS_WEBHOOK = process.env.MESSAGE_CALLS_WEBHOOK || ''
 export const AUTO_RESTART_MS = parseInt(process.env.AUTO_RESTART_MS || '0')
 export const BASE_STORE = process.env.UNOAPI_BASE_STORE || process.env.BASE_STORE || './data'
 export const AUTO_CONNECT: boolean = process.env.AUTO_CONNECT === _undefined ? true : process.env.AUTO_CONNECT == 'true'
+export const AUTO_CONNECT_CONCURRENCY = Math.max(1, parseInt(process.env.AUTO_CONNECT_CONCURRENCY || '3'))
 export const COMPOSING_MESSAGE: boolean = process.env.COMPOSING_MESSAGE === _undefined ? false : process.env.COMPOSING_MESSAGE == 'true'
 export const COEXISTENCE_ENABLED: boolean = process.env.COEXISTENCE_ENABLED === _undefined ? false : process.env.COEXISTENCE_ENABLED == 'true'
 export const COEXISTENCE_WINDOW_SECONDS: number = parseInt(process.env.COEXISTENCE_WINDOW_SECONDS || `${60 * 60 * 24}`)
@@ -264,6 +271,10 @@ export const VALIDATE_SESSION_NUMBER: boolean =
 // Limit for history sync (in days). When history import is enabled, only messages
 // newer than this window are forwarded to processing/webhooks. Default 30 days.
 export const HISTORY_MAX_AGE_DAYS = parseInt(process.env.HISTORY_MAX_AGE_DAYS || '30')
+// Force/redo full history import even when the per-session Redis marker says it already started.
+// New unmarked sessions can still do their first full/bootstrap sync when history import is enabled.
+export const BAILEYS_ALLOW_FULL_HISTORY_SYNC =
+  process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC === _undefined ? false : process.env.BAILEYS_ALLOW_FULL_HISTORY_SYNC == 'true'
 
 // Group sending safeguards
 // Validate membership before sending to a group (recommended)
@@ -288,6 +299,12 @@ export const GROUP_LARGE_THRESHOLD = parseInt(process.env.GROUP_LARGE_THRESHOLD 
 // Controls for large-group No-sessions fallback (assertSessions)
 export const GROUP_ASSERT_CHUNK_SIZE = parseInt(process.env.GROUP_ASSERT_CHUNK_SIZE || '100')
 export const GROUP_ASSERT_FLOOD_WINDOW_MS = parseInt(process.env.GROUP_ASSERT_FLOOD_WINDOW_MS || '5000')
+// Keep the raw group metadata cache fresh when Baileys reports group changes.
+// The refresh is debounced/throttled per group to avoid stampeding WhatsApp/Redis on large groups.
+export const GROUP_METADATA_EVENT_REFRESH_ENABLED =
+  process.env.GROUP_METADATA_EVENT_REFRESH_ENABLED === _undefined ? true : process.env.GROUP_METADATA_EVENT_REFRESH_ENABLED == 'true'
+export const GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS = parseInt(process.env.GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS || '1500')
+export const GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS = parseInt(process.env.GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS || '60000')
 export const NO_SESSION_RETRY_BASE_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_BASE_DELAY_MS || '150')
 export const NO_SESSION_RETRY_PER_200_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_PER_200_DELAY_MS || '300')
 export const NO_SESSION_RETRY_MAX_DELAY_MS = parseInt(process.env.NO_SESSION_RETRY_MAX_DELAY_MS || '2000')
@@ -380,6 +397,19 @@ export const DELIVERY_WATCHDOG_MS = parseInt(process.env.DELIVERY_WATCHDOG_MS ||
 // Default to 2 attempts so we can try an alternate BR candidate (12<->13) once
 export const DELIVERY_WATCHDOG_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_WATCHDOG_MAX_ATTEMPTS || '2')
 export const DELIVERY_WATCHDOG_GROUPS = process.env.DELIVERY_WATCHDOG_GROUPS === _undefined ? false : process.env.DELIVERY_WATCHDOG_GROUPS == 'true'
+
+// Low-cost delivery recovery: uma fila local com um unico intervalo por sessao.
+// Diferente do watchdog antigo, nao cria timer por mensagem e so tenta quando
+// o status persistido continua em "sent" depois da janela configurada.
+export const DELIVERY_STALE_RECOVERY_ENABLED =
+  process.env.DELIVERY_STALE_RECOVERY_ENABLED === _undefined ? true : process.env.DELIVERY_STALE_RECOVERY_ENABLED == 'true'
+export const DELIVERY_STALE_RECOVERY_MS = parseInt(process.env.DELIVERY_STALE_RECOVERY_MS || '45000')
+export const DELIVERY_STALE_RECOVERY_SCAN_MS = parseInt(process.env.DELIVERY_STALE_RECOVERY_SCAN_MS || '15000')
+export const DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS = parseInt(process.env.DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS || '1')
+export const DELIVERY_STALE_RECOVERY_MAX_PENDING = parseInt(process.env.DELIVERY_STALE_RECOVERY_MAX_PENDING || '2000')
+export const DELIVERY_STALE_RECOVERY_BATCH_SIZE = parseInt(process.env.DELIVERY_STALE_RECOVERY_BATCH_SIZE || '3')
+export const DELIVERY_STALE_RECOVERY_GROUPS =
+  process.env.DELIVERY_STALE_RECOVERY_GROUPS === _undefined ? false : process.env.DELIVERY_STALE_RECOVERY_GROUPS == 'true'
 
 // BR send-order: if enabled, tries 12-digit then 13-digit candidate on send
 export const BR_SEND_ORDER_ENABLED =

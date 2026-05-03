@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import fetch from 'node-fetch'
 import { EMBEDDED_SIGNUP_APP_ID, EMBEDDED_SIGNUP_APP_SECRET, EMBEDDED_SIGNUP_REDIRECT_URI, EMBEDDED_SIGNUP_GRAPH_VERSION } from '../defaults'
 import logger from '../services/logger'
+import { issueEmbeddedAccessToken } from '../services/embedded_tokens'
 
 export class EmbeddedController {
   public async configJs(_req: Request, res: Response) {
@@ -71,6 +72,22 @@ export class EmbeddedController {
       return res.status(200).json(payload)
     } catch (e) {
       logger.error(e as any, 'embedded exchange error')
+      return res.status(500).json({ error: 'internal_error' })
+    }
+  }
+
+  public async oauthAccessToken(req: Request, res: Response) {
+    try {
+      const code = `${req.query?.code || req.query?.fb_exchange_token || ''}`.trim()
+      const clientId = `${req.query?.client_id || EMBEDDED_SIGNUP_APP_ID || 'unoapi'}`.trim()
+      const seed = `${clientId}:${code || Date.now()}`
+      return res.status(200).json({
+        access_token: issueEmbeddedAccessToken(seed),
+        token_type: 'bearer',
+        expires_in: 3600,
+      })
+    } catch (e) {
+      logger.error(e as any, 'embedded oauth access_token error')
       return res.status(500).json({ error: 'internal_error' })
     }
   }

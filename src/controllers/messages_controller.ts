@@ -42,6 +42,8 @@ import { phoneNumberToJid } from '../services/transformer'
 import { allowSend } from '../services/rate_limit'
 import { CONTACT_SYNC_SCAN_COUNT } from '../defaults'
 import { BASE_KEY, getRedis } from '../services/redis'
+import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
+import { sendGraphError } from '../services/graph_error'
 
 export class MessagesController {
   protected endpoint = 'messages'
@@ -51,6 +53,24 @@ export class MessagesController {
   constructor(incoming: Incoming, outgoing: Outgoing) {
     this.incoming = incoming
     this.outgoing = outgoing
+  }
+
+  private normalizeBaileysRawPayload(payload: any) {
+    if (
+      payload &&
+      !payload.type &&
+      typeof payload.jid === 'string' &&
+      payload.jid.trim() &&
+      payload.message &&
+      typeof payload.message === 'object'
+    ) {
+      return {
+        ...payload,
+        to: payload.to || payload.jid,
+        type: 'baileys',
+      }
+    }
+    return payload
   }
 
   private async loadStatusRecipientsFromContactInfo(phone: string): Promise<string[]> {
@@ -85,8 +105,9 @@ export class MessagesController {
     logger.debug('%s headers %s', this.endpoint, JSON.stringify(req.headers))
     logger.debug('%s params %s', this.endpoint, JSON.stringify(req.params))
     logger.debug('%s body %s', this.endpoint, JSON.stringify(req.body))
-    const { phone } = req.params
-    const payload: any = req.body
+    const phone = `${req.params.phone || req.params.phone_number_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    const payload: any = this.normalizeBaileysRawPayload(req.body)
     const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
     const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
     payload._requestId = requestId
@@ -94,7 +115,7 @@ export class MessagesController {
       const options: any = { endpoint: this.endpoint }
       options.requestId = requestId
       res.setHeader('x-request-id', requestId)
-      logger.info('messages requestId=%s phone=%s to=%s type=%s', requestId, phone, `${payload?.to || ''}`, `${payload?.type || ''}`)
+      logger.info('messages requestId=%s phone=%s to=%s type=%s', requestId, sessionPhone, `${payload?.to || ''}`, `${payload?.type || ''}`)
       const bodyOptions = (payload && payload.options) || {}
       const rawTo = `${payload?.to || ''}`.trim().toLowerCase()
       const rawType = `${payload?.type || ''}`.trim().toLowerCase()
@@ -109,9 +130,9 @@ export class MessagesController {
       }
       if (rawTo === 'status@broadcast' && (rawType === 'image' || rawType === 'video')) {
         if (isBlankStatusList(rawStatusList)) {
-          const statusRecipients = await this.loadStatusRecipientsFromContactInfo(phone)
+          const statusRecipients = await this.loadStatusRecipientsFromContactInfo(sessionPhone)
           payload.statusJidList = statusRecipients
-          logger.info('Status@broadcast auto statusJidList for %s: %d recipient(s)', phone, statusRecipients.length)
+          logger.info('Status@broadcast auto statusJidList for %s: %d recipient(s)', sessionPhone, statusRecipients.length)
         }
       }
       // Allow passing Baileys options via body (e.g., for Stories/Broadcast)
@@ -141,24 +162,69 @@ export class MessagesController {
       }
       // Anti-spam: enforce per-session and per-destination minute limits
       const to = (payload?.to && phoneNumberToJid(payload.to)) || ''
-      const decision = await allowSend(phone, to || '')
+      const decision = await allowSend(sessionPhone, to || '')
       if (!decision.allowed) {
         // Não retorna 429: agenda o envio via fila com atraso
         const retrySec = decision.retryAfterSec || 60
         options.delay = retrySec * 1000
-        logger.warn('Rate limited %s -> %s; scheduling in %ss', phone, to, retrySec)
+        logger.warn('Rate limited %s -> %s; scheduling in %ss', sessionPhone, to, retrySec)
       }
-      const response: ResponseUno = await this.incoming.send(phone, payload, options)
+      const response: ResponseUno = await this.incoming.send(sessionPhone, payload, options)
       logger.debug('%s response %s', this.endpoint, JSON.stringify(response.ok))
       await res.status(200).json(response.ok)
       if (response.error) {
         logger.debug('%s return status %s', this.endpoint, JSON.stringify(response.error))
-        await this.outgoing.send(phone, response.error)
+        await this.outgoing.send(sessionPhone, response.error)
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       try { res.setHeader('x-request-id', requestId) } catch {}
-      return res.status(400).json({ status: 'error', message: e.message })
+      return sendGraphError(res, 400, e.message, { code: 131000, type: 'GraphMethodException' })
+    }
+  }
+
+  public async recoverDelivery(req: Request, res: Response) {
+    logger.debug('%s recover_delivery method %s', this.endpoint, req.method)
+    logger.debug('%s recover_delivery params %s', this.endpoint, JSON.stringify(req.params))
+    logger.debug('%s recover_delivery body %s', this.endpoint, JSON.stringify(req.body))
+    const phone = `${req.params.phone || req.params.phone_number_id || ''}`
+    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+    const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
+    const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
+    const payload: any = this.normalizeBaileysRawPayload({
+      ...(req.body || {}),
+      message_id: req.params.messageId || req.body?.message_id || req.body?.messageId || req.body?.id,
+    })
+    payload._requestId = requestId
+    const options: any = {
+      endpoint: this.endpoint,
+      requestId,
+      forceDeliveryRecovery: true,
+      forceSessionRefresh: true,
+      forceDeviceList: payload?.force_device_list !== false && payload?.forceDeviceList !== false,
+      useUserDevicesCache: false,
+    }
+    try {
+      res.setHeader('x-request-id', requestId)
+      if (typeof this.incoming.recoverDelivery !== 'function') {
+        return sendGraphError(res, 400, 'delivery_recovery_not_supported', { code: 131000, type: 'GraphMethodException' })
+      }
+      logger.warn(
+        'messages recover_delivery requestId=%s phone=%s to=%s messageId=%s type=%s',
+        requestId,
+        sessionPhone,
+        `${payload?.to || ''}`,
+        `${payload?.message_id || ''}`,
+        `${payload?.type || ''}`,
+      )
+      const response = await this.incoming.recoverDelivery(sessionPhone, payload, options)
+      await res.status(200).json(response.ok)
+      if (response.error) {
+        await this.outgoing.send(sessionPhone, response.error)
+      }
+    } catch (e: any) {
+      try { res.setHeader('x-request-id', requestId) } catch {}
+      return sendGraphError(res, 400, e.message, { code: 131000, type: 'GraphMethodException' })
     }
   }
 }
