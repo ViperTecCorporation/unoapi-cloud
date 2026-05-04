@@ -615,29 +615,20 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           })),
         }))
         if (useNativeFlow && typeof action.listType === 'undefined') {
-          response.interactiveMessage = {
-            body: { text: body.text || '' },
-            footer: footer.text ? { text: footer.text } : undefined,
-            header: header.text
-              ? {
-                  type: 4,
-                  title: header.text,
-                  hasMediaAttachment: false,
-                }
-              : undefined,
-            nativeFlowMessage: {
-              buttons: [
-                {
-                  name: 'single_select',
-                  buttonParamsJson: JSON.stringify({
-                    title: action.button || 'Selecione',
-                    sections,
-                  }),
-                },
-              ],
-              messageVersion: 1,
+          response.text = body.text || ''
+          response.footer = footer.text || ''
+          response.buttons = [
+            {
+              nativeFlowInfo: {
+                name: 'single_select',
+                paramsJson: JSON.stringify({
+                  title: action.button || 'Selecione',
+                  sections,
+                }),
+              },
+              type: 2,
             },
-          }
+          ]
         } else {
           response.text = body.text || ''
           response.footer = footer.text || ''

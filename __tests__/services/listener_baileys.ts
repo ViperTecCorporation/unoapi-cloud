@@ -395,4 +395,75 @@ describe('service listener baileys', () => {
       }),
     )
   })
+
+  test('builds poll summary from decrypted pollUpdates message update', async () => {
+    config.getMessageMetadata = async message => message
+    const groupJid = '120363040468224422@g.us'
+    const pollId = 'poll-creation-update-aggregate-1'
+    const optionName = 'Sim'
+    const optionHash = createHash('sha256').update(Buffer.from(optionName)).digest()
+    store.dataStore.loadMessage = jest.fn().mockResolvedValue({
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: pollId,
+      },
+      message: {
+        pollCreationMessage: {
+          name: 'Escolha uma opcao',
+          options: [{ optionName }],
+        },
+      },
+    }) as any
+    store.dataStore.loadUnoId = jest.fn().mockResolvedValue(undefined) as any
+    outgoing.send = jest.fn().mockResolvedValue(undefined) as any
+
+    await service.sendOne(phone, {
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: pollId,
+      },
+      update: {
+        pollUpdates: [
+          {
+            pollUpdateMessageKey: {
+              remoteJid: groupJid,
+              fromMe: false,
+              id: 'vote-update-aggregate-1',
+              participant: '556699222222@s.whatsapp.net',
+            },
+            vote: {
+              selectedOptions: [optionHash],
+            },
+            senderTimestampMs: Date.now(),
+          },
+        ],
+      },
+    } as any)
+
+    expect(outgoing.send).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        entry: expect.arrayContaining([
+          expect.objectContaining({
+            changes: expect.arrayContaining([
+              expect.objectContaining({
+                value: expect.objectContaining({
+                  messages: expect.arrayContaining([
+                    expect.objectContaining({
+                      type: 'text',
+                      text: expect.objectContaining({
+                        body: expect.stringContaining('- Sim: 1'),
+                      }),
+                    }),
+                  ]),
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    )
+  })
 })

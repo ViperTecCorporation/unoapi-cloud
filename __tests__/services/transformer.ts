@@ -2362,50 +2362,43 @@ describe('service transformer', () => {
       },
     }
     const output = {
-      interactiveMessage: {
-        body: { text: 'your-text-message-content' },
-        footer: { text: 'Cloud UnoApi' },
-        header: {
-          hasMediaAttachment: false,
-          title: 'Title',
-          type: 4,
+      text: 'your-text-message-content',
+      footer: 'Cloud UnoApi',
+      buttons: [
+        {
+          nativeFlowInfo: {
+            name: 'single_select',
+            paramsJson: JSON.stringify({
+              title: 'sections',
+              sections: [
+                {
+                  title: 'your-section-title-content',
+                  rows: [
+                    {
+                      rowId: 'unique-row-identifier',
+                      id: 'unique-row-identifier',
+                      title: 'row-title-content',
+                      description: 'row-description-content',
+                    },
+                  ],
+                },
+                {
+                  title: 'your-section-title-content',
+                  rows: [
+                    {
+                      rowId: 'unique-row-identifier',
+                      id: 'unique-row-identifier',
+                      title: 'row-title-content',
+                      description: 'row-description-content',
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+          type: 2,
         },
-        nativeFlowMessage: {
-          buttons: [
-            {
-              name: 'single_select',
-              buttonParamsJson: JSON.stringify({
-                title: 'sections',
-                sections: [
-                  {
-                    title: 'your-section-title-content',
-                    rows: [
-                      {
-                        rowId: 'unique-row-identifier',
-                        id: 'unique-row-identifier',
-                        title: 'row-title-content',
-                        description: 'row-description-content',
-                      },
-                    ],
-                  },
-                  {
-                    title: 'your-section-title-content',
-                    rows: [
-                      {
-                        rowId: 'unique-row-identifier',
-                        id: 'unique-row-identifier',
-                        title: 'row-title-content',
-                        description: 'row-description-content',
-                      },
-                    ],
-                  },
-                ],
-              }),
-            },
-          ],
-          messageVersion: 1,
-        },
-      },
+      ],
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })

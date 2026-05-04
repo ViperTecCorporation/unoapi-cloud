@@ -939,6 +939,25 @@ export class ListenerBaileys implements Listener {
         i = clone as WAMessage
         messageType = getMessageType(i)
       }
+      const pollUpdates = Array.isArray((i as any)?.update?.pollUpdates) ? (i as any).update.pollUpdates : []
+      if (messageType === 'update' && pollUpdates.length) {
+        const pollUpdate = pollUpdates[pollUpdates.length - 1] || {}
+        const clone: any = {
+          ...(i as any),
+          key: pollUpdate.pollUpdateMessageKey || (i as any).key,
+          message: {
+            pollUpdateMessage: {
+              pollCreationMessageKey: (i as any).key,
+              vote: pollUpdate.vote,
+              senderTimestampMs: pollUpdate.senderTimestampMs,
+            },
+          },
+        }
+        try { delete clone.status } catch {}
+        try { delete clone.update } catch {}
+        i = clone as WAMessage
+        messageType = getMessageType(i)
+      }
     } catch {}
     if (messageType === 'pollUpdateMessage') {
       await this.decryptPollUpdateVote(phone, store, i)
