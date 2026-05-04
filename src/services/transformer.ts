@@ -605,21 +605,56 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       }
 
       if (action.sections && Array.isArray(action.sections) && action.sections.length > 0) {
-        response.text = body.text || ''
-        response.footer = footer.text || ''
-        response.title = header.text || ''
-        response.buttonText = action.button || 'Selecione'
-        if (typeof action.listType !== 'undefined') {
-          response.listType = action.listType
-        }
-        response.sections = action.sections.map((section: any) => ({
+        const sections = action.sections.map((section: any) => ({
           title: section.title || '',
           rows: (section.rows || []).map((row: any) => ({
             rowId: row.rowId || row.id || '',
+            id: row.id || row.rowId || '',
             title: row.title || '',
             description: row.description || '',
           })),
         }))
+        if (useNativeFlow && typeof action.listType === 'undefined') {
+          response.interactiveMessage = {
+            body: { text: body.text || '' },
+            footer: footer.text ? { text: footer.text } : undefined,
+            header: header.text
+              ? {
+                  type: 4,
+                  title: header.text,
+                  hasMediaAttachment: false,
+                }
+              : undefined,
+            nativeFlowMessage: {
+              buttons: [
+                {
+                  name: 'single_select',
+                  buttonParamsJson: JSON.stringify({
+                    title: action.button || 'Selecione',
+                    sections,
+                  }),
+                },
+              ],
+              messageVersion: 1,
+            },
+          }
+        } else {
+          response.text = body.text || ''
+          response.footer = footer.text || ''
+          response.title = header.text || ''
+          response.buttonText = action.button || 'Selecione'
+          if (typeof action.listType !== 'undefined') {
+            response.listType = action.listType
+          }
+          response.sections = sections.map((section: any) => ({
+            title: section.title,
+            rows: section.rows.map((row: any) => ({
+              rowId: row.rowId || row.id || '',
+              title: row.title || '',
+              description: row.description || '',
+            })),
+          }))
+        }
         break
       }
 

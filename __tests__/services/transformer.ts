@@ -2362,32 +2362,50 @@ describe('service transformer', () => {
       },
     }
     const output = {
-      buttonText: 'sections',
-      footer: 'Cloud UnoApi',
-      sections: [
-        {
-          rows: [
+      interactiveMessage: {
+        body: { text: 'your-text-message-content' },
+        footer: { text: 'Cloud UnoApi' },
+        header: {
+          hasMediaAttachment: false,
+          title: 'Title',
+          type: 4,
+        },
+        nativeFlowMessage: {
+          buttons: [
             {
-              description: 'row-description-content',
-              rowId: 'unique-row-identifier',
-              title: 'row-title-content',
+              name: 'single_select',
+              buttonParamsJson: JSON.stringify({
+                title: 'sections',
+                sections: [
+                  {
+                    title: 'your-section-title-content',
+                    rows: [
+                      {
+                        rowId: 'unique-row-identifier',
+                        id: 'unique-row-identifier',
+                        title: 'row-title-content',
+                        description: 'row-description-content',
+                      },
+                    ],
+                  },
+                  {
+                    title: 'your-section-title-content',
+                    rows: [
+                      {
+                        rowId: 'unique-row-identifier',
+                        id: 'unique-row-identifier',
+                        title: 'row-title-content',
+                        description: 'row-description-content',
+                      },
+                    ],
+                  },
+                ],
+              }),
             },
           ],
-          title: 'your-section-title-content',
+          messageVersion: 1,
         },
-        {
-          rows: [
-            {
-              description: 'row-description-content',
-              rowId: 'unique-row-identifier',
-              title: 'row-title-content',
-            },
-          ],
-          title: 'your-section-title-content',
-        },
-      ],
-      text: 'your-text-message-content',
-      title: 'Title',
+      },
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
   })
