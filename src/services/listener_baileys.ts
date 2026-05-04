@@ -927,6 +927,19 @@ export class ListenerBaileys implements Listener {
     } catch {}
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
+    try {
+      const updateMessage = (i as any)?.update?.message
+      if (messageType === 'update' && updateMessage?.pollUpdateMessage) {
+        const clone: any = {
+          ...(i as any),
+          message: updateMessage,
+        }
+        try { delete clone.status } catch {}
+        try { delete clone.update } catch {}
+        i = clone as WAMessage
+        messageType = getMessageType(i)
+      }
+    } catch {}
     if (messageType === 'pollUpdateMessage') {
       await this.decryptPollUpdateVote(phone, store, i)
     }
