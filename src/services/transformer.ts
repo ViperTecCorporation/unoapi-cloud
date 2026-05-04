@@ -698,6 +698,48 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           }
           return []
         }
+        const mapButtonsToNativeCarousel = (buttons: any[]) =>
+          (buttons || [])
+            .map((button: any) => {
+              if (button.type === 'url' || button.url || button.type === 'cta_url') {
+                const u = button.url || button
+                const url = typeof u === 'string' ? u : u.link || u.url || ''
+                return {
+                  type: 'url',
+                  text: button.text || u.title || u.display_text || 'Abrir',
+                  url,
+                  merchantUrl: button.merchantUrl || u.merchant_url || url,
+                }
+              }
+              if (button.type === 'call' || button.call || button.type === 'cta_call') {
+                const c = button.call || button
+                return {
+                  type: 'call',
+                  text: button.text || c.title || c.display_text || 'Ligar',
+                  phoneNumber: c.phone_number || c.phone || c.phoneNumber || '',
+                }
+              }
+              if (button.type === 'cta_copy' || button.copy_code || button.copy) {
+                const cp = button.copy_code || button.copy || button
+                return {
+                  type: 'copy',
+                  text: button.text || cp.title || cp.display_text || 'Copiar',
+                  copyText: cp.code || cp.copy_code || cp.copyText || '',
+                }
+              }
+              const r = button.reply || button
+              return {
+                type: 'reply',
+                text: r.title || r.text || r.displayText || r.display_text || 'Selecionar',
+                id: r.id || r.buttonId || '',
+              }
+            })
+            .filter((button: any) => {
+              if (button.type === 'url') return !!button.url
+              if (button.type === 'call') return !!button.phoneNumber
+              if (button.type === 'copy') return !!button.copyText
+              return !!button.id
+            })
         const cards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
           const cardHeader = card.header || {}
           const cardBody = card.body || {}
@@ -732,26 +774,36 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
             },
           }
         })
-        response.interactiveMessage = {
-          body: { text: body.text || '' },
-          footer: footer.text ? { text: footer.text } : undefined,
-          header: header.text
-            ? {
-                type: 4,
-                title: header.text,
-                hasMediaAttachment: false,
-              }
-            : undefined,
-          carouselMessage: {
-            cards,
-          },
+        const nativeCards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
+          const cardHeader = card.header || {}
+          const cardBody = card.body || {}
+          const cardFooter = card.footer || {}
+          const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
+          const headerType = `${cardHeader?.type || ''}`.toLowerCase()
+          const imageLink = cardHeader?.image?.link || cardHeader?.image?.url
+          const videoLink = cardHeader?.video?.link || cardHeader?.video?.url
+          return {
+            title: cardHeader?.text || card.title || '',
+            body: cardBody?.text || card.text || card.caption || '',
+            ...(cardFooter?.text ? { footer: cardFooter.text } : {}),
+            ...(headerType === 'image' && imageLink ? { image: { url: imageLink } } : {}),
+            ...(headerType === 'video' && videoLink ? { video: { url: videoLink } } : {}),
+            buttons: mapButtonsToNativeCarousel(cardButtons),
+          }
+        })
+        response.nativeCarousel = {
+          text: body.text || '',
+          footer: footer.text || undefined,
+          title: header.text || undefined,
+          cards: nativeCards,
         }
         if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
           logger.debug(
             'toBaileys carousel->interactive dump input=%s output=%s',
             JSON.stringify({ interactive, action, header, body, footer }),
             JSON.stringify({
-              interactiveMessage: response.interactiveMessage,
+              nativeCarousel: response.nativeCarousel,
+              legacyInteractiveCards: cards,
             }),
           )
         }

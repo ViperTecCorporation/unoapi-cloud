@@ -2516,32 +2516,68 @@ describe('service transformer', () => {
                   ],
                 },
               },
+              {
+                header: {
+                  type: 'image',
+                  image: {
+                    link: 'https://example.com/card-2.jpg',
+                  },
+                },
+                body: {
+                  text: 'Card 2',
+                },
+                footer: {
+                  text: 'Footer 2',
+                },
+                action: {
+                  buttons: [
+                    {
+                      type: 'url',
+                      text: 'Abrir',
+                      url: 'https://example.com/card-2',
+                    },
+                  ],
+                },
+              },
             ],
           },
         },
       },
     }
     const output = {
-      interactiveMessage: {
-        body: { text: 'Escolha um card' },
-        footer: { text: 'Cloud UnoApi' },
-        carouselMessage: {
-          cards: [
-            {
-              header: { imageMessage: { url: 'https://example.com/card-1.jpg' } },
-              body: { text: 'Card 1' },
-              footer: { text: 'Footer 1' },
-              nativeFlowMessage: {
-                buttons: [
-                  {
-                    name: 'quick_reply',
-                    buttonParamsJson: '{"id":"card_1","display_text":"Selecionar"}',
-                  },
-                ],
+      nativeCarousel: {
+        text: 'Escolha um card',
+        footer: 'Cloud UnoApi',
+        title: undefined,
+        cards: [
+          {
+            title: '',
+            body: 'Card 1',
+            footer: 'Footer 1',
+            image: { url: 'https://example.com/card-1.jpg' },
+            buttons: [
+              {
+                type: 'reply',
+                text: 'Selecionar',
+                id: 'card_1',
               },
-            },
-          ],
-        },
+            ],
+          },
+          {
+            title: '',
+            body: 'Card 2',
+            footer: 'Footer 2',
+            image: { url: 'https://example.com/card-2.jpg' },
+            buttons: [
+              {
+                type: 'url',
+                text: 'Abrir',
+                url: 'https://example.com/card-2',
+                merchantUrl: 'https://example.com/card-2',
+              },
+            ],
+          },
+        ],
       },
     }
     expect(toBaileysMessageContent(input)).toEqual(output)
