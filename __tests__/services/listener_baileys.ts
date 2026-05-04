@@ -1,9 +1,10 @@
 import { mock } from 'jest-mock-extended'
+import { createCipheriv, createHash, createHmac } from 'crypto'
 import { Store, getStore } from '../../src/services/store'
 import { DataStore } from '../../src/services/data_store'
 import { MediaStore } from '../../src/services/media_store'
 import { Config, getConfig, defaultConfig, getMessageMetadataDefault } from '../../src/services/config'
-import { ListenerBaileys } from '../../src/services/listener_baileys'
+import { ListenerBaileys, decryptPollVoteWithLidFallbackCompat } from '../../src/services/listener_baileys'
 import { Outgoing } from '../../src/services/outgoing'
 import { Broadcast } from '../../src/services/broadcast'
 
@@ -159,4 +160,126 @@ describe('service listener baileys', () => {
       }),
     )
   }, 15000)
+
+  test('decrypts poll update vote using lid fallback before building webhook summary', async () => {
+    config.getMessageMetadata = async message => message
+    const groupJid = '120363040468224422@g.us'
+    const pollId = 'poll-creation-1'
+    const optionName = 'Sim'
+    const optionHash = createHash('sha256').update(Buffer.from(optionName)).digest()
+    const pollEncKey = Buffer.alloc(32, 7)
+    const creatorPn = '556699111111@s.whatsapp.net'
+    const creatorLid = '111111111111111@lid'
+    const voterPn = '556699222222@s.whatsapp.net'
+    const voterLid = '222222222222222@lid'
+
+    const pollCreationMessage = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: pollId,
+        participant: creatorPn,
+        participantAlt: creatorLid,
+      },
+      message: {
+        messageContextInfo: { messageSecret: pollEncKey },
+        pollCreationMessage: {
+          name: 'Escolha uma opcao',
+          options: [{ optionName }],
+        },
+      },
+    } as any
+
+    const encryptedVote = (() => {
+      const votePayload = Buffer.concat([Buffer.from([10, optionHash.length]), optionHash])
+      const sign = Buffer.concat([
+        Buffer.from(pollId),
+        Buffer.from(creatorLid),
+        Buffer.from(voterLid),
+        Buffer.from('Poll Vote'),
+        Buffer.from([1]),
+      ])
+      const key0 = createHmac('sha256', Buffer.alloc(32)).update(pollEncKey).digest()
+      const decKey = createHmac('sha256', key0).update(sign).digest()
+      const iv = Buffer.alloc(12, 3)
+      const cipher = createCipheriv('aes-256-gcm', decKey, iv)
+      cipher.setAAD(Buffer.from(`${pollId}\u0000${voterLid}`))
+      const enc = Buffer.concat([cipher.update(votePayload), cipher.final()])
+      return {
+        encIv: iv,
+        encPayload: Buffer.concat([enc, cipher.getAuthTag()]),
+      }
+    })()
+
+    store.state = {
+      creds: {
+        me: {
+          id: '556600000000@s.whatsapp.net',
+          lid: '999999999999999@lid',
+        },
+      },
+    } as any
+    store.dataStore.findMessageWithSecret = jest.fn().mockResolvedValue(pollCreationMessage) as any
+    store.dataStore.loadMessage = jest.fn().mockResolvedValue(pollCreationMessage) as any
+    store.dataStore.loadUnoId = jest.fn().mockResolvedValue(undefined) as any
+    outgoing.send = jest.fn().mockResolvedValue(undefined) as any
+
+    const pollVoteMessage = {
+      key: {
+        remoteJid: groupJid,
+        fromMe: false,
+        id: 'vote-1',
+        participant: voterPn,
+        participantAlt: voterLid,
+      },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      message: {
+        pollUpdateMessage: {
+          pollCreationMessageKey: {
+            remoteJid: groupJid,
+            fromMe: false,
+            id: pollId,
+            participant: creatorPn,
+            participantAlt: creatorLid,
+          },
+          vote: encryptedVote,
+          senderTimestampMs: Date.now(),
+        },
+      },
+    } as any
+
+    const decryptedVote = decryptPollVoteWithLidFallbackCompat(encryptedVote, {
+      pollEncKey,
+      pollCreationMsgKey: pollVoteMessage.message.pollUpdateMessage.pollCreationMessageKey,
+      voteMsgKey: pollVoteMessage.key,
+      meId: '556600000000@s.whatsapp.net',
+      meLid: '999999999999999@lid',
+    })
+    expect(decryptedVote?.selectedOptions?.[0]?.toString()).toBe(optionHash.toString())
+    await service.sendOne(phone, pollVoteMessage)
+
+    expect(outgoing.send).toHaveBeenCalledWith(
+      phone,
+      expect.objectContaining({
+        entry: expect.arrayContaining([
+          expect.objectContaining({
+            changes: expect.arrayContaining([
+              expect.objectContaining({
+                value: expect.objectContaining({
+                  messages: expect.arrayContaining([
+                    expect.objectContaining({
+                      type: 'text',
+                      text: expect.objectContaining({
+                        body: expect.stringContaining('- Sim: 1'),
+                      }),
+                    }),
+                  ]),
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    )
+  })
 })
