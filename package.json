@@ -45,6 +45,7 @@
     "bridge-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/bridge.ts",
     "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json",
     "build:docs": "node ./scripts/openapi-to-json.mjs",
+    "check:baileys-lock": "node ./scripts/check-baileys-lock.mjs",
     "postinstall": "node ./scripts/prepare-baileys.mjs"
   },
   "devDependencies": {
