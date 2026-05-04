@@ -2924,9 +2924,9 @@
   dependencies:
     "@wasm-audio-decoders/common" "9.0.7"
 
-"@whiskeysockets/baileys@github:ViperTecCorporation/Baileys#66caecdd8b63631dcd8370d1e52a11bc37d31cbe":
+"@whiskeysockets/baileys@github:ViperTecCorporation/Baileys#52a3e0396941acaf556e2414a2f94c750b22c9e0":
   version "7.0.0-rc.9"
-  resolved "https://codeload.github.com/ViperTecCorporation/Baileys/tar.gz/66caecdd8b63631dcd8370d1e52a11bc37d31cbe"
+  resolved "https://codeload.github.com/ViperTecCorporation/Baileys/tar.gz/52a3e0396941acaf556e2414a2f94c750b22c9e0"
   dependencies:
     "@cacheable/node-cache" "^1.4.0"
     "@hapi/boom" "^9.1.3"
