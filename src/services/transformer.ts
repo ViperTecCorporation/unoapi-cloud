@@ -1,10 +1,32 @@
 import { AnyMessageContent, WAMessageContent, WAMessage, isJidNewsletter, isPnUser, isLidUser, proto, jidNormalizedUser } from '@whiskeysockets/baileys'
 import mime from 'mime-types'
-import { parsePhoneNumber } from 'awesome-phonenumber'
 import vCard from 'vcf'
 import logger from './logger'
 import { Config } from './config'
 import { SendError } from './send_error'
+import { BindTemplateError, DecryptError } from './transformer/errors'
+import {
+  MESSAGE_STUB_TYPE_ERRORS,
+  OTHER_MESSAGES_TO_PROCESS,
+  TYPE_MESSAGES_MEDIA,
+  TYPE_MESSAGES_TO_PROCESS_FILE,
+  TYPE_MESSAGES_TO_READ,
+} from './transformer/message_constants'
+import {
+  ensurePn,
+  formatJid,
+  isIndividualJid,
+  isValidPhoneNumber,
+  jidToPhoneNumber,
+  jidToPhoneNumberIfUser,
+  jidToRawPhoneNumber,
+  normalizeGroupId,
+  normalizeParticipantId,
+  normalizeTransportJid,
+  normalizeUserOrGroupIdForWebhook,
+  phoneNumberToJid,
+  toRawPnJid,
+} from './transformer/jid'
 import {
   BASE_URL,
   MESSAGE_CHECK_WAAPP,
@@ -17,18 +39,27 @@ import {
 } from '../defaults'
 import { t } from '../i18n'
 
-export const TYPE_MESSAGES_TO_PROCESS_FILE = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage']
-
-export const TYPE_MESSAGES_MEDIA = ['image', 'audio', 'document', 'video', 'sticker']
-
-const MESSAGE_STUB_TYPE_ERRORS = [
-  'Message absent from node'.toLowerCase(),
-  'Invalid PreKey ID'.toLowerCase(),
-  'Key used already or never filled'.toLowerCase(),
-  'No SenderKeyRecord found for decryption'.toLowerCase(),
-  'No session record'.toLowerCase(),
-  'No matching sessions found for message'.toLowerCase(),
-]
+export { BindTemplateError, DecryptError } from './transformer/errors'
+export {
+  TYPE_MESSAGES_TO_PROCESS_FILE,
+  TYPE_MESSAGES_MEDIA,
+  TYPE_MESSAGES_TO_READ,
+} from './transformer/message_constants'
+export {
+  ensurePn,
+  formatJid,
+  isIndividualJid,
+  isValidPhoneNumber,
+  jidToPhoneNumber,
+  jidToPhoneNumberIfUser,
+  jidToRawPhoneNumber,
+  normalizeGroupId,
+  normalizeParticipantId,
+  normalizeTransportJid,
+  normalizeUserOrGroupIdForWebhook,
+  phoneNumberToJid,
+  toRawPnJid,
+} from './transformer/jid'
 
 const isViewOnceUnavailableStub = (payload: any): boolean => {
   const source = payload?.update || payload || {}
@@ -66,86 +97,6 @@ const isSecretEncryptedMessageEdit = (message: any): boolean => {
   const secretType = `${message?.secretEncType || ''}`
   return secretType === '2' || secretType === 'MESSAGE_EDIT'
 }
-
-export class BindTemplateError extends Error {
-  constructor() {
-    super('')
-  }
-}
-
-export class DecryptError extends Error {
-  private content: object
-
-  constructor(content: object) {
-    super('')
-    this.content = content
-  }
-
-  getContent() {
-    return this.content
-  }
-}
-
-export const TYPE_MESSAGES_TO_READ = [
-  'viewOnceMessage',
-  'editedMessage',
-  'ephemeralMessage',
-  'documentWithCaptionMessage',
-  'viewOnceMessageV2',
-  'viewOnceMessageV2Extension',
-  'lottieStickerMessage',
-  'imageMessage',
-  'videoMessage',
-  'audioMessage',
-  'stickerMessage',
-  'documentMessage',
-  'contactMessage',
-  'contactsArrayMessage',
-  'extendedTextMessage',
-  'reactionMessage',
-  'locationMessage',
-  'liveLocationMessage',
-  'listMessage',
-  'buttonsMessage',
-  'interactiveMessage',
-  'listResponseMessage',
-  'buttonsResponseMessage',
-  'interactiveResponseMessage',
-  'conversation',
-  'ptvMessage',
-  'templateButtonReplyMessage',
-  'templateMessage',
-  'groupInviteMessage',
-  'orderMessage',
-  'pollCreationMessage',
-  'pollCreationMessageV2',
-  'pollCreationMessageV3',
-  'pollCreationMessageV5',
-  'pollUpdateMessage',
-  'eventMessage',
-  'scheduledCallCreationMessage',
-  'scheduledCallEditMessage',
-  'requestPhoneNumberMessage',
-  'newsletterAdminInviteMessage',
-  'newsletterFollowerInviteMessageV2',
-  'questionMessage',
-  'questionResponseMessage',
-  'questionReplyMessage',
-  'statusQuestionAnswerMessage',
-  'callLogMesssage',
-  'pollResultSnapshotMessage',
-  'pollResultSnapshotMessageV3',
-  'statusQuotedMessage',
-  'statusAddYours',
-  'secretEncryptedMessage',
-]
-
-const OTHER_MESSAGES_TO_PROCESS = [
-  'protocolMessage',
-  'senderKeyDistributionMessage',
-  'messageContextInfo',
-  'messageStubType',
-]
 
 export const getMimetype = (payload: any) => {
   const { type } = payload
@@ -920,123 +871,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
   return response
 }
 
-export const phoneNumberToJid = (phoneNumber: string) => {
-  try {
-    if (typeof phoneNumber === 'string' && phoneNumber.includes('@')) {
-      logger.debug('%s already is jid', phoneNumber)
-      return phoneNumber
-    }
-    // PN -> JID com ajuste do 9º dígito (Brasil)
-    const raw = ensurePn(`${phoneNumber}`)
-    const brMobile9 = (digits?: string) => {
-      try {
-        const s = `${digits || ''}`.replace(/\D/g, '')
-        if (!s.startsWith('55')) return s
-        // 55 + DDD(2) + local; se local tiver 8 dígitos e começar em [6-9], inserir 9 após DDD
-        if (s.length === 12) {
-          const ddd = s.slice(2, 4)
-          const local = s.slice(4)
-          if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
-        }
-        return s
-      } catch { return digits || '' }
-    }
-    const pn = brMobile9(raw)
-    const jid = `${pn}@s.whatsapp.net`
-    logger.debug('PN->JID transform %s => %s', phoneNumber, jid)
-    return jid
-  } catch {
-    const jid = `${`${phoneNumber}`.replace(/\D/g, '')}@s.whatsapp.net`
-    logger.debug('PN->JID fallback %s => %s', phoneNumber, jid)
-    return jid
-  }
-}
-
-export const normalizeGroupId = (input: string): string => {
-  const raw = `${input || ''}`.trim()
-  if (!raw) return ''
-  if (raw.endsWith('@g.us')) return raw
-  const digits = raw.replace(/\D/g, '')
-  return digits ? `${digits}@g.us` : raw
-}
-
-export const normalizeParticipantId = (jid: string): string => {
-  const value = `${jid || ''}`.trim()
-  if (!value) return ''
-  if (value.endsWith('@s.whatsapp.net')) {
-    return value.split('@')[0].split(':')[0].replace(/\D/g, '')
-  }
-  if (value.endsWith('@lid')) {
-    return value
-  }
-  return value.replace(/\D/g, '') || value
-}
-
-// Converte PN/JID para PN JID de transporte sem heurística extra (ex.: sem inserir 9º dígito BR).
-// Deve ser usado para caches internos/JIDMAP, preservando o valor como chega do Baileys.
-export const toRawPnJid = (value?: string): string => {
-  const raw = `${value || ''}`.trim()
-  if (!raw) return ''
-  if (raw.includes('@s.whatsapp.net')) {
-    return `${raw.split('@')[0].split(':')[0].replace(/\D/g, '')}@s.whatsapp.net`
-  }
-  if (raw.includes('@')) return raw
-  const digits = raw.replace(/\D/g, '')
-  return digits ? `${digits}@s.whatsapp.net` : ''
-}
-
-// Extrai apenas os dígitos do identificador sem aplicar a regra BR do 9º dígito.
-// Para LID, não tenta inferir PN.
-export const jidToRawPhoneNumber = (value: any, plus = '+'): string => {
-  const raw = `${value || ''}`.trim()
-  if (!raw) return ''
-  if (raw.includes('@') && !raw.endsWith('@s.whatsapp.net')) return ''
-  const number = raw.split('@')[0].split(':')[0].replace(/\D/g, '')
-  return number ? `${plus}${number}` : ''
-}
-
-// Normaliza JID apenas no formato de transporte: remove sufixo de device sem reescrever o PN.
-export const normalizeTransportJid = (jid?: string): string => {
-  const raw = `${jid || ''}`.trim()
-  if (!raw) return ''
-  if (raw.endsWith('@s.whatsapp.net')) return toRawPnJid(raw)
-  if (raw.endsWith('@lid')) return `${raw.split('@')[0].split(':')[0].replace(/\D/g, '')}@lid`
-  if (raw.includes('@')) return formatJid(raw)
-  return raw
-}
-
-export const isIndividualJid = (jid: string) => {
-  // Treat PN and LID JIDs (or raw numbers) as individual (not group/newsletter)
-  const isIndividual = isPnUser(jid as any) || isLidUser(jid as any) || jid.indexOf('@') < 0
-  logger.debug('jid %s is individual? %s', jid, isIndividual)
-  return isIndividual
-}
-
-// Garante PN (somente dígitos) a partir de número/JID (PN/LID)
-// Retorna string vazia quando não conseguir inferir com segurança
-export const ensurePn = (value?: string): string => {
-  try {
-    if (!value) return ''
-    // se já for só números (com ou sem +)
-    if (/^\+?\d+$/.test(value)) return value.replace('+', '')
-    // se for JID, normaliza (remove device suffix e resolve LID->PN quando possível)
-    const jid = value.includes('@') ? formatJid(value) : value
-    // Não tentar converter LID -> PN aqui; somente quando já houver mapping em key.*Pn
-    try { if (isLidUser(jid as any)) return '' } catch {}
-    try {
-      const normalized = jidNormalizedUser(jid as any)
-      if (isPnUser(normalized)) {
-        return jidToPhoneNumber(normalized, '').replace('+', '')
-      }
-    } catch {}
-    // tenta converter diretamente se já parecer PN JID
-    if (isPnUser(jid as any)) {
-      return jidToPhoneNumber(jid, '').replace('+', '')
-    }
-  } catch {}
-  return ''
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const isIndividualMessage = (payload: any) => {
   const {
@@ -1184,32 +1018,6 @@ const extractBaileysUsername = (payload: any): string | undefined => {
   )
 }
 
-export const formatJid = (jid: string) => {
-  const jidSplit = jid.split('@')
-  return `${jidSplit[0].split(':')[0]}@${jidSplit[1]}`
-}
-
-export const isValidPhoneNumber = (value: string, nine = false): boolean => {
-  try {
-    if (typeof value === 'string' && value.includes('@')) {
-      // Tratar JIDs como válidos para rotas que aceitam @s.whatsapp.net e @lid
-      const v = value.toLowerCase()
-      if (v.endsWith('@s.whatsapp.net') || v.endsWith('@lid') || v.endsWith('@g.us') || v.endsWith('@newsletter')) {
-        return true
-      }
-    }
-  } catch {}
-  const number = `+${(value || '').split('@')[0].split(':')[0].replace('+', '')}`
-  const country = number.replace('+', '').substring(0, 2)
-  const parsed = parsePhoneNumber(number)
-  const numbers = parsed?.number?.significant || ''
-  const isInValid = !parsed.valid || !parsed.possible || (nine && country == '55' && numbers.length < 11 && ['6', '7', '8', '9'].includes(numbers[2]))
-  if (isInValid) {
-    logger.debug('phone number %s is invalid %s', value, isInValid)
-  }
-  return !isInValid
-}
-
 export const extractDestinyPhone = (payload: object, throwError = true) => {
   const data = payload as any
   let number = data?.to || (
@@ -1346,83 +1154,6 @@ export const isFailedStatus = (payload: object) => {
   return 'failed' == (data.entry[0].changes[0].value.statuses
                         && data.entry[0].changes[0].value.statuses[0]
                         && data.entry[0].changes[0].value.statuses[0].status)
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const jidToPhoneNumber = (value: any, plus = '+', retry = true): string => {
-  let v = value
-  try {
-    // Se for LID, tentar normalizar para PN JID primeiro
-    if (isLidUser(v)) {
-      try { v = jidNormalizedUser(v) } catch {}
-    }
-  } catch {}
-  const number = (v || '').split('@')[0].split(':')[0].replace('+', '')
-  const country = number.substring(0, 2)
-  if (country == '55') {
-    const isValid = isValidPhoneNumber(`+${number}`, true)
-    if (!isValid && number.length < 13 && retry) {
-      const prefix = number.substring(2, 4)
-      const m = number.match(/(\d{8})$/)
-      const digits = m ? m[1] : number.slice(-8)
-      const digit = '9'
-      const out = `${plus}${country}${prefix}${digit}${digits}`.replace('+', '')
-      return jidToPhoneNumber(`${plus}${out}`, plus, false)
-    }
-  }
-  return `${plus}${number.replace('+', '')}`
-}
-
-export const jidToPhoneNumberIfUser = (value: any): string => {
-  return isIndividualJid(value) ? jidToPhoneNumber(value, '') : value 
-}
-
-// Normaliza IDs para webhook mantendo grupos intactos e convertendo usuários para PN com regra BR do 9º dígito
-// - Mantém '@g.us' sem alterações (group_id, group_picture, etc.)
-// - Não expõe '@lid' em campos de telefone; LID fica em user_id/from_user_id
-// - Converte JID de usuário -> PN
-// - Aplica 9º dígito no Brasil somente para PN de usuários (55 + DDD + 8 dígitos iniciando em [6-9])
-export const normalizeUserOrGroupIdForWebhook = (value?: string): string => {
-  const brMobile9 = (digits?: string) => {
-    try {
-      const s = `${digits || ''}`.replace(/\D/g, '')
-      if (!s.startsWith('55')) return s
-      if (s.length === 12) {
-        const ddd = s.slice(2, 4)
-        const local = s.slice(4)
-        if (/[6-9]/.test(local[0])) return `55${ddd}9${local}`
-      }
-      return s
-    } catch {
-      return `${digits || ''}`
-    }
-  }
-  try {
-    let val = `${value || ''}`
-    if (!val) return val
-    // Não normalizar grupos
-    if (val.includes('@g.us')) return val
-    // Não expor LID em campos Cloud API de telefone; usar user_id/from_user_id para isso.
-    try {
-      if (val.includes('@lid')) {
-        return ''
-      }
-    } catch {}
-    // Converter JID de usuário para PN quando aplicável
-    try {
-      if (!/^\+?\d+$/.test(val)) {
-        val = jidToPhoneNumberIfUser(val)
-      }
-    } catch {}
-    // Garantir PN apenas dígitos e aplicar regra do 9º dígito BR
-    try {
-      const pn = ensurePn(val)
-      if (pn) return brMobile9(pn)
-    } catch {}
-    return val
-  } catch {
-    return `${value || ''}`
-  }
 }
 
 // Aplica normalização nos campos de IDs do payload Cloud API pronto para envio
