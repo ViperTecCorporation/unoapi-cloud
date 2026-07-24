@@ -573,10 +573,11 @@ export class ClientBaileys implements Client {
       await this.listener.process(this.phone, [message], 'notify')
       try { logger.info('CALL notify enqueued for %s source=%s', from, source) } catch {}
     }
-    setTimeout(() => {
+    const cleanupTimer = setTimeout(() => {
       logger.debug('Clean call rejecteds %s', from)
       this.calls.delete(from)
     }, 10_000)
+    cleanupTimer.unref?.()
   }
 
   private async ensureUnoExternalMessageId(key: { id?: string; remoteJid?: string } | undefined): Promise<string> {
@@ -1001,6 +1002,7 @@ export class ClientBaileys implements Client {
       this.groupMetadataRefreshTimers.delete(jid)
       void this.refreshGroupMetadataCache(jid, reason)
     }, delayMs)
+    timer.unref?.()
     this.groupMetadataRefreshTimers.set(jid, timer)
   }
 
@@ -1551,7 +1553,7 @@ export class ClientBaileys implements Client {
                 const current = await dataStore?.loadStatus?.(statusId)
                 if (current && rankStatus(current) >= rankStatus('delivered')) continue
               } catch {}
-              let tsRaw: any = u?.receipt?.t || u?.receipt?.receiptTimestamp || u?.receipt?.readTimestamp
+              const tsRaw: any = u?.receipt?.t || u?.receipt?.receiptTimestamp || u?.receipt?.readTimestamp
               let tsNum = parseInt(`${tsRaw || ''}`, 10)
               if (!Number.isFinite(tsNum) || tsNum <= 0) {
                 tsNum = Math.floor(Date.now() / 1000)

@@ -80,9 +80,10 @@ const storeFile: store = async (phone: string, config: Config): Promise<Store> =
         logger.error('Error on read data store %s', error)
       }
     }
-    setInterval(() => {
-      dataStore.writeToFile(dataFile), 10_0000
-    })
+    const persistenceTimer = setInterval(() => {
+      dataStore.writeToFile(dataFile)
+    }, 100_000)
+    persistenceTimer.unref?.()
   } else {
     logger.info('Store data not save')
   }

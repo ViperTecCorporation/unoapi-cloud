@@ -2,7 +2,6 @@ import { v1 as uuid } from 'uuid'
 import type { Broadcast } from './broadcast'
 import type { getConfig } from './config'
 import type { eventType, Listener } from './listener'
-import logger from './logger'
 import type { Outgoing } from './outgoing'
 import {
   fromBaileysMessageContent,

@@ -1,4 +1,4 @@
-import { AuthenticationState, GroupMetadata, useMultiFileAuthState, WAMessage, WAMessageKey, WASocket } from '@whiskeysockets/baileys'
+import { AuthenticationState, GroupMetadata, WAMessage, WAMessageKey, WASocket } from '@whiskeysockets/baileys'
 import { Config } from './config'
 
 export const dataStores: Map<string, DataStore> = new Map()

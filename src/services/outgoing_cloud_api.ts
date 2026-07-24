@@ -315,7 +315,7 @@ export class OutgoingCloudApi implements Outgoing {
         const ds: any = store?.dataStore
         const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
         const toPnIfMapped = async (x?: string): Promise<string> => {
-          let val = `${x || ''}`
+          const val = `${x || ''}`
           if (!val) return val
           if (val.includes('@g.us')) return val
           // If LID and we have a PN mapping, prefer PN digits; otherwise keep the phone field empty.

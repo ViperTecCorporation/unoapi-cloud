@@ -1,6 +1,6 @@
 {
   "parser": "@typescript-eslint/parser",
-  "extends": ["plugin:@typescript-eslint/recommended", "prettier", "plugin:prettier/recommended"],
+  "extends": ["plugin:@typescript-eslint/recommended", "prettier"],
   "parserOptions": {
     "ecmaVersion": 2022,
     "sourceType": "module"
@@ -10,17 +10,11 @@
   },
   "rules": {
     "no-var": "error",
-    "indent": [
-      "error",
-      2,
-      {
-        "SwitchCase": 1
-      }
-    ],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/ban-types": "warn",
     "no-console": "error",
-    "no-multi-spaces": "error",
-    "space-in-parens": "error",
-    "no-multiple-empty-lines": "error",
     "prefer-const": "error"
   }
 }

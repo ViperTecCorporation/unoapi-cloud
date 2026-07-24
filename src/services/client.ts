@@ -8,12 +8,12 @@ export const clients: Map<string, Client> = new Map()
 export type ContactStatus = 'valid' | 'processing' | 'invalid'| 'failed'
 
 export interface Contact {
-  wa_id: String | undefined
-  user_id?: String | undefined
-  username?: String | undefined
-  display_name?: String | undefined
-  push_name?: String | undefined
-  input: String
+  wa_id: string | undefined
+  user_id?: string | undefined
+  username?: string | undefined
+  display_name?: string | undefined
+  push_name?: string | undefined
+  input: string
   status: ContactStatus
 }
 

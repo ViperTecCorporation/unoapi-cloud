@@ -7,18 +7,12 @@ import { SendError } from './send_error'
 import { BindTemplateError, DecryptError } from './transformer/errors'
 import {
   MESSAGE_STUB_TYPE_ERRORS,
-  TYPE_MESSAGES_MEDIA,
   TYPE_MESSAGES_TO_PROCESS_FILE,
   TYPE_MESSAGES_TO_READ,
 } from './transformer/message_constants'
 import {
-  extractTypeMessage,
   getBinMessage,
   getMessageType,
-  getNormalizedMessage,
-  isAudioMessage,
-  isSaveMedia,
-  normalizeMessageContent,
 } from './transformer/message_type'
 import {
   ensurePn,
@@ -27,16 +21,11 @@ import {
   isValidPhoneNumber,
   jidToPhoneNumber,
   jidToPhoneNumberIfUser,
-  jidToMentionDigits,
   normalizeMentionText,
-  jidToRawPhoneNumber,
   normalizeLidJid,
   normalizeGroupId,
-  normalizeParticipantId,
-  normalizeTransportJid,
   normalizeUserOrGroupIdForWebhook,
   phoneNumberToJid,
-  toRawPnJid,
 } from './transformer/jid'
 import {
   BASE_URL,
@@ -102,8 +91,8 @@ const extractFailedStatusError = (payload: any): any => {
   const updateErrorData = update?.error_data && typeof update.error_data === 'object' ? update.error_data : undefined
   const sourceError = update?.error || updateErrorData
 
-  let code = sourceError?.code || update?.code || 1
-  let title = sourceError?.title || update?.title || 'The Unoapi Cloud has a error, verify the logs'
+  const code = sourceError?.code || update?.code || 1
+  const title = sourceError?.title || update?.title || 'The Unoapi Cloud has a error, verify the logs'
   const error: any = { code, title }
 
   if (sourceError?.message) error.message = sourceError.message
@@ -738,40 +727,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
               if (button.type === 'copy') return !!button.copyText
               return !!button.id
             })
-        const cards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
-          const cardHeader = card.header || {}
-          const cardBody = card.body || {}
-          const cardFooter = card.footer || {}
-          const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
-          const mapCardHeaderToProto = (h: any) => {
-            const headerType = `${h?.type || ''}`.toLowerCase()
-            const image = h?.image || {}
-            const video = h?.video || {}
-            const document = h?.document || {}
-            const imageLink = image.link || image.url
-            const videoLink = video.link || video.url
-            const documentLink = document.link || document.url
-            if (headerType === 'image' && imageLink) return { imageMessage: { url: imageLink } }
-            if (headerType === 'video' && videoLink) return { videoMessage: { url: videoLink } }
-            if (headerType === 'document' && documentLink) {
-              return { documentMessage: { url: documentLink, fileName: document.filename || document.fileName } }
-            }
-            if (h?.text) {
-              return { type: 4, title: h.text, hasMediaAttachment: false }
-            }
-            return undefined
-          }
-          const mappedHeader = mapCardHeaderToProto(cardHeader)
-          const mappedButtons = mapButtonsToNativeFlow(cardButtons)
-          return {
-            ...(mappedHeader ? { header: mappedHeader } : {}),
-            body: { text: cardBody?.text || '' },
-            ...(cardFooter?.text ? { footer: { text: cardFooter.text } } : {}),
-            nativeFlowMessage: {
-              buttons: mappedButtons,
-            },
-          }
-        })
         const nativeCards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
           const cardHeader = card.header || {}
           const cardBody = card.body || {}
@@ -860,7 +815,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       if (!link || !link.trim()) {
         throw new SendError(11, `invalid_${type}_payload: missing link`)
       }
-      let mimetype: string = getMimetype(payload)
+      const mimetype: string = getMimetype(payload)
       if (mimetype) {
         response.mimetype = mimetype
       }
@@ -879,7 +834,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
         // converta em status failed ao invés de lançar e reencaminhar a fila
         throw new SendError(11, `invalid_${type}_payload: missing link`)
       }
-      let mimetype: string = getMimetype(payload)
+      const mimetype: string = getMimetype(payload)
       if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {
         response.ptt = true
       }
@@ -2340,7 +2295,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     if (cloudApiStatus) {
       const messageId = cloudApiStatusMessageId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let recipientPn = (
+      const recipientPn = (
         // 1) outro lado (preferência absoluta)
         ensurePn(senderPhone) ||
         // 2) alternativas explícitas

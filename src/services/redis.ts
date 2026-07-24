@@ -111,7 +111,7 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
     if (!redisHealthStarted) {
       redisHealthStarted = true
       try {
-        setInterval(async () => {
+        const healthTimer = setInterval(async () => {
           const start = Date.now()
           try {
             await client.ping()
@@ -123,6 +123,7 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
             logger.warn(e as any, 'Redis ping falhou')
           }
         }, REDIS_HEALTH_INTERVAL_MS)
+        healthTimer.unref?.()
       } catch {}
     }
   }
@@ -383,15 +384,17 @@ const runAuthSignalPruneForAllSessions = async (source: string): Promise<void> =
 
 const startAuthSignalPruneMaintenance = (): void => {
   if (AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED) {
-    setTimeout(() => {
+    const bootstrapTimer = setTimeout(() => {
       runAuthSignalPruneForAllSessions('bootstrap').catch((e) => logger.warn(e as any, 'Auth signal prune bootstrap failed'))
     }, 1_000)
+    bootstrapTimer.unref?.()
   }
   if (!AUTH_SIGNAL_PRUNE_DAILY_ENABLED || authSignalPruneDailyStarted) return
   authSignalPruneDailyStarted = true
-  setInterval(() => {
+  const dailyTimer = setInterval(() => {
     runAuthSignalPruneForAllSessions('daily').catch((e) => logger.warn(e as any, 'Auth signal prune daily failed'))
   }, Math.max(60_000, AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS || 24 * 60 * 60 * 1000))
+  dailyTimer.unref?.()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {

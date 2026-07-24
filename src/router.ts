@@ -11,6 +11,7 @@ import { indexController } from './controllers/index_controller'
 import { WebhookController } from './controllers/webhook_controller'
 import { WebhookFakeController } from './controllers/webhook_fake_controller'
 import { ContactsController } from './controllers/contacts_controller'
+import { JidMapController } from './controllers/jidmap_controller'
 import { TemplatesController } from './controllers/templates_controller'
 import { MessagesController } from './controllers/messages_controller'
 import { MarketingMessagesController } from './controllers/marketing_messages_controller'
@@ -146,12 +147,9 @@ export const router = (
   router.delete('/:version/:business_account_id/message_templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
   router.get('/:version/:phone/message_templates', middleware, templatesController.index.bind(templatesController))
   // JIDMAP endpoints (must come before '/:version/:phone/:media_id')
-  try {
-    const { JidMapController } = require('./controllers/jidmap_controller')
-    const jidmap = new JidMapController()
-    router.get('/:version/:phone/jidmap', middleware, jidmap.list.bind(jidmap))
-    router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
-  } catch {}
+  const jidmap = new JidMapController()
+  router.get('/:version/:phone/jidmap', middleware, jidmap.list.bind(jidmap))
+  router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.delete('/:version/:phone/templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
   router.post('/:version/:phone_number_id/messages/:messageId/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))

@@ -104,7 +104,9 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
   oficial `signPasskeyAssertion`.
 - `zapo_message_mapper`: texto, midia, contato e Proto nativo para lista, botao e
   carousel interativo.
-- `zapo_groups`: todas as mutacoes resolvem participantes para LID antes do coordinator.
+- `zapo_groups`: operacoes comuns permanecem LID-first. Criacao e adicao resolvem
+  LID para o PN canonico do store porque a capability oficial
+  `group_create_add_using_lid_jids` permanece desabilitada.
 - `zapo_events`: message, receipts em lote e addons ja decriptados pela Zapo.
 
 ## Compartilhados revisados
@@ -204,7 +206,32 @@ Revalidado em 2026-07-22 com checagem TypeScript e as 15 suites de transformer/Z
 - midias do mapper usam bytes na API tipada da Zapo, inclusive audio PTT como
   `{ type: 'audio', ptt: true }`.
 
-O `proxyUrl` continua aplicado somente ao caminho Baileys. Na Zapo ele deve ser entregue
-por um adapter dedicado: WebSocket e CDN aceitam `http.Agent`, enquanto link preview
-exige dispatcher `undici`; proxy SOCKS nao pode ser reutilizado cegamente nos dois
-contratos. Ate esse adapter existir, a interface nao deve afirmar que o proxy cobre Zapo.
+O `proxyUrl` usa `createZapoProxyOptions`, que cria um transporte SOCKS unico e o
+entrega aos quatro contratos oficiais da Zapo: `ws`, `mediaUpload`,
+`mediaDownload` e `linkPreview`. O adapter possui teste dedicado e a propriedade
+`proxy` e omitida quando a configuracao estiver vazia.
+
+## Qualidade e lifecycle
+
+- conflitos de lease reutilizam um unico `ClientZapo` gerenciado por sessao;
+- a reconexao usa backoff exponencial limitado a 60 segundos;
+- perda de ownership desmonta socket, mensagens, grupos e fotos antes de tentar
+  adquirir uma nova lease;
+- uma corrida que abra socket duplicado encerra o socket excedente;
+- logs passam por redacao central de tokens, senhas, secrets, chaves de API e
+  `Authorization`;
+- Jest ignora copias em `.tools`, valida TypeScript e aplica limites minimos de
+  cobertura globais e especificos para Zapo;
+- timers de manutencao usam `unref`, e a persistencia em arquivo foi corrigida
+  para executar a cada 100 segundos em vez de criar um intervalo sem delay;
+- a imagem final roda com usuario sem privilegios e diretorios de dados
+  previamente preparados.
+
+Validacao de 2026-07-24:
+
+- 101 suites e 653 testes aprovados, sem handle aberto ao finalizar;
+- cobertura agregada de `src/services/zapo`: 88,09% statements, 62,98%
+  branches, 95,51% functions e 92,25% lines;
+- `ClientZapo`: 79,02% statements, 61,53% branches, 56,92% functions e
+  84,03% lines;
+- auditoria das dependencias de producao: zero vulnerabilidades.

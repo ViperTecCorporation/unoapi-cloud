@@ -6,7 +6,6 @@ import {
   useMultiFileAuthState,
   GroupMetadata,
   isLidUser,
-  isPnUser,
   jidNormalizedUser,
 } from '@whiskeysockets/baileys'
 import { isIndividualJid, jidToPhoneNumber, phoneNumberToJid, ensurePn } from './transformer'
@@ -152,14 +151,12 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
   }
   
 	dataStore.writeToFile = (path: string) => {
-    const { writeFileSync } = require('fs')
     // for(const a in Object.keys(dataStore.toJSON())) {
     //   console.log(a)
     // }
     writeFileSync(path, JSON.stringify(dataStore.toJSON()))
   }
   dataStore.readFromFile = (path: string) => {
-    const { readFileSync, existsSync } = require('fs')
     if(existsSync(path)) {
       logger.debug({ path }, 'reading from file')
       const jsonStr = readFileSync(path, { encoding: 'utf-8' })
@@ -621,13 +618,15 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
     return jids.get(phoneOrJid)
   }
   dataStore.setMessage = async (jid: string, message: WAMessage) => {
+    const messageId = message.key?.id
+    if (!messageId) return
     try {
       const bytes = proto.WebMessageInfo.encode(message as any).finish()
       const b64 = Buffer.from(bytes).toString('base64')
-      messages.set(`${jid}-${message?.key?.id!}`, b64)
+      messages.set(`${jid}-${messageId}`, b64)
     } catch {
       // fallback mínimo
-      try { messages.set(`${jid}-${message?.key?.id!}`, JSON.stringify({ key: message?.key })) } catch {}
+      try { messages.set(`${jid}-${messageId}`, JSON.stringify({ key: message?.key })) } catch {}
     }
   }
   dataStore.getLastIncomingKey = async (jid: string) => {

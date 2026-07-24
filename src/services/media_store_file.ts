@@ -1,4 +1,4 @@
-import { proto, WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
+import { WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
 import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { writeFile } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync, createReadStream, statSync } from 'fs'
@@ -62,7 +62,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.saveMediaForwarder = async (message: any) => {
-    let inMime = message[message.type].mime_type as string
+    const inMime = message[message.type].mime_type as string
     let convertToMp3 = false
     if (DOWNLOAD_AUDIO_CONVERT_TO_MP3 && message.type === 'audio') {
       const low = (inMime || '').toLowerCase()
@@ -230,12 +230,14 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
             return await downloadViaContent(true)
           } catch (err2: any) {
             // final fallback: use downloadMediaMessage helper
-            const toDownloadMessage = { key: waMessage.key, message: { [ctx?.messageType!]: ctx?.message }} as WAMessage
+            if (!ctx?.messageType) throw err2
+            const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WAMessage
             return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
           }
         }
         // non-decrypt errors: fallback to Baileys helper
-        const toDownloadMessage = { key: waMessage.key, message: { [ctx?.messageType!]: ctx?.message }} as WAMessage
+        if (!ctx?.messageType) throw err1
+        const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WAMessage
         return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
       }
     }

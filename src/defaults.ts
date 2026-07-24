@@ -1,12 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _undefined: any = undefined
 
-const booleanEnv = (key: string, fallback: boolean) => {
-  const value = process.env[key]
-  if (value === _undefined || value === '') return fallback
-  return value === 'true'
-}
-
 // security
 export const UNOAPI_AUTH_TOKEN = process.env.UNOAPI_AUTH_TOKEN
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY

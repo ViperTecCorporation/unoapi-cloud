@@ -58,6 +58,9 @@ COPY --from=builder /app/node_modules ./node_modules
 
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg wget \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p data/medias data/sessions data/stores data/logs \
+    && chown -R u:u /home/u/app
 
+USER u
 ENTRYPOINT ["node", "dist/src/index.js"]

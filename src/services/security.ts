@@ -38,7 +38,6 @@ export default class Security {
           },
         })
       } else {
-        logger.debug(`Retrieved http token ${httpAuthToken}`)
         if (httpAuthToken === UNOAPI_AUTH_TOKEN) {
           logger.debug('Authenticated by UNOAPI_AUTH_TOKEN')
           return next()
@@ -49,10 +48,9 @@ export default class Security {
         }
         const phone = rawPhone === '*' ? rawPhone : await resolveSessionPhoneByMetaId(rawPhone)
         const tokens = await this.sessionStore.getTokens(phone)
-        logger.debug(`Retrieved auth token ${httpAuthToken}`)
         const allTokens = [UNOAPI_AUTH_TOKEN, ...tokens]
         if (!allTokens.includes(httpAuthToken)) {
-          const message = `Invalid token value ${httpAuthToken}`
+          const message = 'Invalid token value'
           logger.debug('method %s', req.method)
           logger.debug('headers %s', JSON.stringify(req.headers))
           logger.debug('params %s', JSON.stringify(req.params))

@@ -18,9 +18,10 @@ export const getStoreRedis: getStore = async (phone: string, config: Config): Pr
   if (!stores.has(phone)) {
     logger.debug('Creating redis store %s', phone)
     if (BAILEYS_AUTH_POLICY.jidMapEnrichOnStoreEnabled) {
-      setTimeout(() => {
+      const enrichmentTimer = setTimeout(() => {
         enrichJidMapFromAuthLidCache(phone).catch((error) => logger.debug(error as any, 'JIDMAP enrich on store failed for %s', phone))
       }, 1_000)
+      enrichmentTimer.unref?.()
     }
     const fstore: Store = await storeRedis(phone, config)
     stores.set(phone, fstore)

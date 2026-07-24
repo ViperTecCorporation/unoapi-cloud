@@ -90,7 +90,6 @@ export class MessagesController {
       logger.info('messages requestId=%s phone=%s to=%s type=%s', requestId, sessionPhone, `${payload?.to || ''}`, `${payload?.type || ''}`)
       const bodyOptions = (payload && payload.options) || {}
       const rawTo = `${payload?.to || ''}`.trim().toLowerCase()
-      const rawType = `${payload?.type || ''}`.trim().toLowerCase()
       const rawStatusList = typeof payload?.statusJidList !== 'undefined' ? payload.statusJidList : bodyOptions.statusJidList
       const isBlankStatusList = (value: any) => {
         if (value === null || typeof value === 'undefined') return true

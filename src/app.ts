@@ -1,4 +1,4 @@
-import express, { Router } from 'express'
+import express from 'express'
 import { createServer, Server as HttpServer } from 'http'
 import { router } from './router'
 import { getConfig } from './services/config'

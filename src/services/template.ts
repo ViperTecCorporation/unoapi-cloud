@@ -51,49 +51,6 @@ const headerFromRuntime = (runtimeHeader: any) => {
   return undefined
 }
 
-const nativeButtonFromTemplate = (templateButton: any, runtimeButton: any) => {
-  const type = lower(runtimeButton?.sub_type || runtimeButton?.subType || templateButton?.type)
-  const params = Array.isArray(runtimeButton?.parameters) ? runtimeButton.parameters : []
-  const first = params[0] || {}
-  const displayText = `${templateButton?.text || first?.text || first?.payload || 'Selecionar'}`
-  if (type.includes('url')) {
-    const url = first?.text || first?.payload || templateButton?.url || ''
-    return {
-      name: 'cta_url',
-      buttonParamsJson: JSON.stringify({
-        display_text: displayText,
-        url,
-        merchant_url: url,
-      }),
-    }
-  }
-  if (type.includes('phone')) {
-    return {
-      name: 'cta_call',
-      buttonParamsJson: JSON.stringify({
-        display_text: displayText,
-        phone_number: first?.text || first?.payload || templateButton?.phone_number || templateButton?.phoneNumber || '',
-      }),
-    }
-  }
-  if (type.includes('copy')) {
-    return {
-      name: 'cta_copy',
-      buttonParamsJson: JSON.stringify({
-        display_text: displayText,
-        copy_code: first?.coupon_code || first?.text || first?.payload || '',
-      }),
-    }
-  }
-  return {
-    name: 'quick_reply',
-    buttonParamsJson: JSON.stringify({
-      display_text: displayText,
-      id: first?.payload || first?.text || displayText,
-    }),
-  }
-}
-
 const nativeCarouselButtonFromTemplate = (templateButton: any, runtimeButton: any) => {
   const type = lower(runtimeButton?.sub_type || runtimeButton?.type || templateButton?.type)
   const parameters = Array.isArray(runtimeButton?.parameters) ? runtimeButton.parameters : []

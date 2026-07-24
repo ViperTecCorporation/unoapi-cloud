@@ -5,7 +5,7 @@ import { Broadcast } from './broadcast'
 import { getConfig } from './config'
 import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, jidToRawPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage, normalizeLidJid, phoneNumberToJid } from './transformer'
 import * as Baileys from '@whiskeysockets/baileys'
-import { WAMessage, delay, jidNormalizedUser, isPnUser, isLidUser, proto } from '@whiskeysockets/baileys'
+import { WAMessage, delay, jidNormalizedUser, isLidUser, proto } from '@whiskeysockets/baileys'
 import { Template } from './template'
 import { BASE_URL } from '../defaults'
 import { v1 as uuid } from 'uuid'
@@ -20,7 +20,7 @@ const {
   inboundDedupWindowMs: INBOUND_DEDUP_WINDOW_MS,
 } = BAILEYS_LISTENER_POLICY
 
-const  delays: Map<String, number> = new Map()
+const  delays: Map<string, number> = new Map()
 const GCM_TAG_LENGTH = 128 >> 3
 const POLL_CREATION_TYPES = new Set([
   'pollCreationMessage',

@@ -73,6 +73,11 @@ A refatoracao deve ser incremental:
 
 Nao fazer uma reescrita completa do transformer junto com a integracao.
 
+O `ClientZapo` permanece como fachada de compatibilidade durante a transicao.
+Novas regras devem continuar sendo extraidas para modulos em
+`src/services/zapo/*`; nao adicione novos dominios diretamente a fachada sem
+adapter e teste dedicados.
+
 ## Pareamento Zapo obrigatorio
 
 Fluxo obrigatorio ao iniciar uma sessao Zapo:

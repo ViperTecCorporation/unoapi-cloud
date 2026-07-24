@@ -497,6 +497,7 @@ export const connect = async ({
     if (!lidResolverEnabled || lidResolverTimer) return
     const every = Math.max(2000, lidResolverSweepIntervalMs || 10000)
     lidResolverTimer = setInterval(() => { sweepLidResolver().catch(() => undefined) }, every) as unknown as NodeJS.Timeout
+    lidResolverTimer.unref?.()
   }
   const purgeSignalSessionsFor = async (toJid: string, forceDeviceList = false) => {
     if (SIGNAL_CACHE_SAFE_MODE) return
@@ -626,7 +627,7 @@ export const connect = async ({
         logger.warn(e as any, 'STALE_DELIVERY recovery: interval failed')
       }
     }, intervalMs) as unknown as NodeJS.Timeout
-    try { (staleDeliveryRecoveryTimer as any)?.unref?.() } catch {}
+    staleDeliveryRecoveryTimer.unref?.()
     try { logger.info('STALE_DELIVERY recovery enabled: delay=%sms scan=%sms attempts=%s batch=%s', staleRecoveryDelayMs, intervalMs, staleRecoveryMaxAttempts, staleRecoveryBatchSize) } catch {}
   }
 
@@ -866,6 +867,7 @@ export const connect = async ({
             logger.debug('Ignore periodic assert (interval): %s', (e as any)?.message || e)
           }
         }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
+        periodicAssertTimer.unref?.()
       }
     } catch {}
     try {
@@ -893,6 +895,7 @@ export const connect = async ({
             idleReconnectInProgress = false
           }
         }, BAILEYS_IDLE_RECONNECT_CHECK_MS) as unknown as NodeJS.Timeout
+        idleReconnectTimer.unref?.()
       }
     } catch {}
   }
@@ -962,9 +965,9 @@ export const connect = async ({
     // Consider new Alt addressing fields introduced with LIDs
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const k: any = key as any
-    let remoteJid = key.remoteJid || k.remoteJidAlt
+    const remoteJid = key.remoteJid || k.remoteJidAlt
     const id = key.id
-    let participant = key.participant || k.participantAlt
+    const participant = key.participant || k.participantAlt
     // For status@broadcast receipts, avoid attempting resend via getMessage
     let jid = remoteJid
     if (!jid && participant) {
@@ -1005,7 +1008,6 @@ export const connect = async ({
         try {
           const msgs: any[] = (upsert && upsert.messages) || []
           const now = Date.now()
-          const targets = new Set<string>()
           for (const m of msgs) {
             try {
               // Track recent contacts
@@ -1183,7 +1185,8 @@ export const connect = async ({
                   try { lid = await (dataStore as any).getLidForPn?.(phone, key.remoteJid) } catch {}
                   if (lid && typeof lid === 'string' && isLidUser(lid as any)) {
                     pendingOneToOneAddressingFallback.add(key.id)
-                    setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    const fallbackTimer = setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    fallbackTimer.unref?.()
                     fallbackPending.to = lid
                     fallbackPending.options = {
                       ...(fallbackPending.options || {}),
@@ -1427,6 +1430,7 @@ export const connect = async ({
           logger.warn(e as any, 'Ignore error in periodic assert interval')
         }
       }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
+      periodicAssertTimer.unref?.()
     }
   } catch {}
 
@@ -2234,6 +2238,7 @@ export const connect = async ({
                 if (current?.timer === entry.timer) pendingOneToOneErrorFallbacks.delete(mid)
               } catch {}
             }, 90_000) as unknown as NodeJS.Timeout
+            entry.timer.unref?.()
             pendingOneToOneErrorFallbacks.set(mid, entry)
           }
           scheduleStaleDeliveryRecovery(id, mid, message, opts)
@@ -2359,14 +2364,15 @@ export const connect = async ({
   if (config.autoRestartMs) {
     const message = t('auto_restart', config.autoRestartMs)
     await onNotification(message, true)
-    setInterval(reconnect, config.autoRestartMs)
+    const autoRestartTimer = setInterval(reconnect, config.autoRestartMs)
+    autoRestartTimer.unref?.()
   }
 
   const rejectCall: rejectCall = async (callId: string, callFrom: string) => {
     await validateStatus()
     // A rejeição precisa usar o mesmo identificador que originou o evento de chamada.
     // Apenas removemos sufixo técnico de device (:NN) para não enviar JID inválido ao Baileys.
-    let target = normalizeReceiptJid(callFrom) || callFrom
+    const target = normalizeReceiptJid(callFrom) || callFrom
     logger.info('CALL_REJECT final target: callId=%s from=%s target=%s', callId, callFrom, target)
     try {
       const result = await sock?.rejectCall(callId, target)
@@ -2619,7 +2625,7 @@ export const connect = async ({
           try {
             return target(...argumentsList)
           } catch (error) {
-            console.error(error, error.isBoom, !error.isServer)
+            logger.error(error, 'Baileys proxy invocation failed isBoom=%s isServer=%s', error?.isBoom, error?.isServer)
             if (error && error.isBoom && !error.isServer) {
               onClose({ lastDisconnect: { error } })
               return
@@ -2631,7 +2637,7 @@ export const connect = async ({
       }
       sock = new Proxy(proxy, handler)
     } catch (error: any) {
-      console.log(error, error.isBoom, !error.isServer)
+      logger.error(error, 'Baileys socket creation failed isBoom=%s isServer=%s', error?.isBoom, error?.isServer)
       if (error && error.isBoom && !error.isServer) {
         await onClose({ lastDisconnect: { error } })
         return false
@@ -2668,7 +2674,7 @@ export const connect = async ({
           const message = t('pairing_code', beatyCode)
           await onNotification(message, true)
         } catch (error) {
-          console.error(error)
+          logger.error(error, 'Baileys pairing-code request failed')
           throw error
         }
       }

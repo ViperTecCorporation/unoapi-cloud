@@ -2,6 +2,7 @@ import type { Client, getClient } from '../client'
 import { clients } from '../client'
 import { getClientBaileys } from '../client_baileys'
 import { ClientZapo } from '../client_zapo'
+import { isZapoOwnershipConflict } from '../zapo/zapo_reconnect_policy'
 import { resolveSessionProvider } from './provider_resolver'
 import { listenerForProvider } from './listener_router'
 
@@ -26,7 +27,9 @@ export const getClientProvider: getClient = async (args) => {
     try {
       if (config.autoConnect) await client.connect(1)
     } catch (error) {
-      clients.delete(args.phone)
+      if (isZapoOwnershipConflict(error)) throw error
+      await client.disconnect().catch(() => undefined)
+      if (clients.get(args.phone) === client) clients.delete(args.phone)
       throw error
     }
     return client as Client

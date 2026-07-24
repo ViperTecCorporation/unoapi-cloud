@@ -44,6 +44,7 @@ import { ZapoProfilePictures } from './zapo/zapo_profile_pictures'
 import { createPairingCodeImageDataUrl } from './zapo/pairing_code_image'
 import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
 import { createZapoProxyOptions } from './zapo/zapo_proxy'
+import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -81,6 +82,7 @@ export class ClientZapo implements Client {
   private leaseRenewTimer?: NodeJS.Timeout
   private maintenanceTimer?: NodeJS.Timeout
   private reconnectTimer?: NodeJS.Timeout
+  private reconnectAttempts = 0
   private pendingPasskey?: {
     bridgeId: string
     resolve: (value: { credentialId: Uint8Array; webauthnAssertion: Uint8Array }) => void
@@ -315,9 +317,16 @@ export class ClientZapo implements Client {
       if (event.status === 'open') {
         const credentials = client.getCredentials()
         if (credentials) await this.zapoSession?.auth.save(credentials)
-        this.connected = true
         const registered = clients.get(this.phone)
-        if (!registered || registered === this) clients.set(this.phone, this)
+        if (registered && registered !== this) {
+          logger.warn('Discarding duplicate Zapo socket for %s after reconnect race', this.phone)
+          await Promise.resolve(client.disconnect()).catch(() => undefined)
+          await this.releaseRuntimeOwnership()
+          return
+        }
+        clients.set(this.phone, this)
+        this.connected = true
+        this.reconnectAttempts = 0
         await this.unoStore?.sessionStore.setStatus(this.phone, 'online')
         await this.emitStatus(`Connected with ${this.phone} using Zapo`).catch((error) => {
           logger.warn(error as any, 'Could not emit Zapo connected status for %s', this.phone)
@@ -627,6 +636,8 @@ export class ClientZapo implements Client {
 
   private scheduleReconnect() {
     if (this.intentionalDisconnect || this.reconnectTimer) return
+    const attempt = this.reconnectAttempts++
+    const delay = zapoReconnectDelay(attempt, this.config.retryRequestDelayMs)
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined
       if (!this.intentionalDisconnect) {
@@ -634,7 +645,7 @@ export class ClientZapo implements Client {
           logger.error(error as any, 'Zapo reconnect attempt failed for %s', this.phone)
         })
       }
-    }, Math.max(1000, this.config.retryRequestDelayMs))
+    }, delay)
     this.reconnectTimer.unref?.()
   }
 
@@ -671,8 +682,16 @@ export class ClientZapo implements Client {
     this.maintenanceTimer = undefined
     this.lease = undefined
     this.intentionalDisconnect = true
-    await Promise.resolve(this.socket?.disconnect()).catch(() => undefined)
+    this.connected = false
+    const socket = this.socket
+    this.socket = undefined
+    this.messages = undefined
+    this.groups = undefined
+    this.profilePictures = undefined
+    await Promise.resolve(socket?.disconnect()).catch(() => undefined)
     await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
+    this.intentionalDisconnect = false
+    this.scheduleReconnect()
   }
 
   private async releaseRuntimeOwnership() {
@@ -725,11 +744,7 @@ export class ClientZapo implements Client {
       return await this.connectTask
     } catch (error) {
       await this.releaseRuntimeOwnership()
-      if (
-        error instanceof SendError
-        && error.code === 409
-        && error.title.startsWith('zapo_session_owned_by_another_worker:')
-      ) {
+      if (isZapoOwnershipConflict(error) && clients.get(this.phone) === this) {
         this.scheduleReconnect()
       }
       throw error
@@ -836,6 +851,7 @@ export class ClientZapo implements Client {
     this.intentionalDisconnect = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = undefined
+    this.reconnectAttempts = 0
     this.connected = false
     this.pendingPasskey?.reject(new SendError(409, 'zapo_passkey_connection_disconnected'))
     const socket = this.socket

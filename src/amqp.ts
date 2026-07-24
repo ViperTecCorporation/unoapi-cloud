@@ -1,4 +1,4 @@
-import { connect, Connection, Channel, Replies, ChannelModel, Options, ConsumeMessage } from 'amqplib'
+import { connect, Channel, Replies, ChannelModel, Options, ConsumeMessage } from 'amqplib'
 import {
   AMQP_URL,
   UNOAPI_X_COUNT_RETRIES,
@@ -46,7 +46,6 @@ export const queueDelayedName = (queue: string) => `${queue}.delayed`
 
 let amqpChannelModel: ChannelModel | undefined
 let amqpChannel: Channel | undefined
-let amqpConnection: Connection | undefined
 const AMQP_CONNECT_MAX_RETRIES = parseInt(process.env.AMQP_CONNECT_MAX_RETRIES || '30')
 const AMQP_CONNECT_RETRY_DELAY_MS = parseInt(process.env.AMQP_CONNECT_RETRY_DELAY_MS || '2000')
 
@@ -139,7 +138,6 @@ export const amqpConnect = async (amqpUrl = AMQP_URL) => {
       try {
         logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
         amqpChannelModel = await connect(amqpUrl)
-        amqpConnection = amqpChannelModel.connection
       } catch (error) {
         lastError = error
         if (!isTransientInfraError(error) || attempt >= AMQP_CONNECT_MAX_RETRIES) {
@@ -250,21 +248,22 @@ export const amqpGetQueue = async (
   if (!queues.get(queue)) {
     await amqpGetExchange(exchange, options.type!, options.prefetch!)
     const channel = await amqpGetChannel()
+    if (!channel) throw new Error(`AMQP channel unavailable while creating queue ${queue}`)
     logger.info('Creating queue %s...', queue)
-    const queueMain = await channel?.assertQueue(queue, { durable: true })!
-    let deadLetterExchange = exchange
+    const queueMain = await channel.assertQueue(queue, { durable: true })
+    const deadLetterExchange = exchange
 
     const queueDeadId = queueDeadName(queue)
     const exchangeDeadId = queueDeadName(exchange)
-    const queueDead = await channel?.assertQueue(queueDeadId, { durable: true })!
-    await amqpChannel?.bindQueue(queueDeadId, exchangeDeadId, `${queueDeadId}.*`)
+    const queueDead = await channel.assertQueue(queueDeadId, { durable: true })
+    await channel.bindQueue(queueDeadId, exchangeDeadId, `${queueDeadId}.*`)
 
     const exchangeDelayedId = queueDelayedName(exchange)
     const queueDelayedId = queueDelayedName(queue)
-    const queueDelayed = await amqpChannel?.assertQueue(queueDelayedId, { durable: true, arguments: {
+    const queueDelayed = await channel.assertQueue(queueDelayedId, { durable: true, arguments: {
       'x-dead-letter-exchange': deadLetterExchange
-    }})!
-    await amqpChannel?.bindQueue(queueDelayedId, exchangeDelayedId, `${queueDelayedId}.*`)
+    }})
+    await channel.bindQueue(queueDelayedId, exchangeDelayedId, `${queueDelayedId}.*`)
 
     queues.set(queue, { queueMain, queueDead, queueDelayed })
     logger.info('Created queue %s!', queue)

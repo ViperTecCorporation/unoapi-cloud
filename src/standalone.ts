@@ -97,7 +97,7 @@ logger.info('Starting with required Redis backend')
 if (process.env.AMQP_URL) {
   logger.info('Starting with broker')
   amqpConnect().catch( error => {
-    console.error(error, 'Erro on start rabbitmq')
+    logger.error(error, 'Error starting RabbitMQ')
     process.exit(1)
   })
   addToBlacklistVar = addToBlacklistJob

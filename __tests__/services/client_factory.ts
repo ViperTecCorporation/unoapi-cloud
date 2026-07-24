@@ -8,6 +8,7 @@ import { clients } from '../../src/services/client'
 import { getClientBaileys } from '../../src/services/client_baileys'
 import { ClientZapo } from '../../src/services/client_zapo'
 import { defaultConfig } from '../../src/services/config'
+import { SendError } from '../../src/services/send_error'
 import type { Listener } from '../../src/services/listener'
 import { getClientProvider } from '../../src/services/providers/client_factory'
 
@@ -45,5 +46,24 @@ describe('provider client factory', () => {
     expect(first).toBe(second)
     expect(ClientZapo).toHaveBeenCalledTimes(1)
     expect(first.connect).toHaveBeenCalledWith(1)
+  })
+
+  test('keeps one managed Zapo client while another worker owns the session', async () => {
+    const conflict = new SendError(409, 'zapo_session_owned_by_another_worker: 5588')
+    ;(ClientZapo as unknown as jest.Mock).mockImplementationOnce(() => ({
+      connect: jest.fn().mockRejectedValue(conflict),
+      disconnect: jest.fn(),
+    }))
+    const args = {
+      phone: '5588',
+      listener: mockDeep<Listener>(),
+      getConfig: async () => ({ ...defaultConfig, provider: 'zapo' as const, autoConnect: true }),
+      onNewLogin: jest.fn(),
+    }
+
+    await expect(getClientProvider(args)).rejects.toBe(conflict)
+    const managed = clients.get(args.phone)
+    await expect(getClientProvider(args)).resolves.toBe(managed)
+    expect(ClientZapo).toHaveBeenCalledTimes(1)
   })
 })

@@ -75,6 +75,13 @@ describe('ClientZapo', () => {
     )
   })
 
+  afterEach(async () => {
+    await service?.disconnect().catch(() => undefined)
+    jest.clearAllTimers()
+    jest.useRealTimers()
+    clients.clear()
+  })
+
   test('requires a full history sync when connecting a new Zapo pairing', async () => {
     session.auth.load.mockResolvedValue(null)
 
@@ -766,6 +773,8 @@ describe('ClientZapo', () => {
     expect(client.logout).toHaveBeenCalledTimes(1)
     expect(client.disconnect).toHaveBeenCalledTimes(1)
     expect(sessionStore.setStatus).toHaveBeenLastCalledWith(phone, 'offline')
+    expect((service as any).socket).toBeUndefined()
+    expect((service as any).messages).toBeUndefined()
   })
 
   test('clears runtime ownership even when the Zapo socket disconnect fails', async () => {
@@ -831,6 +840,7 @@ describe('ClientZapo', () => {
     }
     ;(service as any).leaseFactory = jest.fn().mockReturnValue(lease)
     ;(service as any).maintenance = { pruneMessageIndexBatch: jest.fn().mockResolvedValue({ scanned: 0, removed: 0 }) }
+    clients.set(phone, service)
 
     await expect(service.connect(1)).rejects.toMatchObject({ code: 409 })
     await jest.advanceTimersByTimeAsync(1_000)
