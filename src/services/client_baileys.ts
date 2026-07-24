@@ -43,7 +43,7 @@ import { Response } from './response'
 import QRCode from 'qrcode'
 import { Template } from './template'
 import logger from './logger'
-import { FETCH_TIMEOUT_MS, VALIDATE_MEDIA_LINK_BEFORE_SEND, CONVERT_AUDIO_MESSAGE_TO_OGG, GROUP_SEND_MEMBERSHIP_CHECK, GROUP_SEND_ADDRESSING_MODE, GROUP_LARGE_THRESHOLD, ONE_TO_ONE_ADDRESSING_MODE, MEDIA_RETRY_ENABLED, MEDIA_RETRY_DELAYS_MS, UNOAPI_DEBUG_BAILEYS_LIST_DUMP, CONTACT_SYNC_PENDING_TTL_SEC, GROUP_METADATA_EVENT_REFRESH_ENABLED, GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS, GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS, BASE_URL } from '../defaults'
+import { FETCH_TIMEOUT_MS, CONVERT_AUDIO_MESSAGE_TO_OGG, CONTACT_SYNC_PENDING_TTL_SEC, BASE_URL } from '../defaults'
 import { setContactSyncPending, getPnForLidFromAuthCache, getLidForPnFromAuthCache } from './redis'
 import { checkMissingTcTokenQuota, recordMissingTcTokenSend, MissingTcTokenQuotaDecision } from './privacy_token_quota'
 import { createPasskeyBridgeSession, updatePasskeyBridgeSession } from './passkey_bridge'
@@ -53,6 +53,22 @@ import { convertToWebpSticker } from '../utils/sticker_convert'
 import { t } from '../i18n'
 import { ClientForward } from './client_forward'
 import { ClientCoexistence } from './client_coexistence'
+import { BAILEYS_GROUP_POLICY } from './baileys_group_policy'
+import { BAILEYS_MEDIA_POLICY } from './baileys_media_policy'
+
+const {
+  membershipCheck: groupMembershipCheck,
+  addressingMode: groupAddressingMode,
+  metadataRefreshEnabled: GROUP_METADATA_EVENT_REFRESH_ENABLED,
+  metadataRefreshDebounceMs: GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS,
+  metadataRefreshMinIntervalMs: GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS,
+} = BAILEYS_GROUP_POLICY
+
+const {
+  validateLinkBeforeSend: VALIDATE_MEDIA_LINK_BEFORE_SEND,
+  retryEnabled: MEDIA_RETRY_ENABLED,
+  retryDelaysMs: MEDIA_RETRY_DELAYS_MS,
+} = BAILEYS_MEDIA_POLICY
 import { SendError } from './send_error'
 import { getRetryableStaleSendPayload, isRetryableStaleSendError } from './error_utils'
 import { resolveWhatsAppEngine } from './providers/provider_resolver'
@@ -495,38 +511,11 @@ export class ClientBaileys implements Client {
       } catch (error) {
         logger.warn({ err: error, from, callerPn, id, source }, 'CALL reject failed')
       }
-      // Enviar mensagem de rejeição respeitando o modo 1:1:
-      // - Em PN: preferir PN; para BR, tentar 12 dígitos primeiro (exists), depois 13; fallback origem
-      // - Em LID: manter origem
+      // A rejeição usa o PN explícito do evento de chamada quando disponível;
+      // nos demais casos preserva o LID canônico de origem.
       let toMsg = from
       try {
-        if (callerPn && isPnUser(callerPn)) {
-          // Baileys already resolved the caller PN. It is the safest address for
-          // the reply even when regular 1:1 traffic is configured as LID-first.
-          toMsg = callerPn
-        } else if (ONE_TO_ONE_ADDRESSING_MODE === 'pn') {
-          let pnJid: string | undefined
-          if (isLidUser(from)) {
-            try { pnJid = await this.store?.dataStore?.getPnForLid?.(this.phone, from) } catch {}
-            if (!pnJid) { try { const cand = jidNormalizedUser(from); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {} }
-          } else if (isPnUser(from)) {
-            pnJid = from
-          }
-          const digits = ensurePn(pnJid || from)
-          if (digits && digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
-            const ddd = digits.slice(2, 4)
-            const to12 = digits.length === 12 ? digits : `55${ddd}${digits.slice(5)}`
-            const to13 = digits.length === 13 ? digits : (/[6-9]/.test(digits.slice(4)[0]) ? `55${ddd}9${digits.slice(4)}` : digits)
-            let chosen: string | undefined
-            try { const r12 = await this.exists(to12); if (r12 && isPnUser(r12 as any)) chosen = r12 } catch {}
-            if (!chosen) { try { const r13 = await this.exists(to13); if (r13 && isPnUser(r13 as any)) chosen = r13 } catch {} }
-            toMsg = chosen || pnJid || from
-          } else {
-            toMsg = pnJid || from
-          }
-        } else {
-          toMsg = from
-        }
+        if (callerPn && isPnUser(callerPn)) toMsg = callerPn
       } catch { toMsg = from }
       try {
         await this.sendMessage(toMsg, { text: this.config.rejectCalls }, {})
@@ -1864,7 +1853,6 @@ export class ClientBaileys implements Client {
             targetTo = reactionKey.remoteJid
             to = targetTo
             extraSendOptions.forceRemoteJid = reactionKey.remoteJid
-            extraSendOptions.skipBrSendOrder = true
           } else if ('message_edit' === type) {
             const messageId =
               payload?.context?.message_id ||
@@ -1918,7 +1906,6 @@ export class ClientBaileys implements Client {
             targetTo = editKey.remoteJid
             to = targetTo
             extraSendOptions.forceRemoteJid = editKey.remoteJid
-            extraSendOptions.skipBrSendOrder = true
           } else if ('template' === type) {
             const template = new Template(this.getConfig)
             content = await template.bind(this.phone, payload.template.name, payload.template.components)
@@ -2221,35 +2208,17 @@ export class ClientBaileys implements Client {
           } catch (error) {
             logger.warn(error as any, 'Ignore missing tctoken preflight error for %s', this.phone)
           }
-          // Apply addressing mode para grupos
-          // Se GROUP_SEND_ADDRESSING_MODE estiver setada, respeita. Caso contrário, usa LID por padrão
-          // para reduzir "session not found" em grupos grandes.
+          // Group transport is LID-first while Baileys remains supported.
           try {
             if (targetTo && targetTo.endsWith('@g.us')) {
-              let applied = ''
-              if (GROUP_SEND_ADDRESSING_MODE) {
-                const preferred = GROUP_SEND_ADDRESSING_MODE
-                const mode = preferred === 'lid' ? WAMessageAddressingMode.LID : WAMessageAddressingMode.PN
-                messageOptions.addressingMode = mode
-                applied = preferred
-              }
-              // Caso não haja preferência via env, usar LID por padrão
-              if (!applied) {
-                messageOptions.addressingMode = WAMessageAddressingMode.LID
-                applied = 'lid'
-              }
-              if (!applied) {
-                // Fallback: don't force; let Baileys decide
-                delete (messageOptions as any).addressingMode
-                applied = 'auto'
-              }
-              logger.debug('Applied group addressingMode %s for %s', applied, targetTo)
+              messageOptions.addressingMode = WAMessageAddressingMode.LID
+              logger.debug('Applied group addressingMode %s for %s', groupAddressingMode, targetTo)
             }
           } catch (e) {
             logger.warn(e, 'Ignore error applying group addressingMode')
           }
           // Soft membership check: warn when not found, but do not block send
-          if (targetTo && targetTo.endsWith('@g.us') && GROUP_SEND_MEMBERSHIP_CHECK) {
+          if (targetTo && targetTo.endsWith('@g.us') && groupMembershipCheck) {
             try {
               const gm = await this.fetchGroupMetadata(targetTo)
               const myId = jidNormalizedUser(this.store?.state.creds.me?.id)
@@ -2274,13 +2243,6 @@ export class ClientBaileys implements Client {
             if (typeof messageOptions.statusJidList === 'undefined') messageOptions.statusJidList = []
           }
           if (content?.listMessage) {
-            if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
-              try {
-                logger.debug('baileys list send content=%s', JSON.stringify(content))
-              } catch {
-                logger.debug('baileys list send content')
-              }
-            }
             const trySendOnce = async () => this.sendMessage(targetTo, content, messageOptions)
             try {
               response = await trySendOnce()

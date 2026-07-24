@@ -1,5 +1,5 @@
-import type { WaClient, WaStoredContactRecord, WaStoreSession } from 'zapo-js'
-import { phoneNumberToJid } from '../transformer/jid'
+import type { SignalLidSyncResult, WaClient, WaStoredContactRecord, WaStoreSession } from 'zapo-js'
+import { toRawPnJid } from '../transformer/jid'
 import { SendError } from '../send_error'
 import { zapoUsernameIndex, type ZapoUsernameIndex } from './zapo_username_index'
 
@@ -22,11 +22,24 @@ export class ZapoIdentity {
   normalize(value: string): string {
     const raw = `${value || ''}`.trim()
     if (!raw) throw new Error('recipient cannot be empty')
-    return raw.includes('@') ? raw : phoneNumberToJid(raw)
+    return raw.includes('@') ? raw : toRawPnJid(raw)
   }
 
   async resolve(value: string): Promise<string> {
     return (await this.resolveMany([value]))[0]
+  }
+
+  async resolveManyPhoneJids(values: readonly string[]): Promise<string[]> {
+    const resolved = await this.resolveMany(values)
+    return Promise.all(resolved.map(async (jid) => {
+      if (isPhoneJid(jid)) return jid
+
+      const contact = await this.store.contacts.getByJid(jid)
+      const phoneJid = toRawPnJid(contact?.phoneNumber || '')
+      if (isPhoneJid(phoneJid)) return phoneJid
+
+      throw new SendError(404, `zapo_lid_phone_not_found: ${jid.replace(/@lid$/, '')}`)
+    }))
   }
 
   async resolveMany(values: readonly string[]): Promise<string[]> {
@@ -40,32 +53,40 @@ export class ZapoIdentity {
       return this.normalize(raw)
     }))
     const resolved = [...normalized]
-    const unresolved = await Promise.all(normalized.map(async (jid, index) => {
-      if (!isPhoneJid(jid)) return
-      const phone = jid.split('@')[0]
-      const contact = await this.store.contacts.getByPhoneNumber(phone)
-        || await this.store.contacts.getByPhoneNumber(jid)
-      const lid = toLidJid(contact?.lid) || (contact?.jid?.endsWith('@lid') ? contact.jid : undefined)
-      if (lid) resolved[index] = lid
-      else return { index, phoneJid: jid }
-    }))
-    const unknown = unresolved.filter((item): item is { index: number; phoneJid: string } => !!item)
+    const phoneTargets = normalized
+      .map((phoneJid, index) => ({ index, phoneJid }))
+      .filter((item) => isPhoneJid(item.phoneJid))
 
-    if (unknown.length) {
-      const lookups = await this.client.profile.getLidsByPhoneNumbers(unknown.map((item) => item.phoneJid))
+    if (phoneTargets.length) {
+      let lookups: readonly SignalLidSyncResult[] | undefined
+      try {
+        lookups = await this.client.profile.getLidsByPhoneNumbers(phoneTargets.map((item) => item.phoneJid))
+      } catch {
+        lookups = undefined
+      }
       const contacts: WaStoredContactRecord[] = []
-      for (let i = 0; i < Math.min(lookups.length, unknown.length); i += 1) {
-        const lookup = lookups[i]
-        const { index, phoneJid } = unknown[i]
+      for (let i = 0; i < phoneTargets.length; i += 1) {
+        const { index, phoneJid } = phoneTargets[i]
+        const lookup = lookups?.find((item) => toRawPnJid(item?.queriedJid || '') === phoneJid) || lookups?.[i]
         const lid = toLidJid(lookup?.lidJid)
-        if (!lookup?.exists || !lid) continue
-        resolved[index] = lid
-        contacts.push({
-          jid: lid,
-          lid,
-          phoneNumber: phoneJid.split('@')[0],
-          lastUpdatedMs: Date.now(),
-        })
+        if (lookup?.exists && lid) {
+          const canonicalPhoneJid = toRawPnJid(lookup.phoneJid || phoneJid)
+          resolved[index] = lid
+          contacts.push({
+            jid: lid,
+            lid,
+            phoneNumber: canonicalPhoneJid.split('@')[0],
+            lastUpdatedMs: Date.now(),
+          })
+          continue
+        }
+        if (lookups) continue
+
+        const phone = phoneJid.split('@')[0]
+        const cached = await this.store.contacts.getByPhoneNumber(phone)
+          || await this.store.contacts.getByPhoneNumber(phoneJid)
+        const cachedLid = toLidJid(cached?.lid) || (cached?.jid?.endsWith('@lid') ? cached.jid : undefined)
+        if (cachedLid) resolved[index] = cachedLid
       }
       if (contacts.length) await this.store.contacts.upsertBatch(contacts)
     }

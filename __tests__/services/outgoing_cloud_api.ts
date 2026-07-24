@@ -506,8 +506,14 @@ describe('service outgoing whatsapp cloud api', () => {
       mockFetch.mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', text: async () => 'offline' } as any)
       await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toThrow('Webhook response 503')
       await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toThrow('Webhook response 503')
-      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({ code: 'WEBHOOK_CB_OPEN' })
-      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({ code: 'WEBHOOK_CB_OPEN' })
+      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({
+        code: 'WEBHOOK_CB_OPEN',
+        consumesRetry: true,
+      })
+      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({
+        code: 'WEBHOOK_CB_OPEN',
+        consumesRetry: false,
+      })
       expect(mockFetch).toHaveBeenCalledTimes(3)
 
       now += 120_001
@@ -515,7 +521,10 @@ describe('service outgoing whatsapp cloud api', () => {
       mockFetch.mockImplementationOnce(() => new Promise((resolve) => { finishProbe = resolve }) as any)
       const probe = service.sendHttp(phone!, target, textPayload, {})
       await Promise.resolve()
-      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({ code: 'WEBHOOK_CB_OPEN' })
+      await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toMatchObject({
+        code: 'WEBHOOK_CB_OPEN',
+        consumesRetry: false,
+      })
       finishProbe?.({ ok: true, status: 200, text: async () => 'ok' })
       await expect(probe).resolves.toBeUndefined()
       expect(mockFetch).toHaveBeenCalledTimes(4)

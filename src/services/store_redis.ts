@@ -12,12 +12,12 @@ import { Config } from './config'
 import logger from './logger'
 import { SessionStoreRedis } from './session_store_redis'
 import { getMediaStoreFile } from './media_store_file'
-import { JIDMAP_ENRICH_ON_STORE_ENABLED } from '../defaults'
+import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
 
 export const getStoreRedis: getStore = async (phone: string, config: Config): Promise<Store> => {
   if (!stores.has(phone)) {
     logger.debug('Creating redis store %s', phone)
-    if (JIDMAP_ENRICH_ON_STORE_ENABLED) {
+    if (BAILEYS_AUTH_POLICY.jidMapEnrichOnStoreEnabled) {
       setTimeout(() => {
         enrichJidMapFromAuthLidCache(phone).catch((error) => logger.debug(error as any, 'JIDMAP enrich on store failed for %s', phone))
       }, 1_000)

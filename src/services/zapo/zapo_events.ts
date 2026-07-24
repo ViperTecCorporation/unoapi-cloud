@@ -1,5 +1,23 @@
 import type { WaIncomingAddonEvent, WaIncomingMessageEvent, WaIncomingReceiptEvent } from 'zapo-js'
 
+export const isEncryptedZapoAddonMessage = (message: WaIncomingMessageEvent['message']) => Boolean(
+  (message?.encReactionMessage?.targetMessageKey
+    && message.encReactionMessage.encPayload
+    && message.encReactionMessage.encIv)
+  || (message?.pollUpdateMessage?.pollCreationMessageKey
+    && message.pollUpdateMessage.vote?.encPayload
+    && message.pollUpdateMessage.vote.encIv)
+  || (message?.encEventResponseMessage?.eventCreationMessageKey
+    && message.encEventResponseMessage.encPayload
+    && message.encEventResponseMessage.encIv)
+  || (message?.encCommentMessage?.targetMessageKey
+    && message.encCommentMessage.encPayload
+    && message.encCommentMessage.encIv)
+  || (message?.secretEncryptedMessage?.targetMessageKey
+    && message.secretEncryptedMessage.encPayload
+    && message.secretEncryptedMessage.encIv)
+)
+
 export const toUnoMessageEvent = (event: WaIncomingMessageEvent) => ({
   key: { ...event.key },
   message: event.message,
@@ -30,9 +48,9 @@ export const toUnoReceiptUpdates = (event: WaIncomingReceiptEvent, phoneJid?: st
 
 export const toUnoAddonEvent = (event: WaIncomingAddonEvent) => {
   const target = { ...event.key, id: event.targetMessageId }
-  const decrypted: any = event.decrypted
-  let message: any
-  switch (event.kind) {
+  const decrypted = event.decrypted
+  let message: Record<string, unknown>
+  switch (decrypted.kind) {
     case 'reaction':
       message = { reactionMessage: { ...decrypted.reaction, key: decrypted.reaction?.key || target } }
       break

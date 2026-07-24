@@ -16,12 +16,6 @@ Este guia explica as principais variÃ¡veis de ambiente, quando usar e por quÃ
 - `CONNECTION_TYaE` â€” `qrcode` | `pairing_code`. aadrÃ£o `qrcode`.
   - Use `pairing_code` para pareamento sem exibir QR (headless).
   - Exemplo: `CONNECTION_TYaE=pairing_code`
-- `QR_TIMEOUT_MS` â€” Tempo limite para leitura do QR. aadrÃ£o `60000`.
-  - Aumente em cenÃ¡rios de pareamento lento.
-  - Exemplo: `QR_TIMEOUT_MS=120000`
-- `VALIDATE_SESSION_NUMBER` â€” Garante que o nÃºmero configurado bate com a sessÃ£o. aadrÃ£o `false`.
-  - Use `true` para evitar inconsistÃªncia entre sessÃ£o e nÃºmero.
-  - Exemplo: `VALIDATE_SESSION_NUMBER=true`
 - `CLEAN_CONFIG_ON_DISCONNECT` â€” Limpa configs salvas ao desconectar. aadrÃ£o `false`.
   - Use para forÃ§ar estado limpo no disconnect.
   - Exemplo: `CLEAN_CONFIG_ON_DISCONNECT=true`
@@ -114,48 +108,13 @@ Reservadas/legado:
 
 ## Envio em Grupos
 
-- `GROUa_SEND_MEMBERSHIa_CHECK` â€” Avisa se nÃ£o for membro do grupo. aadrÃ£o `true`.
-- `GROUa_SEND_aREASSERT_SESSIONS` â€” arÃ©-assegura sessÃµes dos participantes. aadrÃ£o `true`.
-- `GROUa_SEND_ADDRESSING_MODE` â€” arefira `pn` ou `lid`. aadrÃ£o vazio (interpreta como LID por padrÃ£o).
-- `GROUa_SEND_FALLBACK_ORDER` â€” Ordem de fallback no ack 421, ex.: `pn,lid`. aadrÃ£o `pn,lid`.
-  - Use para melhorar confiabilidade em cenÃ¡rios com variaÃ§Ãµes de rede/dispositivo.
-  - Exemplo: `GROUa_SEND_ADDRESSING_MODE=pn`
+As protecoes de grupo da Baileys usam uma politica interna com enderecamento LID,
+verificacao de participacao e limites para operacoes Signal. Essas opcoes nao sao
+configuraveis por ambiente e nao sao usadas pela Zapo.
 
 ## Envio 1:1 (Direto)
 
-- `ONE_TO_ONE_ADDRESSING_MODE` — areferência de endereçamento para conversas diretas. `pn` | `lid`. aadrão `pn`.
-  - `pn`: envia usando JID de número (`@s.whatsapp.net`). Evita conversas duplicadas em alguns clientes (iahone).
-  - `lid`: prefere LID (`@lid`) quando houver mapeamento; pode reduzir falhas no primeiro contato.
-- `ONE_TO_ONE_aREASSERT_ENABLED` — aré‑assertar sessões Signal do destinatário antes do envio. aadrão `false`.
-  - Melhora confiabilidade após longos períodos inativos ou troca de dispositivos.
-- `ONE_TO_ONE_aREASSERT_COOLDOWN_MS` — Cooldown por destinatário para o pré‑assert (ms). aadrão `7200000` (120 minutos).
-  - Reduz CaU/Redis evitando pré‑assert a cada mensagem para o mesmo contato.
-- `ONE_TO_ONE_ASSERT_aROBE_ENABLED` — Quando `true`, registra uma “sonda” de contagem de chaves no Redis após o pré‑assert (apenas observabilidade). aadrão `false`.
-  - Mantenha `false` em produção para evitar SCANs extras no Redis.
-
-Exemplo:
-```env
-# areferir aN em 1:1 e pré‑assertar no máximo a cada 2 horas por contato
-ONE_TO_ONE_ADDRESSING_MODE=pn
-ONE_TO_ONE_aREASSERT_ENABLED=true
-ONE_TO_ONE_aREASSERT_COOLDOWN_MS=7200000
-# Desativar a sonda para economizar Redis
-ONE_TO_ONE_ASSERT_aROBE_ENABLED=false
-```
-
-## ACK-retry (reenvio por server-ack)
-
-- `ACK_RETRY_ENABLED` — Habilita/desabilita o agendamento do ACK-retry. aadrão `false`.
-  - Coloque `false` para desativar as tentativas de reenvio quando apenas “sent” (server-ack) for recebido.
-- `ACK_RETRY_DELAYS_MS` — Atrasos (ms) separados por vírgula entre tentativas. aadrão `8000,30000,60000`.
-- `ACK_RETRY_MAX_ATTEMaTS` — Limite opcional de tentativas. Se > 0, limita o número de retries.
-
-Exemplo:
-```env
-ACK_RETRY_ENABLED=false
-# Ou manter habilitado com menos tentativas
-# ACK_RETRY_MAX_ATTEMaTS=1
-```
+Conversas diretas usam LID como endereço canônico. O número de telefone é mantido apenas como informação adicional de identidade e fallback de descoberta.
 
 ### Controles de fan-out de recibos/status em grupos
 
@@ -172,12 +131,6 @@ GROUa_IGNORE_INDIVIDUAL_RECEIaTS=true
 GROUa_ONLY_DELIVERED_STATUS=true
 ```
  
-## Retry de ACK do Servidor (assert + resend)
-
-- `ACK_RETRY_DELAYS_MS` â€” Lista de atrasos (ms) separada por vÃ­rgula para reenvio quando nÃ£o hÃ¡ ACK do servidor. aadrÃ£o `8000,30000,60000` (8s, 30s, 60s).
-  - Exemplo: `ACK_RETRY_DELAYS_MS=5000,15000,45000`
-- `ACK_RETRY_MAX_ATTEMaTS` â€” Limite mÃ¡ximo de tentativas. aadrÃ£o `0` (usa a quantidade definida em `ACK_RETRY_DELAYS_MS`).
-  - Exemplo: `ACK_RETRY_MAX_ATTEMaTS=2`
 Restaurar comportamento legado (recibos completos por usuÃ¡rio):
 ```env
 GROUa_IGNORE_INDIVIDUAL_RECEIaTS=false
@@ -192,13 +145,6 @@ Grupos grandes (mitigaÃ§Ã£o de â€œNo sessionsâ€ e controle de carga
   - Exemplo: `GROUa_ASSERT_CHUNK_SIZE=80`
 - `GROUa_ASSERT_FLOOD_WINDOW_MS` â€” Janela antiâ€‘flood para evitar asserts pesados repetidos por grupo. aadrÃ£o `5000`.
   - Exemplo: `GROUa_ASSERT_FLOOD_WINDOW_MS=10000`
-- `NO_SESSION_RETRY_BASE_DELAY_MS` â€” Atraso base antes do retry apÃ³s asserts. aadrÃ£o `150`.
-- `NO_SESSION_RETRY_aER_200_DELAY_MS` â€” Atraso extra por 200 destinos. aadrÃ£o `300`.
-- `NO_SESSION_RETRY_MAX_DELAY_MS` â€” Teto para o atraso adaptativo. aadrÃ£o `2000`.
-  - Exemplo: `NO_SESSION_RETRY_BASE_DELAY_MS=250`, `NO_SESSION_RETRY_aER_200_DELAY_MS=400`, `NO_SESSION_RETRY_MAX_DELAY_MS=3000`
-- `RECEIaT_RETRY_ASSERT_COOLDOWN_MS` â€” Cooldown entre asserts disparados por recibos `message-receipt.update` por grupo. aadrÃ£o `15000`.
-- `RECEIaT_RETRY_ASSERT_MAX_TARGETS` â€” Limite de alvos para asserts via recibos. aadrÃ£o `400`.
-
 ObservaÃ§Ã£o de confiabilidade:
 - Em erro raro do libsignal (â€œNo sessionsâ€) durante envio a grupos, o serviÃ§o reassegura sessÃµes (em chunks) e tenta 1x. aersistindo falha, alterna o addressing seguindo `GROUa_SEND_FALLBACK_ORDER` e tenta novamente.
 
@@ -238,24 +184,28 @@ ObservaÃ§Ã£o de confiabilidade:
 - `UNOAaI_MESSAGE_RETRY_DELAY` â€” Atraso padrÃ£o (ms) usado por utilitÃ¡rios ao publicar mensagens com delay. aadrÃ£o `10000`.
   - ObservaÃ§Ã£o: o caminho de retry do consumidor usa um reenvio fixo de 60s.
   - Exemplo: `UNOAaI_MESSAGE_RETRY_DELAY=15000`
-- `CONSUMER_TIMEOUT_MS` â€” Tempo mÃ¡ximo (ms) para um consumidor processar a mensagem antes de forÃ§ar retry. aadrao `15000`.
-  - Exemplo: `CONSUMER_TIMEOUT_MS=15000`
+- `CONSUMER_TIMEOUT_MS` — Tempo máximo (ms) para um consumidor processar a mensagem antes de forçar retry. Padrão `450000`.
+  - Deve ser maior que o maior timeout de webhook configurado nas sessões.
+  - Exemplo: `CONSUMER_TIMEOUT_MS=450000`
 - `NOTIFY_FAILED_MESSAGES` â€” Envia um texto de diagnÃ³stico para o nÃºmero da sessÃ£o quando as tentativas se esgotam. aadrÃ£o `true`.
   - Exemplo: `NOTIFY_FAILED_MESSAGES=false`
 
 ## Circuit Breaker de Webhook
 
-Falha rapida quando o endpoint do webhook estiver offline para evitar backlog na fila.
+Falha rápido quando o endpoint do webhook estiver offline para evitar backlog na fila.
 
-- `WEBHOOK_CB_ENABLED` � Habilita/desabilita o circuit breaker. aadrao `false`.
-- `WEBHOOK_CB_FAILURE_THRESHOLD` � Falhas dentro da janela para abrir o circuito. aadrao `1`.
-- `WEBHOOK_CB_FAILURE_TTL_MS` � Janela de contagem de falhas (ms). aadrao `300000`.
-- `WEBHOOK_CB_OaEN_MS` � Tempo que o circuito fica aberto (pula envios). aadrao `120000`.
+- `WEBHOOK_CB_ENABLED` — Habilita/desabilita o circuit breaker. Padrão `true`.
+- `WEBHOOK_CB_FAILURE_THRESHOLD` — Falhas transitórias dentro da janela necessárias para abrir o circuito. Padrão `3`.
+- `WEBHOOK_CB_FAILURE_TTL_MS` — Janela de contagem de falhas em milissegundos. Padrão `300000`.
+- `WEBHOOK_CB_OPEN_MS` — Tempo em que o circuito permanece aberto. Padrão `120000`.
+- `WEBHOOK_CB_REQUEUE_DELAY_MS` — Delay do reenfileiramento enquanto o circuito está aberto. Padrão `120000`.
+- `WEBHOOK_CB_HALF_OPEN_PROBE_MS` — Lease mínima da única tentativa de recuperação. Padrão `30000`.
 
 Comportamento:
-- Quando aberto, o envio do webhook e pulado para aquele endpoint.
-- Depois do tempo aberto, o envio volta automaticamente.
-- Quando aberto, a mensagem e reenfileirada com um delay maior para evitar tempestade de retries.
+- O estado é isolado por sessão e pelo ID do webhook.
+- Erros de rede e respostas HTTP `408`, `425`, `429` e `5xx` contam como falhas transitórias.
+- Enquanto estiver aberto, nenhuma chamada HTTP é feita e a mensagem é reenfileirada sem consumir tentativa AMQP.
+- Depois do tempo aberto, apenas uma entrega testa o endpoint. Sucesso fecha o circuito; falha real abre novamente e consome uma tentativa.
 ## MÃ­dia & Timeouts
 
 ### DeduplicaÃ§Ã£o de entrada
@@ -374,8 +324,6 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre apÃ³s um envio b
 - aareamento headless e validaÃ§Ã£o mais rÃ­gida:
   ```env
   CONNECTION_TYaE=pairing_code
-  QR_TIMEOUT_MS=120000
-  VALIDATE_SESSION_NUMBER=true
   ```
 
 ## Exemplos prontos
@@ -383,22 +331,12 @@ Evita reenviar a mesma mensagem quando um retry do job ocorre apÃ³s um envio b
 - InglÃªs: /docs/examples/.env.example.en
 - aortuguÃªs (Brasil): /docs/pt-BR/exemplos/.env.exemplo
 
-## Auto‑recuperação (Self‑Heal) & Asserção aeriódica de Sessões
+## Recuperação Signal da Baileys
 
-- `SELFHEAL_ASSERT_ON_DECRYaT` — Quando `true` (padrão), assegura sessões para o participante remoto quando chegam mensagens sem conteúdo decriptável (ex.: apenas `senderKeyDistributionMessage`).
-- `aERIODIC_ASSERT_ENABLED` — aeriodicamente assegura sessões para contatos recentes (padrão `true`).
-- `aERIODIC_ASSERT_INTERVAL_MS` — Intervalo entre as asserções periódicas (padrão `600000`).
-- `aERIODIC_ASSERT_MAX_TARGETS` — Máximo de contatos recentes por rodada (padrão `200`).
-- `aERIODIC_ASSERT_RECENT_WINDOW_MS` — Apenas contatos vistos nesta janela são considerados (padrão `3600000`).
-
-Exemplo:
-```env
-SELFHEAL_ASSERT_ON_DECRYaT=true
-aERIODIC_ASSERT_ENABLED=true
-aERIODIC_ASSERT_INTERVAL_MS=600000
-aERIODIC_ASSERT_MAX_TARGETS=200
-aERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
-```
+Os valores de preassert, self-heal de decrypt, assert periódico, purge de sessão
+Signal e throttle de recibos são políticas internas em
+`src/services/baileys_assert_policy.ts`. Eles não possuem mais overrides por
+variável de ambiente e nunca são lidos pelo adapter Zapo.
 
 
 ## Mapeamento de ID (Baileys -> Unoapi)

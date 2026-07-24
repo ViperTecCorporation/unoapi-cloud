@@ -12,10 +12,25 @@ jest.mock('../../src/defaults', () => {
     __esModule: true,
     ...actual,
     SEND_AUDIO_MESSAGE_AS_PTT: true,
-    GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS: 10,
-    GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS: 0,
   }
 })
+jest.mock('../../src/services/baileys_group_policy', () => ({
+  BAILEYS_GROUP_POLICY: {
+    membershipCheck: true,
+    addressingMode: 'lid',
+    preassertSessions: false,
+    fallbackOrder: [],
+    largeGroupThreshold: 800,
+    assertChunkSize: 100,
+    assertFloodWindowMs: 5_000,
+    metadataRefreshEnabled: true,
+    metadataRefreshDebounceMs: 10,
+    metadataRefreshMinIntervalMs: 0,
+    noSessionRetryBaseDelayMs: 150,
+    noSessionRetryPer200DelayMs: 300,
+    noSessionRetryMaxDelayMs: 2_000,
+  },
+}))
 jest.mock('../../src/services/socket')
 jest.mock('../../src/services/redis', () => ({
   __esModule: true,
@@ -360,7 +375,6 @@ describe('service client baileys', () => {
       }),
       expect.objectContaining({
         forceRemoteJid: originalKey.remoteJid,
-        skipBrSendOrder: true,
       }),
     )
     expect(dataStore.loadProviderId).toHaveBeenCalledWith(unoMessageId)

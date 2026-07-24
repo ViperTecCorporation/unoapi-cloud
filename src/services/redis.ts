@@ -6,28 +6,11 @@ import {
   DATA_URL_TTL,
   JIDMAP_TTL_SECONDS,
   JIDMAP_STORED_LOOKUP_ENABLED,
-  SIGNAL_PURGE_DEVICE_LIST_ENABLED,
-  SIGNAL_PURGE_SESSION_ENABLED,
-  SIGNAL_PURGE_SENDER_KEY_ENABLED,
-  JIDMAP_ENRICH_PER_SWEEP,
-  WATCHDOG_PURGE_SCAN_COUNT,
-  WATCHDOG_TASK_MIN_INTERVAL_MS,
-  JIDMAP_ENRICH_MIN_INTERVAL_MS,
-  AUTH_CACHE_TTL_MS,
-  AUTH_INDEX_FALLBACK_SCAN_LIMIT,
-  AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
-  AUTH_SIGNAL_PRUNE_MAX_DELETE,
-  AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
-  AUTH_SIGNAL_PRUNE_SCAN_COUNT,
-  AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED,
-  AUTH_SIGNAL_PRUNE_DAILY_ENABLED,
-  AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS,
-  AUTH_SIGNAL_PRUNE_SESSION_INTERVAL_MS,
-  AUTH_SIGNAL_PRUNE_SESSION_LIMIT,
   SESSION_STATUS_CACHE_TTL_MS,
   CONNECT_COUNT_CACHE_TTL_MS,
   CONTACT_INFO_TTL_SEC,
 } from '../defaults'
+import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
 import logger from './logger'
 import { GroupMetadata, proto } from '@whiskeysockets/baileys'
 import { Webhook, configs } from './config' 
@@ -35,6 +18,27 @@ import { isTransientInfraError } from './error_utils'
 import { version as appVersion } from '../../package.json'
 import { mergeGroupMetadataForCache } from './groups/group_metadata_cache'
 import { normalizeLidJid } from './transformer/jid'
+
+const {
+  signalPurgeDeviceListEnabled: SIGNAL_PURGE_DEVICE_LIST_ENABLED,
+  signalPurgeSessionEnabled: SIGNAL_PURGE_SESSION_ENABLED,
+  signalPurgeSenderKeyEnabled: SIGNAL_PURGE_SENDER_KEY_ENABLED,
+  jidMapEnrichPerSweep: JIDMAP_ENRICH_PER_SWEEP,
+  watchdogPurgeScanCount: WATCHDOG_PURGE_SCAN_COUNT,
+  watchdogTaskMinIntervalMs: WATCHDOG_TASK_MIN_INTERVAL_MS,
+  jidMapEnrichMinIntervalMs: JIDMAP_ENRICH_MIN_INTERVAL_MS,
+  authCacheTtlMs: AUTH_CACHE_TTL_MS,
+  authIndexFallbackScanLimit: AUTH_INDEX_FALLBACK_SCAN_LIMIT,
+  signalPruneDefaultTypes: AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
+  signalPruneMaxDelete: AUTH_SIGNAL_PRUNE_MAX_DELETE,
+  signalPrunePreKeyKeepRecent: AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
+  signalPruneScanCount: AUTH_SIGNAL_PRUNE_SCAN_COUNT,
+  signalPruneBootstrapEnabled: AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED,
+  signalPruneDailyEnabled: AUTH_SIGNAL_PRUNE_DAILY_ENABLED,
+  signalPruneDailyIntervalMs: AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS,
+  signalPruneSessionIntervalMs: AUTH_SIGNAL_PRUNE_SESSION_INTERVAL_MS,
+  signalPruneSessionLimit: AUTH_SIGNAL_PRUNE_SESSION_LIMIT,
+} = BAILEYS_AUTH_POLICY
 
 export const BASE_KEY = 'unoapi-'
 
@@ -357,7 +361,7 @@ const runAuthSignalPruneForAllSessions = async (source: string): Promise<void> =
           continue
         }
         const result = await pruneAuthSignalCache(phone, {
-          types: AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
+          types: [...AUTH_SIGNAL_PRUNE_DEFAULT_TYPES],
           dryRun: false,
           maxDelete: AUTH_SIGNAL_PRUNE_MAX_DELETE,
           preKeyKeepRecent: AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
@@ -1254,7 +1258,7 @@ export const setConfig = async (phone: string, value: any) => {
   })
   value.webhooks = updatedWebooks
   const config = { ...currentConfig, ...value }
-  ;(config as any).oneToOneAddressingMode = 'lid'
+  delete (config as any).oneToOneAddressingMode
   // Enforce per-session storage flags to avoid false overrides via templates/UI
   // Since this setter persists to Redis, sessions using Redis must have useRedis/useS3 true
   try { (config as any).useRedis = true } catch {}

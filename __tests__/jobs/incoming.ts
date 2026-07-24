@@ -9,8 +9,142 @@ import { Incoming } from '../../src/services/incoming'
 import { Outgoing } from '../../src/services/outgoing'
 import { defaultConfig, getConfig } from '../../src/services/config'
 import type { DataStore } from '../../src/services/data_store'
+import { SendError } from '../../src/services/send_error'
 
 describe('incoming job', () => {
+  test.each([
+    'text',
+    'image',
+    'audio',
+    'video',
+    'document',
+    'sticker',
+    'contacts',
+    'interactive',
+    'poll',
+    'poll_vote',
+    'poll-vote',
+    'message_edit',
+    'reaction',
+    'template',
+    'baileys',
+  ])('emits a failed webhook when Zapo rejects a %s action', async (type) => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    incoming.send = jest.fn().mockRejectedValue(new SendError(400, `zapo_${type}_failed`))
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        sendUpdateMessages: true,
+      }],
+    }))
+
+    await job.consume('5566999999999', {
+      id: `uno-${type}-failed`,
+      payload: {
+        to: '5511999999999',
+        type,
+        [type]: {},
+      },
+      options: { endpoint: 'messages' },
+    }, { countRetries: 1, maxRetries: 5 })
+
+    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
+      .entry[0].changes[0].value.statuses[0]
+    expect(status).toEqual(expect.objectContaining({
+      id: `uno-${type}-failed`,
+      recipient_id: '5511999999999',
+      status: 'failed',
+      errors: [expect.objectContaining({
+        code: 400,
+        title: `zapo_${type}_failed`,
+        error_data: expect.objectContaining({
+          provider: 'zapo',
+          message_type: type,
+        }),
+      })],
+    }))
+  })
+
+  test('retries a native Zapo error before emitting its failed webhook', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const error = new Error('socket temporarily unavailable')
+    incoming.send = jest.fn().mockRejectedValue(error)
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{ ...defaultConfig.webhooks[0] }],
+    }))
+    const data = {
+      id: 'uno-native-error',
+      payload: { to: '5511999999999', type: 'text', text: { body: 'Oi' } },
+    }
+
+    await expect(job.consume(
+      '5566999999999',
+      data,
+      { countRetries: 1, maxRetries: 5 },
+    )).rejects.toThrow('socket temporarily unavailable')
+    expect(outgoing.sendHttp).not.toHaveBeenCalled()
+
+    await expect(job.consume(
+      '5566999999999',
+      data,
+      { countRetries: 5, maxRetries: 5 },
+    )).resolves.toEqual(expect.objectContaining({
+      error: expect.any(Object),
+    }))
+    expect(outgoing.sendHttp).toHaveBeenCalledWith(
+      '5566999999999',
+      expect.any(Object),
+      expect.objectContaining({ object: 'whatsapp_business_account' }),
+      expect.objectContaining({ priority: 1 }),
+    )
+  })
+
+  test('preserves the original message id when a Zapo status action fails', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    incoming.send = jest.fn().mockRejectedValue(new SendError(404, 'message_not_found'))
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{ ...defaultConfig.webhooks[0] }],
+    }))
+
+    await job.consume('5566999999999', {
+      payload: {
+        message_id: 'uno-original-message',
+        status: 'read',
+      },
+    }, { countRetries: 1, maxRetries: 5 })
+
+    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
+      .entry[0].changes[0].value.statuses[0]
+    expect(status).toEqual(expect.objectContaining({
+      id: 'uno-original-message',
+      recipient_id: '5566999999999',
+      status: 'failed',
+      errors: [expect.objectContaining({
+        error_data: expect.objectContaining({
+          message_type: 'status_read',
+        }),
+      })],
+    }))
+  })
+
   test('keeps the queue Uno id associated directly with the real provider id', async () => {
     const incoming = mock<Incoming>()
     const outgoing = mock<Outgoing>()
@@ -42,6 +176,48 @@ describe('incoming job', () => {
     )
     expect(dataStore.setUnoId).toHaveBeenCalledWith('3EB0ZAPO', 'uno-request-1')
     expect(dataStore.setUnoId).not.toHaveBeenCalledWith('uno-request-1', 'uno-request-1')
+  })
+
+  test('does not emit a duplicate outgoing message echo to Chatwoot', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0ZAPO')
+    dataStore.setUnoId.mockResolvedValue('uno-request-chatwoot')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-request-chatwoot' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        sendNewMessages: true,
+        url: '',
+        urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+      }],
+      getStore: async () => ({ dataStore } as any),
+    }))
+
+    await job.consume('5566999554300', {
+      id: 'uno-request-chatwoot',
+      payload: {
+        to: '5549991851558',
+        type: 'text',
+        text: { body: 'Mensagem do Chatwoot' },
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const payloads = (outgoing.sendHttp as jest.Mock).mock.calls.map((call) => call[2])
+    expect(payloads.some((webhook) => (
+      webhook?.entry?.[0]?.changes?.[0]?.value?.messages?.length
+    ))).toBe(false)
+    expect(payloads.some((webhook) => (
+      webhook?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.status === 'sent'
+    ))).toBe(true)
   })
 
   test('dispatches provider contact operations without going through message sending', async () => {

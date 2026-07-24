@@ -11,6 +11,8 @@ export interface Contact {
   wa_id: String | undefined
   user_id?: String | undefined
   username?: String | undefined
+  display_name?: String | undefined
+  push_name?: String | undefined
   input: String
   status: ContactStatus
 }

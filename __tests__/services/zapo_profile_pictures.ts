@@ -188,6 +188,32 @@ describe('ZapoProfilePictures', () => {
     expect(store.mediaStore.saveProfilePicture).not.toHaveBeenCalled()
   })
 
+  test('does not repeat a missing picture lookup during the negative-cache interval', async () => {
+    store.mediaStore.getProfilePictureInfo.mockResolvedValue(undefined)
+    store.mediaStore.getProfilePictureUrl.mockResolvedValue(undefined)
+    client.profile.getProfilePicture.mockRejectedValue(new Error('404: item-not-found'))
+    const service = createService({ notFoundTtlSeconds: 10_800 })
+
+    await service.enrich({ key: { remoteJid: lid } })
+    await service.enrich({ key: { remoteJid: lid } })
+
+    expect(client.profile.getProfilePicture).toHaveBeenCalledTimes(1)
+  })
+
+  test('releases a missing-picture marker when Zapo reports a new picture', async () => {
+    store.mediaStore.getProfilePictureInfo.mockResolvedValue(undefined)
+    store.mediaStore.getProfilePictureUrl.mockResolvedValue(undefined)
+    client.profile.getProfilePicture
+      .mockRejectedValueOnce(new Error('404: item-not-found'))
+      .mockResolvedValue({ id: 'picture-2', url: 'https://zapo.test/new.jpg' })
+    const service = createService({ notFoundTtlSeconds: 10_800 })
+
+    await service.enrich({ key: { remoteJid: lid } })
+    await service.handleEvent({ action: 'set', targetJid: lid, pictureId: 2 } as unknown as WaPictureEvent)
+
+    expect(client.profile.getProfilePicture).toHaveBeenCalledTimes(2)
+  })
+
   test('does not block the message when the contact store lookup fails', async () => {
     session.contacts.getByJid.mockRejectedValue(new Error('sqlite unavailable'))
     const service = createService()

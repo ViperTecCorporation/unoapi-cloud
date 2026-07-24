@@ -6,6 +6,8 @@ import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
 import { Contact } from '../services/contact'
 import logger from '../services/logger'
+import { getConfig, getConfigDefault } from '../services/config'
+import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 
 const normalizeGroupJid = (input?: string): string => {
   return normalizeGroupId(`${input || ''}`)
@@ -152,6 +154,12 @@ const isBadRequestError = (error: any): boolean => {
   return `${error?.message || ''}`.toLowerCase().includes('bad-request') || error?.data === 400
 }
 
+const isSuccessfulParticipantAction = (item: any): boolean => {
+  const status = `${item?.status || ''}`.trim().toLowerCase()
+  const code = Number(item?.code ?? item?.status)
+  return status === 'ok' || (Number.isFinite(code) && code >= 200 && code < 300)
+}
+
 const isParticipantAdmin = (participant: any): boolean => {
   const admin = `${participant?.admin || ''}`.toLowerCase()
   return admin === 'admin' || admin === 'superadmin' || participant?.isAdmin === true
@@ -159,6 +167,7 @@ const isParticipantAdmin = (participant: any): boolean => {
 
 const participantLid = (participant: any, sourceJid = ''): string => {
   return firstNonEmptyString(
+    participant?.user_id,
     participant?.lid,
     `${sourceJid || ''}`.endsWith('@lid') ? sourceJid : '',
     `${participant?.jid || ''}`.endsWith('@lid') ? participant.jid : '',
@@ -271,6 +280,13 @@ const groupJoinApprovalMode = (group: any): string | undefined => {
   return undefined
 }
 
+const groupBooleanSetting = (group: any, ...keys: string[]): boolean | undefined => {
+  for (const key of keys) {
+    if (typeof group?.[key] === 'boolean') return group[key]
+  }
+  return undefined
+}
+
 const normalizeJoinApprovalModeForBaileys = (value: any): 'on' | 'off' | undefined => {
   const mode = `${value || ''}`.trim().toLowerCase()
   if (!mode) return undefined
@@ -361,11 +377,17 @@ export class GroupsController {
   private incoming: Incoming
   private outgoing: Outgoing
   private contact: Contact
+  private getConfig: getConfig
 
-  constructor(incoming: Incoming, outgoing: Outgoing, contact: Contact) {
+  constructor(incoming: Incoming, outgoing: Outgoing, contact: Contact, getConfig: getConfig = getConfigDefault) {
     this.incoming = incoming
     this.outgoing = outgoing
     this.contact = contact
+    this.getConfig = getConfig
+  }
+
+  private async isBaileys(phone: string): Promise<boolean> {
+    return resolveWhatsAppEngine((await this.getConfig(phone)).provider) === 'baileys'
   }
 
   private ensureMetaEnabled(res: Response): boolean {
@@ -441,6 +463,9 @@ export class GroupsController {
   private async formatGroup(phone: string, groupJid: string, group: any, includeParticipants = false) {
     const participantsRaw: any[] = Array.isArray(group?.participants) ? group.participants : []
     const picture = await this.groupPicture(phone, groupJid, group)
+    const joinApprovalMode = groupJoinApprovalMode(group)
+    const announcement = groupBooleanSetting(group, 'announcement', 'announce')
+    const locked = groupBooleanSetting(group, 'locked', 'restrict')
     const formatted: any = {
       id: groupJid,
       jid: groupJid,
@@ -449,7 +474,9 @@ export class GroupsController {
       ...(picture ? { picture } : {}),
       participants_count: participantsRaw.length,
       total_participant_count: participantsRaw.length,
-      ...(groupJoinApprovalMode(group) ? { join_approval_mode: groupJoinApprovalMode(group) } : {}),
+      ...(joinApprovalMode ? { join_approval_mode: joinApprovalMode } : {}),
+      ...(typeof announcement === 'boolean' ? { announcement } : {}),
+      ...(typeof locked === 'boolean' ? { locked } : {}),
       suspended: !!group?.suspended,
       ...(groupCreatedAt(group) ? { creation_timestamp: groupCreatedAt(group) } : {}),
     }
@@ -509,7 +536,8 @@ export class GroupsController {
       const subject = `${req.body?.subject || ''}`.trim()
       const description = `${req.body?.description || ''}`.trim()
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
-      const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs, true)
+      const isBaileys = await this.isBaileys(phone)
+      const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs, isBaileys)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!subject) return res.status(400).json({ error: 'missing subject' })
@@ -521,7 +549,7 @@ export class GroupsController {
         logger.info('GROUP_CREATE phone=%s subject="%s" participants=%s', phone, subject, JSON.stringify(participants))
         group = await createGroup(phone, subject, participants)
       } catch (error) {
-        if (!isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
+        if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
         logger.warn(error as any, 'GROUP_CREATE primary failed; retrying with alternative participants phone=%s participants=%s', phone, JSON.stringify(participants))
         group = await createGroup(phone, subject, participants)
@@ -708,13 +736,13 @@ export class GroupsController {
     }
   }
 
-  // DELETE /:version/:phone/groups/:groupId/participants
-  private async updateParticipants(req: Request, res: Response, action: 'add' | 'remove') {
+  private async updateParticipants(req: Request, res: Response, action: 'add' | 'remove' | 'promote' | 'demote') {
     try {
       if (!this.ensureMetaEnabled(res)) return
       const phone = `${req.params.phone || ''}`.trim()
       const groupJid = normalizeGroupJid(req.params.groupId)
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
+      const isBaileys = await this.isBaileys(phone)
       const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
@@ -726,12 +754,12 @@ export class GroupsController {
         logger.info('GROUP_PARTICIPANTS_UPDATE phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
         result = await updateGroupParticipants(phone, groupJid, participants, action)
       } catch (error) {
-        if (!isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
+        if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
         logger.warn(error as any, 'GROUP_PARTICIPANTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
         result = await updateGroupParticipants(phone, groupJid, participants, action)
       }
-      const failed = (result || []).filter((item: any) => `${item?.status || '200'}` !== '200').map((item: any) => normalizeParticipantJidForResponse(item?.jid))
+      const failed = (result || []).filter((item: any) => !isSuccessfulParticipantAction(item)).map((item: any) => normalizeParticipantJidForResponse(item?.jid))
       const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
       const participantRefs = (await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant))))
         .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
@@ -741,7 +769,13 @@ export class GroupsController {
         participants: participantRefs,
         timestamp: nowTimestamp(),
       })
-      return res.json({ group_id: groupJid, [action === 'add' ? 'added' : 'removed']: processed, failed })
+      const responseKeys = {
+        add: 'added',
+        remove: 'removed',
+        promote: 'promoted',
+        demote: 'demoted',
+      } as const
+      return res.json({ group_id: groupJid, [responseKeys[action]]: processed, failed })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
     }
@@ -754,6 +788,15 @@ export class GroupsController {
 
   async removeParticipants(req: Request, res: Response) {
     return this.updateParticipants(req, res, 'remove')
+  }
+
+  // PATCH /:version/:phone/groups/:groupId/participants
+  async updateParticipantRoles(req: Request, res: Response) {
+    const action = `${req.body?.action || ''}`.trim().toLowerCase()
+    if (action !== 'promote' && action !== 'demote') {
+      return res.status(400).json({ error: 'action must be promote or demote' })
+    }
+    return this.updateParticipants(req, res, action)
   }
 
   // GET /:version/:phone/groups/:groupId/invite_link
@@ -823,6 +866,7 @@ export class GroupsController {
       const phone = `${req.params.phone || ''}`.trim()
       const groupJid = normalizeGroupJid(req.params.groupId)
       const participantInputs = Array.isArray(req.body?.participants) ? req.body.participants : []
+      const isBaileys = await this.isBaileys(phone)
       const participantCandidates = await normalizeParticipantsCandidatesForBaileys(this.contact, phone, participantInputs)
       let participants = selectParticipantCandidates(participantCandidates, 0)
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
@@ -834,12 +878,12 @@ export class GroupsController {
         logger.info('GROUP_JOIN_REQUESTS_UPDATE phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
         result = await updateJoinRequests(phone, groupJid, participants, action)
       } catch (error) {
-        if (!isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
+        if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
         logger.warn(error as any, 'GROUP_JOIN_REQUESTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
         result = await updateJoinRequests(phone, groupJid, participants, action)
       }
-      const failed = (result || []).filter((item: any) => `${item?.status || '200'}` !== '200').map((item: any) => normalizeParticipantJidForResponse(item?.jid))
+      const failed = (result || []).filter((item: any) => !isSuccessfulParticipantAction(item)).map((item: any) => normalizeParticipantJidForResponse(item?.jid))
       const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
       const participantRefs = (await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant))))
         .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))

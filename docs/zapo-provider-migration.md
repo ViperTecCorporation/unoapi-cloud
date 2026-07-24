@@ -1,15 +1,15 @@
-# Migracao incremental Baileys -> Zapo
+# Transicao incremental Baileys -> Zapo
 
 ## Objetivo
 
-Adicionar a Zapo como segundo motor do ViperConnect sem alterar o contrato HTTP da UnoAPI. A escolha e feita por sessao, com Baileys como padrao. Ao selecionar Zapo, credenciais existentes da Baileys devem ser migradas automaticamente, sem apagar a origem. Quando a matriz Zapo atingir 100% dos recursos usados pelo produto, a Baileys podera ser removida.
+Adicionar a Zapo como segundo motor do ViperConnect sem alterar o contrato HTTP da UnoAPI. A escolha e feita por sessao. Ao selecionar Zapo sem credenciais nativas, a sessao exige novo pareamento por QR; o motor Zapo nunca importa nem consulta o auth Baileys. Quando a matriz Zapo atingir 100% dos recursos usados pelo produto, a Baileys podera ser removida.
 
 ## Fontes de verdade
 
 1. Contratos e casos de teste existentes em `__tests__`.
 2. Documentacao oficial: <https://zapo.to/pt-br>.
 3. Repositorio oficial: <https://github.com/vinikjkkj/zapo>.
-4. Guia oficial de migracao: <https://zapo.to/pt-br/guides/migrating-from-baileys>.
+4. Guia oficial de autenticacao: <https://zapo.to/en/concepts/authentication>.
 
 Nao usar forks homonimos nem inferir uma chamada apenas pelo nome. Registrar no teste a assinatura efetivamente usada.
 
@@ -47,9 +47,6 @@ src/services/providers/
 src/services/zapo/
   zapo_store.ts           Redis/SQLite e lifecycle
   zapo_store_registry.ts  backend unico por processo
-  zapo_migration.ts       coordenacao idempotente
-  baileys_snapshot.ts     somente leitura da origem
-  zapo_snapshot.ts        gravacao no destino
   zapo_messages.ts        envio e operacoes de mensagem
   zapo_groups.ts          grupos e participantes
   zapo_events.ts          eventos para modelo canonico
@@ -76,26 +73,33 @@ A refatoracao deve ser incremental:
 
 Nao fazer uma reescrita completa do transformer junto com a integracao.
 
-## Migracao automatica de sessao
+## Pareamento Zapo obrigatorio
 
 Fluxo obrigatorio ao iniciar uma sessao Zapo:
 
-1. Adquirir a lease Redis `unoapi-lease:zapo-session:<telefone>`. Ela cobre migracao e socket; somente o dono pode continuar. Em SQLite, manter um unico processo Zapo.
-2. Verificar se o destino Zapo ja possui credenciais validas; se sim, nao migrar.
-3. Ler snapshot Baileys de Redis ou arquivos sem modifica-lo.
-4. Se nao houver credencial Baileys, seguir para pareamento novo da Zapo.
-5. Converter com `wa-store-migrate`, seguindo o guia oficial.
-6. Gravar os dominios Zapo e validar leitura das credenciais.
-7. Registrar resultado, perdas declaradas e versoes das bibliotecas.
-8. Manter a lease renovada durante a conexao e libera-la ao desconectar. Falha de renovacao derruba o socket de forma conservadora.
+1. Adquirir a lease Redis `unoapi-lease:zapo-session:<telefone>`; somente o dono pode abrir o socket.
+2. Verificar se o store Zapo possui credenciais registradas. Se possuir, reconectar com o auth nativo.
+3. Sem credenciais Zapo registradas, criar um pareamento novo e emitir QR.
+4. Solicitar full history no payload desse novo pareamento para hidratar contatos, PN/LID, privacy tokens e `nctSalt` enviados pelo aparelho.
+5. Nunca ler `unoapi-auth:*` nem arquivos de auth Baileys a partir do motor Zapo.
+6. Preservar o auth Baileys apenas como rollback independente durante a fase beta.
+7. Manter a lease renovada durante a conexao e libera-la ao desconectar. Falha de renovacao derruba o socket de forma conservadora.
 
 Os containers Baileys e Zapo podem coexistir. Para escalar replicas Zapo, preserve o roteamento por `server`/motor; a lease impede socket duplicado, mas nao substitui afinidade das filas por sessao.
 
-Falha de migracao nao autoriza fallback silencioso. A sessao permanece Zapo, informa erro claro e preserva integralmente a origem Baileys.
+Nao existe fallback silencioso de auth. Uma sessao configurada como Zapo permanece Zapo e solicita pareamento quando seu store nativo estiver vazio.
 
 ## Politica de testes
 
 Cada funcao nova tem pelo menos um teste dedicado. Funcoes com decisao, erro ou idempotencia exigem um caso por ramo relevante.
+
+## Proxy Zapo
+
+Quando `PROXY_URL` estiver configurada com uma URL SOCKS, o adapter cria um
+unico transporte e o entrega explicitamente aos quatro canais oficiais da Zapo:
+`proxy.ws`, `proxy.mediaUpload`, `proxy.mediaDownload` e `proxy.linkPreview`.
+Assim, WebSocket, upload/download no CDN e busca de preview seguem a mesma
+saida de rede. Sem URL configurada, a propriedade `proxy` e omitida.
 
 Para cada endpoint dependente do WhatsApp:
 
@@ -141,6 +145,55 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Status | publicar e receber `status@broadcast` | `client.status` e evento message | testado |
 | Recuperacao | reenviar preservando ID publico | `message.send({ id })` e retry interno | testado |
 | Newsletter/broadcast list | rotas e eventos atuais | coordinators dedicados | nao iniciado |
+
+### Falhas de envio
+
+Todas as ações que passam pelo envio comum de mensagens — texto, mídias,
+contatos, interativos, enquete, voto, edição, reação, template, raw e atualização
+de status — entregam à aplicação o mesmo webhook Cloud API com `status: failed`,
+independentemente de a sessão usar Baileys ou Zapo.
+
+Na Zapo, erros conhecidos da UnoAPI (`SendError`) geram o webhook
+imediatamente. Exceções nativas ou potencialmente transitórias continuam usando
+as tentativas configuradas da fila e geram o webhook na última tentativa. O
+payload preserva o ID UnoAPI e inclui `code`, `title`, `message` e
+`error_data.provider=zapo`; não inclui stack trace.
+
+Operações administrativas executadas por HTTP/RPC, como alterações de grupo,
+continuam retornando o erro na própria resposta HTTP. Elas não são transformadas
+em webhook de falha de mensagem.
+
+### Interativos Zapo
+
+O adapter segue a referência oficial de tipos da Zapo:
+
+- botões usam `interactiveMessage.nativeFlowMessage`;
+- listas usam o `listMessage` raw com `ListType.SINGLE_SELECT`;
+- listas não são convertidas para o botão native-flow `single_select`, pois esse
+  formato pode ser renderizado pelo cliente como “atualize o WhatsApp”;
+- cabeçalho de mídia em lista retorna capability explícita, porque o
+  `listMessage` documentado não possui esse campo.
+
+Referência:
+`https://zapo.to/en/reference/message-types#interactive-business`.
+
+As ações de administrador de grupo são expostas por
+`PATCH /v15.0/{phone}/groups/{groupId}/participants`, com `action` igual a
+`promote` ou `demote`. O controller preserva o contrato LID-first e aceita o
+envelope com `wa_id` e `user_id`.
+
+O estado público do grupo é consultado em
+`GET /v15.0/{phone}/groups/{groupId}`. Para os dois motores, o controller
+converte `announce` em `announcement` e `restrict` em `locked`, preservando
+valores `false` e omitindo somente metadata indisponível.
+
+Na criacao de grupos, o contrato publico continua aceitando LID, PN ou o envelope
+com ambos. A versao atual da Zapo anuncia `group_create_add_using_lid_jids=false`;
+por isso, somente antes de `client.group.createGroup` e `client.group.addParticipants`
+a Uno resolve cada identidade para o PN canonico persistido no store Zapo. Esse PN nao
+recebe normalizacao brasileira de apresentacao. Ausencia do mapeamento LID -> PN retorna
+`zapo_lid_phone_not_found` em vez de fabricar ou alterar o numero. As demais operacoes
+de grupos permanecem LID-first.
 
 `sem capability` e uma limitacao explicita, sem fallback silencioso para Baileys. O
 passkey manual usa o callback oficial `signPasskeyAssertion` e o bridge HTTP/Redis da
@@ -216,6 +269,16 @@ do webhook, o listener converte o ID original Zapo novamente para o ID UnoAPI.
 
 O contrato operacional, as configurações por sessão e os exemplos da rota de replay/sync estão em [MESSAGE_HISTORY.md](MESSAGE_HISTORY.md).
 
+## Enderecamento 1:1 Zapo
+
+- O campo publico de enderecamento e `to`; ele aceita PN/`wa_id`, LID ou username.
+- Um LID ou username informado diretamente em `to` tem prioridade. Quando `to` contiver somente o PN de apresentacao, `user_id` ou `to_user_id` podem fornecer o LID canonico do destinatario.
+- Quando o LID estiver presente, a UnoAPI envia por ele e consulta `contacts.getByJid` para recuperar o PN exato armazenado pela Zapo.
+- O PN do store entra no envelope do provider sem inserir nem remover o nono digito. A normalizacao brasileira fica restrita ao webhook publico da aplicacao.
+- Sem LID, um `username` conhecido e resolvido pelo indice Zapo para seu LID. Alias ainda nao sincronizado retorna erro explicito.
+- Quando a aplicacao nao conhecer LID nem username, a UnoAPI usa o PN recebido para consultar o store/API da Zapo e recuperar o LID; depois da resolucao, o envio usa o LID.
+- Nunca escolher um contato Zapo por heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs distintos.
+
 ## Username
 
 A identidade canonica Zapo e o LID. `senderUsername`, participantes de grupo e eventos
@@ -232,7 +295,7 @@ O resultado classe a classe e mantido em `docs/zapo-class-audit.md`.
 
 A Baileys somente pode ser removida quando:
 
-- todas as sessoes ativas tiverem migrado ou pareado na Zapo;
+- todas as sessoes ativas tiverem sido pareadas diretamente na Zapo;
 - todos os dominios usados estiverem `concluido` ou houver decisao de produto documentada para remover o recurso;
 - testes de contrato Zapo cobrirem todos os endpoints dependentes do WhatsApp;
 - nao houver fallback Baileys em producao por um ciclo de observacao definido;

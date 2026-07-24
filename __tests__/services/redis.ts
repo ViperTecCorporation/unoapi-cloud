@@ -117,6 +117,13 @@ describe('redis webhook circuit breaker', () => {
     expect(await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)).toBe(false)
   })
 
+  it('isolates an open circuit by session even when the webhook id is equal', async () => {
+    await openWebhookCircuit('5511000000001', 'default', 120000, 30000)
+
+    expect(await isWebhookCircuitOpen('5511000000001', 'default')).toBe(true)
+    expect(await isWebhookCircuitOpen('5511000000002', 'default')).toBe(false)
+  })
+
   it('clears open, failure, recovery and probe state after success', async () => {
     await openWebhookCircuit('5511', 'chatwoot', 120000, 30000)
     await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)

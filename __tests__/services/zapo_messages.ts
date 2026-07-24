@@ -20,30 +20,60 @@ describe('Zapo messages adapter', () => {
     await expect(messages.send({ to: '556699999999', type: 'text', text: { body: 'Oi' } })).resolves.toEqual({
       ok: {
         messaging_product: 'whatsapp',
-        contacts: [{ input: '556699999999', wa_id: '5566999999999' }],
+        contacts: [{ input: '556699999999', wa_id: '556699999999' }],
         messages: [{ id: expect.any(String) }],
       },
     })
     expect(client.message.send).toHaveBeenCalledWith(
-      '5566999999999@s.whatsapp.net',
+      '556699999999@s.whatsapp.net',
       { type: 'text', text: 'Oi' },
       {},
     )
     expect(dataStore.setKey).toHaveBeenCalledWith('provider-id', {
-      remoteJid: '5566999999999@s.whatsapp.net', id: 'provider-id', fromMe: true,
+      remoteJid: '556699999999@s.whatsapp.net', id: 'provider-id', fromMe: true,
     })
     expect(dataStore.setUnoId).toHaveBeenCalledWith('provider-id', expect.any(String))
     expect(dataStore.setKey).toHaveBeenCalledTimes(2)
   })
 
-  test('normalizes Brazilian mobile numbers before entering the Zapo core', async () => {
+  test('preserves the supplied phone while Zapo resolves its LID', async () => {
     const client = mockDeep<WaClient>()
     client.message.send.mockResolvedValue(publishResult)
     const messages = new ZapoMessages(client, mockDeep<DataStore>())
 
     await messages.send({ to: '554988290955', type: 'text', text: { body: 'Oi' } })
 
-    expect(client.message.send).toHaveBeenCalledWith('5549988290955@s.whatsapp.net', expect.anything(), {})
+    expect(client.message.send).toHaveBeenCalledWith('554988290955@s.whatsapp.net', expect.anything(), {})
+  })
+
+  test('routes by explicit LID and reports the exact PN stored by Zapo', async () => {
+    const client = mockDeep<WaClient>()
+    const store = mockDeep<WaStoreSession>()
+    client.message.send.mockResolvedValue(publishResult)
+    store.contacts.getByJid.mockResolvedValue({
+      jid: '273877414502425@lid',
+      lid: '273877414502425@lid',
+      phoneNumber: '556696890270@s.whatsapp.net',
+    } as never)
+    const messages = new ZapoMessages(client, mockDeep<DataStore>(), { store })
+
+    const response = await messages.send({
+      to: '5566996890270',
+      user_id: '273877414502425@lid',
+      type: 'text',
+      text: { body: 'Oi' },
+    })
+
+    expect(client.message.send).toHaveBeenCalledWith(
+      '273877414502425@lid',
+      { type: 'text', text: 'Oi' },
+      {},
+    )
+    expect(response.ok?.contacts).toEqual([{
+      input: '5566996890270',
+      wa_id: '556696890270',
+      user_id: '273877414502425@lid',
+    }])
   })
 
   test('downloads a remote sticker before passing it to the Zapo media API', async () => {
@@ -142,6 +172,27 @@ describe('Zapo messages adapter', () => {
       '123456@lid',
       { type: 'text', text: '@5511999999999 oi' },
       { mentions: ['123456@lid'] },
+    )
+  })
+
+  test('does not reinterpret an explicit LID mention found in the text as a phone number', async () => {
+    const client = mockDeep<WaClient>()
+    const store = mockDeep<WaStoreSession>()
+    client.message.send.mockResolvedValue(publishResult)
+    const messages = new ZapoMessages(client, mockDeep<DataStore>(), { store })
+
+    await messages.send({
+      to: '120363403929702389@g.us',
+      type: 'text',
+      text: { body: 'opa @3418911461468 vamo ver la' },
+      mentions: ['3418911461468@lid'],
+    })
+
+    expect(client.profile.getLidsByPhoneNumbers).not.toHaveBeenCalled()
+    expect(client.message.send).toHaveBeenCalledWith(
+      '120363403929702389@g.us',
+      { type: 'text', text: 'opa @3418911461468 vamo ver la' },
+      { mentions: ['3418911461468@lid'] },
     )
   })
 
@@ -424,7 +475,7 @@ describe('Zapo messages adapter', () => {
     expect(client.message.send).not.toHaveBeenCalled()
   })
 
-  test('builds interactive lists as a native-flow proto message for Zapo', async () => {
+  test('builds interactive lists as the documented raw listMessage for Zapo', async () => {
     const client = mockDeep<WaClient>()
     client.message.send.mockResolvedValue(publishResult)
     const messages = new ZapoMessages(client, mockDeep<DataStore>())
@@ -444,13 +495,23 @@ describe('Zapo messages adapter', () => {
 
     expect(client.message.send).toHaveBeenCalledWith(
       '5511999999999@s.whatsapp.net',
-      expect.objectContaining({
-        interactiveMessage: expect.objectContaining({
-          nativeFlowMessage: expect.objectContaining({
-            buttons: [expect.objectContaining({ name: 'single_select' })],
-          }),
-        }),
-      }),
+      {
+        listMessage: {
+          title: '',
+          description: 'Escolha',
+          buttonText: 'Abrir',
+          footerText: '',
+          listType: 1,
+          sections: [{
+            title: 'Opcoes',
+            rows: [{
+              rowId: 'one',
+              title: 'Um',
+              description: '',
+            }],
+          }],
+        },
+      },
       {},
     )
   })

@@ -22,7 +22,7 @@ import {
   jidToMentionDigits,
   normalizeMentionText,
 } from '../../src/services/transformer'
-import { BASE_URL, WEBHOOK_FORWARD_VERSION } from '../../src/defaults'
+import { BASE_URL } from '../../src/defaults'
 const key = { remoteJid: 'XXXX@s.whatsapp.net', id: 'abc' }
 
 const documentMessage: proto.Message.IDocumentMessage = {

@@ -7,6 +7,7 @@ import type { Listener } from '../../src/services/listener'
 import { LogoutBaileys } from '../../src/services/logout_baileys'
 import type { SessionStore } from '../../src/services/session_store'
 import * as redis from '../../src/services/redis'
+import type { WaStoreSession } from 'zapo-js'
 
 jest.mock('../../src/services/redis', () => ({
   delConfig: jest.fn(),
@@ -24,6 +25,8 @@ describe('provider logout isolation', () => {
     const client = mockDeep<Client>()
     const dataStore = mockDeep<DataStore>()
     const sessionStore = mockDeep<SessionStore>()
+    const zapoSession = mockDeep<WaStoreSession>()
+    const zapoStores = { get: jest.fn().mockReturnValue({ session: jest.fn().mockReturnValue(zapoSession) }) }
     sessionStore.isStatusOnline.mockResolvedValue(true)
     clients.set('5566', client)
     const logout = new LogoutBaileys(
@@ -36,14 +39,43 @@ describe('provider logout isolation', () => {
       }),
       mockDeep<Listener>(),
       jest.fn(),
+      zapoStores as never,
     )
 
     await logout.run('5566')
 
     expect(client.logout).toHaveBeenCalledTimes(1)
     expect(dataStore.cleanSession).not.toHaveBeenCalled()
+    expect(zapoSession.auth.clear).toHaveBeenCalledTimes(1)
+    expect(zapoSession.contacts.clear).toHaveBeenCalledTimes(1)
     expect(redis.delConfig).toHaveBeenCalledWith('5566')
     expect(redis.delSessionTransientKeys).toHaveBeenCalledWith('5566')
+  })
+
+  test('Zapo deregistration clears stored auth even when no client is active', async () => {
+    const dataStore = mockDeep<DataStore>()
+    const sessionStore = mockDeep<SessionStore>()
+    const zapoSession = mockDeep<WaStoreSession>()
+    const zapoStores = { get: jest.fn().mockReturnValue({ session: jest.fn().mockReturnValue(zapoSession) }) }
+    const getClient = jest.fn()
+    const logout = new LogoutBaileys(
+      getClient,
+      async () => ({
+        ...defaultConfig,
+        provider: 'zapo',
+        useRedis: true,
+        getStore: async () => ({ dataStore, sessionStore }),
+      }),
+      mockDeep<Listener>(),
+      jest.fn(),
+      zapoStores as never,
+    )
+
+    await logout.run('5566')
+
+    expect(getClient).not.toHaveBeenCalled()
+    expect(zapoSession.auth.clear).toHaveBeenCalledTimes(1)
+    expect(redis.delConfig).toHaveBeenCalledWith('5566')
   })
 
   test('Baileys logout still removes its own auth and config', async () => {

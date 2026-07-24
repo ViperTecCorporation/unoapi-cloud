@@ -8,7 +8,6 @@ import { webhookHasTarget } from './webhook_config'
 export const configs: Map<string, Config> = new Map()
 
 export type connectionType = 'qrcode' | 'pairing_code' | 'forward'
-export type OneToOneAddressingMode = 'pn' | 'lid'
 
 export interface GetMessageMetadata {
   <T>(message: T): Promise<T>
@@ -123,7 +122,6 @@ export type Config = {
   rateLimitBlockSeconds?: number
   // Guardar reenvio indevido em caso de retry do job
   outgoingIdempotency: boolean
-  oneToOneAddressingMode?: OneToOneAddressingMode
 }
 
 export const defaultConfig: Config = {
@@ -180,7 +178,13 @@ export const defaultConfig: Config = {
       typebot: false,
     },
   ],
-  webhookForward: {},
+  // Forwarder/Meta credentials are session-scoped. Only transport defaults are
+  // internal so container environment variables cannot leak across sessions.
+  webhookForward: {
+    url: 'https://graph.facebook.com',
+    version: 'v17.0',
+    timeoutMs: 6_000,
+  },
   getMessageMetadata: getMessageMetadataDefault,
   ignoreDataStore: false,
   sendReactionAsReply: false,
@@ -212,7 +216,6 @@ export const defaultConfig: Config = {
   rateLimitPerToPerMinute: 0,
   rateLimitBlockSeconds: 60,
   outgoingIdempotency: true,
-  oneToOneAddressingMode: undefined
 }
 
 export interface getConfig {

@@ -1,4 +1,4 @@
-import { RELOAD_BAILEYS_DEBOUNCE_MS, UNOAPI_SERVER_NAME } from '../defaults'
+import { UNOAPI_SERVER_NAME } from '../defaults'
 import { clients, getClient } from '../services/client'
 import { getConfig } from '../services/config'
 import { Listener } from '../services/listener'
@@ -7,6 +7,7 @@ import logger from './logger'
 import { Reload } from './reload'
 import { resolveWhatsAppEngine } from './providers/provider_resolver'
 import { WhatsAppEngine } from './providers/provider_types'
+import { BAILEYS_CONNECTION_POLICY } from './baileys_connection_policy'
 
 export class ReloadBaileys extends Reload {
   private static readonly inFlightByPhone: Set<string> = new Set()
@@ -29,7 +30,7 @@ export class ReloadBaileys extends Reload {
   async run(phone: string) {
     const now = Date.now()
     const lastRunAt = ReloadBaileys.lastRunAtByPhone.get(phone) || 0
-    const debounceRemaining = Math.max(0, RELOAD_BAILEYS_DEBOUNCE_MS - (now - lastRunAt))
+    const debounceRemaining = Math.max(0, BAILEYS_CONNECTION_POLICY.reloadDebounceMs - (now - lastRunAt))
     if (ReloadBaileys.inFlightByPhone.has(phone) || debounceRemaining > 0) {
       logger.warn('Skip duplicated reload for %s (inFlight=%s debounceRemainingMs=%s)', phone, ReloadBaileys.inFlightByPhone.has(phone), debounceRemaining)
       return

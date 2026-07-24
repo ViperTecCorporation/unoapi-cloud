@@ -1,7 +1,19 @@
 import { isWebhookEnabled } from '../../src/services/config'
-import { normalizeWebhookConfig, resolveWebhookUrl } from '../../src/services/webhook_config'
+import { isChatwootWebhook, normalizeWebhookConfig, resolveWebhookUrl } from '../../src/services/webhook_config'
 
 describe('webhook config', () => {
+  test('identifies Chatwoot webhook targets', () => {
+    expect(isChatwootWebhook({
+      urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566',
+    })).toBe(true)
+    expect(isChatwootWebhook({
+      urlAbsolute: 'https://app.example.com/webhooks/whatsapp/5566',
+    })).toBe(true)
+    expect(isChatwootWebhook({
+      urlAbsolute: 'https://app.example.com/events',
+    })).toBe(false)
+  })
+
   test('does not enable a webhook without a delivery target', () => {
     expect(isWebhookEnabled({ enabled: true, url: '', urlAbsolute: '' })).toBe(false)
   })

@@ -83,8 +83,8 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
   `privacy_token_debug` e `privacy_token_quota`.
 - Assert de sessoes Signal, device-list, retry de erro 463, decriptacao local de voto,
   hacks PN/LID e recuperacao forcada de sessao ficam confinados aqui.
-- `baileys_snapshot` e somente leitor da origem durante a migracao; nunca altera ou
-  apaga credenciais Baileys.
+- O motor Zapo nao le auth, snapshots ou caches Baileys. Credenciais antigas ficam
+  isoladas apenas para rollback durante a fase beta.
 
 ## Implementacao isolada Zapo
 
@@ -93,7 +93,7 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
 - `listener_zapo`: deduplicacao, ID externo Uno, transformacao Cloud API, media e
   progressao de receipts sem executar hacks Baileys.
 - `zapo_store` e `zapo_store_registry`: stores oficiais Redis/SQLite, prefixo isolado e TTL por dominio; auth principal e persistente e material criptografico inativo expira em 90 dias.
-- `zapo_migration`, `zapo_snapshot`: migracao idempotente e validacao do destino.
+- Sessoes sem auth Zapo registrado exigem novo QR e solicitam full history no pareamento.
 - `zapo_identity`: normalizacao BR na borda, PN para LID via contact store/profile e
   LID como identidade canonica.
 - `zapo_username_index`: aliases aprendidos de envelopes, grupos e eventos MEX;
@@ -127,16 +127,20 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
 
 ## Defaults
 
-- Comuns: HTTP/webhook, filas, storage, rate limit, media persistida e cache temporal.
+- Comuns: HTTP/webhook, filas, storage, rate limit, media persistida, cache temporal
+  e JIDMAP de compatibilidade PN/LID.
 - Zapo: selecao de motor, TTLs dos stores oficiais, passkey bridge e destinatarios de
   Status.
-- Baileys-only: WAM, Signal/assert, watchdog, JIDMAP, addressing e retry. Permanecem
-  enquanto o worker Baileys existir e nao sao lidos pelo adapter Zapo.
+- Baileys-only: WAM, Signal/assert, watchdog, addressing e retry. Permanecem enquanto
+  o worker Baileys existir; a política de assert/Signal fica isolada em
+  `src/services/baileys_assert_policy.ts` e não é lida pelo adapter Zapo.
 - Removidos por nao terem consumidor: `UNOAPI_URL`, `REDIS_KEYS_USE_SCAN`,
   `UNOAPI_QUEUE_DELAYED`, `UNOAPI_QUEUE_BLACKLIST_RELOAD`, `UNOAPI_QUEUE_CONTACT`,
   `GROUP_SEND_RETRY_ON_421` e o alias duplicado `CONVERT_AUDIO_TO_PTT`.
-- Corrigida a leitura invertida de `VALIDATE_MEDIA_LINK_BEFORE_SEND`,
-  `PERIODIC_ASSERT_INCLUDE_GROUPS` e `ONE_TO_ONE_ASSERT_PROBE_ENABLED`.
+- A validacao previa e o retry de mídia da Baileys agora são políticas internas
+  em `src/services/baileys_media_policy.ts`. As políticas
+  `PERIODIC_ASSERT_INCLUDE_GROUPS` e `ONE_TO_ONE_ASSERT_PROBE_ENABLED` foram
+  internalizadas no módulo de assert da Baileys e não são lidas pela Zapo.
 
 ## Eventos oficiais cobertos
 
@@ -172,7 +176,10 @@ e renova o mapping PN/LID, e `message_capping` gera alerta operacional com uso e
   ambos os motores.
 - `PROFILE_PICTURE_WEBHOOK_INTERVAL_SEC` define quando a mesma foto volta ao payload
   (padrao 3h). O marcador e um ZSET por sessao no Redis, sobrevive a restart e so e
-  gravado depois que uma foto foi realmente anexada; falha sem foto continua elegivel.
+  gravado depois que uma foto foi realmente anexada.
+- `PROFILE_PICTURE_NOT_FOUND_TTL_SEC` (padrao 3h) evita repetir consultas sem foto,
+  privacy ou 404. O cache negativo usa outro ZSET por sessao, sobrevive a restart e
+  nao cria uma chave por contato.
   Evento `picture` remove o marcador e libera inclusao na proxima mensagem.
 
 Eventos de newsletter, bot streaming e broadcast-list permanecem fora da liberacao Zapo

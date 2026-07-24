@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { proto } from 'zapo-js'
 import type { WaClient, WaSendMessageContent, WaSendMessageOptions } from 'zapo-js'
 import fetch from 'node-fetch'
 import { getMimetype, toBaileysMessageContent } from '../transformer'
@@ -25,8 +26,12 @@ const getMentions = (payload: any) => {
     ? payload.mentions
     : (Array.isArray(payload?.text?.mentions) ? payload.text.mentions : [])
   const body = `${payload?.text?.body || ''}`
-  const fromBody = Array.from(body.matchAll(/@(\d{8,20})\b/g)).map((match) => match[1])
-  return Array.from(new Set([...explicit, ...fromBody].map(normalizeMention).filter(Boolean))) as string[]
+  const normalizedExplicit = explicit.map(normalizeMention).filter(Boolean) as string[]
+  const explicitUsers = new Set(normalizedExplicit.map((jid) => jid.split('@')[0]))
+  const fromBody = Array.from(body.matchAll(/@(\d{8,20})\b/g))
+    .map((match) => match[1])
+    .filter((user) => !explicitUsers.has(user))
+  return Array.from(new Set([...normalizedExplicit, ...fromBody.map(normalizeMention).filter(Boolean)])) as string[]
 }
 
 const pollContent = (payload: any): WaSendMessageContent => {
@@ -114,24 +119,25 @@ const interactiveContent = async (client: WaClient, payload: any): Promise<WaSen
   const header = await interactiveHeader(client, interactive.header)
 
   if (Array.isArray(action.sections) && action.sections.length) {
+    if (header.hasMediaAttachment) {
+      throw new SendError(400, 'zapo_list_media_header_not_supported')
+    }
     const sections = action.sections.map((section: any) => ({
       title: `${section?.title || ''}`,
       rows: (section?.rows || []).map((row: any) => ({
-        id: `${row?.id || row?.rowId || ''}`,
         rowId: `${row?.rowId || row?.id || ''}`,
         title: `${row?.title || ''}`,
         description: `${row?.description || ''}`,
       })),
     }))
     return {
-      interactiveMessage: {
-        header,
-        body,
-        footer,
-        nativeFlowMessage: {
-          buttons: [{ name: 'single_select', buttonParamsJson: JSON.stringify({ title: action.button || 'Selecione', sections }) }],
-          messageVersion: 1,
-        },
+      listMessage: {
+        title: header.title,
+        description: body?.text || '',
+        buttonText: `${action.button || 'Selecione'}`,
+        footerText: footer?.text || '',
+        listType: proto.Message.ListMessage.ListType.SINGLE_SELECT,
+        sections,
       },
     } as WaSendMessageContent
   }

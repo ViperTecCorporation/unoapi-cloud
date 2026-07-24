@@ -42,10 +42,7 @@ LABEL \
   org.opencontainers.image.vendor="https://uno.ltd" \
   org.opencontainers.image.licenses="GPLv3"
 
-ENV NODE_ENV=production \
-  BAILEYS_WAM_TELEMETRY=true \
-  BAILEYS_WAM_TELEMETRY_FLUSH_MS=5000 \
-  BAILEYS_WAM_TELEMETRY_MAX_EVENTS=50
+ENV NODE_ENV=production
  
 RUN groupadd -r u && useradd -r -g u u
 WORKDIR /home/u/app

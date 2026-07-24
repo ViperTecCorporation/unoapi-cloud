@@ -81,27 +81,26 @@ Use este criterio antes de criar ou alterar uma classe:
 
 ## Telemetria Baileys WAM
 
-A Uno habilita a telemetria WAM/w:stats da Baileys por padrao para aproximar o comportamento do WhatsApp Web:
-
-- `BAILEYS_WAM_TELEMETRY=true`
-- `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=false`
-- `BAILEYS_WAM_TELEMETRY_FLUSH_MS=5000`
-- `BAILEYS_WAM_TELEMETRY_MAX_EVENTS=50`
-
-Mantenha `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=false` em producao salvo durante investigacao pontual. Com `true`, cada evento individual gera `WAM_TELEMETRY_COMMIT` e o log fica volumoso. O acompanhamento normal deve usar os logs resumidos `WAM_TELEMETRY_ENABLED`, `WAM_TELEMETRY_FLUSH`, `WAM_TELEMETRY_SEND_OK` e `WAM_TELEMETRY_SEND_ERROR`.
+A Uno habilita internamente a telemetria WAM/w:stats da Baileys para aproximar
+o comportamento do WhatsApp Web. Essa configuracao fica isolada em
+`src/services/baileys_connection_policy.ts`, sem ENVs publicas. O debug por
+evento permanece desativado e o acompanhamento normal usa os logs resumidos
+`WAM_TELEMETRY_ENABLED`, `WAM_TELEMETRY_FLUSH`, `WAM_TELEMETRY_SEND_OK` e
+`WAM_TELEMETRY_SEND_ERROR`.
 
 Quando retomar melhorias nessa area, use [docs/wam-telemetry-follow-up-plan.md](docs/wam-telemetry-follow-up-plan.md) como ponto de partida.
 
-## Guard de envio sem TC token
+## Guard Baileys de envio sem TC token
 
-A Uno aplica uma politica por sessao para reduzir risco de shadow ban/erro `463`: envios 1:1 sem `tctoken` entram em uma janela movel no Redis. Por padrao:
+A política para reduzir risco de shadow ban/erro `463` é interna e exclusiva da
+Baileys. Ela fica isolada em `src/services/privacy_token_quota.ts`, sem ENVs
+públicas: monitoramento ativo, bloqueio desativado, limite de 40 ocorrências em
+uma janela móvel de 24 horas no Redis. A Zapo não usa esse guard.
 
-- `UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED=true`
-- `UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED=false`
-- `UNOAPI_MISSING_TC_TOKEN_LIMIT=40`
-- `UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS=24`
-
-Por padrao, a Uno apenas conta envios 1:1 sem `tctoken` e expoe o uso por sessao. Ela nao deve bloquear o envio enquanto `UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED=false`, porque alguns contatos podem nao ter token recuperavel. Se a env de bloqueio estiver `true` e o limite for atingido, antes de bloquear a Uno tenta recuperar `tctoken` no servidor via Baileys; se recuperar, envia normalmente. Se continuar sem `tctoken`, bloqueia antes de chamar o envio real, retorna status `failed` e emite webhook auxiliar para a aplicacao e para a propria sessao com o resumo da mensagem original. A Baileys deve continuar sendo a fonte de verdade para metadata final de token quando disponivel.
+A Uno apenas conta envios 1:1 Baileys sem `tctoken` e expõe o uso por sessão.
+Não habilite bloqueio sem uma revisão explícita da política, porque alguns
+contatos podem não ter token recuperável. A Baileys continua sendo a fonte de
+verdade para metadata final de token quando disponível.
 
 ## Diretorio de contatos Zapo
 

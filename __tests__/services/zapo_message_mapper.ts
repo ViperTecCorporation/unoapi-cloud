@@ -2,6 +2,7 @@ jest.mock('node-fetch', () => jest.fn())
 
 import { toZapoMessageContent } from '../../src/services/zapo/zapo_message_mapper'
 import { mockDeep } from 'jest-mock-extended'
+import { proto } from 'zapo-js'
 import type { WaClient } from 'zapo-js'
 import fetch from 'node-fetch'
 
@@ -74,6 +75,83 @@ describe('Zapo message mapper', () => {
         selectableCount: 1,
         allowAddOption: true,
         hideParticipantName: false,
+      },
+      options: {},
+    })
+  })
+
+  test('maps lists to the documented raw Zapo listMessage instead of native flow', async () => {
+    await expect(toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: { type: 'text', text: 'Cardápio' },
+        body: { text: 'Escolha uma opção' },
+        footer: { text: 'Atendimento' },
+        action: {
+          button: 'Ver opções',
+          sections: [{
+            title: 'Pizzas',
+            rows: [{
+              id: 'pizza-calabresa',
+              title: 'Calabresa',
+              description: 'Calabresa e cebola',
+            }],
+          }],
+        },
+      },
+    })).resolves.toEqual({
+      content: {
+        listMessage: {
+          title: 'Cardápio',
+          description: 'Escolha uma opção',
+          buttonText: 'Ver opções',
+          footerText: 'Atendimento',
+          listType: proto.Message.ListMessage.ListType.SINGLE_SELECT,
+          sections: [{
+            title: 'Pizzas',
+            rows: [{
+              rowId: 'pizza-calabresa',
+              title: 'Calabresa',
+              description: 'Calabresa e cebola',
+            }],
+          }],
+        },
+      },
+      options: {},
+    })
+  })
+
+  test('keeps buttons on the documented raw interactive native flow', async () => {
+    await expect(toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: 'Confirma?' },
+        action: {
+          buttons: [{
+            type: 'reply',
+            reply: { id: 'confirmar', title: 'Confirmar' },
+          }],
+        },
+      },
+    })).resolves.toEqual({
+      content: {
+        interactiveMessage: {
+          header: { title: '', hasMediaAttachment: false },
+          body: { text: 'Confirma?' },
+          footer: undefined,
+          nativeFlowMessage: {
+            buttons: [{
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({
+                display_text: 'Confirmar',
+                id: 'confirmar',
+              }),
+            }],
+            messageVersion: 1,
+          },
+        },
       },
       options: {},
     })

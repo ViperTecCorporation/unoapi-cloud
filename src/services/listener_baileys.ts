@@ -7,11 +7,18 @@ import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMed
 import * as Baileys from '@whiskeysockets/baileys'
 import { WAMessage, delay, jidNormalizedUser, isPnUser, isLidUser, proto } from '@whiskeysockets/baileys'
 import { Template } from './template'
-import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS, BASE_URL } from '../defaults'
+import { BASE_URL } from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { createDecipheriv, createHash, createHmac, hkdfSync } from 'crypto'
 import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 import { buildRestrictionNoticeWebhooks } from './restriction_notice'
+import { BAILEYS_LISTENER_POLICY } from './baileys_listener_policy'
+
+const {
+  delayAfterFirstMessageMs: UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS,
+  delayBetweenMessagesMs: UNOAPI_DELAY_BETWEEN_MESSAGES_MS,
+  inboundDedupWindowMs: INBOUND_DEDUP_WINDOW_MS,
+} = BAILEYS_LISTENER_POLICY
 
 const  delays: Map<String, number> = new Map()
 const GCM_TAG_LENGTH = 128 >> 3

@@ -42,13 +42,13 @@ import {
   BASE_URL,
   MESSAGE_CHECK_WAAPP,
   SEND_AUDIO_MESSAGE_AS_PTT,
-  UNOAPI_DEBUG_BAILEYS_LIST_DUMP,
-  UNOAPI_NATIVE_FLOW_BUTTONS,
-  WEBHOOK_FORWARD_VERSION,
   WEBHOOK_PREFER_PN_OVER_LID,
   WEBHOOK_INCLUDE_MEDIA_DATA,
 } from '../defaults'
 import { t } from '../i18n'
+
+const BAILEYS_NATIVE_FLOW_ENABLED = true
+const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
 
 export { BindTemplateError, DecryptError } from './transformer/errors'
 export {
@@ -545,7 +545,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const header = interactive.header || {}
       const body = interactive.body || {}
       const footer = interactive.footer || {}
-      const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
+      const useNativeFlow = BAILEYS_NATIVE_FLOW_ENABLED
       const mapButtonsToNativeFlow = (buttons: any[]) =>
         (buttons || [])
           .map((button: any) => {
@@ -794,16 +794,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           footer: footer.text || undefined,
           title: header.text || undefined,
           cards: nativeCards,
-        }
-        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
-          logger.debug(
-            'toBaileys carousel->interactive dump input=%s output=%s',
-            JSON.stringify({ interactive, action, header, body, footer }),
-            JSON.stringify({
-              nativeCarousel: response.nativeCarousel,
-              legacyInteractiveCards: cards,
-            }),
-          )
         }
         break
       }
@@ -1520,7 +1510,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const filename = (binMessage && (binMessage as any).fileName) || `${whatsappMessageId}.${extension}`
         const encodedFilename = encodeURIComponent(filename)
         const cleanBaseUrl = `${BASE_URL || ''}`.replace(/\/+$/, '')
-        const cleanVersion = `${WEBHOOK_FORWARD_VERSION || ''}`.replace(/^\/+|\/+$/g, '')
+        const cleanVersion = UNOAPI_MEDIA_ROUTE_VERSION
         const mediaUrlRaw: string | undefined = (binMessage && (binMessage as any).url) || undefined
         const mediaUrl = (() => {
           const u = `${mediaUrlRaw || ''}`

@@ -11,12 +11,11 @@ import { SessionStoreRedis } from './services/session_store_redis'
 import { 
   BASE_URL, 
   PORT,
-  CONFIG_SESSION_PHONE_CLIENT,
-  CONFIG_SESSION_PHONE_NAME,
   UNOAPI_QUEUE_BROADCAST,
   UNOAPI_EXCHANGE_BROKER_NAME,
   UNOAPI_QUEUE_RELOAD,
 } from './defaults'
+import { BAILEYS_CONNECTION_POLICY } from './services/baileys_connection_policy'
 import { getConfigRedis } from './services/config_redis'
 import { amqpConsume } from './amqp'
 import logger from './services/logger'
@@ -68,7 +67,13 @@ const startWeb = async () => {
     logger.info('Starting broadcast consumer')
     await amqpConsume(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_BROADCAST, '*', broadcastJob.consume.bind(broadcastJob), { type: 'topic' })
     await amqpConsume(UNOAPI_EXCHANGE_BROKER_NAME, UNOAPI_QUEUE_RELOAD, '*', reload.run.bind(reloadJob), { type: 'topic' })
-    logger.info('Unoapi Cloud version: %s, listening on port: %s | Linked Device: %s(%s)', version, PORT, CONFIG_SESSION_PHONE_CLIENT, CONFIG_SESSION_PHONE_NAME)
+    logger.info(
+      'Unoapi Cloud version: %s, listening on port: %s | Linked Device: %s(%s)',
+      version,
+      PORT,
+      BAILEYS_CONNECTION_POLICY.linkedDeviceClient,
+      BAILEYS_CONNECTION_POLICY.linkedDeviceName,
+    )
     startContactSyncScheduler(outgoing)
   })
 }

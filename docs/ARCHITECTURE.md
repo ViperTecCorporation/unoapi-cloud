@@ -76,11 +76,11 @@ This document explains how Unoapi integrates with Baileys to expose a WhatsApp-l
 - The socket now performs an automatic fallback:
   1. Fetches group participants (including PN/LID variants and self identity).
   2. Calls `assertSessions` for all (bulk → chunks → split LID vs PN when helpful), respecting throttles to avoid overload.
-  3. Applies an adaptive delay to allow sender-key propagation and retries the send once; if it still fails, toggles addressingMode (PN↔LID) for a final attempt.
+  3. Applies an adaptive delay and the bounded internal Baileys recovery policy while keeping LID addressing.
 - This reduces intermittent failures without changing the caller API.
 
 Large-group heuristics
-- When a group is “large” (see `GROUP_LARGE_THRESHOLD`), the client prefers PN addressing and skips heavy bulk asserts, relying on adaptive delay.
+- For large groups, the internal policy skips heavy bulk asserts and keeps LID addressing.
 - Receipt-based asserts (triggered by `message-receipt.update` with retry) are throttled per group and limited in target count to avoid loops and high CPU.
 
 ### Webhook Delivery & Retries
@@ -94,7 +94,7 @@ Large-group heuristics
   - After the limit, the message goes to the dead‑letter queue.
 - Timeouts and delays
   - Per‑webhook HTTP timeout: `webhook.timeoutMs` (AbortSignal timeout).
-  - Consumer global timeout: `CONSUMER_TIMEOUT_MS` (default 15000ms).
+  - Consumer global timeout: `CONSUMER_TIMEOUT_MS` (default 450000ms; keep it above the largest session webhook timeout).
   - Retry delay: fixed 60s (consumer path) using the delayed exchange.
 - Failure notification
   - If `NOTIFY_FAILED_MESSAGES=true`, a diagnostic text is sent to the session number with stack/error details when a message exhausts retries.
@@ -113,7 +113,7 @@ Large-group heuristics
   - Per‑session PN↔LID cache (Redis/memory) with configurable TTL.
 - Group sends:
   - Pre‑assert sessions for all participants (including LID/PN variants) to reduce “No sessions” and ack 421.
-  - Default addressing mode can be configured (`GROUP_SEND_ADDRESSING_MODE`) and there is an automatic fallback (PN⇄LID) when 421 is detected.
+  - LID is the canonical group addressing mode; recovery limits are internal.
 
 ### Edited Messages
 
@@ -127,10 +127,10 @@ Large-group heuristics
 
 ## Configuration Highlights (env)
 
-- Session/Connection: `CONNECTION_TYPE`, `QR_TIMEOUT_MS`, `VALIDATE_SESSION_NUMBER`, `CLEAN_CONFIG_ON_DISCONNECT`.
+- Session/Connection: `CONNECTION_TYPE`, `CLEAN_CONFIG_ON_DISCONNECT`.
 - Logs: `LOG_LEVEL`, `UNO_LOG_LEVEL`.
 - Status behavior: `STATUS_ALLOW_LID` (keep LID JIDs or normalize to PN).
-- Group send: `GROUP_SEND_MEMBERSHIP_CHECK`, `GROUP_SEND_PREASSERT_SESSIONS`, `GROUP_SEND_ADDRESSING_MODE`.
+- Baileys group safeguards are internal and are not environment settings.
 - Media: S3/MinIO `STORAGE_*`, `FETCH_TIMEOUT_MS`, optional audio conversion to PTT.
 
 ## Key Files & Responsibilities

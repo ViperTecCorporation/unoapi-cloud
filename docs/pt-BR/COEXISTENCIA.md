@@ -10,23 +10,20 @@
 - Token da Cloud API válido e phone_number_id configurado.
 - Sessão Web (QR/device) já conectada.
 
-### Variáveis de ambiente
-- Ativar: `COEXISTENCE_ENABLED=true`
-- TTL opcional: `COEXISTENCE_WINDOW_SECONDS=86400` (padrão 24h)
-- Cloud API (já usadas no forwarder):
-  - `WEBHOOK_FORWARD_URL=https://graph.facebook.com`
-  - `WEBHOOK_FORWARD_VERSION=v17.0` (ajuste se necessário)
-  - `WEBHOOK_FORWARD_PHONE_NUMBER_ID=<seu_phone_number_id>`
-  - `WEBHOOK_FORWARD_TOKEN=<Bearer da Cloud API>`
-  - `WEBHOOK_FORWARD_BUSINESS_ACCOUNT_ID=<opcional>`
+### Configuração
+- A coexistência não possui mais ativação global por ENV. Quando ainda usada
+  por integração legada, sua configuração é exclusivamente por sessão.
+- As credenciais Cloud API não são globais. Quando esse fluxo legado for usado,
+  configure `webhookForward.phoneNumberId`, `webhookForward.token` e,
+  opcionalmente, `webhookForward.businessAccountId` diretamente na sessão.
+- URL, versão e timeout possuem defaults internos e também podem ser persistidos
+  em `webhookForward` na configuração da sessão.
 - Verificação de webhook: `UNOAPI_AUTH_TOKEN` (ou `authToken` na config Redis).
 
-### Configuração por sessão no Manager (`/public/index`)
-- Ao editar/adicionar sessão, preencha:
-  - Coexistência: habilitar toggle e (opcional) janela em segundos.
-  - Cloud API: base URL, versão, `phone_number_id`, token e Business Account ID (opcional).
-  - Demais campos do Web permanecem iguais.
-- Todas as configs são persistidas na sessão específica (Redis), não é global.
+### Configuração por sessão
+- O Manager público não expõe mais os campos Cloud/Embedded.
+- Integrações legadas devem persistir `webhookForward` diretamente no registro da
+  sessão. Essas credenciais nunca são herdadas do ambiente do container.
 
 ### Embedded Signup (opcional, para preencher Cloud automaticamente)
 - No app Meta: cadastre um `redirect_uri` HTTPS e obtenha o `appId` (produto WhatsApp).
@@ -54,11 +51,11 @@
 6. Endereçamento Meta: apenas PN (dígitos, ex.: `55...`). Se o destino vier em `@lid`, ele é normalizado para número antes de enviar; grupos nunca vão para o Meta.
 
 ### Como usar
-- Suba a aplicação com as envs acima.
+- Registre a sessão com as credenciais Cloud no objeto `webhookForward`.
 - Faça login QR normalmente.
 - Verifique logs (nível debug) por `COEX window opened`.
 - Teste: envie mensagem 1:1 (sai Web), responda pelo contato (via Meta), depois envie novamente (deve sair Meta).
 
 ### Observações
-- Se `COEXISTENCE_ENABLED=false` ou Cloud não estiver configurado, tudo funciona como antes (apenas Web).
+- Sessões sem configuração explícita continuam apenas no motor Web selecionado.
 - Nenhuma rota AMQP mudou; somente o roteamento 1:1 e o webhook Meta passam a controlar a janela de 24h.

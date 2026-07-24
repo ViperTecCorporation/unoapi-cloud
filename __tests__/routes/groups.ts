@@ -36,7 +36,7 @@ const addToBlacklistMock = mock<addToBlacklist>()
 const sessionStore = mock<SessionStore>()
 const getConfigTest: getConfig = async (_phone: string) => defaultConfig
 
-const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact): Promise<LoadedApp> => {
+const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact, provider?: 'baileys' | 'zapo'): Promise<LoadedApp> => {
   jest.resetModules()
 
   jest.doMock('../../src/defaults', () => {
@@ -79,7 +79,10 @@ const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact): Promise<L
   const onNewLogin = mock<OnNewLogin>()
   const reload = mock<Reload>()
   const logout = mock<Logout>()
-  const app = new App(incoming, outgoing, '', getConfigTest, sessionStore, onNewLogin, addToBlacklistMock, reload, logout, undefined, undefined, contact)
+  const getConfigForApp: getConfig = provider
+    ? async () => ({ ...defaultConfig, provider })
+    : getConfigTest
+  const app = new App(incoming, outgoing, '', getConfigForApp, sessionStore, onNewLogin, addToBlacklistMock, reload, logout, undefined, undefined, contact)
 
   return {
     app,
@@ -94,6 +97,8 @@ const cachedGroup = {
   desc: 'Grupo do time comercial',
   creation: 1710000000,
   memberAddMode: true,
+  announce: true,
+  restrict: false,
   profilePicture: 'https://cdn.exemplo.com/groups/120363040468224422.jpg',
   participants: [
     {
@@ -173,6 +178,8 @@ describe('groups routes', () => {
           participants_count: 2,
           total_participant_count: 2,
           join_approval_mode: 'approval_required',
+          announcement: true,
+          locked: false,
           suspended: false,
           creation_timestamp: '1710000000',
         }),
@@ -263,10 +270,39 @@ describe('groups routes', () => {
     expect(res.body.id).toEqual(groupJid)
     expect(res.body.subject).toEqual(cachedGroup.subject)
     expect(res.body.total_participant_count).toEqual(2)
+    expect(res.body.announcement).toBe(true)
+    expect(res.body.locked).toBe(false)
     expect(res.body.participants).toBeUndefined()
     expect(redis.getContactName).not.toHaveBeenCalled()
     expect(redis.getContactInfo).not.toHaveBeenCalled()
   })
+
+  test.each([
+    ['baileys', false, true],
+    ['zapo', true, false],
+  ] as const)(
+    'details maps %s announce and restrict metadata to the public settings',
+    async (provider, announce, restrict) => {
+      const phone = '556600000000'
+      const groupJid = '120363040468224422@g.us'
+      const { app, redis } = await loadApp(true, undefined, provider)
+      redis.getGroup.mockResolvedValue({
+        subject: `Grupo ${provider}`,
+        announce,
+        restrict,
+        participants: [],
+      })
+
+      const res = await request(app.server).get(`/v15.0/${phone}/groups/${groupJid}`)
+
+      expect(res.status).toEqual(200)
+      expect(res.body).toEqual(expect.objectContaining({
+        id: groupJid,
+        announcement: announce,
+        locked: restrict,
+      }))
+    },
+  )
 
   test('participants route returns Meta-like participant payload when flag is enabled', async () => {
     const phone = '556600000000'
@@ -537,7 +573,11 @@ describe('groups routes', () => {
     ])
     expect(res.body).toEqual(expect.objectContaining({
       id: groupJid,
-      participants: [{ wa_id: '556699999999', status: 'invited' }],
+      participants: [{
+        wa_id: '556699999999',
+        user_id: '123456789012345@lid',
+        status: 'invited',
+      }],
     }))
   })
 
@@ -564,6 +604,26 @@ describe('groups routes', () => {
     expect(incoming.groupCreate).toHaveBeenCalledTimes(1)
     expect(incoming.groupCreate).toHaveBeenCalledWith(phone, 'Equipe Comercial', [
       '556699554300@s.whatsapp.net',
+    ])
+  })
+
+  test('create group lets Zapo resolve the original phones without retrying Baileys digit alternatives', async () => {
+    const phone = '556600000000'
+    const contact = mock<Contact>()
+    contact.verify.mockResolvedValue({
+      contacts: [{ input: '5566997195718', wa_id: '556697195718@s.whatsapp.net', status: 'valid' } as any],
+    })
+    const { app, incoming } = await loadApp(true, contact, 'zapo')
+    incoming.groupCreate = jest.fn().mockRejectedValue(new Error('group.create iq failed (400: bad-request)'))
+
+    const res = await request(app.server)
+      .post(`/v15.0/${phone}/groups`)
+      .send({ subject: 'Teste Grupo', participants: ['5566997195718'] })
+
+    expect(res.status).toEqual(500)
+    expect(incoming.groupCreate).toHaveBeenCalledTimes(1)
+    expect(incoming.groupCreate).toHaveBeenCalledWith(phone, 'Teste Grupo', [
+      '5566997195718@s.whatsapp.net',
     ])
   })
 
@@ -667,6 +727,52 @@ describe('groups routes', () => {
     }))
   })
 
+  test('remove participants accepts the documented Zapo ok status as success', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming, outgoing, redis } = await loadApp(true, undefined, 'zapo')
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([{
+      status: 'ok',
+      code: 200,
+      jid: '123456789012345@lid',
+    }])
+    redis.getLidForPn.mockResolvedValue('123456789012345@lid')
+    outgoing.send.mockResolvedValue(undefined)
+
+    const res = await request(app.server)
+      .delete(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ participants: [{ wa_id: '556699999999', user_id: '123456789012345@lid' }] })
+
+    expect(res.status).toEqual(200)
+    expect(res.body).toEqual({
+      group_id: groupJid,
+      removed: ['123456789012345@lid'],
+      failed: [],
+    })
+  })
+
+  test('remove participants preserves a real Zapo participant error', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming } = await loadApp(true, undefined, 'zapo')
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([{
+      status: 'error',
+      code: 403,
+      jid: '123456789012345@lid',
+    }])
+
+    const res = await request(app.server)
+      .delete(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ participants: [{ wa_id: '556699999999', user_id: '123456789012345@lid' }] })
+
+    expect(res.status).toEqual(200)
+    expect(res.body).toEqual({
+      group_id: groupJid,
+      removed: [],
+      failed: ['123456789012345@lid'],
+    })
+  })
+
   test('add participants accepts object payloads and emits participants webhook', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
@@ -738,6 +844,88 @@ describe('groups routes', () => {
     expect(res.body).toEqual({ group_id: groupJid, added: ['556699554300'], failed: [] })
   })
 
+  test('promote participant calls provider with canonical LID', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const participant = { wa_id: '556699999999', user_id: '123456789012345@lid' }
+    const { app, incoming, outgoing } = await loadApp(true, undefined, 'zapo')
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([
+      { status: 'ok', jid: participant.user_id },
+    ])
+    outgoing.send.mockResolvedValue(undefined)
+
+    const res = await request(app.server)
+      .patch(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ action: 'promote', participants: [participant] })
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupParticipantsUpdate).toHaveBeenCalledWith(
+      phone,
+      groupJid,
+      [participant.user_id],
+      'promote',
+    )
+    expect(res.body).toEqual({
+      group_id: groupJid,
+      promoted: [participant.user_id],
+      failed: [],
+    })
+    expect(outgoing.send).toHaveBeenCalledWith(phone, expect.objectContaining({
+      entry: [expect.objectContaining({
+        changes: [expect.objectContaining({
+          field: 'group_participants_update',
+          value: expect.objectContaining({
+            group_id: groupJid,
+            action: 'promote',
+            participants: [participant],
+          }),
+        })],
+      })],
+    }))
+  })
+
+  test('demote participant calls provider with canonical LID', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const participant = { wa_id: '556699999999', user_id: '123456789012345@lid' }
+    const { app, incoming } = await loadApp(true, undefined, 'zapo')
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([
+      { status: 'ok', jid: participant.user_id },
+    ])
+
+    const res = await request(app.server)
+      .patch(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ action: 'demote', participants: [participant] })
+
+    expect(res.status).toEqual(200)
+    expect(incoming.groupParticipantsUpdate).toHaveBeenCalledWith(
+      phone,
+      groupJid,
+      [participant.user_id],
+      'demote',
+    )
+    expect(res.body).toEqual({
+      group_id: groupJid,
+      demoted: [participant.user_id],
+      failed: [],
+    })
+  })
+
+  test('rejects unsupported participant role action', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming } = await loadApp(true, undefined, 'zapo')
+    incoming.groupParticipantsUpdate = jest.fn()
+
+    const res = await request(app.server)
+      .patch(`/v15.0/${phone}/groups/${groupJid}/participants`)
+      .send({ action: 'owner', participants: ['123456789012345@lid'] })
+
+    expect(res.status).toEqual(400)
+    expect(res.body).toEqual({ error: 'action must be promote or demote' })
+    expect(incoming.groupParticipantsUpdate).not.toHaveBeenCalled()
+  })
+
   test('invite link get and reset use Baileys invite APIs', async () => {
     const phone = '556600000000'
     const groupJid = '120363040468224422@g.us'
@@ -799,6 +987,36 @@ describe('groups routes', () => {
     expect(incoming.groupRequestParticipantsUpdate).toHaveBeenCalledWith(phone, groupJid, ['556677777777@s.whatsapp.net'], 'reject')
     expect(approveRes.body).toEqual({ group_id: groupJid, approved: ['556677777777'], failed: [] })
     expect(rejectRes.body).toEqual({ group_id: groupJid, rejected: ['556677777777'], failed: [] })
+  })
+
+  test('join request updates accept the documented Zapo ok status', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming } = await loadApp(true, undefined, 'zapo')
+    incoming.groupRequestParticipantsUpdate = jest.fn().mockResolvedValue([
+      { status: 'ok', code: 200, jid: '987654321012345@lid' },
+    ])
+
+    const res = await request(app.server)
+      .post(`/v15.0/${phone}/groups/${groupJid}/join_requests`)
+      .send({ participants: [{ wa_id: '556677777777', user_id: '987654321012345@lid' }] })
+
+    expect(res.body).toEqual({ group_id: groupJid, approved: ['987654321012345@lid'], failed: [] })
+  })
+
+  test('join request updates preserve a real Zapo participant error', async () => {
+    const phone = '556600000000'
+    const groupJid = '120363040468224422@g.us'
+    const { app, incoming } = await loadApp(true, undefined, 'zapo')
+    incoming.groupRequestParticipantsUpdate = jest.fn().mockResolvedValue([
+      { status: 'error', code: 403, jid: '987654321012345@lid' },
+    ])
+
+    const res = await request(app.server)
+      .delete(`/v15.0/${phone}/groups/${groupJid}/join_requests`)
+      .send({ participants: [{ wa_id: '556677777777', user_id: '987654321012345@lid' }] })
+
+    expect(res.body).toEqual({ group_id: groupJid, rejected: [], failed: ['987654321012345@lid'] })
   })
 
   test('destroy group leaves group and emits lifecycle webhook', async () => {

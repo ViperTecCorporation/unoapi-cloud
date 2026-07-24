@@ -41,7 +41,17 @@ export class ContactsController {
     logger.debug('contacts post params %s', JSON.stringify(req.params))
     logger.debug('contacts post body %s', JSON.stringify(req.body))
     const { phone } = req.params
-    const contacts = await this.service.verify(phone, req.body.contacts || [], req.body.webhook)
-    res.status(200).send({ contacts })
+    try {
+      const contacts = await this.service.verify(phone, req.body.contacts || [], req.body.webhook)
+      return res.status(200).send(contacts)
+    } catch (error) {
+      const message = `${(error as Error)?.message || 'contact_verification_failed'}`
+      const statusFromMessage = Number(message.match(/^(\d{3}):/)?.[1])
+      const status = error instanceof SendError
+        ? error.code
+        : (statusFromMessage >= 400 && statusFromMessage <= 599 ? statusFromMessage : 500)
+      logger.warn(error as Error, 'Contact verification failed for %s', phone)
+      return res.status(status).send({ error: message.replace(/^\d{3}:\s*/, '') })
+    }
   }
 }

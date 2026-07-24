@@ -23,6 +23,7 @@ import { extractDestinyPhone } from './services/transformer'
 import { isTransientInfraError } from './services/error_utils'
 import { v1 as uuid } from 'uuid'
 import { providerFromQueueName, providerQueueName } from './services/providers/provider_queue'
+import { isWebhookCircuitOpenError, webhookRetryCount } from './services/webhook_circuit_breaker'
 
 const withTimeout = (millis, error, promise) => {
   let timeoutPid
@@ -521,8 +522,9 @@ export const amqpConsume = async (
             await channel?.ack(payload)
             return
           }
-          if (countRetries >= maxRetries) {
-            logger.info('Reject %s retries', countRetries)
+          const retryCount = webhookRetryCount(countRetries, error)
+          if (retryCount >= maxRetries) {
+            logger.info('Reject %s retries', retryCount)
             if (normalizedOptions.notifyFailedMessages) {
               logger.info('Sending error to whatsapp...')
               const errObj: any = error as any
@@ -555,16 +557,26 @@ export const amqpConsume = async (
             }
             await amqpPublish(exchange, queue, routingKeyLocal, data, { dead: true, type: normalizedOptions.type })
           } else {
-            logger.info('Publish retry %s of %s', countRetries, maxRetries)
+            logger.info('Publish retry %s of %s', retryCount, maxRetries)
             let delay = 60000
             try {
-              const err: any = error as any
-              if (err && (err.code === 'WEBHOOK_CB_OPEN' || err.name === 'WebhookCircuitOpenError')) {
+              const err = error as any
+              if (isWebhookCircuitOpenError(err)) {
                 delay = err.delayMs || WEBHOOK_CB_REQUEUE_DELAY_MS || delay
-                logger.info('WEBHOOK_CB requeue delay %s ms (queue=%s)', delay, queue)
+                logger.info(
+                  'WEBHOOK_CB requeue delay %s ms without consuming retry=%s (queue=%s)',
+                  delay,
+                  err.consumesRetry === false,
+                  queue,
+                )
               }
             } catch {}
-            await amqpPublish(exchange, queue, routingKeyLocal, data, { delay, maxRetries, countRetries, type: normalizedOptions.type })
+            await amqpPublish(exchange, queue, routingKeyLocal, data, {
+              delay,
+              maxRetries,
+              countRetries: retryCount,
+              type: normalizedOptions.type,
+            })
           }
           await channel?.ack(payload)
         }

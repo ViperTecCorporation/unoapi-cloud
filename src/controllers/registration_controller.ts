@@ -1,11 +1,12 @@
 import { Request, Response } from 'express'
-import { Webhook, getConfig } from '../services/config'
-import { setConfig } from '../services/redis'
+import { Webhook, getConfig, type connectionType } from '../services/config'
+import { getConfig as getStoredConfig, setConfig } from '../services/redis'
 import logger from '../services/logger'
 import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
 import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
+import { resolveRegistrationConnectionType } from '../services/providers/connection_type_policy'
 
 export class RegistrationController {
   private static readonly REGISTER_DEBOUNCE_MS = 15000
@@ -31,9 +32,25 @@ export class RegistrationController {
     const phone = await resolveSessionPhoneByMetaId(req.params.phone)
     try {
       const previousConfig = await this.getConfig(phone)
+      const storedConfig = await getStoredConfig(phone)
+      const connectionType = resolveRegistrationConnectionType({
+        hasStoredConfig: !!storedConfig,
+        previousProvider: resolveWhatsAppEngine(previousConfig.provider),
+        previousConnectionType: previousConfig.connectionType,
+        requestedConnectionType: req.body.connectionType as connectionType | undefined,
+      })
       const requestedConfig = {
         ...req.body,
         provider: req.body.provider ?? previousConfig.provider,
+        ...(connectionType.value ? { connectionType: connectionType.value } : {}),
+      }
+      if (connectionType.locked) {
+        logger.warn(
+          'Ignored connectionType change for existing Zapo session %s (%s -> %s); deregister is required',
+          phone,
+          previousConfig.connectionType,
+          req.body.connectionType,
+        )
       }
       await setConfig(phone, requestedConfig)
       const config = await this.getConfig(phone)
@@ -103,7 +120,7 @@ export class RegistrationController {
 
     const updatedWebhooks = webhooks.map((webhook, currentIndex) => {
       if (currentIndex !== index) return webhook
-      const rest = { ...(webhook as any) }
+      const rest = { ...webhook }
       delete rest.disabled
       return { ...rest, enabled }
     })
@@ -118,9 +135,10 @@ export class RegistrationController {
     })
   }
 
-  private resolveWebhookEnabled(body: any): boolean | undefined {
-    if (typeof body?.enabled === 'boolean') return body.enabled
-    if (typeof body?.disabled === 'boolean') return !body.disabled
+  private resolveWebhookEnabled(body: unknown): boolean | undefined {
+    const value = body as { enabled?: unknown, disabled?: unknown } | undefined
+    if (typeof value?.enabled === 'boolean') return value.enabled
+    if (typeof value?.disabled === 'boolean') return !value.disabled
     return undefined
   }
 }

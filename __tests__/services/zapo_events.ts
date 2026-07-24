@@ -1,4 +1,9 @@
-import { toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from '../../src/services/zapo/zapo_events'
+import {
+  isEncryptedZapoAddonMessage,
+  toUnoAddonEvent,
+  toUnoMessageEvent,
+  toUnoReceiptUpdates,
+} from '../../src/services/zapo/zapo_events'
 
 describe('Zapo event mapper', () => {
   test('maps an incoming Zapo message to the established Uno listener shape', () => {
@@ -35,6 +40,16 @@ describe('Zapo event mapper', () => {
 
   test('suppresses inactive receipts that have no Cloud API status equivalent', () => {
     expect(toUnoReceiptUpdates({ status: 'inactive', messageIds: ['m1'] } as never)).toEqual([])
+  })
+
+  test('identifies encrypted poll votes that must wait for the Zapo addon event', () => {
+    expect(isEncryptedZapoAddonMessage({
+      pollUpdateMessage: {
+        pollCreationMessageKey: { id: 'poll-1' },
+        vote: { encPayload: Uint8Array.from([1]), encIv: Uint8Array.from([2]) },
+      },
+    })).toBe(true)
+    expect(isEncryptedZapoAddonMessage({ conversation: 'mensagem comum' })).toBe(false)
   })
 
   test('uses Zapo decrypted addons instead of Baileys poll/reaction crypto fallbacks', () => {

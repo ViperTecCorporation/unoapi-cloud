@@ -13,12 +13,16 @@ import logger from './logger'
 import type { OnNewLogin } from './socket'
 import type { Store } from './store'
 import { SendError } from './send_error'
-import { ensureZapoSessionMigration } from './zapo/zapo_migration'
 import { zapoStoreRegistry, type ZapoStoreRegistry } from './zapo/zapo_store_registry'
 import { ZapoGroups } from './zapo/zapo_groups'
 import { normalizeZapoPhoneJid, resolveZapoPhoneJid } from './zapo/zapo_contact_resolver'
 import { ZapoMessages } from './zapo/zapo_messages'
-import { toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from './zapo/zapo_events'
+import {
+  isEncryptedZapoAddonMessage,
+  toUnoAddonEvent,
+  toUnoMessageEvent,
+  toUnoReceiptUpdates,
+} from './zapo/zapo_events'
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
 import { phoneNumberToJid } from './transformer/jid'
@@ -37,6 +41,9 @@ import { RedisLease } from './redis_lease'
 import { zapoRedisMaintenance, type ZapoRedisMaintenance } from './zapo/zapo_redis_maintenance'
 import { loadZapoHistoryMessages } from './zapo/zapo_history'
 import { ZapoProfilePictures } from './zapo/zapo_profile_pictures'
+import { createPairingCodeImageDataUrl } from './zapo/pairing_code_image'
+import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
+import { createZapoProxyOptions } from './zapo/zapo_proxy'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -66,6 +73,7 @@ export class ClientZapo implements Client {
   private connectTask?: Promise<void>
   private connected = false
   private readonly pendingIncoming = new Map<string, any>()
+  private readonly decryptedAddonIds = new Set<string>()
   private readonly forwardedHistoryIds = new Set<string>()
   private historySyncTask: Promise<void> = Promise.resolve()
   private intentionalDisconnect = false
@@ -79,6 +87,8 @@ export class ClientZapo implements Client {
     reject: (error: Error) => void
   }
   private activePasskeyBridgeId?: string
+  private pairingCodeRequest?: Promise<string>
+  private pairingCodeIssued = false
 
   constructor(
     private readonly phone: string,
@@ -99,6 +109,14 @@ export class ClientZapo implements Client {
     await this.listener.process(this.phone, [{
       key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
       message: { imageMessage: { url: imageUrl, mimetype: 'image/png', caption: 'Zapo pairing' } },
+    }], 'qrcode')
+  }
+
+  private async emitPairingCode(value: string) {
+    const imageUrl = await createPairingCodeImageDataUrl(value)
+    await this.listener.process(this.phone, [{
+      key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
+      message: { imageMessage: { url: imageUrl, mimetype: 'image/svg+xml', caption: 'Zapo pairing code' } },
     }], 'qrcode')
   }
 
@@ -213,21 +231,66 @@ export class ClientZapo implements Client {
     await this.unoStore?.dataStore.setJidMapping?.(this.phone, phoneJid, recipientLid)
   }
 
+  private async forwardDecryptedAddon(client: ZapoClient, event: any) {
+    if (!isEncryptedZapoAddonMessage(event.message)) return false
+    const id = `${event.key?.id || ''}`.trim()
+    if (!id) return false
+
+    this.decryptedAddonIds.delete(id)
+    try {
+      await client.message.tryDecryptAddon(event)
+    } catch (error) {
+      logger.warn(error as any, 'Zapo addon decryption failed phone=%s id=%s', this.phone, id)
+      return false
+    }
+
+    if (this.decryptedAddonIds.delete(id)) return true
+    logger.warn('Zapo addon decryption produced no event phone=%s id=%s', this.phone, id)
+    return false
+  }
+
+  private beginPairingCodeRequest(client: ZapoClient, forceRefresh = false) {
+    if (this.pairingCodeRequest) return this.pairingCodeRequest
+    if (this.pairingCodeIssued && !forceRefresh) return undefined
+
+    this.pairingCodeIssued = true
+    const request = client.auth.requestPairingCode(this.phone.replace(/\D/g, ''))
+    this.pairingCodeRequest = request
+    void request.then(
+      () => {
+        if (this.pairingCodeRequest === request) this.pairingCodeRequest = undefined
+      },
+      () => {
+        if (this.pairingCodeRequest === request) this.pairingCodeRequest = undefined
+        this.pairingCodeIssued = false
+      },
+    )
+    return request
+  }
+
   private bindEvents(client: ZapoClient, resolvePrompt: () => void) {
     client.on('auth_qr', ({ qr }) => {
       resolvePrompt()
+      if (this.config.connectionType === 'pairing_code') {
+        void this.beginPairingCodeRequest(client)?.catch((error) => {
+          logger.warn(error as any, 'Could not request Zapo pairing code for %s', this.phone)
+        })
+        return
+      }
       void this.emitQr(qr).catch((error) => logger.warn(error as any, 'Could not emit Zapo QR for %s', this.phone))
     })
-    client.on('auth_pairing_required', () => {
+    client.on('auth_pairing_required', ({ forceManual }) => {
       resolvePrompt()
       if (this.config.connectionType !== 'pairing_code') return
-      void client.auth.requestPairingCode(this.phone.replace(/\D/g, ''))
-        .then((code) => this.emitQr(code))
-        .catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
+      void this.beginPairingCodeRequest(client, forceManual)?.catch((error) => {
+        logger.warn(error as any, 'Could not request Zapo pairing code for %s', this.phone)
+      })
     })
     client.on('auth_pairing_code', ({ code }) => {
       resolvePrompt()
-      void this.emitQr(code).catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
+      this.pairingCodeIssued = true
+      void this.emitPairingCode(code)
+        .catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
     })
     client.on('auth_paired', async ({ credentials }) => {
       await Promise.resolve(this.zapoSession?.auth.save(credentials)).catch((error) => {
@@ -253,6 +316,8 @@ export class ClientZapo implements Client {
         const credentials = client.getCredentials()
         if (credentials) await this.zapoSession?.auth.save(credentials)
         this.connected = true
+        const registered = clients.get(this.phone)
+        if (!registered || registered === this) clients.set(this.phone, this)
         await this.unoStore?.sessionStore.setStatus(this.phone, 'online')
         await this.emitStatus(`Connected with ${this.phone} using Zapo`).catch((error) => {
           logger.warn(error as any, 'Could not emit Zapo connected status for %s', this.phone)
@@ -279,6 +344,11 @@ export class ClientZapo implements Client {
       }
     })
     client.on('message', async (event) => {
+      // Zapo emits the encrypted `message` before the decrypted `message_addon`.
+      // Awaiting the documented manual path avoids the raw event winning Uno's
+      // deduplication window and hiding the readable poll/reaction/edit payload.
+      if (await this.forwardDecryptedAddon(client, event)) return
+
       const message = toUnoMessageEvent(event)
       await this.enrichDirectPhoneAlias(message, event)
       if (event.key.isGroup || `${event.key.remoteJid || ''}`.endsWith('@g.us')) {
@@ -368,7 +438,18 @@ export class ClientZapo implements Client {
       if (updates.length) await this.listener.process(this.phone, updates, 'update')
     })
     client.on('message_addon', async (event) => {
-      await this.listener.process(this.phone, [toUnoAddonEvent(event)], 'notify')
+      if (event.key.id) this.decryptedAddonIds.add(event.key.id)
+      const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
+      if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
+        logger.warn(
+          'Zapo poll vote option names unresolved phone=%s id=%s parent=%s selected=%s',
+          this.phone,
+          event.key.id || '<none>',
+          event.targetMessageId || '<none>',
+          resolved.decrypted.pollVote.selectedOptions?.length || 0,
+        )
+      }
+      await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
     })
     client.on('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)
@@ -669,8 +750,14 @@ export class ClientZapo implements Client {
 
     const zapoStore = this.storeRegistry.get(this.config)
     this.zapoSession = zapoStore.session(this.phone)
-    const migration = await ensureZapoSessionMigration(this.phone, this.config, this.zapoSession)
-    logger.info('Zapo session migration %s -> %s (losses=%s)', this.phone, migration.status, migration.losses.length)
+    this.pairingCodeRequest = undefined
+    this.pairingCodeIssued = false
+    const requiresPairing = !(await this.zapoSession.auth.load())?.meJid
+    logger.info(
+      'Zapo session startup phone=%s mode=%s',
+      this.phone,
+      requiresPairing ? 'fresh-pairing' : 'stored-auth',
+    )
     if (this.config.useRedis) {
       await statusRecipients.loadOrBootstrap(this.phone).catch((error) => {
         logger.warn(error as any, 'Zapo status recipient bootstrap failed for %s', this.phone)
@@ -680,14 +767,18 @@ export class ClientZapo implements Client {
     const client = this.clientFactory({
       store: zapoStore,
       sessionId: this.phone,
+      proxy: createZapoProxyOptions(this.config.proxyUrl),
       markOnlineOnConnect: this.config.markOnlineOnConnect,
       recoverFromClientTooOld: true,
       history: {
         // Zapo hydrates LID mappings, privacy tokens and nctSalt from history
         // even when Uno must not forward historical messages to webhooks.
         enabled: true,
-        requireFullSync: migration.status === 'migrated' || this.config.allowFullHistorySync,
+        // WhatsApp only honors this flag during registration/pairing. Imported
+        // credentials use the login payload and cannot request an initial sync.
+        requireFullSync: requiresPairing,
       },
+      addons: { autoDecrypt: false },
       media: {
         processor: zapoMediaProcessor,
         generateWaveform: SEND_AUDIO_WAVEFORM,
@@ -832,6 +923,8 @@ export class ClientZapo implements Client {
         wa_id: stored?.phoneNumber,
         user_id: lid,
         username: value.replace(/^@/, '').toLowerCase(),
+        display_name: stored?.displayName,
+        push_name: stored?.pushName,
         status: lid ? 'valid' : 'failed',
       }
     }
@@ -844,23 +937,27 @@ export class ClientZapo implements Client {
       lastUpdatedMs: Date.now(),
     }] : [])
     if (contacts.length) await this.zapoSession.contacts.upsertBatch(contacts)
-    results.forEach((result, resultIndex) => {
+    for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
+      const result = results[resultIndex]
       const index = numeric[resultIndex].index
+      const stored = result.lidJid ? await this.zapoSession.contacts.getByJid(result.lidJid) : undefined
       output[index] = {
         input: numbers[index],
         wa_id: result.exists ? `${result.phoneJid || inputs[resultIndex]}`.split('@')[0] : undefined,
         user_id: result.exists ? (result.lidJid || undefined) : undefined,
+        display_name: stored?.displayName,
+        push_name: stored?.pushName,
         status: result.exists ? 'valid' : (result.invalid ? 'invalid' : 'failed'),
       }
-    })
+    }
     return output
   }
 
   async requestPairingCode() {
     if (!this.socket) throw new SendError(409, 'zapo_client_not_connected')
-    const code = await this.socket.auth.requestPairingCode(this.phone.replace(/\D/g, ''))
-    await this.emitQr(code)
-    return code
+    const request = this.beginPairingCodeRequest(this.socket, true)
+    if (!request) throw new SendError(409, 'zapo_pairing_code_request_unavailable')
+    return request
   }
 
   groupCreate(subject: string, participants: string[]) { return this.requireGroups().create(subject, participants) }

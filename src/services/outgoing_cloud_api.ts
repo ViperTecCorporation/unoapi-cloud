@@ -1,35 +1,19 @@
 import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig, isWebhookEnabled } from './config'
-import { resolveWebhookUrl } from './webhook_config'
+import { isChatwootWebhook, resolveWebhookUrl } from './webhook_config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, jidToRawPhoneNumber, formatJid, isValidPhoneNumber, normalizeLidJid } from './transformer'
-import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_HALF_OPEN_PROBE_MS, WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS } from '../defaults'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_HALF_OPEN_PROBE_MS } from '../defaults'
 import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
 import { addToBlacklist, isInBlacklist } from './blacklist'
-import { PublishOption } from '../amqp'
+import type { PublishOption } from '../amqp'
 import { acquireWebhookCircuitProbe, isWebhookCircuitOpen, isWebhookCircuitRecovering, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
-
-class WebhookCircuitOpenError extends Error {
-  public code = 'WEBHOOK_CB_OPEN'
-  public delayMs: number
-  constructor(message: string, delayMs: number) {
-    super(message)
-    this.delayMs = delayMs
-  }
-}
+import { WebhookCircuitOpenError } from './webhook_circuit_breaker'
 
 export const isWebhookCircuitFailureStatus = (status: number) => (
   status === 408 || status === 425 || status === 429 || status >= 500
 )
-
-const isChatwootWebhook = (webhook: Webhook) => {
-  const u1 = `${webhook?.url || ''}`.toLowerCase()
-  const u2 = `${webhook?.urlAbsolute || ''}`.toLowerCase()
-  const hasChatwoot = u1.includes('chatwoot') || u2.includes('chatwoot')
-  const hasWhatsWebhook = u1.includes('/webhooks/whatsapp') || u2.includes('/webhooks/whatsapp')
-  return hasChatwoot || hasWhatsWebhook
-}
 
 const mapStatusMediaTypeToCloud = (rawType?: string, mimeType?: string) => {
   const t = `${rawType || ''}`
@@ -508,7 +492,7 @@ export class OutgoingCloudApi implements Outgoing {
       if (cbEnabled) {
         const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any, probeMs)
         if (opened) {
-          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs(), true)
         }
       }
       throw error
@@ -520,7 +504,7 @@ export class OutgoingCloudApi implements Outgoing {
       if (cbEnabled && isWebhookCircuitFailureStatus(Number(response?.status || 0))) {
         const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err, probeMs)
         if (opened) {
-          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs(), true)
         }
       } else if (cbEnabled) {
         await this.closeCircuit(phone, cbId, cbKey)
@@ -578,7 +562,7 @@ const cbRecoveryUntil: Map<string, number> = new Map()
 const cbProbeUntil: Map<string, number> = new Map()
 const cbFailState: Map<string, { count: number; exp: number }> = new Map()
 let cbLastCleanup = 0
-const CB_CLEANUP_INTERVAL_MS = WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS || 60 * 60 * 1000
+const CB_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 
 const isCircuitOpenLocal = (key: string, now: number) => {
   maybeCleanupLocalCircuit(now)

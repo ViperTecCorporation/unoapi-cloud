@@ -4,11 +4,12 @@ import { v1 as uuid } from 'uuid'
 import type { DataStore } from '../data_store'
 import type { Response } from '../response'
 import { SendError } from '../send_error'
-import { phoneNumberToJid } from '../transformer/jid'
+import { toRawPnJid } from '../transformer/jid'
 import { ZapoIdentity } from './zapo_identity'
 import { toZapoMessageContent } from './zapo_message_mapper'
 import { resolveProviderMessageId } from '../message_id_map'
 import logger from '../logger'
+import { getZapoRecipientIdentity, getZapoStoredPhone } from './zapo_recipient'
 
 type ZapoMessagesOptions = {
   customMessageCharactersFunction?: (message: string) => string
@@ -23,7 +24,7 @@ const toJid = (value: string) => {
   const target = `${value || ''}`.trim()
   if (!target) throw new SendError(400, 'message_recipient_required')
   if (target.includes('@')) return target
-  return phoneNumberToJid(target)
+  return toRawPnJid(target)
 }
 
 export class ZapoMessages {
@@ -242,7 +243,7 @@ export class ZapoMessages {
     if (payload?.status) return this.updateStatus(payload)
     payload = await this.expandTemplate(payload)
     const type = `${payload?.type || ''}`
-    let target = await this.canonicalJid(payload?.to)
+    let target = await this.canonicalJid(getZapoRecipientIdentity(payload))
     let content
     const requestedUnoId = `${baseOptions.unoMessageId || ''}`.trim()
     const options: Record<string, unknown> = { ...baseOptions }
@@ -296,9 +297,10 @@ export class ZapoMessages {
     const input = `${payload?.to || target || ''}`
     const isGroup = input.endsWith('@g.us')
     const isUsername = !isGroup && /[a-z_]/i.test(input.replace(/@(s\.whatsapp\.net|lid)$/i, ''))
+    const storedPhone = await getZapoStoredPhone(this.store?.contacts, target)
     const contact = {
       input,
-      ...(isGroup ? { wa_id: input, group_id: input } : (!isUsername ? { wa_id: toJid(input).split('@')[0] } : {})),
+      ...(isGroup ? { wa_id: input, group_id: input } : (!isUsername ? { wa_id: storedPhone?.split('@')[0] || toJid(input).split('@')[0] } : {})),
       ...(target.endsWith('@lid') ? { user_id: target } : {}),
       ...(isUsername ? { username: input.replace(/^@/, '').toLowerCase() } : {}),
     }

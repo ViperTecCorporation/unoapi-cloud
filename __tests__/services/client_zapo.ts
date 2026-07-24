@@ -5,9 +5,6 @@ jest.mock('@zapo-js/voip', () => ({
 jest.mock('@zapo-js/media-utils', () => ({
   createMediaProcessor: jest.fn().mockReturnValue({ process: jest.fn() }),
 }))
-jest.mock('../../src/services/zapo/zapo_migration', () => ({
-  ensureZapoSessionMigration: jest.fn().mockResolvedValue({ status: 'migrated', losses: [] }),
-}))
 jest.mock('../../src/services/passkey_bridge', () => ({
   createPasskeyBridgeSession: jest.fn().mockResolvedValue({ status: 'request' }),
   updatePasskeyBridgeSession: jest.fn().mockResolvedValue({ status: 'response-sent' }),
@@ -28,7 +25,6 @@ import type { DataStore } from '../../src/services/data_store'
 import type { Listener } from '../../src/services/listener'
 import type { SessionStore } from '../../src/services/session_store'
 import type { Store } from '../../src/services/store'
-import { ensureZapoSessionMigration } from '../../src/services/zapo/zapo_migration'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
 
 describe('ClientZapo', () => {
@@ -79,12 +75,16 @@ describe('ClientZapo', () => {
     )
   })
 
-  test('connects after migration and binds Zapo events', async () => {
+  test('requires a full history sync when connecting a new Zapo pairing', async () => {
+    session.auth.load.mockResolvedValue(null)
+
     await service.connect(1)
-    expect(ensureZapoSessionMigration).toHaveBeenCalledWith(phone, expect.objectContaining({ provider: 'zapo' }), session)
+
+    expect(session.auth.load).toHaveBeenCalledTimes(1)
     expect(client.connect).toHaveBeenCalledTimes(1)
     expect((service as any).clientFactory).toHaveBeenCalledWith(expect.objectContaining({
       history: { enabled: true, requireFullSync: true },
+      addons: { autoDecrypt: false },
       media: expect.objectContaining({
         processor: expect.any(Object),
         generateWaveform: true,
@@ -99,6 +99,17 @@ describe('ClientZapo', () => {
       'picture',
       'voip_call_incoming',
     ]))
+  })
+
+  test('reuses native Zapo credentials without requesting pairing history again', async () => {
+    session.auth.load.mockResolvedValue({ meJid: `${phone}@s.whatsapp.net` } as never)
+
+    await service.connect(1)
+
+    expect((service as any).clientFactory).toHaveBeenCalledWith(expect.objectContaining({
+      history: { enabled: true, requireFullSync: false },
+    }))
+    expect(client.connect).toHaveBeenCalledTimes(1)
   })
 
   test('releases the socket when connection fails after the QR prompt was emitted', async () => {
@@ -181,6 +192,75 @@ describe('ClientZapo', () => {
     })).resolves.toBeUndefined()
 
     expect(listener.process).toHaveBeenCalledWith(phone, expect.any(Array), 'notify')
+  })
+
+  test('forwards the decrypted poll addon without also forwarding its encrypted placeholder', async () => {
+    await service.connect(1)
+    client.message.tryDecryptAddon.mockImplementation(async (event: any) => {
+      await handlers.message_addon({
+        key: event.key,
+        targetMessageId: 'poll-parent-1',
+        kind: 'poll_vote',
+        decrypted: {
+          kind: 'poll_vote',
+          pollVote: {},
+          selectedOptionNames: ['Zapo'],
+        },
+      })
+    })
+
+    await handlers.message({
+      key: {
+        id: 'poll-vote-1',
+        remoteJid: '120363@g.us',
+        participant: '94047083475061@lid',
+        fromMe: true,
+        isGroup: true,
+        isNewsletter: false,
+      },
+      message: {
+        pollUpdateMessage: {
+          pollCreationMessageKey: { id: 'poll-parent-1' },
+          vote: { encPayload: Uint8Array.from([1]), encIv: Uint8Array.from([2]) },
+        },
+      },
+    })
+
+    expect(client.message.tryDecryptAddon).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      message: {
+        pollUpdateMessage: expect.objectContaining({
+          vote: expect.objectContaining({ selectedOptionNames: ['Zapo'] }),
+        }),
+      },
+    })], 'notify')
+  })
+
+  test('keeps the encrypted poll update as a fallback when Zapo emits no addon', async () => {
+    await service.connect(1)
+
+    await handlers.message({
+      key: {
+        id: 'poll-vote-fallback-1',
+        remoteJid: '120363@g.us',
+        participant: '94047083475061@lid',
+        fromMe: true,
+        isGroup: true,
+        isNewsletter: false,
+      },
+      message: {
+        pollUpdateMessage: {
+          pollCreationMessageKey: { id: 'poll-parent-1' },
+          vote: { encPayload: Uint8Array.from([1]), encIv: Uint8Array.from([2]) },
+        },
+      },
+    })
+
+    expect(client.message.tryDecryptAddon).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      key: expect.objectContaining({ id: 'poll-vote-fallback-1' }),
+    })], 'notify')
   })
 
   test('forwards persisted Zapo history inside the configured day window', async () => {
@@ -364,6 +444,56 @@ describe('ClientZapo', () => {
     await handlers.auth_paired({ credentials })
 
     expect(session.auth.save).toHaveBeenCalledWith(credentials)
+  })
+
+  test('replaces the QR prompt with a readable pairing-code image in pairing-code mode', async () => {
+    config.connectionType = 'pairing_code'
+    client.auth.requestPairingCode.mockImplementation(async () => {
+      await handlers.auth_pairing_code({ code: '1234-5678' })
+      return '1234-5678'
+    })
+    await service.connect(1)
+
+    await handlers.auth_qr({ qr: 'qr-must-not-be-forwarded' })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(client.auth.requestPairingCode).toHaveBeenCalledWith(phone)
+    expect(listener.process).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      message: {
+        imageMessage: expect.objectContaining({
+          url: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
+          mimetype: 'image/svg+xml',
+          caption: 'Zapo pairing code',
+        }),
+      },
+    })], 'qrcode')
+  })
+
+  test('keeps forwarding the native QR image in QR-code mode', async () => {
+    config.connectionType = 'qrcode'
+    await service.connect(1)
+    let resolveQrForwarded = () => undefined
+    const qrForwarded = new Promise<void>((resolve) => {
+      resolveQrForwarded = resolve
+    })
+    listener.process.mockImplementation(async () => {
+      resolveQrForwarded()
+    })
+
+    await handlers.auth_qr({ qr: 'native-zapo-qr' })
+    await qrForwarded
+
+    expect(client.auth.requestPairingCode).not.toHaveBeenCalled()
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      message: {
+        imageMessage: expect.objectContaining({
+          url: expect.stringMatching(/^data:image\/png;base64,/),
+          mimetype: 'image/png',
+          caption: 'Zapo pairing',
+        }),
+      },
+    })], 'qrcode')
   })
 
   test('marks the Zapo passkey bridge completed only after auth_paired', async () => {
@@ -566,8 +696,22 @@ describe('ClientZapo', () => {
     await service.connect(1)
     await handlers.connection({ status: 'open', isNewLogin: false })
     await expect(service.send({ to: '5566111', type: 'text', text: { body: 'oi' } }, {})).resolves.toEqual(expect.objectContaining({ ok: expect.any(Object) }))
+    session.contacts.getByJid.mockResolvedValueOnce({
+      jid: '111@lid',
+      lid: '111@lid',
+      phoneNumber: '5566111',
+      displayName: 'Amor Vida',
+      pushName: 'Amor',
+      lastUpdatedMs: 1,
+    })
     await expect(service.contacts(['5566111', 'invalid'])).resolves.toEqual([
-      expect.objectContaining({ status: 'valid', wa_id: '5566111', user_id: '111@lid' }),
+      expect.objectContaining({
+        status: 'valid',
+        wa_id: '5566111',
+        user_id: '111@lid',
+        display_name: 'Amor Vida',
+        push_name: 'Amor',
+      }),
       expect.objectContaining({ status: 'invalid' }),
     ])
     await expect(service.fetchMessageHistory({ count: 5 })).resolves.toEqual({ request_id: 'history-1' })
@@ -607,7 +751,16 @@ describe('ClientZapo', () => {
     jest.useRealTimers()
   })
 
-  test('disconnects and logs out without deleting migrated source credentials', async () => {
+  test('registers an orphaned reconnecting client again when its socket opens', async () => {
+    await service.connect(1)
+    clients.delete(phone)
+
+    await handlers.connection({ status: 'open', isNewLogin: false })
+
+    expect(clients.get(phone)).toBe(service)
+  })
+
+  test('disconnects and logs out without touching the isolated Baileys rollback credentials', async () => {
     await service.connect(1)
     await service.logout()
     expect(client.logout).toHaveBeenCalledTimes(1)

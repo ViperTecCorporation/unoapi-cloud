@@ -20,8 +20,6 @@ services:
     networks:
       - unoapi
     environment:
-      SIGNAL_CACHE_SAFE_MODE: "false"
-
       HTTP_PROTOCOL: "https"
       BASE_URL: "https://unoapi.seudominio.com.br"
 
@@ -67,20 +65,13 @@ services:
       CLEAN_CONFIG_ON_DISCONNECT: "true"
 
       UNOAPI_RETRY_REQUEST_DELAY_MS: "10000"
-      UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS: "10"
-      UNOAPI_DELAY_BETWEEN_MESSAGES_MS: "5"
       CONSUMER_TIMEOUT_MS: "450000"
 
-      CONFIG_SESSION_PHONE_CLIENT: "Unoapi"
-      CONFIG_SESSION_PHONE_NAME: "Chrome"
 
-      LID_RESOLVER_ENABLED: "true"
       HISTORY_MAX_AGE_DAYS: "7"
 
-      UNOAPI_NATIVE_FLOW_BUTTONS: "true"
       BAILEYS_DEBUG_RAW_MESSAGES: "0"
       BAILEYS_ENABLE_LIST_REPORTING: "1"
-      UNOAPI_DEBUG_BAILEYS_LIST_DUMP: "1"
 
   unoapi-rabbitmq:
     image: rabbitmq:4.2.2-management-alpine

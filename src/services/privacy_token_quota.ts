@@ -1,10 +1,4 @@
 import { v1 as uuid } from 'uuid'
-import {
-  UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED,
-  UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED,
-  UNOAPI_MISSING_TC_TOKEN_LIMIT,
-  UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS,
-} from '../defaults'
 import logger from './logger'
 import {
   BASE_KEY,
@@ -14,6 +8,13 @@ import {
   redisZRangeWithScores,
   redisZRemRangeByScore,
 } from './redis'
+
+const BAILEYS_MISSING_TC_TOKEN_POLICY = Object.freeze({
+  enabled: true,
+  blockEnabled: false,
+  limit: 40,
+  windowHours: 24,
+})
 
 export type MissingTcTokenQuotaStatus = {
   enabled: boolean
@@ -31,7 +32,7 @@ export type MissingTcTokenQuotaDecision = MissingTcTokenQuotaStatus & {
   reason?: 'missing_tc_token_quota_exceeded'
 }
 
-const windowMs = () => Math.max(1, UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS || 24) * 60 * 60 * 1000
+const windowMs = () => BAILEYS_MISSING_TC_TOKEN_POLICY.windowHours * 60 * 60 * 1000
 const windowSec = () => Math.ceil(windowMs() / 1000)
 const ttlSec = () => windowSec() + 3600
 
@@ -49,9 +50,7 @@ const resetAtFromOldest = async (key: string): Promise<string | undefined> => {
 }
 
 export const getMissingTcTokenQuotaStatus = async (phone: string): Promise<MissingTcTokenQuotaStatus> => {
-  const enabled = UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED
-  const blockEnabled = UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED
-  const limit = Math.max(0, UNOAPI_MISSING_TC_TOKEN_LIMIT || 40)
+  const { enabled, blockEnabled, limit, windowHours } = BAILEYS_MISSING_TC_TOKEN_POLICY
   const key = missingTcTokenQuotaKey(phone)
   const now = Date.now()
   await cleanup(key, now)
@@ -63,7 +62,7 @@ export const getMissingTcTokenQuotaStatus = async (phone: string): Promise<Missi
     limit,
     used,
     remaining: Math.max(0, limit - used),
-    windowHours: Math.max(1, UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS || 24),
+    windowHours,
     resetAt,
     blocked: enabled && blockEnabled && limit > 0 && used >= limit,
   }
@@ -81,11 +80,11 @@ export const checkMissingTcTokenQuota = async (phone: string): Promise<MissingTc
     logger.warn(error as any, 'Missing tctoken quota check failed; allowing send for %s', phone)
     return {
       enabled: false,
-      blockEnabled: UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED,
-      limit: Math.max(0, UNOAPI_MISSING_TC_TOKEN_LIMIT || 40),
+      blockEnabled: BAILEYS_MISSING_TC_TOKEN_POLICY.blockEnabled,
+      limit: BAILEYS_MISSING_TC_TOKEN_POLICY.limit,
       used: 0,
-      remaining: Math.max(0, UNOAPI_MISSING_TC_TOKEN_LIMIT || 40),
-      windowHours: Math.max(1, UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS || 24),
+      remaining: BAILEYS_MISSING_TC_TOKEN_POLICY.limit,
+      windowHours: BAILEYS_MISSING_TC_TOKEN_POLICY.windowHours,
       blocked: false,
       allowed: true,
     }
@@ -93,7 +92,7 @@ export const checkMissingTcTokenQuota = async (phone: string): Promise<MissingTc
 }
 
 export const recordMissingTcTokenSend = async (phone: string, messageId?: string): Promise<MissingTcTokenQuotaStatus | undefined> => {
-  if (!UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED || (UNOAPI_MISSING_TC_TOKEN_LIMIT || 40) <= 0) return undefined
+  if (!BAILEYS_MISSING_TC_TOKEN_POLICY.enabled || BAILEYS_MISSING_TC_TOKEN_POLICY.limit <= 0) return undefined
   try {
     const key = missingTcTokenQuotaKey(phone)
     const now = Date.now()

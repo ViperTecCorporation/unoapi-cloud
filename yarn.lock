@@ -7455,13 +7455,6 @@ vcf@^2.1.2:
     camelcase "^5.0.0"
     foldline "^1.1.0"
 
-wa-store-migrate@0.1.1:
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/wa-store-migrate/-/wa-store-migrate-0.1.1.tgz#89a471d879f3df9a41e53c6db44cf704bb0b2ba1"
-  integrity sha512-yRqI+6HFf4CB/am+ushJTkyi9pFLDPOGjwNvqfx4GZTgHdvPibZf1VPzxYoP8H6K3fwogEnfQUmQD0YuLhkkHw==
-  dependencies:
-    zapo-js "^0.3.0"
-
 walker@^1.0.8:
   version "1.0.8"
   resolved "https://registry.npmjs.org/walker/-/walker-1.0.8.tgz"
@@ -7685,8 +7678,3 @@ zapo-js@1.6.1:
   version "1.6.1"
   resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.6.1.tgz#e55a8b539585fa5efda618bd0f02d4d6a1610333"
   integrity sha512-7Nbc8PzrvaForP7hlF+1IsTMdv4Oucyw53afX5zCRECTAujEj1PQjOD8b21a5eLX3+/x8GJeBk4KX30I4dDebw==
-
-zapo-js@^0.3.0:
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-0.3.0.tgz#be948b127b582c85b1bd5afe03e7cbd506a99463"
-  integrity sha512-Th2RKe185R9GuKt1jASWJnxWfInfEhodaSDcF9BuXyzmjpQpU/HRGGAXebhXc4BG1cMRUrE3BQzOx63zxCDi3Q==

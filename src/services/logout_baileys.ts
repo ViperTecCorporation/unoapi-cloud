@@ -9,6 +9,8 @@ import { dataStores } from './data_store'
 import { mediaStores } from './media_store'
 import { delConfig, delSessionStatus, delSessionTransientKeys } from './redis'
 import { resolveWhatsAppEngine } from './providers/provider_resolver'
+import { clearZapoSession } from './zapo/zapo_session_cleanup'
+import { zapoStoreRegistry, type ZapoStoreRegistry } from './zapo/zapo_store_registry'
 
 export class LogoutBaileys implements Logout {
   private getClient: getClient
@@ -16,7 +18,13 @@ export class LogoutBaileys implements Logout {
   private listener: Listener
   private onNewLogin: OnNewLogin
 
-  constructor(getClient: getClient, getConfig: getConfig, listener: Listener, onNewLogin: OnNewLogin) {
+  constructor(
+    getClient: getClient,
+    getConfig: getConfig,
+    listener: Listener,
+    onNewLogin: OnNewLogin,
+    private readonly zapoStores: ZapoStoreRegistry = zapoStoreRegistry,
+  ) {
     this.getClient = getClient
     this.getConfig = getConfig
     this.listener = listener
@@ -37,29 +45,34 @@ export class LogoutBaileys implements Logout {
       await sessionStore.isStatusRestartRequired(phone)
 
     if (shouldForceLogout) {
-      const client = existingClient || await this.getClient({
-        phone,
-        listener: this.listener,
-        getConfig: this.getConfig,
-        onNewLogin: this.onNewLogin,
-      })
       try {
+        const client = existingClient || await this.getClient({
+          phone,
+          listener: this.listener,
+          getConfig: this.getConfig,
+          onNewLogin: this.onNewLogin,
+        })
         await client.logout()
       } catch (e) {
-        logger.warn(e as any, 'Ignore error while forcing %s logout for %s', provider, phone)
+        const error = e instanceof Error ? e : new Error(String(e))
+        logger.warn(error, 'Ignore error while forcing %s logout for %s', provider, phone)
       }
     }
     if (provider === 'baileys') {
       await dataStore.cleanSession(true)
-    } else if (config.useRedis) {
-      // Zapo clears its own persistent store after the server confirms logout.
-      // Do not call the legacy DataStore cleanup here: it owns Baileys auth and
-      // would destroy the rollback credentials during a Zapo deregistration.
-      await delConfig(phone)
-      await delSessionStatus(phone)
-      await delSessionTransientKeys(phone)
     } else {
-      await sessionStore.setStatus(phone, 'disconnected')
+      // Server logout is asynchronous and may not emit its final close event
+      // before the socket disconnects. Always wipe the Zapo store locally so
+      // deregistration cannot silently reconnect with stale credentials.
+      await clearZapoSession(this.zapoStores.get(config).session(phone))
+      // Legacy DataStore owns Baileys auth and remains available for rollback.
+      if (config.useRedis) {
+        await delConfig(phone)
+        await delSessionStatus(phone)
+        await delSessionTransientKeys(phone)
+      } else {
+        await sessionStore.setStatus(phone, 'disconnected')
+      }
     }
     clients.delete(phone)
     stores.delete(phone)

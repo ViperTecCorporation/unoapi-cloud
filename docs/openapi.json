@@ -365,28 +365,38 @@
                   }
                 },
                 "interactiveList": {
-                  "summary": "Interativo - Lista",
+                  "summary": "Interativo - Lista compatível com Baileys e Zapo",
                   "value": {
                     "messaging_product": "whatsapp",
-                    "to": "5511999999999",
+                    "to": "5566996269251",
                     "type": "interactive",
                     "interactive": {
                       "type": "list",
+                      "header": {
+                        "type": "text",
+                        "text": "Menu"
+                      },
                       "body": {
-                        "text": "Selecione"
+                        "text": "Escolha uma opção"
+                      },
+                      "footer": {
+                        "text": "Unoapi"
                       },
                       "action": {
+                        "button": "Ver opções",
                         "sections": [
                           {
-                            "title": "Grupo",
+                            "title": "Planos",
                             "rows": [
                               {
-                                "id": "r1",
-                                "title": "Item 1"
+                                "id": "plan_basic",
+                                "title": "Básico",
+                                "description": "R$ 10"
                               },
                               {
-                                "id": "r2",
-                                "title": "Item 2"
+                                "id": "plan_pro",
+                                "title": "Pro",
+                                "description": "R$ 20"
                               }
                             ]
                           }
@@ -526,6 +536,105 @@
         }
       }
     },
+    "/v15.0/{phone}/groups/{groupId}": {
+      "get": {
+        "summary": "Consultar detalhes e configurações atuais do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata normalizado do grupo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Grupo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Alterar configurações do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configurações aplicadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Sair do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessão removida do grupo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v15.0/{phone}/groups/{groupId}/participants": {
       "get": {
         "summary": "Listar participantes de um grupo em cache",
@@ -556,6 +665,119 @@
           },
           "404": {
             "description": "Grupo não encontrado em cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Promover ou rebaixar administradores do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "groupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aceita 1203... ou 1203...@g.us"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action",
+                  "participants"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "promote",
+                      "demote"
+                    ]
+                  },
+                  "participants": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "description": "Número, PN JID ou LID"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "wa_id": {
+                              "type": "string"
+                            },
+                            "user_id": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Participantes promovidos ou rebaixados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "group_id",
+                    "failed"
+                  ],
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "promoted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "demoted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "failed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ação ou participantes inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -781,7 +1003,8 @@
     },
     "/{phone}/request_code": {
       "post": {
-        "summary": "Solicitar Pairing Code (envia mensagem de texto ao próprio número)",
+        "summary": "Solicitar código de pareamento",
+        "description": "Solicita um pairing code ao motor da sessão. No motor Zapo, a resposta HTTP contém o código puro e o Socket.IO também publica uma imagem com o código legível pelo contrato compatível `broadcast`, usando `type: qrcode`. A aplicação pode continuar exibindo `content` em uma tag `img`, sem criar um evento específico para pairing code.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PhonePath"
@@ -797,10 +1020,15 @@
                   "properties": {
                     "success": {
                       "type": "boolean"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código temporário que deve ser digitado no WhatsApp."
                     }
                   },
                   "example": {
-                    "success": true
+                    "success": true,
+                    "code": "1234-5678"
                   }
                 }
               }
@@ -1105,6 +1333,15 @@
           "type": "string"
         },
         "description": "Número (ID) da sessão, ex.: 5511999999999"
+      },
+      "GroupIdPath": {
+        "name": "groupId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "JID do grupo, ex.: 120363040468224422@g.us"
       }
     },
     "schemas": {
@@ -1135,10 +1372,15 @@
               "zapo"
             ],
             "default": "baileys",
-            "description": "Motor WhatsApp da sessão. Ao alterar de Baileys para Zapo, a autenticação compatível é migrada automaticamente sem apagar a origem."
+            "description": "Motor WhatsApp da sessão. Ao alterar de Baileys para Zapo sem auth Zapo nativo, um novo pareamento por QR é obrigatório; credenciais Baileys não são importadas."
           },
           "connectionType": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "qrcode",
+              "pairing_code"
+            ],
+            "description": "Forma de pareamento. Em uma sessão Zapo já registrada, este valor permanece bloqueado no modo atual mesmo quando a sessão está offline. Para trocar o modo, execute deregister e registre a sessão novamente."
           }
         }
       },
@@ -1584,54 +1826,119 @@
         ]
       },
       "MessageInteractiveList": {
+        "description": "Lista de seleção única. Na Zapo, a UnoAPI converte este contrato para o `listMessage` raw documentado, usando `rows[].id` como `rowId`. Quando o contato seleciona uma linha, o mesmo ID retorna no webhook em `messages[].interactive.list_reply.id`.",
         "allOf": [
           {
             "$ref": "#/components/schemas/MessageCommon"
           },
           {
             "type": "object",
+            "required": [
+              "interactive"
+            ],
             "properties": {
               "type": {
                 "const": "interactive"
               },
               "interactive": {
                 "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
                 "properties": {
                   "type": {
                     "const": "list"
                   },
+                  "header": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "text"
+                    ],
+                    "description": "Cabeçalho textual opcional. Lista Zapo não aceita cabeçalho de mídia.",
+                    "properties": {
+                      "type": {
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
                   "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Texto principal exibido antes do botão da lista."
+                      }
+                    }
+                  },
+                  "footer": {
                     "type": "object",
                     "properties": {
                       "text": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Rodapé opcional."
                       }
                     }
                   },
                   "action": {
                     "type": "object",
+                    "required": [
+                      "button",
+                      "sections"
+                    ],
                     "properties": {
+                      "button": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Texto do botão que abre a lista."
+                      },
                       "sections": {
                         "type": "array",
+                        "minItems": 1,
                         "items": {
                           "type": "object",
+                          "required": [
+                            "title",
+                            "rows"
+                          ],
                           "properties": {
                             "title": {
-                              "type": "string"
+                              "type": "string",
+                              "description": "Título da seção."
                             },
                             "rows": {
                               "type": "array",
+                              "minItems": 1,
                               "items": {
                                 "type": "object",
+                                "required": [
+                                  "id",
+                                  "title"
+                                ],
                                 "properties": {
                                   "id": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Identificador estável da opção. Na Zapo vira `rowId` e retorna como `interactive.list_reply.id`."
                                   },
                                   "title": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Texto principal da opção."
                                   },
                                   "description": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "description": "Descrição opcional da opção."
                                   }
                                 }
                               }
@@ -1640,6 +1947,39 @@
                         }
                       }
                     }
+                  }
+                },
+                "example": {
+                  "type": "list",
+                  "header": {
+                    "type": "text",
+                    "text": "Menu"
+                  },
+                  "body": {
+                    "text": "Escolha uma opção"
+                  },
+                  "footer": {
+                    "text": "Unoapi"
+                  },
+                  "action": {
+                    "button": "Ver opções",
+                    "sections": [
+                      {
+                        "title": "Planos",
+                        "rows": [
+                          {
+                            "id": "plan_basic",
+                            "title": "Básico",
+                            "description": "R$ 10"
+                          },
+                          {
+                            "id": "plan_pro",
+                            "title": "Pro",
+                            "description": "R$ 20"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 }
               }
@@ -1934,6 +2274,98 @@
           }
         }
       },
+      "GroupDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "jid": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "picture": {
+            "type": "string"
+          },
+          "participants_count": {
+            "type": "integer"
+          },
+          "total_participant_count": {
+            "type": "integer"
+          },
+          "announcement": {
+            "type": "boolean",
+            "description": "true quando somente administradores podem enviar mensagens"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "true quando somente administradores podem editar as informações do grupo"
+          },
+          "join_approval_mode": {
+            "type": "string",
+            "enum": [
+              "approval_required",
+              "open"
+            ]
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "creation_timestamp": {
+            "type": "string"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "GroupSettingsRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "announcement": {
+            "type": "boolean",
+            "description": "Define se somente administradores podem enviar mensagens"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Define se somente administradores podem editar as informações do grupo"
+          },
+          "join_approval_mode": {
+            "type": "string",
+            "enum": [
+              "approval_required",
+              "open"
+            ]
+          }
+        }
+      },
+      "GroupSettingsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GroupSettingsRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
       "GroupParticipantsResponse": {
         "type": "object",
         "properties": {
@@ -2032,6 +2464,13 @@
                                       },
                                       "title": {
                                         "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      },
+                                      "error_data": {
+                                        "type": "object",
+                                        "description": "Diagnóstico normalizado do provider, sem stack trace"
                                       }
                                     }
                                   }
@@ -2092,7 +2531,60 @@
                           "messages": {
                             "type": "array",
                             "items": {
-                              "type": "object"
+                              "type": "object",
+                              "properties": {
+                                "from": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "timestamp": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string"
+                                },
+                                "interactive": {
+                                  "type": "object",
+                                  "description": "Resposta de botão ou lista interativa.",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "button_reply",
+                                        "list_reply"
+                                      ]
+                                    },
+                                    "list_reply": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "description": "Mesmo valor enviado originalmente em `rows[].id`."
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "description": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "button_reply": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -2103,6 +2595,38 @@
               }
             }
           }
+        },
+        "example": {
+          "object": "whatsapp_business_account",
+          "entry": [
+            {
+              "id": "5566996269251",
+              "changes": [
+                {
+                  "field": "messages",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "messages": [
+                      {
+                        "from": "5566999999999",
+                        "id": "MESSAGE_ID",
+                        "timestamp": "1784900000",
+                        "type": "interactive",
+                        "interactive": {
+                          "type": "list_reply",
+                          "list_reply": {
+                            "id": "plan_basic",
+                            "title": "Básico",
+                            "description": "R$ 10"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
         }
       },
       "WebhookAck": {

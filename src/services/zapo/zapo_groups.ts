@@ -1,6 +1,6 @@
 import type { WaClient, WaStoreSession } from 'zapo-js'
-import fetch from 'node-fetch'
 import { ZapoIdentity } from './zapo_identity'
+import { downloadGroupPicture } from './zapo_group_picture'
 
 type ParticipantAction = 'add' | 'remove' | 'promote' | 'demote'
 type GroupSetting = 'announcement' | 'not_announcement' | 'locked' | 'unlocked'
@@ -17,7 +17,7 @@ export class ZapoGroups {
   }
 
   async create(subject: string, participants: string[]) {
-    return this.client.group.createGroup(subject, await this.identity.resolveMany(participants))
+    return this.client.group.createGroup(subject, await this.identity.resolveManyPhoneJids(participants))
   }
 
   metadata(jid: string) {
@@ -35,9 +35,7 @@ export class ZapoGroups {
   }
 
   async updatePicture(jid: string, pictureUrl: string) {
-    const response = await fetch(pictureUrl)
-    if (!response.ok) throw new Error(`Could not download group picture: HTTP ${response.status}`)
-    await this.client.profile.setProfilePicture(new Uint8Array(await response.arrayBuffer()), jid)
+    await this.client.profile.setProfilePicture(await downloadGroupPicture(pictureUrl), jid)
   }
 
   async updateParticipants(jid: string, participants: string[], action: ParticipantAction): Promise<readonly unknown[]> {
@@ -47,7 +45,10 @@ export class ZapoGroups {
       promote: this.client.group.promoteParticipants,
       demote: this.client.group.demoteParticipants,
     }
-    return methods[action](jid, await this.identity.resolveMany(participants))
+    const resolved = action === 'add'
+      ? await this.identity.resolveManyPhoneJids(participants)
+      : await this.identity.resolveMany(participants)
+    return methods[action](jid, resolved)
   }
 
   inviteCode(jid: string) {

@@ -83,14 +83,15 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
           }
           const webhooks = value.map((webhook: any) => normalizeWebhookConfig(webhook, config.webhooks[0]))
           configRedis[key] = webhooks
-        } else if (key === 'webhookForward'){
-          const webhookForward = value
-          Object.keys(value).forEach((k) => {
-            if (!webhookForward[k]) {
-              webhookForward[k] = (config as any)[key][k]
-            }
-          })
-          configRedis[key] = webhookForward
+        } else if (key === 'webhookForward') {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            logger.debug('Ignore invalid webhookForward redis config in %s: expected object', phone)
+            return
+          }
+          configRedis[key] = {
+            ...config.webhookForward,
+            ...value,
+          }
         }
         logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configForLog(configRedis[key])))
         ;(config as any)[key] = configRedis[key]
@@ -99,7 +100,6 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
 
     config.server = config.server || 'server_1'
     config.historyMaxAgeDays = normalizeHistoryMaxAgeDays(config.historyMaxAgeDays)
-    config.oneToOneAddressingMode = 'lid'
     // Configs persisted before multi-provider support belong to Baileys. The
     // environment default is reserved for sessions that do not exist yet.
     config.provider = hasStoredConfig && !hasStoredProvider

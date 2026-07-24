@@ -2,6 +2,7 @@ import type { WaClient, WaPictureEvent, WaStoreSession } from 'zapo-js'
 import { BASE_URL, PROFILE_PICTURE_FORCE_REFRESH, PROFILE_PICTURE_REFRESH_INTERVAL_SEC } from '../../defaults'
 import logger from '../logger'
 import { ProfilePictureWebhookMarker } from '../profile_picture_webhook_marker'
+import { ProfilePictureMissCache } from '../profile_picture_miss_cache'
 import type { Store } from '../store'
 import { normalizeZapoPhoneJid } from './zapo_contact_resolver'
 
@@ -36,6 +37,7 @@ export type ZapoProfilePicturesOptions = {
   forceRefresh?: boolean
   refreshIntervalSeconds?: number
   webhookIntervalSeconds?: number
+  notFoundTtlSeconds?: number
 }
 
 const isGroupJid = (jid: string) => jid.endsWith('@g.us')
@@ -49,6 +51,7 @@ export class ZapoProfilePictures {
   private readonly forceRefresh: boolean
   private readonly refreshIntervalMs: number
   private readonly webhookMarker: ProfilePictureWebhookMarker
+  private readonly missCache: ProfilePictureMissCache
 
   constructor(private readonly options: ZapoProfilePicturesOptions) {
     this.forceRefresh = options.forceRefresh ?? PROFILE_PICTURE_FORCE_REFRESH
@@ -59,6 +62,10 @@ export class ZapoProfilePictures {
     this.webhookMarker = new ProfilePictureWebhookMarker({
       useRedis: options.store.dataStore.type === 'redis',
       intervalSeconds: options.webhookIntervalSeconds,
+    })
+    this.missCache = new ProfilePictureMissCache({
+      useRedis: options.store.dataStore.type === 'redis',
+      ttlSeconds: options.notFoundTtlSeconds,
     })
   }
 
@@ -97,7 +104,10 @@ export class ZapoProfilePictures {
     const jid = `${event.targetJid || event.chatJid || ''}`.trim()
     if (!jid) return
     const target = await this.resolveTarget(jid)
-    await this.webhookMarker.invalidate(this.options.phone, target.jid)
+    await Promise.all([
+      this.webhookMarker.invalidate(this.options.phone, target.jid),
+      this.missCache.invalidate(this.options.phone, target.jid),
+    ])
 
     if (event.action === 'delete') {
       this.pictureIds.delete(target.jid)
@@ -138,6 +148,7 @@ export class ZapoProfilePictures {
 
   private async load(target: PictureTarget, changed: boolean): Promise<ProfilePictureInfo | undefined> {
     const local = await this.findLocal(target)
+    if (!changed && !local && await this.missCache.has(this.options.phone, target.jid)) return undefined
     if (!changed && !this.needsRefresh(target.jid, !!local)) return local
 
     const existingId = changed ? undefined : this.pictureIds.get(target.jid)
@@ -149,7 +160,11 @@ export class ZapoProfilePictures {
       if (remote.id) this.pictureIds.set(target.jid, remote.id)
       this.checkedAt.set(target.jid, Date.now())
 
-      if (!remote.url) return local
+      if (!remote.url) {
+        if (!local) await this.missCache.mark(this.options.phone, target.jid)
+        return local
+      }
+      await this.missCache.invalidate(this.options.phone, target.jid)
       await this.options.store.mediaStore.saveProfilePicture({
         id: target.phoneJid || target.jid,
         ...(target.lid ? { lid: target.lid } : {}),
@@ -158,6 +173,7 @@ export class ZapoProfilePictures {
       return await this.findLocal(target)
     } catch (error) {
       this.checkedAt.set(target.jid, Date.now())
+      if (!local) await this.missCache.mark(this.options.phone, target.jid)
       logger.debug(error as Error, 'Zapo profile picture unavailable for %s', target.jid)
       return local
     }

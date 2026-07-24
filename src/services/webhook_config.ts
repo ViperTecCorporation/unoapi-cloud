@@ -18,6 +18,15 @@ export const webhookHasTarget = (webhook: Partial<Webhook> | undefined): boolean
   return !!`${webhook.urlAbsolute || webhook.url || ''}`.trim()
 }
 
+export const isChatwootWebhook = (webhook: Partial<Webhook> | undefined): boolean => {
+  if (!webhook) return false
+  const targets = [webhook.url, webhook.urlAbsolute]
+    .map((value) => `${value || ''}`.toLowerCase())
+  return targets.some((target) => (
+    target.includes('chatwoot') || target.includes('/webhooks/whatsapp')
+  ))
+}
+
 export const resolveWebhookUrl = (webhook: Partial<Webhook>, phone: string): string | undefined => {
   const absolute = `${webhook.urlAbsolute || ''}`.trim()
   if (absolute) return absolute

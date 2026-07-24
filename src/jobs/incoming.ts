@@ -9,6 +9,17 @@ import fetch, { Response } from 'node-fetch'
 import mime from 'mime-types'
 import { v1 as uuid } from 'uuid'
 import { buildRestrictionNoticeWebhooks } from '../services/restriction_notice'
+import { isChatwootWebhook } from '../services/webhook_config'
+import {
+  buildProviderSendFailureResponse,
+  shouldReturnProviderSendFailure,
+} from '../services/providers/send_failure'
+import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
+
+type RetryContext = {
+  countRetries: number
+  maxRetries: number
+}
 
 export class IncomingJob {
   private incoming: Incoming
@@ -106,7 +117,7 @@ export class IncomingJob {
       type: payload.type,
     }
     if (groupId) message.group_id = groupId
-    const userId = `${payload?.from_user_id || payload?.user_id || payload?.contact?.user_id || ''}`.trim()
+    const userId = `${payload?.to_user_id || payload?.toUserId || payload?.user_id || payload?.contact?.user_id || payload?.from_user_id || ''}`.trim()
     if (userId) message.from_user_id = userId
 
     const contact: any = {
@@ -152,7 +163,7 @@ export class IncomingJob {
     }
   }
 
-  async consume(phone: string, data: object) {
+  async consume(phone: string, data: object, retry?: RetryContext) {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
       logger.info(`Ignore incoming with ${phone} server ${config.server} is not server current server ${UNOAPI_SERVER_NAME}...`)
@@ -169,10 +180,12 @@ export class IncomingJob {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = a.payload
-    const idUno: string = a.id || uuid()
+    const idUno: string = a.id || payload?.message_id || payload?.messageId || uuid()
     const options: object = { ...(a.options || {}), unoMessageId: idUno }
-    const waId = normalizeUserOrGroupIdForWebhook(payload.to)
+    const waId = normalizeUserOrGroupIdForWebhook(payload?.to || payload?.recipient_id || phone)
     const timestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const provider = resolveWhatsAppEngine(config.provider)
+    const messageType = `${payload?.type || (payload?.status ? `status_${payload.status}` : 'unknown')}`
     // const retries: number = a.retries ? a.retries + 1 : 1
     // Idempotency guard: skip send if this UNO id looks already processed
     try {
@@ -188,7 +201,22 @@ export class IncomingJob {
     } catch (e) {
       logger.warn(e as any, 'Ignore error checking outgoing idempotency')
     }
-    const response = await this.incoming.send(phone, payload, options)
+    let response
+    try {
+      response = await this.incoming.send(phone, payload, options)
+    } catch (error) {
+      if (!shouldReturnProviderSendFailure(provider, error, retry)) throw error
+      logger.warn(error as any, 'Provider send failed permanently; emitting failed status provider=%s phone=%s id=%s type=%s', provider, phone, idUno, messageType)
+      response = buildProviderSendFailureResponse({
+        phone,
+        recipientId: waId,
+        messageId: idUno,
+        messageType,
+        provider,
+        timestamp,
+        error,
+      })
+    }
     logger.debug('%s response %s -> %s', config.provider, phone, JSON.stringify(response))
     const channelNumber = phone.replace('+', '')
     logger.debug('Compare to enqueue to commander %s == %s', channelNumber, payload?.to)
@@ -236,7 +264,7 @@ export class IncomingJob {
         }
       }
       const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, messagePayload)
-      const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
+      const webhooks = config.webhooks.filter((w) => w.sendNewMessages && !isChatwootWebhook(w))
       logger.debug('%s webhooks with sendNewMessages', webhooks.length)
       await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
       // Reconcile early status updates that arrived before UNO<->provider mapping
@@ -308,7 +336,7 @@ export class IncomingJob {
     } else if (ok.success) {
       // Fallback: provedor não retornou id da mensagem, ainda assim notificar "new message" no webhook
       const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, payload[payload.type])
-      const webhooks = config.webhooks.filter((w) => w.sendNewMessages)
+      const webhooks = config.webhooks.filter((w) => w.sendNewMessages && !isChatwootWebhook(w))
       logger.debug('%s webhooks with sendNewMessages (fallback)', webhooks.length)
       await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
       logger.debug('Message id %s update to status %s (fallback notified)', payload?.message_id, payload?.status)
