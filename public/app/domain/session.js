@@ -1,4 +1,4 @@
-import { t } from '../core/i18n.js?v=4.0.0-beta8';
+import { t } from '../core/i18n.js?v=4.0.0-beta8-06f3a62c';
 const phoneCandidates = (session) => [
     session.id,
     session.phone,

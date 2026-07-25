@@ -1,6 +1,6 @@
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
-import { t } from '../core/i18n.js?v=4.0.0-beta8';
-import { icon } from './icons.js?v=4.0.0-beta8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-06f3a62c';
+import { t } from '../core/i18n.js?v=4.0.0-beta8-06f3a62c';
+import { icon } from './icons.js?v=4.0.0-beta8-06f3a62c';
 export const renderInfoTooltip = (description) => `
   <button class="info-tooltip" type="button" data-action="toggle-tooltip"
     data-tooltip="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"

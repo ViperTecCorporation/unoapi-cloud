@@ -1,4 +1,4 @@
-import { versionIndexAssets, versionModuleImports } from '../../scripts/version-frontend-assets.cjs'
+import { frontendContentVersion, versionIndexAssets, versionModuleImports } from '../../scripts/version-frontend-assets.cjs'
 
 describe('frontend asset versioning', () => {
   test('versions static entry assets and replaces an older version', () => {
@@ -16,5 +16,20 @@ describe('frontend asset versioning', () => {
     expect(versioned).toContain("from './core/api.js?v=4.0.0-beta8'")
     expect(versioned).toContain("import '../components/layout.js?v=4.0.0-beta8'")
     expect(versionModuleImports(versioned, '4.0.0-beta8')).toBe(versioned)
+  })
+
+  test('creates a stable content version that changes with frontend content', () => {
+    const current = frontendContentVersion(
+      ["import './app.js?v=old'", 'body { color: red; }'],
+      '4.0.0-beta8',
+    )
+    expect(current).toBe(frontendContentVersion(
+      ["import './app.js?v=another-cache-key'", 'body { color: red; }'],
+      '4.0.0-beta8',
+    ))
+    expect(current).not.toBe(frontendContentVersion(
+      ["import './app.js?v=old'", 'body { color: blue; }'],
+      '4.0.0-beta8',
+    ))
   })
 })
