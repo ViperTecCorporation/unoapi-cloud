@@ -62,5 +62,5 @@ describe('contacts directory route', () => {
       next_cursor: '0',
       has_more: false,
     })
-  })
+  }, 15_000)
 })

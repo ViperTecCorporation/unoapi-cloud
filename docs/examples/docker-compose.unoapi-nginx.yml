@@ -8,7 +8,7 @@ name: viperconnect
 
 services:
   unoapi:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta6
     container_name: unoapi
     restart: always
     ports:

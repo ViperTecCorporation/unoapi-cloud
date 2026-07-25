@@ -32,7 +32,7 @@ papéis. Portanto, um container único não precisa declarar essa variável.
 ```yaml
 services:
   viperconnect:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta6
     environment:
       REDIS_URL: redis://redis:6379
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
@@ -50,7 +50,7 @@ Use a mesma imagem e preserve seu entrypoint:
 ```yaml
 services:
   web:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta6
     environment:
       UNOAPI_PROCESS_ROLE: web
       REDIS_URL: redis://redis:6379
@@ -59,14 +59,14 @@ services:
       - "9876:9876"
 
   broker:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta6
     environment:
       UNOAPI_PROCESS_ROLE: broker
       REDIS_URL: redis://redis:6379
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
 
   worker-zapo:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta6
     environment:
       UNOAPI_PROCESS_ROLE: worker
       UNOAPI_WORKER_ENGINE: zapo
