@@ -39,6 +39,7 @@ describe('frontend features', () => {
     expect(html).toContain('Maximum number of sends from this session')
     expect(html).toContain('Maximum number of sends to the same recipient')
     expect(html).toContain('when set to zero, the default delay is 60 seconds')
+    expect(renderWebhookModal({}, -1)).toContain('Enable/Disable Webhook')
   })
 
   test('maps the full session form payload', () => {
@@ -65,6 +66,7 @@ describe('frontend features', () => {
     expect(list).not.toContain('secret-id')
     expect(list).toContain('<th>Status</th><th>Destino</th>')
     expect(modal).toContain('value="secret-id"')
+    expect(modal).toContain('Ativa/Inativa Webhook')
     expect(modal).toContain('data-action="toggle-tooltip"')
   })
 

@@ -120,7 +120,7 @@ const english = {
     'Destino não configurado': 'Destination not configured',
     'Editar': 'Edit',
     'Nenhum webhook configurado.': 'No webhooks configured.',
-    'Webhook ativo': 'Active webhook',
+    'Ativa/Inativa Webhook': 'Enable/Disable Webhook',
     'Habilita o envio de eventos para este destino.': 'Enables event delivery to this destination.',
     'Novas mensagens': 'New messages',
     'Envia o evento principal quando uma mensagem é criada.': 'Sends the main event when a message is created.',

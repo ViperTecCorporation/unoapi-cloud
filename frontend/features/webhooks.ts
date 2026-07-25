@@ -40,7 +40,7 @@ export const renderWebhooks = (webhooks: WebhookConfig[]): string => `
 `
 
 const webhookSwitches = [
-  ['enabled', 'Webhook ativo', 'Habilita o envio de eventos para este destino.', true],
+  ['enabled', 'Ativa/Inativa Webhook', 'Habilita o envio de eventos para este destino.', true],
   ['sendNewMessages', 'Novas mensagens', 'Envia o evento principal quando uma mensagem é criada.', false],
   ['sendIncomingMessages', 'Mensagens recebidas', 'Inclui mensagens recebidas pelo WhatsApp.', true],
   ['sendOutgoingMessages', 'Mensagens enviadas', 'Inclui mensagens enviadas pela API ou pelo aparelho.', true],
