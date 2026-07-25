@@ -1,11 +1,16 @@
 import { getStore } from './store'
-import { getStoreFile } from './store_file'
-import { WAMessageKey, WAVersion } from '@whiskeysockets/baileys'
 import { Level } from 'pino'
+import type { WhatsAppMessageKey, WhatsAppVersion } from './whatsapp_types'
 import { SessionProvider } from './providers/provider_types'
 import { webhookHasTarget } from './webhook_config'
 
 export const configs: Map<string, Config> = new Map()
+const LEGACY_FILE_STORE_MODULE = './store_file.js'
+
+const getLegacyFileStore: getStore = async (phone, config) => {
+  const legacyModule = module.require(LEGACY_FILE_STORE_MODULE)
+  return legacyModule.getStoreFile(phone, config)
+}
 
 export type connectionType = 'qrcode' | 'pairing_code' | 'forward'
 
@@ -83,7 +88,7 @@ export type Config = {
   proxyUrl: string | undefined
   sessionWebhook: string
   shouldIgnoreJid: (jid: string) => boolean | undefined
-  shouldIgnoreKey: (key: WAMessageKey, messageType: string | undefined) => boolean | undefined
+  shouldIgnoreKey: (key: WhatsAppMessageKey, messageType: string | undefined) => boolean | undefined
   getStore: getStore
   baseStore: string
   webhooks: Webhook[]
@@ -109,7 +114,7 @@ export type Config = {
   overrideWebhooks: boolean
   customMessageCharacters: string[]
   customMessageCharactersFunction: (message: string) => string,
-  whatsappVersion: WAVersion | undefined,
+  whatsappVersion: WhatsAppVersion | undefined,
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
@@ -154,8 +159,8 @@ export const defaultConfig: Config = {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   shouldIgnoreJid: (_jid: string) => false,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  shouldIgnoreKey: (_key: WAMessageKey, _messageType: string | undefined) => false,
-  getStore: getStoreFile,
+  shouldIgnoreKey: (_key: WhatsAppMessageKey, _messageType: string | undefined) => false,
+  getStore: getLegacyFileStore,
   throwWebhookError: false,
   baseStore: './data',
   webhooks: [

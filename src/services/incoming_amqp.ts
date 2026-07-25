@@ -5,6 +5,8 @@ import { v1 as uuid } from 'uuid'
 import { jidToPhoneNumber, normalizeGroupId } from './transformer'
 import { getConfig } from './config'
 import { providerQueueName } from './providers/provider_queue'
+import { isProviderRuntimeEnabled } from './providers/provider_runtime_policy'
+import { SendError } from './send_error'
 
 type GroupManagementAction =
   | 'groupCreate'
@@ -29,6 +31,9 @@ export class IncomingAmqp implements Incoming {
   }
 
   private queue(config: Awaited<ReturnType<getConfig>>) {
+    if (!isProviderRuntimeEnabled(config.provider)) {
+      throw new SendError(409, 'baileys_provider_disabled_deregister_required')
+    }
     return providerQueueName(UNOAPI_QUEUE_INCOMING, config.server || 'server_1', config.provider)
   }
 

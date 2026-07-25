@@ -1,6 +1,3 @@
-import { AuthenticationState } from '@whiskeysockets/baileys'
-import { sessionRedis } from './session_redis'
-import { authState } from './auth_state'
 import { store, Store } from './store'
 import { DataStore } from './data_store'
 import { getDataStoreRedis } from './data_store_redis'
@@ -13,11 +10,19 @@ import logger from './logger'
 import { SessionStoreRedis } from './session_store_redis'
 import { getMediaStoreFile } from './media_store_file'
 import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
+import { resolveSessionProvider } from './providers/provider_resolver'
+import type { ProviderAuthState } from './whatsapp_types'
+
+const LEGACY_AUTH_STATE_MODULE = './auth_state.js'
+const LEGACY_SESSION_REDIS_MODULE = './session_redis.js'
 
 export const getStoreRedis: getStore = async (phone: string, config: Config): Promise<Store> => {
   if (!stores.has(phone)) {
     logger.debug('Creating redis store %s', phone)
-    if (BAILEYS_AUTH_POLICY.jidMapEnrichOnStoreEnabled) {
+    if (
+      resolveSessionProvider(config.provider) !== 'zapo'
+      && BAILEYS_AUTH_POLICY.jidMapEnrichOnStoreEnabled
+    ) {
       const enrichmentTimer = setTimeout(() => {
         enrichJidMapFromAuthLidCache(phone).catch((error) => logger.debug(error as any, 'JIDMAP enrich on store failed for %s', phone))
       }, 1_000)
@@ -33,7 +38,15 @@ export const getStoreRedis: getStore = async (phone: string, config: Config): Pr
 
 const storeRedis: store = async (phone: string, config: Config): Promise<Store> => {
   logger.info(`Store session: ${phone}`)
-  const { state, saveCreds }: { state: AuthenticationState; saveCreds: () => Promise<void> } = await authState(sessionRedis, phone)
+  let state: ProviderAuthState = {}
+  let saveCreds = async () => undefined
+  if (resolveSessionProvider(config.provider) !== 'zapo') {
+    const { authState } = module.require(LEGACY_AUTH_STATE_MODULE)
+    const { sessionRedis } = module.require(LEGACY_SESSION_REDIS_MODULE)
+    const legacy = await authState(sessionRedis, phone)
+    state = legacy.state
+    saveCreds = legacy.saveCreds
+  }
   const dataStore: DataStore = await getDataStoreRedis(phone, config)
   let mediaStore: MediaStore
   if (config.useS3) {

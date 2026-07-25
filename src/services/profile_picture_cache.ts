@@ -1,4 +1,4 @@
-import { isLidUser } from '@whiskeysockets/baileys'
+import { isLidUser } from './whatsapp_jid'
 import { formatJid, jidToPhoneNumber } from './transformer/jid'
 
 export const profilePictureCacheIds = (jid: string): string[] => {

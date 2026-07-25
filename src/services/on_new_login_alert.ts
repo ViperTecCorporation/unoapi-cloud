@@ -1,6 +1,6 @@
 import { v1 as uuid } from 'uuid'
 import { Listener } from './listener'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import { phoneNumberToJid } from './transformer'
 
 export const onNewLoginAlert = (listener: Listener): OnNewLogin => {

@@ -1,0 +1,593 @@
+import { ApiClient, ApiError } from './core/api.js'
+import { digitsOnly, escapeHtml } from './core/html.js'
+import { SocketBridge } from './core/socket.js'
+import { renderLayout, renderLogin } from './components/layout.js'
+import { sessionPhone } from './domain/session.js'
+import type {
+  ContactDirectoryItem,
+  GroupSummary,
+  QrBroadcast,
+  SessionConfig,
+  SessionTab,
+  WebhookConfig,
+} from './domain/types.js'
+import { sessionConfigPayload } from './features/session_config.js'
+import {
+  renderConfirmDeregisterModal,
+  renderConnectionModal,
+  renderMessageModal,
+  renderNewSessionModal,
+} from './features/session_modals.js'
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
+import { renderDashboard } from './pages/dashboard.js'
+import { renderSessionPage } from './pages/session.js'
+
+const TOKEN_KEY = 'whatsappApiToken'
+const THEME_KEY = 'viperconnect_theme'
+const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed'
+const REFRESH_SECONDS = 15
+
+type ModalState =
+  | { type: 'new-session' }
+  | { type: 'connection', phone: string }
+  | { type: 'message', phone: string }
+  | { type: 'webhook', phone: string, index: number }
+  | { type: 'deregister', phone: string }
+
+const emptyContactState = () => ({
+  items: [] as ContactDirectoryItem[],
+  cursor: '0',
+  hasMore: false,
+})
+
+export class ViperConnectApp {
+  private readonly api: ApiClient
+  private readonly socket: SocketBridge
+  private sessions: SessionConfig[] = []
+  private selectedPhone = ''
+  private tab: SessionTab = 'overview'
+  private query = ''
+  private statusFilter = 'all'
+  private contacts = emptyContactState()
+  private groups: GroupSummary[] = []
+  private loading = false
+  private loadingSection = false
+  private sectionError = ''
+  private loginError = ''
+  private refreshIn = REFRESH_SECONDS
+  private modal?: ModalState
+  private connectionEvent?: QrBroadcast
+  private connectionLoading = false
+  private collapsed = localStorage.getItem(SIDEBAR_KEY) === 'true'
+  private mobileOpen = false
+  private toast = ''
+  private refreshTimer?: number
+
+  constructor(
+    private readonly root: HTMLElement,
+    baseUrl = window.location.origin,
+    api = new ApiClient(baseUrl),
+    socket = new SocketBridge(baseUrl),
+  ) {
+    this.api = api
+    this.socket = socket
+    this.bindEvents()
+  }
+
+  async start(): Promise<void> {
+    this.applySavedTheme()
+    const token = localStorage.getItem(TOKEN_KEY) || ''
+    if (!token) {
+      this.render()
+      return
+    }
+    this.api.setToken(token)
+    try {
+      await this.loadSessions(true)
+      this.startRefreshTimer()
+    } catch {}
+  }
+
+  private bindEvents(): void {
+    this.root.addEventListener('click', (event) => {
+      void this.handleClick(event)
+    })
+    this.root.addEventListener('submit', (event) => {
+      void this.handleSubmit(event)
+    })
+    this.root.addEventListener('input', (event) => this.handleFilter(event))
+    this.root.addEventListener('change', (event) => this.handleFilter(event))
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.modal) this.closeModal()
+    })
+  }
+
+  private async handleClick(event: Event): Promise<void> {
+    const target = event.target as HTMLElement
+    const actionElement = target.closest<HTMLElement>('[data-action]')
+    const closeModal = target.closest<HTMLElement>('[data-close-modal]')
+    const backdrop = target.matches('[data-modal-backdrop]')
+
+    if (closeModal || backdrop) {
+      this.closeModal()
+      return
+    }
+    if (!actionElement) return
+
+    const action = actionElement.dataset.action || ''
+    const phone = actionElement.dataset.phone || ''
+    if (action === 'toggle-sidebar') {
+      this.collapsed = !this.collapsed
+      localStorage.setItem(SIDEBAR_KEY, `${this.collapsed}`)
+      this.render()
+    } else if (action === 'toggle-mobile-menu') {
+      this.mobileOpen = !this.mobileOpen
+      this.render()
+    } else if (action === 'toggle-theme') {
+      this.toggleTheme()
+    } else if (action === 'logout') {
+      this.logout()
+    } else if (action === 'go-dashboard') {
+      this.selectedPhone = ''
+      this.tab = 'overview'
+      this.mobileOpen = false
+      this.render()
+    } else if (action === 'refresh') {
+      await this.loadSessions().catch(() => undefined)
+    } else if (action === 'new-session') {
+      this.modal = { type: 'new-session' }
+      this.render()
+    } else if (action === 'manage-session') {
+      this.openSession(phone)
+    } else if (action === 'session-tab') {
+      await this.openSessionTab(actionElement.dataset.tab as SessionTab)
+    } else if (action === 'connect-session') {
+      await this.openConnection(phone)
+    } else if (action === 'request-connection') {
+      await this.requestConnection(phone)
+    } else if (action === 'test-message') {
+      this.modal = { type: 'message', phone }
+      this.render()
+    } else if (action === 'deregister-session') {
+      this.modal = { type: 'deregister', phone }
+      this.render()
+    } else if (action === 'confirm-deregister') {
+      await this.deregister(phone)
+    } else if (action === 'reload-contacts') {
+      await this.loadContacts(true)
+    } else if (action === 'load-more-contacts') {
+      await this.loadContacts(false)
+    } else if (action === 'reload-groups') {
+      await this.loadGroups()
+    } else if (action === 'new-webhook') {
+      this.modal = { type: 'webhook', phone: this.selectedPhone, index: -1 }
+      this.render()
+    } else if (action === 'edit-webhook') {
+      this.modal = {
+        type: 'webhook',
+        phone: this.selectedPhone,
+        index: Number(actionElement.dataset.webhookIndex),
+      }
+      this.render()
+    } else if (action === 'delete-webhook') {
+      await this.deleteWebhook(Number(actionElement.dataset.webhookIndex))
+    }
+  }
+
+  private async handleSubmit(event: Event): Promise<void> {
+    const form = event.target as HTMLFormElement
+    if (!(form instanceof HTMLFormElement) || !form.dataset.form) return
+    event.preventDefault()
+    const data = new FormData(form)
+
+    if (form.dataset.form === 'login') {
+      await this.login(`${data.get('token') || ''}`)
+    } else if (form.dataset.form === 'new-session') {
+      await this.createSession(data)
+    } else if (form.dataset.form === 'session-config') {
+      await this.saveSessionConfig(data)
+    } else if (form.dataset.form === 'webhook') {
+      await this.saveWebhook(data, Number(form.dataset.webhookIndex))
+    } else if (form.dataset.form === 'test-message') {
+      await this.sendTestMessage(data)
+    }
+  }
+
+  private handleFilter(event: Event): void {
+    const input = event.target as HTMLInputElement | HTMLSelectElement
+    if (input.dataset.filter === 'query') {
+      this.query = input.value
+      this.render()
+      const next = this.root.querySelector<HTMLInputElement>('[data-filter="query"]')
+      next?.focus()
+      next?.setSelectionRange(next.value.length, next.value.length)
+    } else if (input.dataset.filter === 'status') {
+      this.statusFilter = input.value
+      this.render()
+    }
+  }
+
+  private async login(token: string): Promise<void> {
+    this.api.setToken(token)
+    this.loginError = ''
+    try {
+      await this.loadSessions(true)
+      localStorage.setItem(TOKEN_KEY, token.trim())
+      this.startRefreshTimer()
+    } catch (error) {
+      this.api.setToken('')
+      this.loginError = this.messageFor(error)
+      this.render()
+    }
+  }
+
+  private logout(): void {
+    localStorage.removeItem(TOKEN_KEY)
+    this.api.setToken('')
+    this.sessions = []
+    this.selectedPhone = ''
+    this.modal = undefined
+    this.socket.clear()
+    this.render()
+  }
+
+  private async loadSessions(initial = false): Promise<void> {
+    if (this.loading) return
+    this.loading = true
+    if (!initial) this.render()
+    try {
+      this.sessions = await this.api.sessions()
+      this.refreshIn = REFRESH_SECONDS
+      this.loginError = ''
+      if (this.selectedPhone) {
+        const selected = this.findSession(this.selectedPhone)
+        if (!selected) this.selectedPhone = ''
+      }
+    } catch (error) {
+      if (error instanceof ApiError && [401, 403].includes(error.status)) {
+        localStorage.removeItem(TOKEN_KEY)
+        this.api.setToken('')
+        this.loginError = 'Token inválido ou sem permissão.'
+      } else {
+        this.showToast(this.messageFor(error))
+      }
+      throw error
+    } finally {
+      this.loading = false
+      this.render()
+    }
+  }
+
+  private tickRefresh(): void {
+    if (!this.api.getToken() || this.selectedPhone || this.modal || this.loading) return
+    this.refreshIn -= 1
+    if (this.refreshIn <= 0) {
+      void this.loadSessions().catch(() => undefined)
+      return
+    }
+    const label = this.root.querySelector<HTMLElement>('[data-refresh-countdown]')
+    if (label) label.textContent = `${this.refreshIn}s`
+  }
+
+  private openSession(phone: string): void {
+    if (!this.findSession(phone)) return
+    this.selectedPhone = phone
+    this.tab = 'overview'
+    this.contacts = emptyContactState()
+    this.groups = []
+    this.sectionError = ''
+    this.render()
+  }
+
+  private async openSessionTab(tab: SessionTab): Promise<void> {
+    this.tab = tab
+    this.sectionError = ''
+    this.render()
+    if (tab === 'contacts' && !this.contacts.items.length) await this.loadContacts(true)
+    if (tab === 'groups' && !this.groups.length) await this.loadGroups()
+  }
+
+  private async loadContacts(reset: boolean): Promise<void> {
+    if (!this.selectedPhone || this.loadingSection) return
+    if (reset) this.contacts = emptyContactState()
+    this.loadingSection = true
+    this.sectionError = ''
+    this.render()
+    try {
+      const page = await this.api.contacts(
+        this.selectedPhone,
+        reset ? '0' : this.contacts.cursor,
+      )
+      const byId = new Map(this.contacts.items.map((contact) => [contact.user_id, contact]))
+      page.contacts.forEach((contact) => byId.set(contact.user_id, contact))
+      this.contacts = {
+        items: [...byId.values()],
+        cursor: page.next_cursor,
+        hasMore: page.has_more,
+      }
+    } catch (error) {
+      this.sectionError = this.messageFor(error)
+    } finally {
+      this.loadingSection = false
+      this.render()
+    }
+  }
+
+  private async loadGroups(): Promise<void> {
+    if (!this.selectedPhone || this.loadingSection) return
+    this.loadingSection = true
+    this.sectionError = ''
+    this.render()
+    try {
+      const page = await this.api.groups(this.selectedPhone)
+      this.groups = Array.isArray(page.groups) ? page.groups : []
+    } catch (error) {
+      this.sectionError = this.messageFor(error)
+    } finally {
+      this.loadingSection = false
+      this.render()
+    }
+  }
+
+  private async createSession(data: FormData): Promise<void> {
+    const phone = digitsOnly(data.get('phone'))
+    if (!phone) {
+      this.showToast('Informe um telefone válido.')
+      return
+    }
+    const pending: SessionConfig = {
+      phone,
+      id: phone,
+      label: `${data.get('label') || phone}`,
+      status: 'connecting',
+      provider: 'zapo',
+      connectionType: `${data.get('connectionType') || 'qrcode'}` as SessionConfig['connectionType'],
+      server: 'server_1',
+      webhooks: [],
+    }
+    this.sessions = [...this.sessions.filter((session) => sessionPhone(session) !== phone), pending]
+    this.modal = { type: 'connection', phone }
+    this.connectionEvent = undefined
+    this.connectionLoading = true
+    this.watchConnection(phone)
+    this.render()
+    try {
+      const created = await this.api.register(phone, {
+        provider: 'zapo',
+        label: pending.label,
+        connectionType: pending.connectionType,
+      })
+      this.replaceSession(phone, { ...pending, ...created, phone })
+      await this.loadSessions()
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    } finally {
+      this.connectionLoading = false
+      this.render()
+    }
+  }
+
+  private async saveSessionConfig(data: FormData): Promise<void> {
+    if (!this.selectedPhone) return
+    try {
+      const updated = await this.api.register(this.selectedPhone, sessionConfigPayload(data))
+      this.replaceSession(this.selectedPhone, { ...this.findSession(this.selectedPhone), ...updated })
+      this.showToast('Configuração salva.')
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
+  private async saveWebhook(data: FormData, index: number): Promise<void> {
+    const session = this.findSession(this.selectedPhone)
+    if (!session) return
+    const webhooks = [...(session.webhooks || [])]
+    const webhook = webhookPayload(data)
+    if (index >= 0) webhooks[index] = webhook
+    else webhooks.push(webhook)
+    try {
+      const updated = await this.api.saveWebhooks(this.selectedPhone, webhooks)
+      this.replaceSession(this.selectedPhone, { ...session, ...updated, webhooks })
+      this.modal = undefined
+      this.showToast('Webhook salvo.')
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
+  private async deleteWebhook(index: number): Promise<void> {
+    const session = this.findSession(this.selectedPhone)
+    if (!session || index < 0) return
+    if (!window.confirm('Remover este webhook da sessão?')) return
+    const webhooks = (session.webhooks || []).filter((_, current) => current !== index)
+    try {
+      const updated = await this.api.saveWebhooks(this.selectedPhone, webhooks)
+      this.replaceSession(this.selectedPhone, { ...session, ...updated, webhooks })
+      this.modal = undefined
+      this.showToast('Webhook removido.')
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
+  private async sendTestMessage(data: FormData): Promise<void> {
+    const phone = `${data.get('phone') || ''}`
+    const to = digitsOnly(data.get('to'))
+    const body = `${data.get('body') || ''}`.trim()
+    try {
+      await this.api.sendText(phone, to, body)
+      this.modal = undefined
+      this.showToast('Mensagem enviada para processamento.')
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
+  private async deregister(phone: string): Promise<void> {
+    try {
+      await this.api.deregister(phone)
+      this.modal = undefined
+      this.selectedPhone = ''
+      this.showToast('Sessão desconectada. Um novo pareamento será necessário.')
+      await this.loadSessions()
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+      this.render()
+    }
+  }
+
+  private async openConnection(phone: string): Promise<void> {
+    const session = this.findSession(phone)
+    if (!session) return
+    this.modal = { type: 'connection', phone }
+    this.connectionEvent = undefined
+    this.connectionLoading = true
+    this.watchConnection(phone)
+    this.render()
+    try {
+      const latest = await this.api.session(phone)
+      this.replaceSession(phone, { ...session, ...latest, phone })
+      if (['offline', 'disconnected'].includes(`${latest.status || ''}`.toLowerCase())) {
+        await this.api.register(phone)
+      }
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    } finally {
+      this.connectionLoading = false
+      this.render()
+    }
+  }
+
+  private async requestConnection(phone: string): Promise<void> {
+    this.connectionLoading = true
+    this.connectionEvent = undefined
+    this.watchConnection(phone)
+    this.render()
+    try {
+      await this.api.register(phone)
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    } finally {
+      this.connectionLoading = false
+      this.render()
+    }
+  }
+
+  private watchConnection(phone: string): void {
+    this.socket.subscribe(phone, (event) => {
+      this.connectionEvent = event
+      if (event.type === 'status' && /connected|online session/i.test(`${event.content || ''}`)) {
+        const current = this.findSession(phone)
+        if (current) this.replaceSession(phone, { ...current, status: 'online' })
+      }
+      this.render()
+    })
+  }
+
+  private closeModal(): void {
+    if (this.modal?.type === 'connection') this.socket.clear()
+    this.modal = undefined
+    this.connectionEvent = undefined
+    this.connectionLoading = false
+    this.render()
+  }
+
+  private render(): void {
+    if (!this.api.getToken()) {
+      this.root.innerHTML = renderLogin(escapeHtml(this.loginError))
+      return
+    }
+    const selected = this.findSession(this.selectedPhone)
+    const content = selected
+      ? renderSessionPage({
+        session: selected,
+        tab: this.tab,
+        contacts: this.contacts.items,
+        contactsHasMore: this.contacts.hasMore,
+        groups: this.groups,
+        loadingSection: this.loadingSection,
+        sectionError: this.sectionError,
+      })
+      : renderDashboard({
+        sessions: this.sessions,
+        query: this.query,
+        status: this.statusFilter,
+        loading: this.loading,
+        refreshIn: this.refreshIn,
+      })
+
+    this.root.innerHTML = renderLayout({
+      content,
+      collapsed: this.collapsed,
+      mobileOpen: this.mobileOpen,
+    }) + this.renderModal() + (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
+  }
+
+  private renderModal(): string {
+    if (!this.modal) return ''
+    if (this.modal.type === 'new-session') return renderNewSessionModal()
+    const session = this.findSession(this.modal.phone)
+    if (!session) return ''
+    if (this.modal.type === 'connection') {
+      return renderConnectionModal(session, this.connectionEvent, this.connectionLoading)
+    }
+    if (this.modal.type === 'message') return renderMessageModal(session)
+    if (this.modal.type === 'deregister') return renderConfirmDeregisterModal(session)
+    const webhooks = session.webhooks || []
+    const webhook: WebhookConfig = this.modal.index >= 0
+      ? webhooks[this.modal.index] || { id: 'default' }
+      : { id: webhooks.length ? `webhook-${webhooks.length + 1}` : 'default', enabled: true }
+    return renderWebhookModal(webhook, this.modal.index)
+  }
+
+  private findSession(phone: string): SessionConfig | undefined {
+    return this.sessions.find((session) => sessionPhone(session) === phone)
+  }
+
+  private replaceSession(phone: string, session: SessionConfig): void {
+    const index = this.sessions.findIndex((item) => sessionPhone(item) === phone)
+    if (index < 0) this.sessions.push(session)
+    else this.sessions[index] = session
+  }
+
+  private showToast(message: string): void {
+    this.toast = message
+    window.setTimeout(() => {
+      if (this.toast === message) {
+        this.toast = ''
+        this.render()
+      }
+    }, 4_000)
+  }
+
+  private startRefreshTimer(): void {
+    if (this.refreshTimer) return
+    this.refreshTimer = window.setInterval(() => this.tickRefresh(), 1_000)
+  }
+
+  private messageFor(error: unknown): string {
+    if (error instanceof ApiError) {
+      if (error.message === 'contact_directory_requires_zapo_provider') {
+        return 'O diretório de contatos está disponível apenas para sessões Zapo.'
+      }
+      return error.message
+    }
+    return error instanceof Error ? error.message : 'Ocorreu um erro inesperado.'
+  }
+
+  private applySavedTheme(): void {
+    const saved = localStorage.getItem(THEME_KEY)
+    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    document.documentElement.dataset.theme = theme
+  }
+
+  private toggleTheme(): void {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    localStorage.setItem(THEME_KEY, next)
+  }
+}

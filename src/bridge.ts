@@ -32,6 +32,7 @@ import { ReloadJob } from './jobs/reload'
 import { LogoutJob } from './jobs/logout'
 import { providerQueueName } from './services/providers/provider_queue'
 import { resolveWhatsAppEngine } from './services/providers/provider_resolver'
+import { isProviderRuntimeEnabled } from './services/providers/provider_runtime_policy'
 
 const getConfigLocal: getConfig = getConfigRedis
 const outgoingAmqp: Outgoing = new OutgoingAmqp(getConfigLocal)
@@ -55,6 +56,9 @@ if (process.env.SENTRY_DSN) {
 
 const startBrigde = async () => {
   await ensureRequiredRedis()
+  if (!isProviderRuntimeEnabled(workerEngine)) {
+    throw new Error('baileys_worker_disabled')
+  }
 
   logger.info('Unoapi Cloud version %s starting bridge...', version)
 

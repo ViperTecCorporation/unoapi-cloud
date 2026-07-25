@@ -17,7 +17,7 @@ import { onNewLoginGenerateToken } from '../services/on_new_login_generate_token
 import { Outgoing } from '../services/outgoing'
 import logger from '../services/logger'
 import { Listener } from '../services/listener'
-import { ProviderListener } from '../services/providers/listener_router'
+import { ListenerZapo } from '../services/listener_zapo'
 import { OutgoingAmqp } from '../services/outgoing_amqp'
 import { BroadcastAmqp } from '../services/broadcast_amqp'
 import { addToBlacklistRedis, isInBlacklistInRedis } from '../services/blacklist'
@@ -33,12 +33,12 @@ const getConfigLocal: getConfig = getConfigRedis
 const outgoingAmqp: Outgoing = new OutgoingAmqp(getConfigLocal)
 const listenerAmqp: Listener = new ListenerAmqp(resolveWhatsAppEngine(UNOAPI_WORKER_ENGINE))
 const broadcastAmqp: Broadcast = new BroadcastAmqp()
-const listenerBaileys: Listener = new ProviderListener(outgoingAmqp, broadcastAmqp, getConfigLocal)
+const providerListener: Listener = new ListenerZapo(outgoingAmqp, broadcastAmqp, getConfigLocal)
 const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigLocal, isInBlacklistInRedis, addToBlacklistRedis)
 const onNewLogin = onNewLoginGenerateToken(outgoingCloudApi)
 const incomingBaileys = new IncomingProvider(listenerAmqp, getConfigLocal, getClientProvider, onNewLogin)
 const incomingJob = new IncomingJob(incomingBaileys, outgoingAmqp, getConfigLocal, UNOAPI_QUEUE_COMMANDER)
-const listenerJob = new ListenerJob(listenerBaileys, outgoingCloudApi, getConfigLocal)
+const listenerJob = new ListenerJob(providerListener, outgoingCloudApi, getConfigLocal)
 
 const processeds = new Map<string, boolean>()
 

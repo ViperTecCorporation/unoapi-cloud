@@ -5,6 +5,13 @@ import fs from 'fs'
 import path from 'path'
 import YAML from 'yaml'
 
+const PUBLIC_APP_ROOT = path.resolve('./public/app')
+
+export const resolvePublicAppAsset = (file: string): string | undefined => {
+  const target = path.resolve(PUBLIC_APP_ROOT, `${file || ''}`)
+  return target.startsWith(`${PUBLIC_APP_ROOT}${path.sep}`) ? target : undefined
+}
+
 class IndexController {
 
   public root(req: Request, res: Response) {
@@ -98,6 +105,13 @@ class IndexController {
 
   public favicon(_req: Request, res: Response) {
     return res.type('image/png').sendFile(path.resolve('./logos/favicon-32x32.png'))
+  }
+
+  public appFile(req: Request, res: Response) {
+    const file = (req.params as any)[0] || ''
+    const target = resolvePublicAppAsset(file)
+    if (!target) return res.status(404).send('Not found')
+    return res.sendFile(target)
   }
 
   public ping(req: Request, res: Response) {

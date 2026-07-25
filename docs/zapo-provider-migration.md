@@ -29,10 +29,23 @@ O container web nao abre socket do WhatsApp. Cada worker executa somente um moto
 Configuracao:
 
 - `provider` por sessao: `baileys`, `zapo` ou `forwarder`.
-- `WHATSAPP_ENGINE`: padrao para sessoes sem valor persistido; default `baileys`.
-- `UNOAPI_WORKER_ENGINE`: motor exclusivo do processo worker.
-- `UNOAPI_PROCESS_ROLE`: papel do entrypoint cloud (`web`, `broker`, `worker` ou `all` legado).
-- `forwarder` continua no worker legado enquanto existir.
+- `WHATSAPP_ENGINE`: padrao para novas sessoes sem valor persistido; default `zapo`. Sessoes legadas ja persistidas sem `provider` continuam Baileys.
+- `UNOAPI_WORKER_ENGINE`: motor exclusivo do processo worker; o runtime suportado e `zapo`.
+- `UNOAPI_PROCESS_ROLE`: papel opcional do entrypoint cloud (`web`, `broker` ou
+  `worker`). Quando ausente, inicia todos os papeis.
+- Baileys e forwarder permanecem apenas no codigo de referencia e nao possuem worker ativo.
+
+## Estado atual Zapo-only
+
+- o Compose nao declara worker Baileys;
+- a imagem e o comando Linux padrao iniciam `cloud.js`;
+- o build de runtime parte de `cloud.ts` e nao emite `index.js`,
+  `client_baileys.js` ou `listener_baileys.js`;
+- sessoes Baileys persistidas aparecem offline e nao podem executar register,
+  connect ou envio;
+- `deregister` de sessao Baileys nao publica em fila sem consumidor: remove
+  localmente auth, chaves transitorias, status e configuracao do Redis;
+- depois da remocao, um novo register usa Zapo e exige pareamento nativo.
 
 ## Limites entre camadas
 
@@ -305,3 +318,15 @@ A Baileys somente pode ser removida quando:
 - testes de contrato Zapo cobrirem todos os endpoints dependentes do WhatsApp;
 - nao houver fallback Baileys em producao por um ciclo de observacao definido;
 - rollback de dados tiver sido validado antes da remocao final.
+
+## Supressão do runtime Baileys
+
+O runtime e a imagem padrão são Zapo-only. A Baileys permanece somente como
+dependência de desenvolvimento para compilar e testar o código legado. O build
+normal parte de `src/cloud.ts`, valida automaticamente que não há import estático
+ou artefato crítico da Baileys e a imagem copia apenas dependências de produção.
+
+As sessões Baileys persistidas ficam offline e só podem usar o fluxo de
+`deregister`, que limpa seus dados legados sem iniciar um socket. O procedimento
+deliberado para recolocar o motor está em
+[BAILEYS_REACTIVATION.md](BAILEYS_REACTIVATION.md).

@@ -11,13 +11,13 @@ Gateway de API para WhatsApp mantido pela ViperTec Corporation.
 
 ## Sobre
 
-ViperConnect é um gateway para WhatsApp baseado em Baileys, com contrato HTTP inspirado na WhatsApp Cloud API. Ele foi criado para operar sessões WhatsApp, enviar mensagens, receber webhooks, integrar com Chatwoot/Typebot e manter compatibilidade com fluxos Meta-like quando necessário.
+ViperConnect é um gateway para WhatsApp com runtime Zapo e contrato HTTP inspirado na WhatsApp Cloud API. Ele foi criado para operar sessões WhatsApp, enviar mensagens, receber webhooks, integrar com Chatwoot/Typebot e manter compatibilidade com fluxos Meta-like quando necessário. A Baileys permanece somente como código legado suprimido e não integra a imagem padrão.
 
 O projeto é mantido pela ViperTec Corporation e é baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
 
 ## Description
 
-ViperConnect is a WhatsApp gateway based on Baileys, exposing an HTTP contract inspired by the WhatsApp Cloud API. It is designed to operate WhatsApp sessions, send messages, receive webhooks, integrate with Chatwoot/Typebot, and preserve compatibility with Meta-like flows when needed.
+ViperConnect is a WhatsApp gateway with a Zapo runtime, exposing an HTTP contract inspired by the WhatsApp Cloud API. Baileys remains suppressed legacy code and is not part of the standard image.
 
 This project is maintained by ViperTec Corporation and is based on the original Unoapi Cloud project created by Clairton Rodrigo.
 
@@ -151,6 +151,7 @@ Arquivos principais:
 - [Instalação](docs/INSTALLATION.md)
 - [Ambiente](docs/ENVIRONMENT.md)
 - [Arquitetura](docs/ARCHITECTURE.md)
+- [Arquitetura de processos Cloud](docs/CLOUD_ARCHITECTURE.md)
 - [Desenvolvimento](docs/DEVELOPMENT.md)
 - [Embedded Signup](docs/WHATSAPP_EMBEDDED.md)
 - [Histórico de mensagens](docs/MESSAGE_HISTORY.md)

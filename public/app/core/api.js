@@ -1,0 +1,95 @@
+export class ApiError extends Error {
+    constructor(status, message, payload) {
+        super(message);
+        this.status = status;
+        this.payload = payload;
+        this.name = 'ApiError';
+    }
+}
+const errorMessage = (payload, status) => {
+    if (payload && typeof payload === 'object') {
+        const value = payload;
+        const message = value.message || value.error || value.title;
+        if (message)
+            return `${message}`;
+    }
+    return `Falha HTTP ${status}`;
+};
+export class ApiClient {
+    constructor(baseUrl, fetcher = fetch) {
+        this.baseUrl = baseUrl;
+        this.fetcher = fetcher;
+        this.token = '';
+    }
+    setToken(token) {
+        this.token = token.trim();
+    }
+    getToken() {
+        return this.token;
+    }
+    async request(path, init = {}) {
+        const headers = new Headers(init.headers);
+        if (this.token)
+            headers.set('Authorization', `Bearer ${this.token}`);
+        if (init.body && !headers.has('Content-Type'))
+            headers.set('Content-Type', 'application/json');
+        const response = await this.fetcher(`${this.baseUrl}${path}`, { ...init, headers });
+        if (response.status === 204)
+            return undefined;
+        const text = await response.text();
+        let payload = undefined;
+        if (text) {
+            try {
+                payload = JSON.parse(text);
+            }
+            catch {
+                payload = text;
+            }
+        }
+        if (!response.ok)
+            throw new ApiError(response.status, errorMessage(payload, response.status), payload);
+        return payload;
+    }
+    async sessions() {
+        const response = await this.request('/sessions');
+        return Array.isArray(response?.data) ? response.data : [];
+    }
+    session(phone) {
+        return this.request(`/v15.0/${encodeURIComponent(phone)}`);
+    }
+    register(phone, config = {}) {
+        return this.request(`/v15.0/${encodeURIComponent(phone)}/register`, {
+            method: 'POST',
+            body: JSON.stringify(config),
+        });
+    }
+    deregister(phone) {
+        return this.request(`/v15.0/${encodeURIComponent(phone)}/deregister`, {
+            method: 'POST',
+        });
+    }
+    contacts(phone, cursor = '0', limit = 60) {
+        const query = new URLSearchParams({ cursor, limit: `${limit}` });
+        return this.request(`/${encodeURIComponent(phone)}/contacts?${query}`);
+    }
+    groups(phone) {
+        return this.request(`/v15.0/${encodeURIComponent(phone)}/groups`);
+    }
+    saveWebhooks(phone, webhooks) {
+        return this.register(phone, {
+            webhooks,
+            overrideWebhooks: true,
+        });
+    }
+    sendText(phone, to, body) {
+        return this.request(`/v15.0/${encodeURIComponent(phone)}/messages`, {
+            method: 'POST',
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                to,
+                type: 'text',
+                text: { body },
+            }),
+        });
+    }
+}

@@ -123,8 +123,6 @@ export class ListenerZapo implements Listener {
       const downloaded = normalized.__unoapiMediaBytes
       if (downloaded && store.mediaStore.saveDownloadedMedia) {
         normalized = await store.mediaStore.saveDownloadedMedia(normalized, Buffer.from(downloaded))
-      } else {
-        normalized = await store.mediaStore.saveMedia(normalized)
       }
       try { delete normalized.__unoapiMediaBytes } catch {}
     }

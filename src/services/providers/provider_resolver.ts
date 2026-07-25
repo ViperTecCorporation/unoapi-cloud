@@ -1,6 +1,6 @@
 import { SessionProvider, WhatsAppEngine, isWhatsAppEngine } from './provider_types'
 
-export const DEFAULT_WHATSAPP_ENGINE: WhatsAppEngine = 'baileys'
+export const DEFAULT_WHATSAPP_ENGINE: WhatsAppEngine = 'zapo'
 
 export const resolveSessionProvider = (value: unknown): SessionProvider => {
   if (value === 'forwarder') return 'forwarder'
@@ -9,5 +9,6 @@ export const resolveSessionProvider = (value: unknown): SessionProvider => {
 
 export const resolveWhatsAppEngine = (value: unknown): WhatsAppEngine => {
   const provider = resolveSessionProvider(value)
-  return provider === 'zapo' ? 'zapo' : DEFAULT_WHATSAPP_ENGINE
+  if (provider === 'forwarder' || provider === 'baileys') return 'baileys'
+  return 'zapo'
 }

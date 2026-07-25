@@ -1,4 +1,4 @@
-import { WAMessage, downloadMediaMessage, downloadContentFromMessage, Contact } from '@whiskeysockets/baileys'
+import type { WhatsAppContact, WhatsAppMessage } from './whatsapp_types'
 import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { writeFile } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync, createReadStream, statSync } from 'fs'
@@ -12,6 +12,9 @@ import { DATA_URL_TTL, FETCH_TIMEOUT_MS, DOWNLOAD_AUDIO_CONVERT_TO_MP3 } from '.
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import mediaToBuffer from '../utils/media_to_buffer'
+
+const LEGACY_BAILEYS_MEDIA_MODULE = '@whiskeysockets/baileys'
+const legacyBaileysMedia = async () => import(LEGACY_BAILEYS_MEDIA_MODULE)
 
 export const MEDIA_DIR = '/medias'
 
@@ -115,7 +118,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     ptvMessage: 'video',
   }
 
-  mediaStore.saveMedia = async (waMessage: WAMessage) => {
+  mediaStore.saveMedia = async (waMessage: WhatsAppMessage) => {
     let buffer
     const initial = getBinMessage(waMessage)
     const candidates: any[] = []
@@ -144,8 +147,11 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     normalizeMk(binMessage)
     const ensureBestFromPersisted = async () => {
       try {
+        const remoteJid = waMessage.key?.remoteJid
+        const messageId = waMessage.key?.id
+        if (!remoteJid || !messageId) return
         const ds = await getDataStore(phone, config)
-        const persistedM = await ds.loadMessage(waMessage.key.remoteJid!, waMessage.key.id!)
+        const persistedM = await ds.loadMessage(remoteJid, messageId)
         if (persistedM) {
           const persistedBin = getBinMessage(persistedM)
           normalizeMk(persistedBin)
@@ -204,6 +210,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       }
       // primary: use directPath decrypt stream
       const downloadViaContent = async (firstBlockIsIV = false) => {
+        const { downloadContentFromMessage } = await legacyBaileysMedia()
         const media = await (downloadContentFromMessage as any)(
           content,
           mapMediaType[ctx?.messageType],
@@ -231,14 +238,16 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
           } catch (err2: any) {
             // final fallback: use downloadMediaMessage helper
             if (!ctx?.messageType) throw err2
-            const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WAMessage
-            return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
+            const { downloadMediaMessage } = await legacyBaileysMedia()
+            const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WhatsAppMessage
+            return await downloadMediaMessage(toDownloadMessage as never, 'buffer', {})
           }
         }
         // non-decrypt errors: fallback to Baileys helper
         if (!ctx?.messageType) throw err1
-        const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WAMessage
-        return await downloadMediaMessage(toDownloadMessage, 'buffer', {})
+        const { downloadMediaMessage } = await legacyBaileysMedia()
+        const toDownloadMessage = { key: waMessage.key, message: { [ctx.messageType]: ctx.message }} as WhatsAppMessage
+        return await downloadMediaMessage(toDownloadMessage as never, 'buffer', {})
       }
     }
     try {
@@ -260,7 +269,9 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     return mediaStore.saveDownloadedMedia!(waMessage, buffer)
   }
 
-  mediaStore.saveDownloadedMedia = async (waMessage: WAMessage, buffer: Buffer) => {
+  mediaStore.saveDownloadedMedia = async (waMessage: WhatsAppMessage, buffer: Buffer) => {
+    const messageId = waMessage.key?.id
+    if (!messageId) throw new Error('media_message_id_required')
     const initial = getBinMessage(waMessage)
     const binMessage = initial
     let chosenMime: string = binMessage?.message?.mimetype
@@ -270,7 +281,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
         const low = (chosenMime || '').toLowerCase()
         const looksOgg = low.includes('ogg') || low.includes('opus') || low.includes('oga')
         if (looksOgg) {
-          logger.debug('Converting downloaded audio to MP3 for %s', waMessage.key.id)
+          logger.debug('Converting downloaded audio to MP3 for %s', messageId)
           outBuffer = await convertBufferToMp3(buffer)
           chosenMime = 'audio/mpeg'
         }
@@ -281,14 +292,14 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     }
     const filePath = mediaStore.getFilePath(
       phone,
-      waMessage.key.id!,
+      messageId,
       chosenMime,
       (binMessage as any)?.message?.fileName,
     )
     logger.debug('Saving buffer %s...', filePath)
     await mediaStore.saveMediaBuffer(filePath, outBuffer)
     logger.debug('Saved buffer %s!', filePath)
-    const mediaId = waMessage.key.id
+    const mediaId = messageId
     const mimeType = mime.lookup(filePath)
     // Gerar link direto (7 dias) usando o backend de storage (S3 gera presigned)
     const downloadUrl = await mediaStore.getFileUrl(filePath, 60 * 60 * 24 * 7)
@@ -377,7 +388,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     return payload
   }
 
-  const profilePictureIdsFor = async (jid?: string, contact?: Partial<Contact>): Promise<string[]> => {
+  const profilePictureIdsFor = async (jid?: string, contact?: Partial<WhatsAppContact>): Promise<string[]> => {
     const ids = new Set<string>()
     const add = (value?: string) => {
       const id = sanitizeProfileId(value)
@@ -431,7 +442,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     return (await mediaStore.getProfilePictureInfo?.(baseUrl, jid))?.url
   }
 
-  mediaStore.saveProfilePicture = async (contact: Contact) => {
+  mediaStore.saveProfilePicture = async (contact: WhatsAppContact) => {
     const originalId = contact.id as string
     const targetIds = await profilePictureIdsFor(originalId, contact)
 

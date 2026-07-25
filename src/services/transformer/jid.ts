@@ -1,4 +1,4 @@
-import { isLidUser, isPnUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import { isLidUser, isPnUser, jidNormalizedUser } from '../whatsapp_jid'
 import { parsePhoneNumber } from 'awesome-phonenumber'
 import logger from '../logger'
 

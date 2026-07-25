@@ -2,7 +2,7 @@ import { Outgoing } from './outgoing'
 import { v1 as uuid } from 'uuid'
 import { getConfigRedis } from './config_redis'
 import { getConfig, setConfig } from './redis'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import { t } from '../i18n'
 
 export const onNewLoginGenerateToken = (outgoing: Outgoing): OnNewLogin => {

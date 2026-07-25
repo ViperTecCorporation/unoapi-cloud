@@ -18,9 +18,7 @@ describe('provider client factory', () => {
     jest.clearAllMocks()
   })
 
-  test('keeps Baileys as the default engine', async () => {
-    const baileys = { connect: jest.fn() } as never
-    ;(getClientBaileys as jest.Mock).mockResolvedValue(baileys)
+  test('creates Zapo as the default engine for a new session', async () => {
     const args = {
       phone: '5566',
       listener: mockDeep<Listener>(),
@@ -28,8 +26,11 @@ describe('provider client factory', () => {
       onNewLogin: jest.fn(),
     }
 
-    await expect(getClientProvider(args)).resolves.toBe(baileys)
-    expect(getClientBaileys).toHaveBeenCalledWith(args)
+    const client = await getClientProvider(args)
+
+    expect(client).toBeDefined()
+    expect(ClientZapo).toHaveBeenCalledTimes(1)
+    expect(getClientBaileys).not.toHaveBeenCalled()
   })
 
   test('creates and caches a Zapo client for a Zapo session', async () => {
@@ -46,6 +47,20 @@ describe('provider client factory', () => {
     expect(first).toBe(second)
     expect(ClientZapo).toHaveBeenCalledTimes(1)
     expect(first.connect).toHaveBeenCalledWith(1)
+  })
+
+  test('rejects a legacy Baileys session while its runtime is suppressed', async () => {
+    const args = {
+      phone: '5511',
+      listener: mockDeep<Listener>(),
+      getConfig: async () => ({ ...defaultConfig, provider: 'baileys' as const }),
+      onNewLogin: jest.fn(),
+    }
+
+    await expect(getClientProvider(args)).rejects.toThrow(
+      'baileys_provider_disabled_deregister_required',
+    )
+    expect(getClientBaileys).not.toHaveBeenCalled()
   })
 
   test('keeps one managed Zapo client while another worker owns the session', async () => {

@@ -1,5 +1,10 @@
 import { defaultConfig, getConfig } from '../../src/services/config'
-import { mapStoredZapoContact, normalizeContactPhoneNumber, ZapoContactDirectory } from '../../src/services/zapo/zapo_contact_directory'
+import {
+  findCachedContactPicture,
+  mapStoredZapoContact,
+  normalizeContactPhoneNumber,
+  ZapoContactDirectory,
+} from '../../src/services/zapo/zapo_contact_directory'
 
 describe('ZapoContactDirectory', () => {
   test('normalizes Brazilian mobile numbers with the ninth digit', () => {
@@ -23,6 +28,7 @@ describe('ZapoContactDirectory', () => {
         phone_number: '556699554300@s.whatsapp.net',
         display_name: 'Maria',
         push_name: 'Mari',
+        username: 'maria',
         last_updated_ms: '1710000000000',
       }),
     ).toEqual({
@@ -30,8 +36,31 @@ describe('ZapoContactDirectory', () => {
       phone_number: '5566999554300',
       display_name: 'Maria',
       push_name: 'Mari',
+      username: 'maria',
       last_updated_ms: 1710000000000,
     })
+  })
+
+  test('finds a cached picture by LID before trying the normalized phone', async () => {
+    const lookup = jest.fn().mockResolvedValueOnce('https://cdn.example/maria.jpg')
+
+    await expect(findCachedContactPicture('session', {
+      user_id: '123@lid',
+      phone_number: '5566999554300',
+      last_updated_ms: 1,
+    }, lookup)).resolves.toBe('https://cdn.example/maria.jpg')
+    expect(lookup).toHaveBeenCalledWith('session', '123@lid')
+  })
+
+  test('returns no picture without forcing a remote profile download', async () => {
+    const lookup = jest.fn().mockResolvedValue(null)
+
+    await expect(findCachedContactPicture('session', {
+      user_id: '123@lid',
+      phone_number: '5566999554300',
+      last_updated_ms: 1,
+    }, lookup)).resolves.toBeUndefined()
+    expect(lookup).toHaveBeenCalled()
   })
 
   test('ignores records without a canonical LID', () => {
@@ -50,11 +79,17 @@ describe('ZapoContactDirectory', () => {
         .mockResolvedValueOnce({ jid: '2@lid', phone_number: '556699554300@s.whatsapp.net', last_updated_ms: '20' }),
     }
     const loadConfig: getConfig = jest.fn().mockResolvedValue({ ...defaultConfig, provider: 'zapo' })
-    const directory = new ZapoContactDirectory(loadConfig, async () => redis as never)
+    const pictureLookup = jest.fn().mockImplementation(async (_phone, cacheId) =>
+      cacheId === '2@lid' ? 'https://cdn.example/2.jpg' : undefined)
+    const directory = new ZapoContactDirectory(loadConfig, async () => redis as never, undefined, pictureLookup)
 
     await expect(directory.list('session', { cursor: '7', limit: 50 })).resolves.toEqual({
       contacts: [
-        expect.objectContaining({ user_id: '2@lid', phone_number: '5566999554300' }),
+        expect.objectContaining({
+          user_id: '2@lid',
+          phone_number: '5566999554300',
+          picture: 'https://cdn.example/2.jpg',
+        }),
         expect.objectContaining({ user_id: '1@lid', phone_number: '556635211234' }),
       ],
       next_cursor: '42',

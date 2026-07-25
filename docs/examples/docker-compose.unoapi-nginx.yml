@@ -8,10 +8,9 @@ name: viperconnect
 
 services:
   unoapi:
-    image: ghcr.io/viperteccorporation/viperconnect:3.0.67
+    image: ghcr.io/viperteccorporation/viperconnect:4.0.0-beta5
     container_name: unoapi
     restart: always
-    entrypoint: ["yarn", "cloud"]
     ports:
       - "9876:9876"
     depends_on:
@@ -20,6 +19,7 @@ services:
     networks:
       - unoapi
     environment:
+      # UNOAPI_PROCESS_ROLE omitido: web + broker + worker Zapo no mesmo container.
       HTTP_PROTOCOL: "https"
       BASE_URL: "https://unoapi.seudominio.com.br"
 
@@ -69,9 +69,6 @@ services:
 
 
       HISTORY_MAX_AGE_DAYS: "7"
-
-      BAILEYS_DEBUG_RAW_MESSAGES: "0"
-      BAILEYS_ENABLE_LIST_REPORTING: "1"
 
   unoapi-rabbitmq:
     image: rabbitmq:4.2.2-management-alpine

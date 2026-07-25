@@ -172,7 +172,8 @@ export type OnQrCode = (qrCode: string, time: number, limit: number) => Promise<
 export type OnNotification = (text: string, important: boolean) => Promise<void>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type OnDisconnected = (phone: string, payload: any) => Promise<void>
-export type OnNewLogin = (phone: string) => Promise<void>
+import type { OnNewLogin } from './login_types'
+export type { OnNewLogin } from './login_types'
 export type OnReconnect = (time: number) => Promise<void>
 
 export interface sendMessage {

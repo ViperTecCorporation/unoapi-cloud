@@ -1,5 +1,5 @@
 import { Response } from './response'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import { getConfig } from './config'
 import { Listener } from './listener'
 

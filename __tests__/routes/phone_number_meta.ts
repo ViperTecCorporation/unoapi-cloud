@@ -97,6 +97,16 @@ describe('phone number meta-like routes', () => {
     )
   })
 
+  test('reports a suppressed Baileys session as offline', async () => {
+    ;(config as any).provider = 'baileys'
+    ;(sessionStore.getStatus as jest.Mock).mockResolvedValue('online')
+
+    const res = await request(app.server).get('/sessions').set('Authorization', 'Bearer client-token')
+
+    expect(res.status).toEqual(200)
+    expect(res.body.data[0].status).toBe('offline')
+  })
+
   test('returns debug token scopes for valid token', async () => {
     const res = await request(app.server).get('/v19.0/debug_token?input_token=client-token')
 

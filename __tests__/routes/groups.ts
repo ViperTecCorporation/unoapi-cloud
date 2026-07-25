@@ -34,9 +34,12 @@ type LoadedApp = {
 
 const addToBlacklistMock = mock<addToBlacklist>()
 const sessionStore = mock<SessionStore>()
-const getConfigTest: getConfig = async (_phone: string) => defaultConfig
 
-const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact, provider?: 'baileys' | 'zapo'): Promise<LoadedApp> => {
+const loadApp = async (
+  metaGroupsEnabled: boolean,
+  contact?: Contact,
+  provider: 'baileys' | 'zapo' = 'baileys',
+): Promise<LoadedApp> => {
   jest.resetModules()
 
   jest.doMock('../../src/defaults', () => {
@@ -79,9 +82,7 @@ const loadApp = async (metaGroupsEnabled: boolean, contact?: Contact, provider?:
   const onNewLogin = mock<OnNewLogin>()
   const reload = mock<Reload>()
   const logout = mock<Logout>()
-  const getConfigForApp: getConfig = provider
-    ? async () => ({ ...defaultConfig, provider })
-    : getConfigTest
+  const getConfigForApp: getConfig = async () => ({ ...defaultConfig, provider })
   const app = new App(incoming, outgoing, '', getConfigForApp, sessionStore, onNewLogin, addToBlacklistMock, reload, logout, undefined, undefined, contact)
 
   return {

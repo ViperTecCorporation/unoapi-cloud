@@ -1,4 +1,8 @@
-import { WAMessageContent, WAMessage, proto } from '@whiskeysockets/baileys'
+import { proto } from 'zapo-js/proto'
+import type {
+  WhatsAppMessage,
+  WhatsAppMessageContent,
+} from '../whatsapp_types'
 
 import {
   OTHER_MESSAGES_TO_PROCESS,
@@ -34,8 +38,8 @@ export const getMessageType = (payload: any) => {
 }
 
 export const normalizeMessageContent = (
-  content: WAMessageContent | null | undefined
-): WAMessageContent | proto.IMessage | undefined => {
+  content: WhatsAppMessageContent | null | undefined
+): WhatsAppMessageContent | proto.IMessage | undefined => {
   content =
     // unwrap edited message to original content
     content?.editedMessage?.message ||
@@ -55,7 +59,7 @@ export const normalizeMessageContent = (
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const getBinMessage = (waMessage: WAMessage): { messageType: string; message: any } | undefined => {
+export const getBinMessage = (waMessage: WhatsAppMessage): { messageType: string; message: any } | undefined => {
   const message: proto.IMessage | undefined = (normalizeMessageContent(waMessage.message) || undefined) as any
   const messageType = getMessageType({ message })
   if (message && messageType && message[messageType]) {
@@ -63,7 +67,7 @@ export const getBinMessage = (waMessage: WAMessage): { messageType: string; mess
   }
 }
 
-export const getNormalizedMessage = (waMessage: WAMessage): WAMessage | undefined => {
+export const getNormalizedMessage = (waMessage: WhatsAppMessage): WhatsAppMessage | undefined => {
   const binMessage = getBinMessage(waMessage)
   if (binMessage) {
     let { message } = binMessage
@@ -77,7 +81,7 @@ export const getNormalizedMessage = (waMessage: WAMessage): WAMessage | undefine
   }
 }
 
-export const isSaveMedia = (message: WAMessage) => {
+export const isSaveMedia = (message: WhatsAppMessage) => {
   const normalizedMessage = getNormalizedMessage(message)
   const messageType = normalizedMessage && getMessageType(normalizedMessage)
   return messageType && TYPE_MESSAGES_TO_PROCESS_FILE.includes(messageType)

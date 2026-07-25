@@ -825,8 +825,8 @@ components:
         provider:
           type: string
           enum: [baileys, zapo]
-          default: baileys
-          description: Motor WhatsApp da sessão. Ao alterar de Baileys para Zapo sem auth Zapo nativo, um novo pareamento por QR é obrigatório; credenciais Baileys não são importadas.
+          default: zapo
+          description: Motor WhatsApp da sessão. Zapo é o padrão para novas sessões. Baileys permanece aceito somente para sessões legadas; ao migrar para Zapo, um novo pareamento é obrigatório e credenciais Baileys não são importadas.
         connectionType:
           type: string
           enum: [qrcode, pairing_code]

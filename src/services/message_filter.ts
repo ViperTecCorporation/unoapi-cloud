@@ -1,4 +1,10 @@
-import { WAMessageKey, isJidStatusBroadcast, isJidGroup, isJidBroadcast, isJidNewsletter } from '@whiskeysockets/baileys'
+import type { WhatsAppMessageKey } from './whatsapp_types'
+import {
+  isJidBroadcast,
+  isJidGroup,
+  isJidNewsletter,
+  isJidStatusBroadcast,
+} from './whatsapp_jid'
 import { Config, defaultConfig } from './config'
 import { jidToPhoneNumber } from './transformer'
 import logger from './logger'
@@ -8,7 +14,7 @@ interface IgnoreJid {
 }
 
 interface IgnoreKey {
-  (key: WAMessageKey, messageType: string | undefined): boolean | undefined
+  (key: WhatsAppMessageKey, messageType: string | undefined): boolean | undefined
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -17,12 +23,12 @@ const notIgnoreJid = (_jid: string) => {
   return false
 }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const notIgnoreKey: IgnoreKey = (_key: WAMessageKey, _messageType: string | undefined) => {
+const notIgnoreKey: IgnoreKey = (_key: WhatsAppMessageKey, _messageType: string | undefined) => {
   logger.info('Config to not ignore any key')
   return false
 }
 
-const IgnoreOwnKey: IgnoreKey = (key: WAMessageKey, messageType: string | undefined) => {
+const IgnoreOwnKey: IgnoreKey = (key: WhatsAppMessageKey, messageType: string | undefined) => {
   if (!messageType) {
     return true
   } else if (['update', 'receipt'].includes(messageType)) {
@@ -81,7 +87,7 @@ export class MessageFilter {
     }
     if (config.ignoreYourselfMessages) {
       logger.info('Config to ignore key yourself messages')
-      const IgnoreYourselfKey: IgnoreKey = (key: WAMessageKey, messageType: string | undefined) => {
+      const IgnoreYourselfKey: IgnoreKey = (key: WhatsAppMessageKey, messageType: string | undefined) => {
         if (!messageType) {
           return true
         } else if (['update', 'receipt'].includes(messageType)) {
@@ -108,7 +114,7 @@ export class MessageFilter {
     logger.info('%s Configs to ignore by jid', phone, ignoresJid.length)
     logger.info('%s Configs to ignore by key', phone, ignoresKey.length)
     this.ignoreJid = ignoresJid.length > 0 ? ignoreJid : notIgnoreJid
-    const ignoreKey: IgnoreKey = (key: WAMessageKey, messageType: string | undefined) => {
+    const ignoreKey: IgnoreKey = (key: WhatsAppMessageKey, messageType: string | undefined) => {
       const sum = ignoresKey.reduce((acc, f) => (f(key, messageType) ? ++acc : acc), 0)
       logger.debug(`key: ${JSON.stringify(key)} type: ${messageType} ignore sum is ${sum}`)
       return sum > 0
@@ -120,7 +126,7 @@ export class MessageFilter {
     return this.ignoreJid(jid)
   }
 
-  isIgnoreKey(key: WAMessageKey, messageType: string | undefined) {
+  isIgnoreKey(key: WhatsAppMessageKey, messageType: string | undefined) {
     return this.ignoreKey(key, messageType)
   }
 }

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/cloud.ts"
+  ],
+  "exclude": [
+    "./coverage",
+    "./dist",
+    "__tests__",
+    "jest.config.js"
+  ]
+}

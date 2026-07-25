@@ -5,6 +5,7 @@ import type { Outgoing } from '../outgoing'
 import { ListenerBaileys } from '../listener_baileys'
 import { ListenerZapo } from '../listener_zapo'
 import { resolveWhatsAppEngine } from './provider_resolver'
+export { listenerForProvider } from './listener_selector'
 
 export class ProviderListener implements Listener {
   readonly baileys: Listener
@@ -23,9 +24,4 @@ export class ProviderListener implements Listener {
   forProvider(provider: 'baileys' | 'zapo') {
     return provider === 'zapo' ? this.zapo : this.baileys
   }
-}
-
-export const listenerForProvider = (listener: Listener, provider: 'baileys' | 'zapo') => {
-  const selectable = listener as Listener & { forProvider?: (value: 'baileys' | 'zapo') => Listener }
-  return selectable.forProvider?.(provider) || listener
 }

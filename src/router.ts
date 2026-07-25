@@ -23,7 +23,7 @@ import { BlacklistController } from './controllers/blacklist_controller'
 import { PairingCodeController } from './controllers/pairing_code_controller'
 import { ConnectController } from './controllers/connect_controller'
 import { Server } from 'socket.io'
-import { OnNewLogin } from './services/socket'
+import type { OnNewLogin } from './services/login_types'
 import { addToBlacklist } from './services/blacklist'
 import { Reload } from './services/reload'
 import { Logout } from './services/logout'
@@ -96,6 +96,7 @@ export const router = (
   // Specific JSON endpoints first, then wildcard for markdown/static files
   router.get('/docs/swagger.json', indexController.docsOpenApiJson)
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)
+  router.get('/app/*', indexController.appFile)
   router.get('/docs/*', indexController.docsFile)
   router.get('/logos/*', indexController.logos)
   // Embedded Signup helpers (precisa ficar antes das rotas parametrizadas)

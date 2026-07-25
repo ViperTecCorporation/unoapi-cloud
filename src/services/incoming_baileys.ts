@@ -1,7 +1,7 @@
 import { Incoming } from './incoming'
 import { Client, getClient, clients } from './client'
 import { getConfig } from './config'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import logger from './logger'
 import { Listener } from './listener'
 

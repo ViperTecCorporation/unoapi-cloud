@@ -1,4 +1,10 @@
-import { AnyMessageContent, isJidNewsletter, isPnUser, isLidUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import type { WhatsAppMessageContent } from './whatsapp_types'
+import {
+  isJidNewsletter,
+  isLidUser,
+  isPnUser,
+  jidNormalizedUser,
+} from './whatsapp_jid'
 import mime from 'mime-types'
 import vCard from 'vcf'
 import logger from './logger'
@@ -475,7 +481,7 @@ export const completeCloudApiWebHook = (phone, to: string, message: object) => {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const toBaileysMessageContent = (payload: any, customMessageCharactersFunction = (m) => m): AnyMessageContent => {
+export const toBaileysMessageContent = (payload: any, customMessageCharactersFunction = (m) => m): WhatsAppMessageContent => {
   const { type } = payload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response: any = {}

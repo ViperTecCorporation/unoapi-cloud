@@ -1,11 +1,13 @@
 import { ZAPO_REDIS_KEY_PREFIX } from '../../defaults'
 import type { getConfig } from '../config'
-import { getRedis } from '../redis'
+import { getProfilePicture, getRedis } from '../redis'
 import { SendError } from '../send_error'
 import type { ContactDirectory, ContactDirectoryItem, ContactDirectoryPage, ContactDirectoryQuery } from '../contacts/contact_directory_types'
+import { profilePictureCacheIds } from '../profile_picture_cache'
 
 type RedisClient = Awaited<ReturnType<typeof getRedis>>
 type RedisFactory = () => Promise<RedisClient>
+type PictureLookup = (phone: string, cacheId: string) => Promise<string | null | undefined>
 type StoredContact = Record<string, string>
 
 const DEFAULT_LIMIT = 100
@@ -30,17 +32,36 @@ export const mapStoredZapoContact = (contact: StoredContact): ContactDirectoryIt
     phone_number: normalizeContactPhoneNumber(contact.phone_number),
     display_name: `${contact.display_name || ''}`.trim() || undefined,
     push_name: `${contact.push_name || ''}`.trim() || undefined,
+    username: `${contact.username || ''}`.trim() || undefined,
     last_updated_ms: Number(contact.last_updated_ms) || 0,
   }
 }
 
 const escapeRedisGlob = (value: string) => value.replace(/([*?\[\]\\])/g, '\\$1')
 
+export const findCachedContactPicture = async (
+  phone: string,
+  contact: ContactDirectoryItem,
+  lookup: PictureLookup = getProfilePicture,
+): Promise<string | undefined> => {
+  const identities = [
+    contact.user_id,
+    contact.phone_number ? `${contact.phone_number}@s.whatsapp.net` : '',
+  ]
+  const cacheIds = [...new Set(identities.flatMap(profilePictureCacheIds))]
+  for (const cacheId of cacheIds) {
+    const picture = await lookup(phone, cacheId)
+    if (picture) return picture
+  }
+  return undefined
+}
+
 export class ZapoContactDirectory implements ContactDirectory {
   constructor(
     private readonly loadConfig: getConfig,
     private readonly redisFactory: RedisFactory = getRedis,
     private readonly prefix = ZAPO_REDIS_KEY_PREFIX,
+    private readonly pictureLookup: PictureLookup = getProfilePicture,
   ) {}
 
   async list(phone: string, query: ContactDirectoryQuery = {}): Promise<ContactDirectoryPage> {
@@ -55,10 +76,14 @@ export class ZapoContactDirectory implements ContactDirectory {
       COUNT: limit,
     })
     const stored = await Promise.all((result.keys || []).map((key) => redis.hGetAll(key)))
-    const contacts = stored
+    const mapped = stored
       .map(mapStoredZapoContact)
       .filter((contact): contact is ContactDirectoryItem => !!contact)
-      .sort((left, right) => right.last_updated_ms - left.last_updated_ms)
+    const contacts = await Promise.all(mapped.map(async (contact) => ({
+      ...contact,
+      picture: await findCachedContactPicture(phone, contact, this.pictureLookup),
+    })))
+    contacts.sort((left, right) => right.last_updated_ms - left.last_updated_ms)
     const nextCursor = `${result.cursor}`
 
     return {

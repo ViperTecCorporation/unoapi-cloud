@@ -14,6 +14,7 @@ import { getPrivacyTokenDebug } from '../services/privacy_token_debug'
 import { preparePrivacyBootstrapSync } from '../services/privacy_bootstrap_sync'
 import { getMissingTcTokenQuotaStatus } from '../services/privacy_token_quota'
 import type { Incoming } from '../services/incoming'
+import { providerRuntimeStatus } from '../services/providers/provider_runtime_policy'
 
 export class PhoneNumberController {
   private getConfig: getConfig
@@ -79,7 +80,7 @@ export class PhoneNumberController {
       return res.status(200).json({
         ...graphPhone,
         display_phone_number: sessionPhone,
-        status: await sessionStore.getStatus(sessionPhone),
+        status: providerRuntimeStatus(config.provider, await sessionStore.getStatus(sessionPhone)),
         message_templates: { data: templates },
         ...config,
       })
@@ -108,7 +109,10 @@ export class PhoneNumberController {
       const phones = await this.sessionStore.getPhones()
       const items = await Promise.all(phones.map(async (phone) => {
         const config = await this.getConfig(phone)
-        const status = config.provider == 'forwarder' ? 'forwarder' : await this.sessionStore.getStatus(phone)
+        const storedStatus = config.provider == 'forwarder'
+          ? 'forwarder'
+          : await this.sessionStore.getStatus(phone)
+        const status = providerRuntimeStatus(config.provider, storedStatus)
         if (this.isAuthorizedToken(token, config)) {
           let missingTcTokenQuota
           try { missingTcTokenQuota = await getMissingTcTokenQuotaStatus(phone) } catch {}

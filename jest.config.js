@@ -31,6 +31,7 @@ module.exports = {
     },
   },
   moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^baileys$': '<rootDir>/test-setup/baileys.mock.ts',
     '^baileys/lib/Utils/logger$': '<rootDir>/test-setup/baileys-logger.mock.ts',
     '^@whiskeysockets/baileys$': '<rootDir>/test-setup/baileys.mock.ts',

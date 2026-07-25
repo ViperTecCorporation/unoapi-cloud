@@ -12,7 +12,8 @@ import {
 } from '../defaults'
 import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
 import logger from './logger'
-import { GroupMetadata, proto } from '@whiskeysockets/baileys'
+import { proto } from 'zapo-js/proto'
+import type { WhatsAppGroupMetadata } from './whatsapp_types'
 import { Webhook, configs } from './config' 
 import { isTransientInfraError } from './error_utils'
 import { version as appVersion } from '../../package.json'
@@ -1897,11 +1898,11 @@ export const getGroup = async (phone: string, jid: string) => {
   const key = groupKey(phone, jid)
   const group = await redisGet(key)
   if (group) {
-    return JSON.parse(group) as GroupMetadata
+    return JSON.parse(group) as WhatsAppGroupMetadata
   }
 }
 
-export const setGroup = async (phone: string, jid: string, data: GroupMetadata) => {
+export const setGroup = async (phone: string, jid: string, data: WhatsAppGroupMetadata) => {
   const key = groupKey(phone, jid)
   const previous = await getGroup(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(mergeGroupMetadataForCache(previous, data)), DATA_TTL)

@@ -1,4 +1,4 @@
-import { proto } from '@whiskeysockets/baileys'
+import { proto } from 'zapo-js/proto'
 
 const EXTRA_KEY_FIELDS = [
   'remoteJidAlt',

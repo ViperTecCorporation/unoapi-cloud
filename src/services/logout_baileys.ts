@@ -1,7 +1,7 @@
 import { Listener } from '../services/listener'
 import { configs, getConfig } from '../services/config'
 import { clients, getClient } from '../services/client'
-import { OnNewLogin } from '../services/socket'
+import type { OnNewLogin } from '../services/login_types'
 import { Logout } from './logout'
 import logger from './logger'
 import { stores } from './store'

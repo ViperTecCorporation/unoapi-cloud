@@ -2,6 +2,11 @@
 
 This guide explains key environment variables, when to use them, and why. Copy `.env.example` to `.env` and adjust for your setup.
 
+See [FRONTEND.md](FRONTEND.md) for the panel architecture and legacy Baileys
+worker operation.
+See [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) for single-container and
+role-separated deployments.
+
 ## Core Server
 
 - `PORT` Ã¢â‚¬â€ HTTP port. Default `9876`.
@@ -34,9 +39,9 @@ This guide explains key environment variables, when to use them, and why. Copy `
   - Startup fails before opening HTTP or AMQP consumers when it is missing or Redis cannot answer `PING`.
   - Filesystem is only a media backend when S3 is absent; it is not a fallback for sessions, configuration, IDs, leases or caches.
   - Example: `REDIS_URL=redis://localhost:6379`
-- `WHATSAPP_ENGINE` — default engine for sessions without a persisted `provider`; defaults to `baileys`.
-- `UNOAPI_WORKER_ENGINE` — engine owned by the worker process (`baileys` or `zapo`). In cloud mode, run one worker container for each engine.
-- `UNOAPI_PROCESS_ROLE` — role loaded by the cloud entrypoint: `all` (legacy monolith), `web`, `broker` or `worker`.
+- `WHATSAPP_ENGINE` — default engine for new sessions without a persisted `provider`; defaults to `zapo`. Persisted legacy sessions without the field are identified as Baileys, shown offline and must be removed before a new Zapo pairing.
+- `UNOAPI_WORKER_ENGINE` — engine owned by the worker process. The supported runtime value is `zapo`; Baileys is suppressed in code and has no container.
+- `UNOAPI_PROCESS_ROLE` — optional role loaded by the cloud entrypoint: `web`, `broker` or `worker`. When omitted, the process starts all roles.
 - `AMQP_URL` Ã¢â‚¬â€ RabbitMQ URL for broker features.
   - Use to enable queue processing (web/worker model, retries, dead letters).
   - Example: `AMQP_URL=amqp://guest:guest@localhost:5672?frameMax=8192`

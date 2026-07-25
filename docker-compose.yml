@@ -48,15 +48,9 @@ services:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: broker
 
-  worker-baileys:
-    <<: *base
-    restart: on-failure
-    entrypoint: [sh, -lc, "yarn install --check-files && yarn cloud-dev"]
-    environment:
-      <<: *base-environment
-      UNOAPI_PROCESS_ROLE: worker
-      UNOAPI_WORKER_ENGINE: baileys
-
+  # O worker Baileys foi suprimido. O codigo legado permanece apenas como
+  # referencia/rollback e nao deve ser reativado sem restaurar a politica,
+  # os testes e o runbook operacional.
   worker-zapo:
     <<: *base
     restart: on-failure

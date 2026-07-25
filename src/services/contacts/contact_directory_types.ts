@@ -8,6 +8,8 @@ export type ContactDirectoryItem = {
   phone_number?: string
   display_name?: string
   push_name?: string
+  username?: string
+  picture?: string
   last_updated_ms: number
 }
 

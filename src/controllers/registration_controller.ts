@@ -7,6 +7,7 @@ import { Reload } from '../services/reload'
 import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 import { resolveRegistrationConnectionType } from '../services/providers/connection_type_policy'
+import { isProviderRuntimeEnabled } from '../services/providers/provider_runtime_policy'
 
 export class RegistrationController {
   private static readonly REGISTER_DEBOUNCE_MS = 15000
@@ -33,6 +34,12 @@ export class RegistrationController {
     try {
       const previousConfig = await this.getConfig(phone)
       const storedConfig = await getStoredConfig(phone)
+      if (storedConfig && !isProviderRuntimeEnabled(previousConfig.provider)) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'baileys_provider_disabled_deregister_required',
+        })
+      }
       const connectionType = resolveRegistrationConnectionType({
         hasStoredConfig: !!storedConfig,
         previousProvider: resolveWhatsAppEngine(previousConfig.provider),

@@ -54,4 +54,33 @@ describe('RegistrationController connection type policy', () => {
       connectionType: 'pairing_code',
     })
   })
+
+  test('a persisted Baileys session must be deregistered instead of reconnecting', async () => {
+    const config = { ...defaultConfig, provider: 'baileys' as const }
+    storedConfigMock.mockResolvedValue({ provider: 'baileys' })
+    const reload = mockDeep<Reload>()
+    const res = response()
+    const controller = new RegistrationController(
+      jest.fn().mockResolvedValue(config),
+      reload,
+      mockDeep<Logout>(),
+    )
+    const req = {
+      params: { phone: '5566000000003' },
+      body: {},
+      method: 'POST',
+      headers: {},
+      query: {},
+    } as unknown as Request
+
+    await controller.register(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(409)
+    expect(res.json).toHaveBeenCalledWith({
+      status: 'error',
+      message: 'baileys_provider_disabled_deregister_required',
+    })
+    expect(setConfigMock).not.toHaveBeenCalled()
+    expect(reload.run).not.toHaveBeenCalled()
+  })
 })

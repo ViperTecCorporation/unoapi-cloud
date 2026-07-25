@@ -57,13 +57,13 @@ describe('Redis profile picture cache', () => {
     expect(getProfilePictureMock).toHaveBeenCalledWith(phone, lid)
   })
 
-  test('removes canonical, legacy and PN alias keys together', async () => {
+  test('removes canonical and PN alias keys without touching the legacy file store', async () => {
     const removeLocalImageUrl = baseStore.removeImageUrl as jest.Mock
     const store = await getDataStoreRedis(phone, config)
 
     await store.removeImageUrl?.(lid)
 
-    expect(removeLocalImageUrl).toHaveBeenCalledWith(lid)
+    expect(removeLocalImageUrl).not.toHaveBeenCalled()
     expect(redisDelKeyMock).toHaveBeenCalledWith(`profile-picture:${phone}:${lid}`)
     expect(redisDelKeyMock).toHaveBeenCalledWith(`profile-picture:${phone}:+5566996328386`)
   })

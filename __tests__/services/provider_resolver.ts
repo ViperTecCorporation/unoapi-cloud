@@ -13,12 +13,12 @@ describe('provider resolver', () => {
     expect(resolveSessionProvider('zapo')).toBe('zapo')
   })
 
-  test('keeps forwarder as provider but routes it through the legacy worker', () => {
+  test('keeps forwarder as provider but routes it through the suppressed Baileys worker', () => {
     expect(resolveSessionProvider('forwarder')).toBe('forwarder')
     expect(resolveWhatsAppEngine('forwarder')).toBe('baileys')
   })
 
-  test('falls back to Baileys for an invalid provider', () => {
-    expect(resolveSessionProvider('unknown')).toBe('baileys')
+  test('falls back to Zapo for an invalid provider', () => {
+    expect(resolveSessionProvider('unknown')).toBe('zapo')
   })
 })

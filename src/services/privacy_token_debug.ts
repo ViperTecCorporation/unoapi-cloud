@@ -1,4 +1,5 @@
-import { BufferJSON, isLidUser, isPnUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import { isLidUser, isPnUser, jidNormalizedUser } from './whatsapp_jid'
+import { bufferJson } from './buffer_json'
 import { BASE_KEY, getAuthIndexMembers, getAuthRaw } from './redis'
 import { getLidForPnFromAuthCache, getPnForLidFromAuthCache } from './redis'
 
@@ -16,7 +17,7 @@ const NCT_SALT_KEY = '__nct_salt__'
 
 const parseAuthValue = (raw?: string): any => {
   if (!raw) return undefined
-  return JSON.parse(raw, BufferJSON.reviver)
+  return JSON.parse(raw, bufferJson.reviver)
 }
 
 const byteLength = (value: any): number => {

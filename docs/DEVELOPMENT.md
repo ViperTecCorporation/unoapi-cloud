@@ -22,7 +22,7 @@
 - Health: `GET /ping` → `pong!`
 - Session UI: `GET /session/{phone}` → QR code + pairing/config UI via Socket.IO.
 - Send Message: `POST /v15.0/{phone}/messages` (Cloud API shape).
-- Contacts validation (standalone): `POST /{phone}/contacts`.
+- Contacts validation: `POST /{phone}/contacts`.
 - Group cache list: `GET /v15.0/{phone}/groups`.
 - Group participants: `GET /v15.0/{phone}/groups/{groupId}/participants`.
 
