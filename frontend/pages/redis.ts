@@ -26,7 +26,7 @@ export const renderRedisEditorModal = (details?: RedisKeyDetails): string => {
       <label class="field"><span>${t('Chave')}</span><input name="key" value="${escapeHtml(key)}" ${details ? 'readonly' : ''} required></label>
       <div class="form-grid">
         <label class="field"><span>${t('Tipo')}</span><select name="type">${['string', 'hash', 'list', 'set', 'zset'].map((type) => `<option value="${type}" ${type === editableType ? 'selected' : ''}>${type}</option>`).join('')}</select></label>
-        <label class="field"><span>TTL (${t('segundos')})</span><input name="ttlSeconds" type="number" value="${details?.ttl ?? -1}"><small>${t('-1 mantém a chave sem expiração.')}</small></label>
+        <label class="field"><span>TTL (${t('segundos')})</span><small class="field-help">${t('-1 mantém a chave sem expiração.')}</small><input name="ttlSeconds" type="number" value="${details?.ttl ?? -1}"></label>
       </div>
       <label class="field"><span>${t('Conteúdo em JSON ou texto')}</span><textarea name="value" rows="12" required>${escapeHtml(details ? formattedValue(details.value) : '')}</textarea></label>
       <label class="field"><span>${t('Digite o nome da chave para confirmar')}</span><input name="confirm" placeholder="${escapeHtml(key)}" required></label>
@@ -80,7 +80,7 @@ export const renderRedisPage = (options: RedisPageOptions): string => {
       </div>
       ${options.error ? `<p class="form-error">${escapeHtml(options.error)}</p>` : ''}
       <div class="redis-browser">
-        <div class="redis-tree">${grouped.size ? [...grouped.entries()].map(([group, keys]) => `<details open><summary>${icon('database')}<strong>${escapeHtml(group)}</strong><span>${keys.length}</span></summary><div>${keys.map((key) => `<button class="redis-key ${options.selected?.key === key ? 'redis-key--active' : ''}" type="button" data-action="select-redis-key" data-key="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div></details>`).join('') : `<div class="empty-state">${t('Nenhuma chave encontrada.')}</div>`}</div>
+        <div class="redis-tree">${grouped.size ? [...grouped.entries()].map(([group, keys]) => `<details ${options.selected?.key && keys.includes(options.selected.key) ? 'open' : ''}><summary>${icon('database')}<strong>${escapeHtml(group)}</strong><span>${keys.length}</span></summary><div>${keys.map((key) => `<button class="redis-key ${options.selected?.key === key ? 'redis-key--active' : ''}" type="button" data-action="select-redis-key" data-key="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div></details>`).join('') : `<div class="empty-state">${t('Nenhuma chave encontrada.')}</div>`}</div>
         <div class="redis-detail">${options.selected ? `
           <div class="section__heading"><div><h2>${escapeHtml(options.selected.key)}</h2><p class="muted">${options.selected.type} · TTL ${options.selected.ttl} · ${formatNumber(options.selected.size)} ${t('itens')}</p></div><div class="actions">${redisValueIsRedacted(options.selected.value) ? '' : `<button class="btn btn--ghost" type="button" data-action="edit-redis-key">${icon('edit')}${t('Editar')}</button>`}<button class="btn btn--danger btn--ghost" type="button" data-action="delete-redis-key">${icon('trash')}${t('Excluir')}</button></div></div>
           ${redisValueIsRedacted(options.selected.value) ? `<p class="hint">${t('A edição foi bloqueada porque o conteúdo possui campos sensíveis mascarados.')}</p>` : ''}

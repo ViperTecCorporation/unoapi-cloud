@@ -856,6 +856,13 @@ tbody tr:last-child td {
   padding-left: 14px;
 }
 
+.field-help {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin: -2px 0 2px;
+}
+
 .redis-key {
   padding: 6px 8px;
   overflow-wrap: anywhere;

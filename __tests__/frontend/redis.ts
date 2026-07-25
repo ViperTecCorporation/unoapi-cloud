@@ -47,9 +47,35 @@ describe('Redis admin page', () => {
 
   test('renders confirmed edit and delete forms', () => {
     const details = { key: 'unoapi:test', type: 'string' as const, ttl: -1, size: 2, truncated: false, value: 'ok' }
-    expect(renderRedisEditorModal(details)).toContain('data-form="redis-save"')
-    expect(renderRedisEditorModal(details)).toContain('name="confirm"')
+    const editor = renderRedisEditorModal(details)
+    expect(editor).toContain('data-form="redis-save"')
+    expect(editor).toContain('name="confirm"')
+    expect(editor.indexOf('-1 mantém a chave sem expiração.')).toBeLessThan(editor.indexOf('name="ttlSeconds"'))
     expect(renderRedisDeleteModal(details.key)).toContain('data-form="redis-delete"')
+  })
+
+  test('keeps key groups collapsed until a key is selected', () => {
+    const base = {
+      keys: ['unoapi:zapo:contacts:5566'],
+      sessions: [],
+      sessionFilter: '',
+      query: '',
+      loading: false,
+      refreshIn: 30,
+      error: '',
+    }
+    expect(renderRedisPage(base)).not.toContain('<details open>')
+    expect(renderRedisPage({
+      ...base,
+      selected: {
+        key: 'unoapi:zapo:contacts:5566',
+        type: 'hash' as const,
+        ttl: -1,
+        size: 1,
+        truncated: false,
+        value: { name: 'Contato' },
+      },
+    })).toContain('<details open>')
   })
 
   test('renders Redis maintenance in English', () => {
