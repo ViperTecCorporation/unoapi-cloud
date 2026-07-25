@@ -1,5 +1,5 @@
-import { escapeHtml } from '../core/html.js';
-import { normalizedStatus } from '../domain/session.js';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+import { normalizedStatus } from '../domain/session.js?v=4.0.0-beta8';
 const statusLabels = {
     online: 'Online',
     connecting: 'Conectando',

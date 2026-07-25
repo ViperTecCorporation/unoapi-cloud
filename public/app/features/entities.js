@@ -1,5 +1,5 @@
-import { renderAvatar } from '../components/avatar.js';
-import { escapeHtml } from '../core/html.js';
+import { renderAvatar } from '../components/avatar.js?v=4.0.0-beta8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
 const contactName = (contact) => contact.display_name || contact.push_name || contact.username || contact.phone_number || contact.user_id;
 export const renderContactCards = (contacts) => {
     if (!contacts.length)

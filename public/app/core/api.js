@@ -33,7 +33,7 @@ export class ApiClient {
             headers.set('Authorization', `Bearer ${this.token}`);
         if (init.body && !headers.has('Content-Type'))
             headers.set('Content-Type', 'application/json');
-        const response = await this.fetcher(`${this.baseUrl}${path}`, { ...init, headers });
+        const response = await this.fetcher.call(globalThis, `${this.baseUrl}${path}`, { ...init, headers });
         if (response.status === 204)
             return undefined;
         const text = await response.text();

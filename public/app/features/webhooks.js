@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js';
-import { renderModal } from '../components/modal.js';
-import { renderStatus } from '../components/status.js';
-import { escapeHtml } from '../core/html.js';
+import { icon } from '../components/icons.js?v=4.0.0-beta8';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
+import { renderStatus } from '../components/status.js?v=4.0.0-beta8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
 const webhookDestination = (webhook) => `${webhook.urlAbsolute || webhook.url || ''}`.trim();
 const isEnabled = (webhook) => webhook.enabled !== false && webhook.disabled !== true && !!webhookDestination(webhook);
 export const renderWebhooks = (webhooks) => `

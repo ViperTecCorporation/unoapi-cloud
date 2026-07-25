@@ -1,8 +1,8 @@
-import { icon } from '../components/icons.js';
-import { renderModal } from '../components/modal.js';
-import { renderStatus } from '../components/status.js';
-import { escapeHtml } from '../core/html.js';
-import { sessionLabel, sessionPhone } from '../domain/session.js';
+import { icon } from '../components/icons.js?v=4.0.0-beta8';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
+import { renderStatus } from '../components/status.js?v=4.0.0-beta8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8';
 export const renderNewSessionModal = () => renderModal('new-session', 'Nova sessão', `
     <form class="stack" data-form="new-session">
       <p class="muted">Novas sessões são registradas diretamente no motor Zapo.</p>

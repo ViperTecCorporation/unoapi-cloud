@@ -1,9 +1,4 @@
-import type {
-  ContactDirectoryPage,
-  GroupPage,
-  SessionConfig,
-  WebhookConfig,
-} from '../domain/types.js'
+import type { ContactDirectoryPage, GroupPage, SessionConfig, WebhookConfig } from '../domain/types.js'
 
 export class ApiError extends Error {
   constructor(
@@ -48,7 +43,10 @@ export class ApiClient {
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-    const response = await this.fetcher(`${this.baseUrl}${path}`, { ...init, headers })
+    // Native browser fetch validates its receiver. Calling it as
+    // `this.fetcher()` binds ApiClient as `this` and Chrome rejects the request
+    // with "Illegal invocation".
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}${path}`, { ...init, headers })
     if (response.status === 204) return undefined as T
 
     const text = await response.text()

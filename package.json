@@ -20,9 +20,9 @@
   "scripts": {
     "lint": "eslint src",
     "test": "NODE_OPTIONS=--max-old-space-size=4096 node_modules/jest/bin/jest.js --coverage",
-    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p tsconfig.runtime.json && node ./scripts/check-zapo-runtime-graph.mjs",
-    "build:all": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p .",
-    "build:frontend": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json && node ./scripts/version-frontend-assets.cjs && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p tsconfig.runtime.json && node ./scripts/check-zapo-runtime-graph.mjs",
+    "build:all": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json && node ./scripts/version-frontend-assets.cjs && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p .",
+    "build:frontend": "node ./node_modules/typescript/bin/tsc -p tsconfig.frontend.json && node ./scripts/version-frontend-assets.cjs",
     "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
     "dev": "NODE_OPTIONS=--max-old-space-size=4096 ./node_modules/nodemon/bin/nodemon.js src/index.ts --trace-deprecation",
     "web-dev": "NODE_OPTIONS=--max-old-space-size=4096 ./node_modules/nodemon/bin/nodemon.js src/web.ts",

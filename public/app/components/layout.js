@@ -1,4 +1,4 @@
-import { icon } from './icons.js';
+import { icon } from './icons.js?v=4.0.0-beta8';
 export const renderLayout = ({ content, collapsed, mobileOpen }) => `
   <div class="app-shell ${collapsed ? 'app-shell--collapsed' : ''} ${mobileOpen ? 'app-shell--mobile-open' : ''}">
     <aside class="sidebar" aria-label="Navegação principal">

@@ -1,5 +1,5 @@
-import { escapeHtml } from '../core/html.js';
-import { icon } from '../components/icons.js';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+import { icon } from '../components/icons.js?v=4.0.0-beta8';
 export const booleanSessionFields = [
     ['autoConnect', 'Conectar automaticamente'],
     ['ignoreGroupMessages', 'Ignorar mensagens de grupos'],
