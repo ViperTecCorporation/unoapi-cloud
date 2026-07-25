@@ -6,6 +6,7 @@ jest.mock('../../src/services/redis', () => ({
 import { redisScanSome } from '../../src/services/redis'
 import {
   containsRedactedValue,
+  includeKnownRedisRootNodes,
   isAllowedRedisKey,
   parseRedisValue,
   RedisAdmin,
@@ -67,6 +68,15 @@ describe('Redis admin service', () => {
       { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch' },
       { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' },
       { label: 'status', path: 'unoapi:zapo:status', kind: 'key' },
+    ])
+  })
+
+  test('keeps profile-picture namespaces visible at the Redis tree root', async () => {
+    expect(includeKnownRedisRootNodes([])).toEqual([
+      { label: 'unoapi-profile-picture', path: 'unoapi-profile-picture:', kind: 'branch' },
+      { label: 'unoapi-profile-picture-miss', path: 'unoapi-profile-picture-miss:', kind: 'branch' },
+      { label: 'unoapi-profile-picture-refresh', path: 'unoapi-profile-picture-refresh:', kind: 'branch' },
+      { label: 'unoapi-profile-picture-webhook', path: 'unoapi-profile-picture-webhook:', kind: 'branch' },
     ])
   })
 

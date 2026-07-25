@@ -26,6 +26,16 @@ export class RedisAdminError extends Error {
 }
 
 const allowedPrefixes = ['unoapi-', 'unoapi:']
+const knownRedisRootNodes: RedisTreeNode[] = [
+  'unoapi-profile-picture:',
+  'unoapi-profile-picture-miss:',
+  'unoapi-profile-picture-webhook:',
+  'unoapi-profile-picture-refresh:',
+].map((path) => ({
+  label: path.slice(0, -1),
+  path,
+  kind: 'branch',
+}))
 
 export const isAllowedRedisKey = (key: string): boolean =>
   allowedPrefixes.some((prefix) => `${key || ''}`.startsWith(prefix))
@@ -56,6 +66,13 @@ export const redisTreeNodes = (keys: string[], prefix = ''): RedisTreeNode[] => 
       if (left.kind !== right.kind) return left.kind === 'branch' ? -1 : 1
       return left.label.localeCompare(right.label)
     })
+}
+
+export const includeKnownRedisRootNodes = (nodes: RedisTreeNode[]): RedisTreeNode[] => {
+  const merged = new Map<string, RedisTreeNode>()
+  const allNodes = [...nodes, ...knownRedisRootNodes]
+  allNodes.forEach((node) => merged.set(node.path, node))
+  return [...merged.values()].sort((left, right) => left.label.localeCompare(right.label))
 }
 
 export const parseRedisValue = (value: unknown): unknown => {
@@ -121,7 +138,9 @@ export class RedisAdmin {
     const groups = await Promise.all(
       redisTreePatterns(`${prefix || ''}`.trim()).map((pattern) => redisScanSome(pattern, scanLimit)),
     )
-    return redisTreeNodes([...new Set(groups.flat())], `${prefix || ''}`.trim()).slice(0, safeLimit)
+    const normalizedPrefix = `${prefix || ''}`.trim()
+    const nodes = redisTreeNodes([...new Set(groups.flat())], normalizedPrefix)
+    return (normalizedPrefix ? nodes : includeKnownRedisRootNodes(nodes)).slice(0, safeLimit)
   }
 
   async getKey(key: string): Promise<RedisKeyDetails> {
