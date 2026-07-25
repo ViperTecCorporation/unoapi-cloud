@@ -10,6 +10,7 @@ import {
   parseRedisValue,
   RedisAdmin,
   RedisAdminError,
+  redisTreeNodes,
 } from '../../src/services/redis_admin'
 
 const scan = redisScanSome as jest.MockedFunction<typeof redisScanSome>
@@ -55,6 +56,42 @@ describe('Redis admin service', () => {
     ])
     expect(scan).toHaveBeenCalledTimes(1)
     expect(scan).toHaveBeenCalledWith('unoapi:zapo:auth:5548991710539*', 20)
+  })
+
+  test('returns only direct children for a lazily expanded Redis prefix', async () => {
+    expect(redisTreeNodes([
+      'unoapi:zapo:auth:5566',
+      'unoapi:zapo:contacts:5566',
+      'unoapi:zapo:status',
+    ], 'unoapi:zapo:')).toEqual([
+      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch' },
+      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' },
+      { label: 'status', path: 'unoapi:zapo:status', kind: 'key' },
+    ])
+  })
+
+  test('loads a bounded sample only when a Redis branch is expanded', async () => {
+    scan.mockResolvedValueOnce([
+      'unoapi:zapo:auth:5566',
+      'unoapi:zapo:contacts:5566',
+    ])
+    const admin = new RedisAdmin(jest.fn() as any)
+    await expect(admin.listTree('unoapi:zapo:', 20)).resolves.toEqual([
+      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch' },
+      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' },
+    ])
+    expect(scan).toHaveBeenCalledWith('unoapi:zapo:*', 400)
+  })
+
+  test('interleaves legacy and colon namespaces instead of starving Zapo keys', async () => {
+    scan
+      .mockResolvedValueOnce(['unoapi-auth:1', 'unoapi-auth:2'])
+      .mockResolvedValueOnce(['unoapi:zapo:auth:1', 'unoapi:zapo:auth:2'])
+    const admin = new RedisAdmin(jest.fn() as any)
+    await expect(admin.listKeys('', 2)).resolves.toEqual([
+      'unoapi-auth:1',
+      'unoapi:zapo:auth:1',
+    ])
   })
 
   test('reads typed key content with TTL and truncation metadata', async () => {

@@ -16,6 +16,7 @@ const req = (overrides: Record<string, unknown> = {}) => ({
 describe('Redis admin controller', () => {
   const manager = {
     listKeys: jest.fn(),
+    listTree: jest.fn(),
     getKey: jest.fn(),
     saveKey: jest.fn(),
     deleteKey: jest.fn(),
@@ -40,6 +41,22 @@ describe('Redis admin controller', () => {
     const getResponse = res()
     await controller.get(req({ params: { key: 'unoapi:test' } }), getResponse)
     expect(getResponse.status).toHaveBeenCalledWith(200)
+  })
+
+  test('lists direct Redis tree children by prefix', async () => {
+    manager.listTree.mockResolvedValue([
+      { label: 'zapo', path: 'unoapi:zapo:', kind: 'branch' },
+    ])
+    const response = res()
+    await new RedisAdminController(manager as any, 'admin').tree(
+      req({ query: { prefix: 'unoapi:', limit: '20' } }),
+      response,
+    )
+    expect(manager.listTree).toHaveBeenCalledWith('unoapi:', 20)
+    expect(response.json).toHaveBeenCalledWith({
+      prefix: 'unoapi:',
+      nodes: [{ label: 'zapo', path: 'unoapi:zapo:', kind: 'branch' }],
+    })
   })
 
   test('requires exact confirmation before saving or deleting', async () => {

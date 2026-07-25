@@ -833,27 +833,48 @@ tbody tr:last-child td {
   background: var(--surface-raised);
 }
 
-.redis-tree details + details {
-  margin-top: 8px;
-}
-
-.redis-tree summary {
+.redis-tree__toggle {
+  width: 100%;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: transparent;
   display: flex;
   align-items: center;
   gap: 7px;
   cursor: pointer;
+  text-align: left;
 }
 
-.redis-tree summary span {
-  margin-left: auto;
+.redis-tree__toggle:hover,
+.redis-tree__toggle:focus-visible {
+  background: var(--brand-soft);
+}
+
+.redis-tree__arrow {
+  width: 12px;
   color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
 }
 
-.redis-tree details > div {
+.redis-tree__toggle[aria-expanded="true"] .redis-tree__arrow {
+  transform: rotate(90deg);
+}
+
+.redis-tree__children {
   display: grid;
   gap: 3px;
-  margin-top: 6px;
-  padding-left: 14px;
+  padding-left: 20px;
+}
+
+.redis-tree__loading {
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .field-help {

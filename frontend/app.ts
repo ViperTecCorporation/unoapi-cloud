@@ -4,7 +4,7 @@ import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js'
 import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
-import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
+import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
@@ -75,6 +75,8 @@ export class ViperConnectApp {
   private queueMessagesLoading = false
   private queueError = ''
   private redisKeys: string[] = []
+  private redisTree: Record<string, RedisTreeNode[]> = {}
+  private redisExpandedPrefixes = new Set<string>()
   private selectedRedisKey?: RedisKeyDetails
   private redisQuery = ''
   private redisSession = ''
@@ -199,6 +201,8 @@ export class ViperConnectApp {
       this.render()
     } else if (action === 'refresh-redis') {
       await this.loadRedisKeys()
+    } else if (action === 'toggle-redis-node') {
+      await this.toggleRedisNode(actionElement.dataset.prefix || '')
     } else if (action === 'select-redis-key') {
       await this.loadRedisKey(actionElement.dataset.key || '')
     } else if (action === 'add-redis-key') {
@@ -705,12 +709,52 @@ export class ViperConnectApp {
     this.redisError = ''
     this.render()
     try {
-      this.redisKeys = await this.api.redisKeys(this.redisQuery || this.redisSession)
+      const search = this.redisQuery || this.redisSession
+      if (search) {
+        this.redisKeys = await this.api.redisKeys(search)
+      } else {
+        const prefixes = ['', ...this.redisExpandedPrefixes]
+        const entries = await Promise.all(
+          prefixes.map(async (prefix) => [prefix, await this.api.redisTree(prefix)] as const),
+        )
+        entries.forEach(([prefix, nodes]) => { this.redisTree[prefix] = nodes })
+        this.redisKeys = []
+      }
       this.redisRefreshIn = QUEUE_REFRESH_SECONDS
-      if (this.selectedRedisKey && !this.redisKeys.includes(this.selectedRedisKey.key)) {
+      if (search && this.selectedRedisKey && !this.redisKeys.includes(this.selectedRedisKey.key)) {
         this.selectedRedisKey = undefined
       }
     } catch (error) {
+      this.redisError = this.messageFor(error)
+    } finally {
+      this.redisLoading = false
+      this.render()
+    }
+  }
+
+  private async toggleRedisNode(prefix: string): Promise<void> {
+    if (!prefix) return
+    if (this.redisExpandedPrefixes.has(prefix)) {
+      for (const expanded of this.redisExpandedPrefixes) {
+        if (expanded === prefix || expanded.startsWith(prefix)) {
+          this.redisExpandedPrefixes.delete(expanded)
+        }
+      }
+      this.render()
+      return
+    }
+    this.redisExpandedPrefixes.add(prefix)
+    if (this.redisTree[prefix]) {
+      this.render()
+      return
+    }
+    this.redisLoading = true
+    this.redisError = ''
+    this.render()
+    try {
+      this.redisTree[prefix] = await this.api.redisTree(prefix)
+    } catch (error) {
+      this.redisExpandedPrefixes.delete(prefix)
       this.redisError = this.messageFor(error)
     } finally {
       this.redisLoading = false
@@ -854,6 +898,8 @@ export class ViperConnectApp {
     const content = this.view === 'redis'
       ? renderRedisPage({
           keys: this.redisKeys,
+          tree: this.redisTree,
+          expandedPrefixes: [...this.redisExpandedPrefixes],
           sessions: this.sessions,
           sessionFilter: this.redisSession,
           query: this.redisQuery,

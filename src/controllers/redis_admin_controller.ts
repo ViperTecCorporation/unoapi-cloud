@@ -3,7 +3,7 @@ import { UNOAPI_AUTH_TOKEN } from '../defaults'
 import { RedisAdmin, RedisAdminError, RedisKeyType } from '../services/redis_admin'
 import { getAuthHeaderToken } from '../services/security'
 
-type RedisManager = Pick<RedisAdmin, 'listKeys' | 'getKey' | 'saveKey' | 'deleteKey' | 'query'>
+type RedisManager = Pick<RedisAdmin, 'listKeys' | 'listTree' | 'getKey' | 'saveKey' | 'deleteKey' | 'query'>
 
 export class RedisAdminController {
   constructor(
@@ -25,6 +25,19 @@ export class RedisAdminController {
     try {
       return res.status(200).json({
         keys: await this.manager.listKeys(`${req.query.search || ''}`, Number(req.query.limit) || 200),
+      })
+    } catch (error) {
+      return this.error(res, error)
+    }
+  }
+
+  async tree(req: Request, res: Response) {
+    if (!this.authorized(req)) return res.status(403).json({ error: 'admin_token_required' })
+    try {
+      const prefix = `${req.query.prefix || ''}`
+      return res.status(200).json({
+        prefix,
+        nodes: await this.manager.listTree(prefix, Number(req.query.limit) || 100),
       })
     } catch (error) {
       return this.error(res, error)

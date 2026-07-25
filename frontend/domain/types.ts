@@ -106,6 +106,12 @@ export interface GroupPage {
   }
 }
 
+export interface RedisTreeNode {
+  label: string
+  path: string
+  kind: 'branch' | 'key'
+}
+
 export interface VersionStatus {
   installed_version: string
   latest_version?: string

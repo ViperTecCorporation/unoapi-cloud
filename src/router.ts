@@ -124,6 +124,7 @@ export const router = (
   router.get('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.preview.bind(queuesController))
   router.delete('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.purge.bind(queuesController))
   router.get('/admin/redis/keys', middleware, redisAdminController.list.bind(redisAdminController))
+  router.get('/admin/redis/tree', middleware, redisAdminController.tree.bind(redisAdminController))
   router.get('/admin/redis/keys/:key', middleware, redisAdminController.get.bind(redisAdminController))
   router.put('/admin/redis/keys/:key', middleware, redisAdminController.save.bind(redisAdminController))
   router.delete('/admin/redis/keys/:key', middleware, redisAdminController.remove.bind(redisAdminController))

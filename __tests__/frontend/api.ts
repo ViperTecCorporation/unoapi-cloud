@@ -83,6 +83,7 @@ describe('frontend API client', () => {
     const fetcher = jest
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ keys: ['unoapi:test'] })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ nodes: [{ label: 'unoapi', path: 'unoapi:', kind: 'branch' }] })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ key: 'unoapi:test', type: 'string', value: 'ok' })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ saved: true })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ result: 'string' })))
@@ -91,12 +92,13 @@ describe('frontend API client', () => {
     api.setToken('admin')
 
     await expect(api.redisKeys('test')).resolves.toEqual(['unoapi:test'])
+    await expect(api.redisTree()).resolves.toEqual([{ label: 'unoapi', path: 'unoapi:', kind: 'branch' }])
     await expect(api.redisKey('unoapi:test')).resolves.toMatchObject({ type: 'string' })
     await api.saveRedisKey('unoapi:test', 'string', 'value', -1)
     await expect(api.redisQuery('TYPE', ['unoapi:test'])).resolves.toBe('string')
     await expect(api.deleteRedisKey('unoapi:test')).resolves.toEqual({ removed: 1 })
 
-    expect(JSON.parse(`${fetcher.mock.calls[2][1]?.body}`)).toMatchObject({
+    expect(JSON.parse(`${fetcher.mock.calls[3][1]?.body}`)).toMatchObject({
       confirm: 'unoapi:test',
       type: 'string',
     })

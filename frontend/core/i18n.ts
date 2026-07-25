@@ -320,6 +320,7 @@ const english = {
   'Árvore de chaves': 'Key tree',
   'Buscar chave': 'Search key',
   'Nenhuma chave encontrada.': 'No keys found.',
+  'Expandir para carregar': 'Expand to load',
   'itens': 'items',
   'Excluir': 'Delete',
   'Conteúdo limitado aos primeiros itens para proteger o navegador.': 'Content is limited to the first items to protect the browser.',

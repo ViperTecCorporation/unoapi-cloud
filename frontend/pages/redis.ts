@@ -3,12 +3,54 @@ import { renderModal } from '../components/modal.js'
 import { escapeHtml } from '../core/html.js'
 import { formatNumber, t } from '../core/i18n.js'
 import { sessionLabel, sessionPhone } from '../domain/session.js'
-import type { RedisKeyDetails, SessionConfig } from '../domain/types.js'
+import type { RedisKeyDetails, RedisTreeNode, SessionConfig } from '../domain/types.js'
 
-export const redisKeyGroup = (key: string): string => {
-  const parts = `${key || ''}`.split(':')
-  return parts.length > 1 ? parts.slice(0, Math.min(2, parts.length - 1)).join(':') : 'unoapi'
+export const redisTreeFromKeys = (keys: string[]): Record<string, RedisTreeNode[]> => {
+  const tree: Record<string, RedisTreeNode[]> = { '': [] }
+  keys.forEach((key) => {
+    const parts = `${key || ''}`.split(':').filter(Boolean)
+    let prefix = ''
+    parts.forEach((label, index) => {
+      const kind = index === parts.length - 1 ? 'key' : 'branch'
+      const path = kind === 'key' ? key : `${prefix}${label}:`
+      tree[prefix] ||= []
+      if (!tree[prefix].some((node) => node.path === path)) {
+        tree[prefix].push({ label, path, kind })
+      }
+      if (kind === 'branch') {
+        tree[path] ||= []
+        prefix = path
+      }
+    })
+  })
+  Object.values(tree).forEach((nodes) => nodes.sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === 'branch' ? -1 : 1
+    return left.label.localeCompare(right.label)
+  }))
+  return tree
 }
+
+const renderRedisTreeNodes = (
+  tree: Record<string, RedisTreeNode[]>,
+  prefix: string,
+  expanded: Set<string>,
+  selectedKey = '',
+  loading = false,
+): string => (tree[prefix] || []).map((node) => {
+  if (node.kind === 'key') {
+    return `<button class="redis-key ${selectedKey === node.path ? 'redis-key--active' : ''}" type="button" data-action="select-redis-key" data-key="${escapeHtml(node.path)}" title="${escapeHtml(node.path)}">${escapeHtml(node.label)}</button>`
+  }
+  const open = expanded.has(node.path) || selectedKey.startsWith(node.path)
+  const children = tree[node.path]
+  return `<div class="redis-tree__node">
+    <button class="redis-tree__toggle" type="button" data-action="toggle-redis-node" data-prefix="${escapeHtml(node.path)}" aria-expanded="${open}">
+      <span class="redis-tree__arrow" aria-hidden="true">›</span>${icon('database')}<strong>${escapeHtml(node.label)}</strong>
+    </button>
+    ${open ? `<div class="redis-tree__children">${children
+      ? renderRedisTreeNodes(tree, node.path, expanded, selectedKey, loading)
+      : `<span class="redis-tree__loading">${loading ? t('Atualizando…') : t('Expandir para carregar')}</span>`}</div>` : ''}
+  </div>`
+}).join('')
 
 const formattedValue = (value: unknown): string =>
   typeof value === 'string' ? value : JSON.stringify(value, null, 2)
@@ -47,6 +89,8 @@ export const renderRedisDeleteModal = (key: string): string =>
 
 interface RedisPageOptions {
   keys: string[]
+  tree: Record<string, RedisTreeNode[]>
+  expandedPrefixes: string[]
   sessions: SessionConfig[]
   sessionFilter: string
   query: string
@@ -61,11 +105,18 @@ export const renderRedisPage = (options: RedisPageOptions): string => {
   const filtered = options.keys.filter((key) =>
     (!options.sessionFilter || key.includes(options.sessionFilter))
     && key.toLowerCase().includes(options.query.trim().toLowerCase()))
-  const grouped = new Map<string, string[]>()
-  filtered.forEach((key) => {
-    const group = redisKeyGroup(key)
-    grouped.set(group, [...(grouped.get(group) || []), key])
-  })
+  const searching = !!(options.sessionFilter || options.query.trim())
+  const tree = searching ? redisTreeFromKeys(filtered) : options.tree
+  const expanded = new Set(searching
+    ? Object.keys(tree).filter(Boolean)
+    : options.expandedPrefixes)
+  const treeHtml = renderRedisTreeNodes(
+    tree,
+    '',
+    expanded,
+    options.selected?.key,
+    options.loading,
+  )
 
   return `
     <section class="page-header">
@@ -80,7 +131,7 @@ export const renderRedisPage = (options: RedisPageOptions): string => {
       </div>
       ${options.error ? `<p class="form-error">${escapeHtml(options.error)}</p>` : ''}
       <div class="redis-browser">
-        <div class="redis-tree">${grouped.size ? [...grouped.entries()].map(([group, keys]) => `<details ${options.selected?.key && keys.includes(options.selected.key) ? 'open' : ''}><summary>${icon('database')}<strong>${escapeHtml(group)}</strong><span>${keys.length}</span></summary><div>${keys.map((key) => `<button class="redis-key ${options.selected?.key === key ? 'redis-key--active' : ''}" type="button" data-action="select-redis-key" data-key="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div></details>`).join('') : `<div class="empty-state">${t('Nenhuma chave encontrada.')}</div>`}</div>
+        <div class="redis-tree">${treeHtml || `<div class="empty-state">${options.loading ? t('Atualizando…') : t('Nenhuma chave encontrada.')}</div>`}</div>
         <div class="redis-detail">${options.selected ? `
           <div class="section__heading"><div><h2>${escapeHtml(options.selected.key)}</h2><p class="muted">${options.selected.type} · TTL ${options.selected.ttl} · ${formatNumber(options.selected.size)} ${t('itens')}</p></div><div class="actions">${redisValueIsRedacted(options.selected.value) ? '' : `<button class="btn btn--ghost" type="button" data-action="edit-redis-key">${icon('edit')}${t('Editar')}</button>`}<button class="btn btn--danger btn--ghost" type="button" data-action="delete-redis-key">${icon('trash')}${t('Excluir')}</button></div></div>
           ${redisValueIsRedacted(options.selected.value) ? `<p class="hint">${t('A edição foi bloqueada porque o conteúdo possui campos sensíveis mascarados.')}</p>` : ''}

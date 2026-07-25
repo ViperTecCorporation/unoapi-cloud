@@ -12,6 +12,12 @@ export type RedisKeyDetails = {
   value: unknown
 }
 
+export type RedisTreeNode = {
+  label: string
+  path: string
+  kind: 'branch' | 'key'
+}
+
 export class RedisAdminError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message)
@@ -23,6 +29,34 @@ const allowedPrefixes = ['unoapi-', 'unoapi:']
 
 export const isAllowedRedisKey = (key: string): boolean =>
   allowedPrefixes.some((prefix) => `${key || ''}`.startsWith(prefix))
+
+const redisTreePatterns = (prefix: string): string[] => {
+  if (!prefix) return allowedPrefixes.map((allowed) => `${allowed}*`)
+  if (/[*?[\]]/.test(prefix) || !isAllowedRedisKey(prefix)) {
+    throw new RedisAdminError(403, 'redis_key_not_allowed')
+  }
+  return [`${prefix}*`]
+}
+
+export const redisTreeNodes = (keys: string[], prefix = ''): RedisTreeNode[] => {
+  const nodes = new Map<string, RedisTreeNode>()
+  keys.forEach((key) => {
+    if (!key.startsWith(prefix)) return
+    const remainder = key.slice(prefix.length)
+    const separator = remainder.indexOf(':')
+    const label = separator >= 0 ? remainder.slice(0, separator) : remainder
+    if (!label) return
+    const kind = separator >= 0 ? 'branch' : 'key'
+    const path = kind === 'branch' ? `${prefix}${label}:` : key
+    const current = nodes.get(path)
+    if (!current || kind === 'branch') nodes.set(path, { label, path, kind })
+  })
+  return [...nodes.values()]
+    .sort((left, right) => {
+      if (left.kind !== right.kind) return left.kind === 'branch' ? -1 : 1
+      return left.label.localeCompare(right.label)
+    })
+}
 
 export const parseRedisValue = (value: unknown): unknown => {
   if (typeof value !== 'string') return redactLogValue(value)
@@ -56,7 +90,33 @@ export class RedisAdmin {
     const groups = await Promise.all(
       patterns.map((pattern) => redisScanSome(pattern, safeLimit)),
     )
-    return [...new Set(groups.flat())].sort().slice(0, safeLimit)
+    const keys: string[] = []
+    const seen = new Set<string>()
+    const sortedGroups = groups.map((group) => [...group].sort())
+    for (let index = 0; keys.length < safeLimit; index += 1) {
+      let found = false
+      for (const group of sortedGroups) {
+        const key = group[index]
+        if (!key) continue
+        found = true
+        if (!seen.has(key)) {
+          seen.add(key)
+          keys.push(key)
+          if (keys.length >= safeLimit) break
+        }
+      }
+      if (!found) break
+    }
+    return keys
+  }
+
+  async listTree(prefix = '', limit = 100): Promise<RedisTreeNode[]> {
+    const safeLimit = Math.min(200, Math.max(1, Number(limit) || 100))
+    const scanLimit = Math.min(5000, Math.max(200, safeLimit * 20))
+    const groups = await Promise.all(
+      redisTreePatterns(`${prefix || ''}`.trim()).map((pattern) => redisScanSome(pattern, scanLimit)),
+    )
+    return redisTreeNodes([...new Set(groups.flat())], `${prefix || ''}`.trim()).slice(0, safeLimit)
   }
 
   async getKey(key: string): Promise<RedisKeyDetails> {

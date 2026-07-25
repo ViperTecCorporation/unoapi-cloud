@@ -125,6 +125,13 @@ export class ApiClient {
         const response = await this.request(`/admin/redis/keys?${query}`);
         return Array.isArray(response?.keys) ? response.keys : [];
     }
+    async redisTree(prefix = '', limit = 100) {
+        const query = new URLSearchParams({ limit: `${limit}` });
+        if (prefix)
+            query.set('prefix', prefix);
+        const response = await this.request(`/admin/redis/tree?${query}`);
+        return Array.isArray(response?.nodes) ? response.nodes : [];
+    }
     redisKey(key) {
         return this.request(`/admin/redis/keys/${encodeURIComponent(key)}`);
     }

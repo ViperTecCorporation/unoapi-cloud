@@ -1,6 +1,6 @@
 import { setLocale } from '../../frontend/core/i18n'
 import {
-  redisKeyGroup,
+  redisTreeFromKeys,
   redisValueIsRedacted,
   renderRedisDeleteModal,
   renderRedisEditorModal,
@@ -15,14 +15,19 @@ describe('Redis admin page', () => {
     expect(redisValueIsRedacted({ phone: '5566' })).toBe(false)
   })
 
-  test('groups colon-separated keys into a tree namespace', () => {
-    expect(redisKeyGroup('unoapi:zapo:contacts:5566')).toBe('unoapi:zapo')
-    expect(redisKeyGroup('unoapi-config:5566')).toBe('unoapi-config')
+  test('creates one nested tree node for every colon-separated segment', () => {
+    const tree = redisTreeFromKeys(['unoapi:zapo:contacts:5566'])
+    expect(tree['']).toEqual([{ label: 'unoapi', path: 'unoapi:', kind: 'branch' }])
+    expect(tree['unoapi:']).toEqual([{ label: 'zapo', path: 'unoapi:zapo:', kind: 'branch' }])
+    expect(tree['unoapi:zapo:']).toEqual([{ label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' }])
+    expect(tree['unoapi:zapo:contacts:']).toEqual([{ label: '5566', path: 'unoapi:zapo:contacts:5566', kind: 'key' }])
   })
 
   test('renders tree, session filter, content and safe query controls', () => {
     const html = renderRedisPage({
       keys: ['unoapi:zapo:contacts:5566', 'unoapi-config:5566'],
+      tree: {},
+      expandedPrefixes: [],
       sessions: [{ phone: '5566', label: 'Comercial' }],
       sessionFilter: '5566',
       query: '',
@@ -54,9 +59,11 @@ describe('Redis admin page', () => {
     expect(renderRedisDeleteModal(details.key)).toContain('data-form="redis-delete"')
   })
 
-  test('keeps key groups collapsed until a key is selected', () => {
+  test('renders explicit expansion arrows and opens selected ancestors', () => {
     const base = {
-      keys: ['unoapi:zapo:contacts:5566'],
+      keys: [],
+      tree: redisTreeFromKeys(['unoapi:zapo:contacts:5566']),
+      expandedPrefixes: [],
       sessions: [],
       sessionFilter: '',
       query: '',
@@ -64,7 +71,8 @@ describe('Redis admin page', () => {
       refreshIn: 30,
       error: '',
     }
-    expect(renderRedisPage(base)).not.toContain('<details open>')
+    expect(renderRedisPage(base)).toContain('data-action="toggle-redis-node"')
+    expect(renderRedisPage(base)).toContain('aria-expanded="false"')
     expect(renderRedisPage({
       ...base,
       selected: {
@@ -75,7 +83,7 @@ describe('Redis admin page', () => {
         truncated: false,
         value: { name: 'Contato' },
       },
-    })).toContain('<details open>')
+    })).toContain('aria-expanded="true"')
   })
 
   test('renders Redis maintenance in English', () => {

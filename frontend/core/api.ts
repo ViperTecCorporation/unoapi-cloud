@@ -1,4 +1,4 @@
-import type { ContactDirectoryPage, GroupPage, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
+import type { ContactDirectoryPage, GroupPage, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
 import { t } from './i18n.js'
 
 export class ApiError extends Error {
@@ -149,6 +149,13 @@ export class ApiClient {
     if (search.trim()) query.set('search', search.trim())
     const response = await this.request<{ keys?: string[] }>(`/admin/redis/keys?${query}`)
     return Array.isArray(response?.keys) ? response.keys : []
+  }
+
+  async redisTree(prefix = '', limit = 100): Promise<RedisTreeNode[]> {
+    const query = new URLSearchParams({ limit: `${limit}` })
+    if (prefix) query.set('prefix', prefix)
+    const response = await this.request<{ nodes?: RedisTreeNode[] }>(`/admin/redis/tree?${query}`)
+    return Array.isArray(response?.nodes) ? response.nodes : []
   }
 
   redisKey(key: string): Promise<RedisKeyDetails> {
