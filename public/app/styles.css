@@ -206,7 +206,23 @@ small {
 }
 
 .sidebar__toggle {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
   margin-left: auto;
+  padding: 0;
+  border-color: transparent;
+  opacity: 0.55;
+}
+
+.sidebar__toggle:hover,
+.sidebar__toggle:focus-visible {
+  opacity: 1;
+}
+
+.sidebar__toggle .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .sidebar__nav,
@@ -254,9 +270,9 @@ small {
 
 .workspace {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  grid-template-columns: 32px minmax(0, 1fr) 26px;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   margin-top: 8px;
   padding: 12px 8px 0;
   border-top: 1px solid var(--border);
