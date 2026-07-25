@@ -1,5 +1,6 @@
 import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8';
-import { digitsOnly, escapeHtml } from './core/html.js?v=4.0.0-beta8';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8';
 import { SocketBridge } from './core/socket.js?v=4.0.0-beta8';
 import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8';
 import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8';
@@ -12,6 +13,7 @@ import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-bet
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
+const LOCALE_KEY = 'viperconnect_locale';
 const REFRESH_SECONDS = 15;
 const PAGE_SIZE = 20;
 const VERSION_REFRESH_MS = 15 * 60 * 1000;
@@ -55,6 +57,8 @@ export class ViperConnectApp {
         this.versionStatus = emptyVersionStatus();
         this.api = api;
         this.socket = socket;
+        setLocale(normalizeLocale(localStorage.getItem(LOCALE_KEY) || navigator.language));
+        document.documentElement.lang = getLocale();
         this.bindEvents();
     }
     async start() {
@@ -110,6 +114,9 @@ export class ViperConnectApp {
         }
         else if (action === 'toggle-theme') {
             this.toggleTheme();
+        }
+        else if (action === 'toggle-language') {
+            this.toggleLanguage();
         }
         else if (action === 'logout') {
             this.logout();
@@ -309,7 +316,7 @@ export class ViperConnectApp {
             if (error instanceof ApiError && [401, 403].includes(error.status)) {
                 localStorage.removeItem(TOKEN_KEY);
                 this.api.setToken('');
-                this.loginError = 'Token inválido ou sem permissão.';
+                this.loginError = t('Token inválido ou sem permissão.');
             }
             else {
                 this.showToast(this.messageFor(error));
@@ -419,7 +426,7 @@ export class ViperConnectApp {
     async createSession(data) {
         const phone = digitsOnly(data.get('phone'));
         if (!phone) {
-            this.showToast('Informe um telefone válido.');
+            this.showToast(t('Informe um telefone válido.'));
             return;
         }
         const pending = {
@@ -461,7 +468,7 @@ export class ViperConnectApp {
         try {
             const updated = await this.api.register(this.selectedPhone, sessionConfigPayload(data));
             this.replaceSession(this.selectedPhone, { ...this.findSession(this.selectedPhone), ...updated });
-            this.showToast('Configuração salva.');
+            this.showToast(t('Configuração salva.'));
         }
         catch (error) {
             this.showToast(this.messageFor(error));
@@ -482,7 +489,7 @@ export class ViperConnectApp {
             const updated = await this.api.saveWebhooks(this.selectedPhone, webhooks);
             this.replaceSession(this.selectedPhone, { ...session, ...updated, webhooks });
             this.modal = undefined;
-            this.showToast('Webhook salvo.');
+            this.showToast(t('Webhook salvo.'));
         }
         catch (error) {
             this.showToast(this.messageFor(error));
@@ -493,14 +500,14 @@ export class ViperConnectApp {
         const session = this.findSession(this.selectedPhone);
         if (!session || index < 0)
             return;
-        if (!window.confirm('Remover este webhook da sessão?'))
+        if (!window.confirm(t('Remover este webhook da sessão?')))
             return;
         const webhooks = (session.webhooks || []).filter((_, current) => current !== index);
         try {
             const updated = await this.api.saveWebhooks(this.selectedPhone, webhooks);
             this.replaceSession(this.selectedPhone, { ...session, ...updated, webhooks });
             this.modal = undefined;
-            this.showToast('Webhook removido.');
+            this.showToast(t('Webhook removido.'));
         }
         catch (error) {
             this.showToast(this.messageFor(error));
@@ -509,12 +516,12 @@ export class ViperConnectApp {
     }
     async sendTestMessage(data) {
         const phone = `${data.get('phone') || ''}`;
-        const to = digitsOnly(data.get('to'));
+        const to = messageRecipient(data.get('to'));
         const body = `${data.get('body') || ''}`.trim();
         try {
             await this.api.sendText(phone, to, body);
             this.modal = undefined;
-            this.showToast('Mensagem enviada para processamento.');
+            this.showToast(t('Mensagem enviada para processamento.'));
         }
         catch (error) {
             this.showToast(this.messageFor(error));
@@ -526,7 +533,7 @@ export class ViperConnectApp {
             await this.api.deregister(phone);
             this.modal = undefined;
             this.selectedPhone = '';
-            this.showToast('Sessão desconectada. Um novo pareamento será necessário.');
+            this.showToast(t('Sessão desconectada. Um novo pareamento será necessário.'));
             await this.loadSessions();
         }
         catch (error) {
@@ -695,21 +702,21 @@ export class ViperConnectApp {
         const visible = input.type === 'password';
         input.type = visible ? 'text' : 'password';
         button.setAttribute('aria-pressed', `${visible}`);
-        button.setAttribute('aria-label', `${visible ? 'Ocultar' : 'Exibir'} ${input.name}`);
+        button.setAttribute('aria-label', t(visible ? 'Ocultar {label}' : 'Exibir {label}', { label: input.name }));
     }
     async copySecret(button) {
         const input = button.closest('.secret-field')?.querySelector('input');
         if (!input)
             return;
         await this.copyText(input.value);
-        this.showToast('Valor copiado.');
+        this.showToast(t('Valor copiado.'));
     }
     async copyValue(button) {
         const value = button.dataset.value || '';
         if (!value)
             return;
         await this.copyText(value);
-        this.showToast(`${button.dataset.copyLabel || 'Valor'} copiado.`);
+        this.showToast(t('{label} copiado.', { label: button.dataset.copyLabel || t('Valor') }));
     }
     async copyText(value) {
         try {
@@ -760,11 +767,11 @@ export class ViperConnectApp {
     messageFor(error) {
         if (error instanceof ApiError) {
             if (error.message === 'contact_directory_requires_zapo_provider') {
-                return 'O diretório de contatos está disponível apenas para sessões Zapo.';
+                return t('O diretório de contatos está disponível apenas para sessões Zapo.');
             }
             return error.message;
         }
-        return error instanceof Error ? error.message : 'Ocorreu um erro inesperado.';
+        return error instanceof Error ? error.message : t('Ocorreu um erro inesperado.');
     }
     applySavedTheme() {
         const saved = localStorage.getItem(THEME_KEY);
@@ -775,5 +782,12 @@ export class ViperConnectApp {
         const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = next;
         localStorage.setItem(THEME_KEY, next);
+    }
+    toggleLanguage() {
+        const locale = getLocale() === 'pt-BR' ? 'en' : 'pt-BR';
+        setLocale(locale);
+        localStorage.setItem(LOCALE_KEY, locale);
+        document.documentElement.lang = locale;
+        this.render();
     }
 }

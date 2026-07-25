@@ -1,11 +1,17 @@
 import { ApiClient, ApiError } from '../../frontend/core/api'
-import { digitsOnly, escapeHtml, safeImageUrl } from '../../frontend/core/html'
+import { digitsOnly, escapeHtml, messageRecipient, safeImageUrl } from '../../frontend/core/html'
 import { SocketBridge } from '../../frontend/core/socket'
 
 describe('frontend core', () => {
   test('escapes HTML and normalizes digits', () => {
     expect(escapeHtml('<script>"x"</script>')).toBe('&lt;script&gt;&quot;x&quot;&lt;/script&gt;')
     expect(digitsOnly('+55 (66) 99999-0000')).toBe('5566999990000')
+  })
+
+  test('preserves canonical recipients and normalizes formatted phones', () => {
+    expect(messageRecipient('123456@lid')).toBe('123456@lid')
+    expect(messageRecipient('120363000000@g.us')).toBe('120363000000@g.us')
+    expect(messageRecipient('+55 (66) 99999-0000')).toBe('5566999990000')
   })
 
   test('accepts safe image URLs and rejects executable schemes', () => {

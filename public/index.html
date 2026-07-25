@@ -12,8 +12,19 @@
   </head>
   <body>
     <div id="app">
-      <div class="boot-state" role="status">Carregando ViperConnect…</div>
+      <div class="boot-state" role="status" data-boot-label>Carregando ViperConnect…</div>
     </div>
+    <script>
+      (() => {
+        const savedLocale = localStorage.getItem('viperconnect_locale')
+        const locale = savedLocale || navigator.language || 'pt-BR'
+        const english = locale.toLowerCase().startsWith('en')
+        document.documentElement.lang = english ? 'en' : 'pt-BR'
+        document.querySelector('[data-boot-label]').textContent = english
+          ? 'Loading ViperConnect…'
+          : 'Carregando ViperConnect…'
+      })()
+    </script>
     <script src="/socket.io.min.js"></script>
     <script type="module" src="/app/main.js?v=4.0.0-beta8"></script>
   </body>

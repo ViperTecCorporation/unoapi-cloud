@@ -1,3 +1,4 @@
+import { t } from './i18n.js?v=4.0.0-beta8';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -13,7 +14,7 @@ const errorMessage = (payload, status) => {
         if (message)
             return `${message}`;
     }
-    return `Falha HTTP ${status}`;
+    return t('Falha HTTP {status}', { status });
 };
 export class ApiClient {
     constructor(baseUrl, fetcher = fetch) {

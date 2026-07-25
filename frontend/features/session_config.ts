@@ -2,6 +2,7 @@ import { escapeHtml } from '../core/html.js'
 import type { SessionConfig } from '../domain/types.js'
 import { icon } from '../components/icons.js'
 import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js'
+import { t, type TranslationKey } from '../core/i18n.js'
 
 export const booleanSessionFields = [
   ['autoConnect', 'Conectar automaticamente', 'Reconecta esta sessão quando o worker for iniciado.'],
@@ -20,88 +21,88 @@ export const booleanSessionFields = [
   ['ignoreYourselfMessages', 'Ignorar mensagens para si mesmo', 'Descarta conversas cujo destinatário é a própria sessão.'],
   ['ignoreBroadcastStatuses', 'Ignorar Status', 'Não encaminha publicações de Status do WhatsApp.'],
   ['ignoreBroadcastMessages', 'Ignorar listas de transmissão', 'Não encaminha mensagens de listas de transmissão.'],
-] as const
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey, TranslationKey]>
 
 export const renderSessionConfig = (session: SessionConfig): string => `
   <form class="stack" data-form="session-config">
     <section class="section">
       <div class="section__heading">
-        <div><h3>Identificação e conexão</h3><p class="muted">Configuração exclusiva desta sessão. O motor padrão é Zapo e não é selecionável no front.</p></div>
+        <div><h3>${t('Identificação e conexão')}</h3><p class="muted">${t('Configuração exclusiva desta sessão. O motor padrão é Zapo e não é selecionável no front.')}</p></div>
       </div>
       <div class="form-grid">
         <label class="field">
-          <span>Nome da sessão</span>
+          <span>${t('Nome da sessão')}</span>
           <input name="label" value="${escapeHtml(session.label || '')}">
         </label>
         <label class="field">
-          <span>Telefone</span>
+          <span>${t('Telefone')}</span>
           <input value="${escapeHtml(session.phone || session.id || '')}" disabled>
         </label>
         <div class="field">
-          <span class="field-label"><label for="connection-type">Tipo de conexão</label> ${renderInfoTooltip('O método só pode ser alterado depois de desconectar a sessão.')}</span>
+          <span class="field-label"><label for="connection-type">${t('Tipo de conexão')}</label> ${renderInfoTooltip(t('O método só pode ser alterado depois de desconectar a sessão.'))}</span>
           <input name="connectionType" type="hidden" value="${session.connectionType === 'pairing_code' ? 'pairing_code' : 'qrcode'}">
           <select id="connection-type" disabled aria-describedby="connection-type-hint">
             <option value="qrcode" ${session.connectionType !== 'pairing_code' ? 'selected' : ''}>QR Code</option>
-            <option value="pairing_code" ${session.connectionType === 'pairing_code' ? 'selected' : ''}>Código de pareamento</option>
+            <option value="pairing_code" ${session.connectionType === 'pairing_code' ? 'selected' : ''}>${t('Código de pareamento')}</option>
           </select>
-          <small id="connection-type-hint">Para trocar o método, execute deregister e registre a sessão novamente.</small>
+          <small id="connection-type-hint">${t('Para trocar o método, execute deregister e registre a sessão novamente.')}</small>
         </div>
         <label class="field field--connection-peer">
-          <span class="field-label">Servidor</span>
+          <span class="field-label">${t('Servidor')}</span>
           <input name="server" value="${escapeHtml(session.server || 'server_1')}">
           <small aria-hidden="true">&nbsp;</small>
         </label>
         <label class="field field--wide">
           <span>Proxy</span>
-          <input name="proxyUrl" value="${escapeHtml(session.proxyUrl || '')}" placeholder="socks5://usuario:senha@host:porta">
+          <input name="proxyUrl" value="${escapeHtml(session.proxyUrl || '')}" placeholder="${t('socks5://usuario:senha@host:porta')}">
         </label>
-        ${renderSecretField('authToken', 'Token da sessão', session.authToken || '')}
+        ${renderSecretField('authToken', t('Token da sessão'), session.authToken || '')}
       </div>
     </section>
 
     <section class="section">
-      <div class="section__heading"><div><h3>Mensagens e comportamento</h3><p class="muted">Leitura, histórico, presença e eventos enviados à aplicação.</p></div></div>
+      <div class="section__heading"><div><h3>${t('Mensagens e comportamento')}</h3><p class="muted">${t('Leitura, histórico, presença e eventos enviados à aplicação.')}</p></div></div>
       <div class="switch-grid">
-        ${booleanSessionFields.map(([name, label, description]) => renderSwitchField(name, label, description, session[name] === true)).join('')}
+        ${booleanSessionFields.map(([name, label, description]) => renderSwitchField(name, t(label), t(description), session[name] === true)).join('')}
       </div>
       <div class="form-grid">
         <label class="field">
-          <span>Janela do histórico (dias)</span>
+          <span>${t('Janela do histórico (dias)')}</span>
           <input name="historyMaxAgeDays" type="number" min="1" max="3650" value="${escapeHtml(session.historyMaxAgeDays || 30)}">
         </label>
         <label class="field field--wide">
-          <span>Mensagem ao rejeitar chamadas</span>
+          <span>${t('Mensagem ao rejeitar chamadas')}</span>
           <textarea name="rejectCalls" rows="3">${escapeHtml(session.rejectCalls || '')}</textarea>
         </label>
         <label class="field field--wide">
-          <span>Mensagem de chamada recebida/rejeitada no webhook</span>
+          <span>${t('Mensagem de chamada recebida/rejeitada no webhook')}</span>
           <textarea name="rejectCallsWebhook" rows="3">${escapeHtml(session.rejectCallsWebhook || '')}</textarea>
         </label>
       </div>
     </section>
 
     <section class="section">
-      <div class="section__heading"><div><h3>Áudio e IA</h3><p class="muted">Credenciais permanecem vinculadas somente à sessão.</p></div></div>
+      <div class="section__heading"><div><h3>${t('Áudio e IA')}</h3><p class="muted">${t('Credenciais permanecem vinculadas somente à sessão.')}</p></div></div>
       <div class="form-grid">
         ${renderSecretField('openaiApiKey', 'OpenAI API key', session.openaiApiKey || '')}
-        <label class="field"><span>Modelo OpenAI</span><input name="openaiApiTranscribeModel" value="${escapeHtml(session.openaiApiTranscribeModel || 'whisper-1')}"></label>
+        <label class="field"><span>${t('Modelo OpenAI')}</span><input name="openaiApiTranscribeModel" value="${escapeHtml(session.openaiApiTranscribeModel || 'whisper-1')}"></label>
         ${renderSecretField('groqApiKey', 'Groq API key', session.groqApiKey || '')}
-        <label class="field"><span>Modelo Groq</span><input name="groqApiTranscribeModel" value="${escapeHtml(session.groqApiTranscribeModel || 'whisper-large-v3')}"></label>
-        <label class="field field--wide"><span>URL base Groq</span><input name="groqApiBaseUrl" value="${escapeHtml(session.groqApiBaseUrl || 'https://api.groq.com/openai/v1')}"></label>
+        <label class="field"><span>${t('Modelo Groq')}</span><input name="groqApiTranscribeModel" value="${escapeHtml(session.groqApiTranscribeModel || 'whisper-large-v3')}"></label>
+        <label class="field field--wide"><span>${t('URL base Groq')}</span><input name="groqApiBaseUrl" value="${escapeHtml(session.groqApiBaseUrl || 'https://api.groq.com/openai/v1')}"></label>
       </div>
     </section>
 
     <section class="section">
-      <div class="section__heading"><div><h3>Limites por sessão</h3><p class="muted">Use zero para desativar o limite correspondente.</p></div></div>
+      <div class="section__heading"><div><h3>${t('Limites por sessão')}</h3><p class="muted">${t('Use zero para desativar o limite correspondente.')}</p></div></div>
       <div class="form-grid form-grid--three">
-        <label class="field"><span>Global por minuto</span><input name="rateLimitGlobalPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitGlobalPerMinute || 0)}"></label>
-        <label class="field"><span>Por destinatário/minuto</span><input name="rateLimitPerToPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitPerToPerMinute || 0)}"></label>
-        <label class="field"><span>Bloqueio (segundos)</span><input name="rateLimitBlockSeconds" type="number" min="0" value="${escapeHtml(session.rateLimitBlockSeconds || 60)}"></label>
+        <label class="field"><span>${t('Global por minuto')}</span><input name="rateLimitGlobalPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitGlobalPerMinute || 0)}"></label>
+        <label class="field"><span>${t('Por destinatário/minuto')}</span><input name="rateLimitPerToPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitPerToPerMinute || 0)}"></label>
+        <label class="field"><span>${t('Bloqueio (segundos)')}</span><input name="rateLimitBlockSeconds" type="number" min="0" value="${escapeHtml(session.rateLimitBlockSeconds || 60)}"></label>
       </div>
     </section>
 
     <div class="form-actions">
-      <button class="btn" type="submit">${icon('save')}Salvar alterações</button>
+      <button class="btn" type="submit">${icon('save')}${t('Salvar alterações')}</button>
     </div>
   </form>
 `

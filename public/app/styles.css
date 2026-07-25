@@ -1116,6 +1116,13 @@ tbody tr:last-child td {
   box-shadow: var(--shadow);
 }
 
+.login-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .login-brand {
   display: inline-flex;
   width: fit-content;

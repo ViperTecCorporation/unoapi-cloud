@@ -1,4 +1,5 @@
 import type { SessionConfig, SessionStatus } from './types.js'
+import { t } from '../core/i18n.js'
 
 const phoneCandidates = (session: SessionConfig): unknown[] => [
   session.id,
@@ -11,7 +12,7 @@ export const sessionPhone = (session: SessionConfig): string =>
   `${phoneCandidates(session).find((value) => `${value ?? ''}`.trim()) ?? ''}`.replace(/\D/g, '')
 
 export const sessionLabel = (session: SessionConfig): string =>
-  `${session.label || sessionPhone(session) || 'Sessão sem identificação'}`
+  `${session.label || sessionPhone(session) || t('Sessão sem identificação')}`
 
 export const normalizedStatus = (status: SessionStatus | undefined): string =>
   `${status || 'offline'}`.trim().toLowerCase()

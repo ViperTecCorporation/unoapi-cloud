@@ -20,3 +20,8 @@ export const safeImageUrl = (value: unknown): string => {
 }
 
 export const digitsOnly = (value: unknown): string => `${value ?? ''}`.replace(/\D/g, '')
+
+export const messageRecipient = (value: unknown): string => {
+  const recipient = `${value ?? ''}`.trim()
+  return recipient.includes('@') ? recipient : digitsOnly(recipient)
+}

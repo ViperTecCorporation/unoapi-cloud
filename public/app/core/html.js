@@ -20,3 +20,7 @@ export const safeImageUrl = (value) => {
     }
 };
 export const digitsOnly = (value) => `${value ?? ''}`.replace(/\D/g, '');
+export const messageRecipient = (value) => {
+    const recipient = `${value ?? ''}`.trim();
+    return recipient.includes('@') ? recipient : digitsOnly(recipient);
+};

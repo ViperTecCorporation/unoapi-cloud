@@ -1,4 +1,5 @@
 import { escapeHtml } from '../core/html.js'
+import { t } from '../core/i18n.js'
 import { icon } from './icons.js'
 
 export const renderInfoTooltip = (description: string): string => `
@@ -24,8 +25,8 @@ export const renderSecretField = (name: string, label: string, value: unknown): 
     <label for="${escapeHtml(inputId)}">${escapeHtml(label)}</label>
     <span class="secret-field">
       <input id="${escapeHtml(inputId)}" name="${escapeHtml(name)}" type="password" value="${escapeHtml(value)}" autocomplete="off">
-      <button type="button" class="btn btn--icon btn--ghost" data-action="toggle-secret" aria-label="Exibir ${escapeHtml(label)}" aria-pressed="false">${icon('eye')}</button>
-      <button type="button" class="btn btn--icon btn--ghost" data-action="copy-secret" aria-label="Copiar ${escapeHtml(label)}">${icon('copy')}</button>
+      <button type="button" class="btn btn--icon btn--ghost" data-action="toggle-secret" aria-label="${escapeHtml(t('Exibir {label}', { label }))}" aria-pressed="false">${icon('eye')}</button>
+      <button type="button" class="btn btn--icon btn--ghost" data-action="copy-secret" aria-label="${escapeHtml(t('Copiar {label}', { label }))}">${icon('copy')}</button>
     </span>
   </div>
 `

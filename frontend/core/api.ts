@@ -1,4 +1,5 @@
 import type { ContactDirectoryPage, GroupPage, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
+import { t } from './i18n.js'
 
 export class ApiError extends Error {
   constructor(
@@ -19,7 +20,7 @@ const errorMessage = (payload: unknown, status: number): string => {
     const message = value.message || value.error || value.title
     if (message) return `${message}`
   }
-  return `Falha HTTP ${status}`
+  return t('Falha HTTP {status}', { status })
 }
 
 export class ApiClient {

@@ -1,4 +1,5 @@
 import { escapeHtml } from '../core/html.js'
+import { t } from '../core/i18n.js'
 import { icon } from './icons.js'
 
 export const renderModal = (
@@ -14,7 +15,7 @@ export const renderModal = (
           ${options.subtitle ? `<span class="eyebrow">${escapeHtml(options.subtitle)}</span>` : ''}
           <h2 id="${escapeHtml(id)}-title">${escapeHtml(title)}</h2>
         </div>
-        <button class="btn btn--icon btn--ghost" type="button" data-close-modal aria-label="Fechar">${icon('close')}</button>
+        <button class="btn btn--icon btn--ghost" type="button" data-close-modal aria-label="${t('Fechar')}">${icon('close')}</button>
       </header>
       <div class="modal__body">${content}</div>
     </section>

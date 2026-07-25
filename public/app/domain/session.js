@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js?v=4.0.0-beta8';
 const phoneCandidates = (session) => [
     session.id,
     session.phone,
@@ -5,7 +6,7 @@ const phoneCandidates = (session) => [
     session.display_phone_number,
 ];
 export const sessionPhone = (session) => `${phoneCandidates(session).find((value) => `${value ?? ''}`.trim()) ?? ''}`.replace(/\D/g, '');
-export const sessionLabel = (session) => `${session.label || sessionPhone(session) || 'Sessão sem identificação'}`;
+export const sessionLabel = (session) => `${session.label || sessionPhone(session) || t('Sessão sem identificação')}`;
 export const normalizedStatus = (status) => `${status || 'offline'}`.trim().toLowerCase();
 export const isOnlineStatus = (status) => normalizedStatus(status) === 'online';
 export const isConnectingStatus = (status) => normalizedStatus(status) === 'connecting';

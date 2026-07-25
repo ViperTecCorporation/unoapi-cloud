@@ -1,4 +1,5 @@
 import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+import { t } from '../core/i18n.js?v=4.0.0-beta8';
 import { normalizedStatus } from '../domain/session.js?v=4.0.0-beta8';
 const statusLabels = {
     online: 'Online',
@@ -21,6 +22,6 @@ export const statusTone = (status) => {
 };
 export const renderStatus = (status) => {
     const value = normalizedStatus(status);
-    const label = statusLabels[value] || value;
+    const label = statusLabels[value] ? t(statusLabels[value]) : value;
     return `<span class="status status--${statusTone(status)}"><span class="status__dot"></span>${escapeHtml(label)}</span>`;
 };

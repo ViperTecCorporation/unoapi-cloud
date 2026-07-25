@@ -3,9 +3,12 @@ import { icon } from '../../frontend/components/icons'
 import { renderLayout, renderLogin } from '../../frontend/components/layout'
 import { renderModal } from '../../frontend/components/modal'
 import { renderStatus, statusTone } from '../../frontend/components/status'
+import { setLocale } from '../../frontend/core/i18n'
 import { renderContactCards, renderGroupCards } from '../../frontend/features/entities'
 
 describe('frontend components', () => {
+  afterEach(() => setLocale('pt-BR'))
+
   test('renders known and fallback icons accessibly', () => {
     expect(icon('github')).toContain('<svg')
     expect(icon('github', 'GitHub')).toContain('aria-label="GitHub"')
@@ -43,6 +46,7 @@ describe('frontend components', () => {
 
     const login = renderLogin('Token inválido')
     expect(login).toContain('data-form="login"')
+    expect(login).toContain('data-action="toggle-language"')
     expect(login).toContain('<strong>ViperConnect</strong>')
     expect(login).toContain('Informe o token configurado no ViperConnect.')
     expect(login).not.toContain('viperconnect_logo.svg')
@@ -80,5 +84,29 @@ describe('frontend components', () => {
     expect(group).toContain('4 participantes')
     expect(group).toContain('data-recipient="1@g.us"')
     expect(group).toContain('data-value="1@g.us"')
+  })
+
+  test('renders the complete shell and its language control in English', () => {
+    setLocale('en')
+    const layout = renderLayout({
+      content: '<p>Content</p>',
+      collapsed: false,
+      mobileOpen: false,
+      versionStatus: {
+        installed_version: '4.0.0-beta8',
+        latest_version: '4.0.0-beta8',
+        update_available: false,
+        status: 'current',
+        checked_at: '2026-07-25T12:00:00.000Z',
+      },
+    })
+
+    expect(layout).toContain('Main navigation')
+    expect(layout).toContain('Documentation')
+    expect(layout).toContain('data-action="toggle-language"')
+    expect(layout).toContain('Português')
+    expect(renderLogin()).toContain('Enter the token configured in ViperConnect.')
+    expect(renderLogin()).toContain('aria-label="Change language"')
+    expect(renderModal('test', 'Test', '<p>Body</p>')).toContain('aria-label="Close"')
   })
 })

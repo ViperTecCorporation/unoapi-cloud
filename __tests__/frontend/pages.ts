@@ -1,7 +1,10 @@
 import { renderDashboard } from '../../frontend/pages/dashboard'
 import { renderSessionPage } from '../../frontend/pages/session'
+import { setLocale } from '../../frontend/core/i18n'
 
 describe('frontend pages', () => {
+  afterEach(() => setLocale('pt-BR'))
+
   test('renders dashboard sessions with automatic refresh and management action', () => {
     const html = renderDashboard({
       sessions: [{ phone: '5566', label: 'Comercial', status: 'online', server: 'server_1' }],
@@ -94,5 +97,35 @@ describe('frontend pages', () => {
 
     expect(html.match(/data-action="manage-session"/g) || []).toHaveLength(20)
     expect(html).toContain('data-action="load-more-sessions"')
+  })
+
+  test('renders dashboard and session navigation in English', () => {
+    setLocale('en')
+    const dashboard = renderDashboard({
+      sessions: [],
+      query: '',
+      status: 'all',
+      loading: false,
+      refreshIn: 15,
+      visibleLimit: 20,
+    })
+    const session = renderSessionPage({
+      session: { phone: '5566', label: 'Sales', status: 'online', webhooks: [] },
+      tab: 'contacts',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: '',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(dashboard).toContain('Overview')
+    expect(dashboard).toContain('Automatic refresh in')
+    expect(session).toContain('Session contacts')
+    expect(session).toContain('Back to Dashboard')
   })
 })
