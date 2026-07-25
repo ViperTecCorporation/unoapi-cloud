@@ -40,12 +40,15 @@ const renderRedisTreeNodes = (
   if (node.kind === 'key') {
     return `<button class="redis-key ${selectedKey === node.path ? 'redis-key--active' : ''}" type="button" data-action="select-redis-key" data-key="${escapeHtml(node.path)}" title="${escapeHtml(node.path)}">${escapeHtml(node.label)}</button>`
   }
-  const open = expanded.has(node.path) || selectedKey.startsWith(node.path)
+  const open = expanded.has(node.path)
   const children = tree[node.path]
   return `<div class="redis-tree__node">
-    <button class="redis-tree__toggle" type="button" data-action="toggle-redis-node" data-prefix="${escapeHtml(node.path)}" aria-expanded="${open}">
-      <span class="redis-tree__arrow" aria-hidden="true">›</span>${icon('database')}<strong>${escapeHtml(node.label)}</strong>
-    </button>
+    <div class="redis-tree__row">
+      <button class="redis-tree__toggle" type="button" data-action="toggle-redis-node" data-prefix="${escapeHtml(node.path)}" aria-expanded="${open}">
+        <span class="redis-tree__arrow" aria-hidden="true">›</span>${icon('database')}<strong>${escapeHtml(node.label)}</strong>
+      </button>
+      <button class="btn btn--icon btn--ghost redis-tree__delete" type="button" data-action="delete-redis-prefix" data-prefix="${escapeHtml(node.path)}" aria-label="${escapeHtml(t('Excluir todos os subitens de {prefix}', { prefix: node.path }))}" title="${t('Excluir todos os subitens')}">${icon('trash')}</button>
+    </div>
     ${open ? `<div class="redis-tree__children">${children
       ? renderRedisTreeNodes(tree, node.path, expanded, selectedKey, loading)
       : `<span class="redis-tree__loading">${loading ? t('Atualizando…') : t('Expandir para carregar')}</span>`}</div>` : ''}
@@ -77,12 +80,14 @@ export const renderRedisEditorModal = (details?: RedisKeyDetails): string => {
   `)
 }
 
-export const renderRedisDeleteModal = (key: string): string =>
-  renderModal('redis-delete', t('Excluir chave Redis'), `
-    <form class="stack" data-form="redis-delete">
-      <input type="hidden" name="key" value="${escapeHtml(key)}">
-      <p>${t('Esta operação remove a chave e todo o seu conteúdo.')}</p>
-      <label class="field"><span>${t('Digite o nome da chave para confirmar')}</span><input name="confirm" placeholder="${escapeHtml(key)}" required></label>
+export const renderRedisDeleteModal = (key: string, prefix = false): string =>
+  renderModal('redis-delete', prefix ? t('Excluir subárvore Redis') : t('Excluir chave Redis'), `
+    <form class="stack" data-form="${prefix ? 'redis-delete-prefix' : 'redis-delete'}">
+      <input type="hidden" name="${prefix ? 'prefix' : 'key'}" value="${escapeHtml(key)}">
+      <p>${prefix
+        ? t('Esta operação remove todas as chaves e subitens abaixo deste prefixo.')
+        : t('Esta operação remove a chave e todo o seu conteúdo.')}</p>
+      <label class="field"><span>${prefix ? t('Digite o prefixo completo para confirmar') : t('Digite o nome da chave para confirmar')}</span><input name="confirm" placeholder="${escapeHtml(key)}" required></label>
       <div class="form-actions"><button class="btn btn--danger" type="submit">${icon('trash')}${t('Excluir definitivamente')}</button></div>
     </form>
   `, { subtitle: key })

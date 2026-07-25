@@ -834,7 +834,8 @@ tbody tr:last-child td {
 }
 
 .redis-tree__toggle {
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   padding: 6px 4px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -845,6 +846,22 @@ tbody tr:last-child td {
   gap: 7px;
   cursor: pointer;
   text-align: left;
+}
+
+.redis-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.redis-tree__delete {
+  flex: 0 0 auto;
+  opacity: 0.55;
+}
+
+.redis-tree__row:hover .redis-tree__delete,
+.redis-tree__row:focus-within .redis-tree__delete {
+  opacity: 1;
 }
 
 .redis-tree__toggle:hover,

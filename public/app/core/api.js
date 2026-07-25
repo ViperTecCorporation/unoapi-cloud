@@ -132,6 +132,13 @@ export class ApiClient {
         const response = await this.request(`/admin/redis/tree?${query}`);
         return Array.isArray(response?.nodes) ? response.nodes : [];
     }
+    deleteRedisPrefix(prefix) {
+        const query = new URLSearchParams({ prefix });
+        return this.request(`/admin/redis/tree?${query}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm: prefix }),
+        });
+    }
     redisKey(key) {
         return this.request(`/admin/redis/keys/${encodeURIComponent(key)}`);
     }

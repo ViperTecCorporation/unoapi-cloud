@@ -57,9 +57,10 @@ describe('Redis admin page', () => {
     expect(editor).toContain('name="confirm"')
     expect(editor.indexOf('-1 mantém a chave sem expiração.')).toBeLessThan(editor.indexOf('name="ttlSeconds"'))
     expect(renderRedisDeleteModal(details.key)).toContain('data-form="redis-delete"')
+    expect(renderRedisDeleteModal('unoapi:zapo:auth:', true)).toContain('data-form="redis-delete-prefix"')
   })
 
-  test('renders explicit expansion arrows and opens selected ancestors', () => {
+  test('renders explicit expansion arrows and allows selected parents to collapse', () => {
     const base = {
       keys: [],
       tree: redisTreeFromKeys(['unoapi:zapo:contacts:5566']),
@@ -83,7 +84,12 @@ describe('Redis admin page', () => {
         truncated: false,
         value: { name: 'Contato' },
       },
+    })).toContain('aria-expanded="false"')
+    expect(renderRedisPage({
+      ...base,
+      expandedPrefixes: ['unoapi:'],
     })).toContain('aria-expanded="true"')
+    expect(renderRedisPage(base)).toContain('data-action="delete-redis-prefix"')
   })
 
   test('renders Redis maintenance in English', () => {

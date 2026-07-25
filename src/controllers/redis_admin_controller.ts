@@ -3,7 +3,7 @@ import { UNOAPI_AUTH_TOKEN } from '../defaults'
 import { RedisAdmin, RedisAdminError, RedisKeyType } from '../services/redis_admin'
 import { getAuthHeaderToken } from '../services/security'
 
-type RedisManager = Pick<RedisAdmin, 'listKeys' | 'listTree' | 'getKey' | 'saveKey' | 'deleteKey' | 'query'>
+type RedisManager = Pick<RedisAdmin, 'listKeys' | 'listTree' | 'getKey' | 'saveKey' | 'deleteKey' | 'deletePrefix' | 'query'>
 
 export class RedisAdminController {
   constructor(
@@ -38,6 +38,22 @@ export class RedisAdminController {
       return res.status(200).json({
         prefix,
         nodes: await this.manager.listTree(prefix, Number(req.query.limit) || 100),
+      })
+    } catch (error) {
+      return this.error(res, error)
+    }
+  }
+
+  async removeTree(req: Request, res: Response) {
+    if (!this.authorized(req)) return res.status(403).json({ error: 'admin_token_required' })
+    const prefix = `${req.query.prefix || ''}`
+    if (`${req.body?.confirm || ''}` !== prefix) {
+      return res.status(400).json({ error: 'redis_prefix_confirmation_mismatch' })
+    }
+    try {
+      return res.status(200).json({
+        prefix,
+        removed: await this.manager.deletePrefix(prefix),
       })
     } catch (error) {
       return this.error(res, error)

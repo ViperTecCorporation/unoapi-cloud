@@ -151,6 +151,30 @@ describe('Redis admin service', () => {
     )
   })
 
+  test('deletes a Redis subtree incrementally with SCAN and UNLINK', async () => {
+    const client = {
+      scan: jest.fn()
+        .mockResolvedValueOnce({ cursor: '7', keys: ['unoapi:zapo:test:a', 'unoapi:zapo:test:b'] })
+        .mockResolvedValueOnce({ cursor: '0', keys: ['unoapi:zapo:test:c'] }),
+      unlink: jest.fn()
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1),
+    }
+    const admin = new RedisAdmin(jest.fn().mockResolvedValue(client) as any)
+    await expect(admin.deletePrefix('unoapi:zapo:test:')).resolves.toBe(3)
+    expect(client.scan).toHaveBeenNthCalledWith(1, '0', {
+      MATCH: 'unoapi:zapo:test:*',
+      COUNT: 500,
+    })
+    expect(client.unlink).toHaveBeenCalledTimes(2)
+  })
+
+  test('rejects subtree deletion without a colon-terminated UnoAPI prefix', async () => {
+    const admin = new RedisAdmin(jest.fn() as any)
+    await expect(admin.deletePrefix('unoapi:zapo:test')).rejects.toThrow('redis_prefix_required')
+    await expect(admin.deletePrefix('foreign:test:')).rejects.toThrow('redis_key_not_allowed')
+  })
+
   test('allows only explicit read commands', async () => {
     const client = { get: jest.fn().mockResolvedValue('value') }
     const admin = new RedisAdmin(jest.fn().mockResolvedValue(client) as any)

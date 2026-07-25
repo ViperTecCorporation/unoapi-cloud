@@ -339,11 +339,18 @@ const english = {
     'Digite o nome da chave para confirmar': 'Type the key name to confirm',
     'Salvar chave': 'Save key',
     'Excluir chave Redis': 'Delete Redis key',
+    'Excluir subárvore Redis': 'Delete Redis subtree',
+    'Excluir todos os subitens': 'Delete all child items',
+    'Excluir todos os subitens de {prefix}': 'Delete all child items under {prefix}',
+    'Esta operação remove todas as chaves e subitens abaixo deste prefixo.': 'This operation removes every key and child item under this prefix.',
+    'Digite o prefixo completo para confirmar': 'Type the full prefix to confirm',
     'Esta operação remove a chave e todo o seu conteúdo.': 'This operation removes the key and all its content.',
     'Excluir definitivamente': 'Delete permanently',
     'Nome da chave não confere.': 'Key name does not match.',
     'Chave salva.': 'Key saved.',
     'Chave excluída.': 'Key deleted.',
+    'Prefixo Redis não confere.': 'Redis prefix does not match.',
+    'Subitens excluídos: {count}.': 'Child items deleted: {count}.',
 };
 let currentLocale = 'pt-BR';
 export const normalizeLocale = (value) => `${value || ''}`.toLowerCase().startsWith('en') ? 'en' : 'pt-BR';

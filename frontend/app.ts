@@ -32,6 +32,7 @@ type ModalState =
   | { type: 'queue-purge'; queue: string }
   | { type: 'redis-editor' }
   | { type: 'redis-delete'; key: string }
+  | { type: 'redis-delete-prefix'; prefix: string }
 
 const emptyContactState = () => ({
   items: [] as ContactDirectoryItem[],
@@ -219,6 +220,12 @@ export class ViperConnectApp {
         this.modal = { type: 'redis-delete', key: this.selectedRedisKey.key }
         this.render()
       }
+    } else if (action === 'delete-redis-prefix') {
+      const prefix = actionElement.dataset.prefix || ''
+      if (prefix) {
+        this.modal = { type: 'redis-delete-prefix', prefix }
+        this.render()
+      }
     } else if (action === 'refresh') {
       await this.loadSessions().catch(() => undefined)
     } else if (action === 'load-more-sessions') {
@@ -310,6 +317,8 @@ export class ViperConnectApp {
       await this.saveRedisKey(data)
     } else if (form.dataset.form === 'redis-delete') {
       await this.deleteRedisKey(data)
+    } else if (form.dataset.form === 'redis-delete-prefix') {
+      await this.deleteRedisPrefix(data)
     } else if (form.dataset.form === 'redis-query') {
       await this.runRedisQuery(data)
     }
@@ -821,6 +830,34 @@ export class ViperConnectApp {
     }
   }
 
+  private async deleteRedisPrefix(data: FormData): Promise<void> {
+    const prefix = `${data.get('prefix') || ''}`
+    if (`${data.get('confirm') || ''}` !== prefix) {
+      this.showToast(t('Prefixo Redis não confere.'))
+      return
+    }
+    try {
+      const result = await this.api.deleteRedisPrefix(prefix)
+      this.modal = undefined
+      if (this.selectedRedisKey?.key.startsWith(prefix)) this.selectedRedisKey = undefined
+      for (const expanded of this.redisExpandedPrefixes) {
+        if (expanded === prefix || expanded.startsWith(prefix)) {
+          this.redisExpandedPrefixes.delete(expanded)
+        }
+      }
+      Object.keys(this.redisTree).forEach((loadedPrefix) => {
+        if (loadedPrefix === prefix || loadedPrefix.startsWith(prefix)) {
+          delete this.redisTree[loadedPrefix]
+        }
+      })
+      this.showToast(t('Subitens excluídos: {count}.', { count: result.removed }))
+      await this.loadRedisKeys()
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+      this.render()
+    }
+  }
+
   private async runRedisQuery(data: FormData): Promise<void> {
     try {
       this.redisQueryResult = await this.api.redisQuery(
@@ -964,6 +1001,7 @@ export class ViperConnectApp {
     if (this.modal.type === 'queue-purge') return renderQueuePurgeModal(this.modal.queue)
     if (this.modal.type === 'redis-editor') return renderRedisEditorModal(this.selectedRedisKey)
     if (this.modal.type === 'redis-delete') return renderRedisDeleteModal(this.modal.key)
+    if (this.modal.type === 'redis-delete-prefix') return renderRedisDeleteModal(this.modal.prefix, true)
     const session = this.findSession(this.modal.phone)
     if (!session) return ''
     if (this.modal.type === 'connection') {

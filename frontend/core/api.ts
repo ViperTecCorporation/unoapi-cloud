@@ -158,6 +158,14 @@ export class ApiClient {
     return Array.isArray(response?.nodes) ? response.nodes : []
   }
 
+  deleteRedisPrefix(prefix: string): Promise<{ removed: number }> {
+    const query = new URLSearchParams({ prefix })
+    return this.request<{ removed: number }>(`/admin/redis/tree?${query}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm: prefix }),
+    })
+  }
+
   redisKey(key: string): Promise<RedisKeyDetails> {
     return this.request<RedisKeyDetails>(`/admin/redis/keys/${encodeURIComponent(key)}`)
   }

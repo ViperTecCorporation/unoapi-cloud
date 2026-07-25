@@ -87,7 +87,8 @@ describe('frontend API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ key: 'unoapi:test', type: 'string', value: 'ok' })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ saved: true })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ result: 'string' })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ removed: 1 }))) as unknown as typeof fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ removed: 1 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ removed: 3 }))) as unknown as typeof fetch
     const api = new ApiClient('https://unoapi.example', fetcher)
     api.setToken('admin')
 
@@ -97,10 +98,14 @@ describe('frontend API client', () => {
     await api.saveRedisKey('unoapi:test', 'string', 'value', -1)
     await expect(api.redisQuery('TYPE', ['unoapi:test'])).resolves.toBe('string')
     await expect(api.deleteRedisKey('unoapi:test')).resolves.toEqual({ removed: 1 })
+    await expect(api.deleteRedisPrefix('unoapi:zapo:test:')).resolves.toEqual({ removed: 3 })
 
     expect(JSON.parse(`${fetcher.mock.calls[3][1]?.body}`)).toMatchObject({
       confirm: 'unoapi:test',
       type: 'string',
+    })
+    expect(JSON.parse(`${fetcher.mock.calls[6][1]?.body}`)).toEqual({
+      confirm: 'unoapi:zapo:test:',
     })
   })
 })

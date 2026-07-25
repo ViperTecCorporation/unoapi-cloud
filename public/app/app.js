@@ -205,6 +205,13 @@ export class ViperConnectApp {
                 this.render();
             }
         }
+        else if (action === 'delete-redis-prefix') {
+            const prefix = actionElement.dataset.prefix || '';
+            if (prefix) {
+                this.modal = { type: 'redis-delete-prefix', prefix };
+                this.render();
+            }
+        }
         else if (action === 'refresh') {
             await this.loadSessions().catch(() => undefined);
         }
@@ -319,6 +326,9 @@ export class ViperConnectApp {
         }
         else if (form.dataset.form === 'redis-delete') {
             await this.deleteRedisKey(data);
+        }
+        else if (form.dataset.form === 'redis-delete-prefix') {
+            await this.deleteRedisPrefix(data);
         }
         else if (form.dataset.form === 'redis-query') {
             await this.runRedisQuery(data);
@@ -871,6 +881,35 @@ export class ViperConnectApp {
             this.showToast(this.messageFor(error));
         }
     }
+    async deleteRedisPrefix(data) {
+        const prefix = `${data.get('prefix') || ''}`;
+        if (`${data.get('confirm') || ''}` !== prefix) {
+            this.showToast(t('Prefixo Redis não confere.'));
+            return;
+        }
+        try {
+            const result = await this.api.deleteRedisPrefix(prefix);
+            this.modal = undefined;
+            if (this.selectedRedisKey?.key.startsWith(prefix))
+                this.selectedRedisKey = undefined;
+            for (const expanded of this.redisExpandedPrefixes) {
+                if (expanded === prefix || expanded.startsWith(prefix)) {
+                    this.redisExpandedPrefixes.delete(expanded);
+                }
+            }
+            Object.keys(this.redisTree).forEach((loadedPrefix) => {
+                if (loadedPrefix === prefix || loadedPrefix.startsWith(prefix)) {
+                    delete this.redisTree[loadedPrefix];
+                }
+            });
+            this.showToast(t('Subitens excluídos: {count}.', { count: result.removed }));
+            await this.loadRedisKeys();
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+            this.render();
+        }
+    }
     async runRedisQuery(data) {
         try {
             this.redisQueryResult = await this.api.redisQuery(`${data.get('command') || ''}`, [`${data.get('argument') || ''}`]);
@@ -1017,6 +1056,8 @@ export class ViperConnectApp {
             return renderRedisEditorModal(this.selectedRedisKey);
         if (this.modal.type === 'redis-delete')
             return renderRedisDeleteModal(this.modal.key);
+        if (this.modal.type === 'redis-delete-prefix')
+            return renderRedisDeleteModal(this.modal.prefix, true);
         const session = this.findSession(this.modal.phone);
         if (!session)
             return '';

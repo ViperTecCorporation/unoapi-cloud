@@ -81,6 +81,11 @@ export class RedisAdmin {
     if (!isAllowedRedisKey(key)) throw new RedisAdminError(403, 'redis_key_not_allowed')
   }
 
+  private assertPrefix(prefix: string): void {
+    this.assertKey(prefix)
+    if (!prefix.endsWith(':')) throw new RedisAdminError(400, 'redis_prefix_required')
+  }
+
   async listKeys(search = '', limit = 200): Promise<string[]> {
     const safeLimit = Math.min(1000, Math.max(1, Number(limit) || 200))
     const term = `${search || ''}`.trim().replace(/[*?[\]]/g, '')
@@ -198,6 +203,28 @@ export class RedisAdmin {
     this.assertKey(key)
     const client: any = await this.clientFactory()
     return Number(await client.del(key)) || 0
+  }
+
+  async deletePrefix(prefix: string): Promise<number> {
+    this.assertPrefix(prefix)
+    const client: any = await this.clientFactory()
+    let cursor = '0'
+    let removed = 0
+    do {
+      const result: any = await client.scan(cursor, {
+        MATCH: `${prefix}*`,
+        COUNT: 500,
+      })
+      cursor = typeof result.cursor !== 'undefined' ? `${result.cursor}` : `${result[0]}`
+      const keys: string[] = Array.isArray(result.keys) ? result.keys : (result[1] || [])
+      if (keys.length) {
+        const count = typeof client.unlink === 'function'
+          ? await client.unlink(keys)
+          : await client.del(keys)
+        removed += Number(count) || 0
+      }
+    } while (cursor !== '0')
+    return removed
   }
 
   async query(command: string, args: string[] = []): Promise<unknown> {

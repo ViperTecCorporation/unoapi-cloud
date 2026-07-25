@@ -20,6 +20,7 @@ describe('Redis admin controller', () => {
     getKey: jest.fn(),
     saveKey: jest.fn(),
     deleteKey: jest.fn(),
+    deletePrefix: jest.fn(),
     query: jest.fn(),
   }
 
@@ -63,8 +64,27 @@ describe('Redis admin controller', () => {
     const controller = new RedisAdminController(manager as any, 'admin')
     await controller.save(req({ params: { key: 'unoapi:test' }, body: { confirm: 'wrong' } }), res())
     await controller.remove(req({ params: { key: 'unoapi:test' }, body: { confirm: 'wrong' } }), res())
+    await controller.removeTree(req({ query: { prefix: 'unoapi:test:' }, body: { confirm: 'wrong' } }), res())
     expect(manager.saveKey).not.toHaveBeenCalled()
     expect(manager.deleteKey).not.toHaveBeenCalled()
+    expect(manager.deletePrefix).not.toHaveBeenCalled()
+  })
+
+  test('deletes a confirmed Redis subtree', async () => {
+    manager.deletePrefix.mockResolvedValue(3)
+    const response = res()
+    await new RedisAdminController(manager as any, 'admin').removeTree(
+      req({
+        query: { prefix: 'unoapi:zapo:test:' },
+        body: { confirm: 'unoapi:zapo:test:' },
+      }),
+      response,
+    )
+    expect(manager.deletePrefix).toHaveBeenCalledWith('unoapi:zapo:test:')
+    expect(response.json).toHaveBeenCalledWith({
+      prefix: 'unoapi:zapo:test:',
+      removed: 3,
+    })
   })
 
   test('runs allowlisted queries through the service', async () => {
