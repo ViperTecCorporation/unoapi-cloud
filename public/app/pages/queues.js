@@ -1,9 +1,9 @@
-import { renderInfoTooltip } from '../components/form_controls.js';
-import { icon } from '../components/icons.js';
-import { renderModal } from '../components/modal.js';
-import { escapeHtml } from '../core/html.js';
-import { formatNumber, t } from '../core/i18n.js';
-import { sessionLabel, sessionPhone } from '../domain/session.js';
+import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8';
+import { icon } from '../components/icons.js?v=4.0.0-beta8';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8';
 export const queueDescriptionKey = (name) => {
     if (name.includes('.incoming.') && name.endsWith('.dead')) {
         return 'Comandos enviados pela API ao WhatsApp que esgotaram as tentativas de processamento.';
