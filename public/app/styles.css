@@ -739,6 +739,12 @@ tbody tr:last-child td {
   overflow-wrap: anywhere;
 }
 
+.queue-flow {
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+}
+
 .queue-state {
   display: inline-flex;
   align-items: center;

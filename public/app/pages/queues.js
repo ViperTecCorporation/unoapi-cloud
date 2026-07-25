@@ -1,10 +1,16 @@
-import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8';
-import { icon } from '../components/icons.js?v=4.0.0-beta8';
-import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8';
+import { renderInfoTooltip } from '../components/form_controls.js';
+import { icon } from '../components/icons.js';
+import { renderModal } from '../components/modal.js';
+import { escapeHtml } from '../core/html.js';
+import { formatNumber, t } from '../core/i18n.js';
+import { sessionLabel, sessionPhone } from '../domain/session.js';
 export const queueDescriptionKey = (name) => {
+    if (name.includes('.incoming.') && name.endsWith('.dead')) {
+        return 'Comandos enviados pela API ao WhatsApp que esgotaram as tentativas de processamento.';
+    }
+    if (name.includes('.listener.') && name.endsWith('.dead')) {
+        return 'Eventos recebidos do WhatsApp que esgotaram as tentativas de processamento e encaminhamento.';
+    }
     if (name.endsWith('.dead'))
         return 'Mensagens que esgotaram as tentativas e aguardam análise ou remoção.';
     if (name.endsWith('.delayed'))
@@ -38,6 +44,13 @@ export const queueDescriptionKey = (name) => {
     if (name.includes('.commander'))
         return 'Recebe comandos de orquestração dos envios em lote.';
     return 'Fila interna do ViperConnect gerenciada pelo RabbitMQ.';
+};
+export const queueFlowLabelKey = (name) => {
+    if (name.includes('.incoming.'))
+        return 'API → WhatsApp';
+    if (name.includes('.listener.'))
+        return 'WhatsApp → Webhooks';
+    return '';
 };
 export const queueNeedsAttention = (queue) => `${queue.state || 'running'}` !== 'running' || (queue.messages_ready > 0 && queue.consumers === 0);
 export const filterQueuesBySession = (queues, session) => {
@@ -112,8 +125,9 @@ export const renderQueuesPage = (options) => {
           <thead><tr><th>${t('Fila')}</th><th>${t('Prontas')}</th><th>${t('Em processamento')}</th><th>${t('Consumidores')}</th><th>${t('Estado')}</th><th class="table-actions">${t('Ações')}</th></tr></thead>
           <tbody>${visible.length ? visible.map((queue) => {
         const attention = queueNeedsAttention(queue);
+        const flowLabel = queueFlowLabelKey(queue.name);
         return `<tr class="${queue.name === options.selectedQueue ? 'row--selected' : ''}">
-              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(t(queueDescriptionKey(queue.name)))}</div></td>
+              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(t(queueDescriptionKey(queue.name)))}</div>${flowLabel ? `<small class="queue-flow">${t(flowLabel)}</small>` : ''}</td>
               <td>${formatNumber(queue.messages_ready)}</td>
               <td>${formatNumber(queue.messages_unacknowledged)}</td>
               <td>${formatNumber(queue.consumers)}</td>

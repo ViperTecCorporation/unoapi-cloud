@@ -7,6 +7,12 @@ import { sessionLabel, sessionPhone } from '../domain/session.js'
 import type { RabbitQueueInfo, RabbitQueueMessage, SessionConfig } from '../domain/types.js'
 
 export const queueDescriptionKey = (name: string): TranslationKey => {
+  if (name.includes('.incoming.') && name.endsWith('.dead')) {
+    return 'Comandos enviados pela API ao WhatsApp que esgotaram as tentativas de processamento.'
+  }
+  if (name.includes('.listener.') && name.endsWith('.dead')) {
+    return 'Eventos recebidos do WhatsApp que esgotaram as tentativas de processamento e encaminhamento.'
+  }
   if (name.endsWith('.dead')) return 'Mensagens que esgotaram as tentativas e aguardam análise ou remoção.'
   if (name.endsWith('.delayed')) return 'Mensagens aguardando o tempo configurado para nova tentativa ou execução.'
   if (name.includes('.outgoing')) return 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.'
@@ -24,6 +30,12 @@ export const queueDescriptionKey = (name: string): TranslationKey => {
   if (name.includes('.blacklist')) return 'Atualiza a blacklist temporária usada pelos webhooks.'
   if (name.includes('.commander')) return 'Recebe comandos de orquestração dos envios em lote.'
   return 'Fila interna do ViperConnect gerenciada pelo RabbitMQ.'
+}
+
+export const queueFlowLabelKey = (name: string): TranslationKey | '' => {
+  if (name.includes('.incoming.')) return 'API → WhatsApp'
+  if (name.includes('.listener.')) return 'WhatsApp → Webhooks'
+  return ''
 }
 
 export const queueNeedsAttention = (queue: RabbitQueueInfo): boolean =>
@@ -119,8 +131,9 @@ export const renderQueuesPage = (options: QueuePageOptions): string => {
           <thead><tr><th>${t('Fila')}</th><th>${t('Prontas')}</th><th>${t('Em processamento')}</th><th>${t('Consumidores')}</th><th>${t('Estado')}</th><th class="table-actions">${t('Ações')}</th></tr></thead>
           <tbody>${visible.length ? visible.map((queue) => {
             const attention = queueNeedsAttention(queue)
+            const flowLabel = queueFlowLabelKey(queue.name)
             return `<tr class="${queue.name === options.selectedQueue ? 'row--selected' : ''}">
-              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(t(queueDescriptionKey(queue.name)))}</div></td>
+              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(t(queueDescriptionKey(queue.name)))}</div>${flowLabel ? `<small class="queue-flow">${t(flowLabel)}</small>` : ''}</td>
               <td>${formatNumber(queue.messages_ready)}</td>
               <td>${formatNumber(queue.messages_unacknowledged)}</td>
               <td>${formatNumber(queue.consumers)}</td>
