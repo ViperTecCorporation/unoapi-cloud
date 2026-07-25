@@ -55,7 +55,7 @@ export const renderDashboard = ({ sessions, query, status, loading, refreshIn, v
             const onlineSession = isOnlineStatus(session.status);
             const legacySession = isLegacySession(session);
             return `<tr>
-                <td><div class="session-identity"><span class="session-identity__icon">${icon('message')}</span><span><strong>${escapeHtml(sessionLabel(session))}</strong><small>${escapeHtml(phone)}</small></span></div></td>
+                <td><div class="session-identity"><span class="session-identity__icon">${icon('whatsapp', 'WhatsApp')}</span><span><strong>${escapeHtml(sessionLabel(session))}</strong><small>${escapeHtml(phone)}</small></span></div></td>
                 <td>${renderStatus(session.status)}</td>
                 <td>${escapeHtml(session.server || 'server_1')}</td>
                 <td class="table-actions"><div class="row-actions">

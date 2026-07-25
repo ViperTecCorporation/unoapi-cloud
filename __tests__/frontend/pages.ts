@@ -18,6 +18,7 @@ describe('frontend pages', () => {
     expect(html).toContain('data-refresh-countdown')
     expect(html).toContain('data-action="manage-session"')
     expect(html).toContain('status--online')
+    expect(html).toContain('aria-label="WhatsApp"')
   })
 
   test('renders a session as a page with back navigation and session-scoped tabs', () => {

@@ -10,6 +10,6 @@ export const renderAvatar = (
   if (src) {
     return `<span class="avatar avatar--${kind}"><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}" loading="lazy"></span>`
   }
-  const fallback = kind === 'group' ? icon('users') : kind === 'session' ? icon('message') : icon('user')
+  const fallback = kind === 'group' ? icon('users') : kind === 'session' ? icon('whatsapp') : icon('user')
   return `<span class="avatar avatar--${kind}" role="img" aria-label="${escapeHtml(label)}">${fallback}</span>`
 }

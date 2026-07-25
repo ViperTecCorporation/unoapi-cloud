@@ -23,6 +23,7 @@ describe('frontend components', () => {
   test('renders pictures when available and a fallback otherwise', () => {
     expect(renderAvatar('https://cdn.example/picture.jpg', 'Maria')).toContain('<img')
     expect(renderAvatar('', 'Maria')).toContain('aria-label="Maria"')
+    expect(renderAvatar('', 'Sessão', 'session')).toContain('M20.5 11.7')
   })
 
   test('renders the responsive shell, login and modal contracts', () => {
