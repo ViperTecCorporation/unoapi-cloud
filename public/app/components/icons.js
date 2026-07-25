@@ -32,6 +32,8 @@ const paths = {
     arrowUp: '<path d="m18 15-6-6-6 6"/><path d="M12 9v12"/>',
     message: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/>',
     whatsapp: '<path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3.5 20.5l1.4-4.2A8.5 8.5 0 1 1 20.5 11.7Z"/><path d="M8.2 7.5c.4-.4 1-.3 1.2.2l1 2c.2.4.1.8-.2 1.1l-.7.7a8.3 8.3 0 0 0 3.2 3.2l.7-.7c.3-.3.8-.4 1.1-.2l2 1c.5.2.6.8.2 1.2l-.6.6c-.7.7-1.7.9-2.6.6a10.8 10.8 0 0 1-6.3-6.3c-.3-.9-.1-1.9.6-2.6Z"/>',
+    queue: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="7" cy="6" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="17" cy="18" r="1"/>',
+    database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
 };
 export const icon = (name, label = '') => {
     const path = paths[name] || paths.warning;

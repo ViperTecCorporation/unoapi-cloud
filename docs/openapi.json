@@ -51,6 +51,365 @@
         }
       }
     },
+    "/admin/rabbitmq/queues": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Listar filas RabbitMQ da UnoAPI",
+        "description": "Requer o token administrativo global (`UNOAPI_AUTH_TOKEN`). As credenciais são\nobtidas internamente de `AMQP_URL`; nenhuma credencial do RabbitMQ é recebida\nou devolvida por esta rota.\n",
+        "responses": {
+          "200": {
+            "description": "Filas cujo nome pertence ao namespace configurado da UnoAPI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "queues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "messages": {
+                            "type": "integer"
+                          },
+                          "messages_ready": {
+                            "type": "integer"
+                          },
+                          "messages_unacknowledged": {
+                            "type": "integer"
+                          },
+                          "consumers": {
+                            "type": "integer"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório."
+          }
+        }
+      }
+    },
+    "/admin/rabbitmq/queues/{queue}/messages": {
+      "parameters": [
+        {
+          "name": "queue",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Inspecionar uma amostra de mensagens da fila",
+        "description": "Lê até 50 mensagens e as recoloca na fila. A inspeção pode alterar a ordem\nrelativa das mensagens e nunca remove itens.\n",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "Filtra a amostra por telefone da sessão no routing key ou payload.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Amostra com campos sensíveis mascarados."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou fila fora do namespace permitido."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Remover uma ou várias mensagens prontas",
+        "description": "Remove as próximas 1 a 50 mensagens prontas ou todas quando `count` for `all`.\nMensagens já entregues a consumidores (unacked) não são removidas. Exige confirmação\nliteral do nome da fila.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "count",
+                  "confirm"
+                ],
+                "properties": {
+                  "count": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all"
+                        ]
+                      }
+                    ]
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "description": "Nome exato da fila."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da remoção."
+          },
+          "400": {
+            "description": "Confirmação inválida."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou fila fora do namespace permitido."
+          }
+        }
+      }
+    },
+    "/admin/redis/keys": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Listar chaves Redis da UnoAPI",
+        "description": "Usa SCAN e limita o resultado a 1000 chaves. Somente os namespaces `unoapi-`\ne `unoapi:` são visíveis. Requer o token administrativo global.\n",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chaves encontradas."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório."
+          }
+        }
+      }
+    },
+    "/admin/redis/keys/{key}": {
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Consultar tipo, TTL e conteúdo de uma chave",
+        "description": "Limita coleções grandes e mascara campos sensíveis.",
+        "responses": {
+          "200": {
+            "description": "Conteúdo tipado da chave."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Criar ou substituir uma chave",
+        "description": "Aceita string, hash, list, set e zset. Exige confirmação literal da chave.\nConteúdo mascarado não pode ser salvo, evitando substituir segredos por `[REDACTED]`.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "value",
+                  "confirm"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "string",
+                      "hash",
+                      "list",
+                      "set",
+                      "zset"
+                    ]
+                  },
+                  "value": {},
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "description": "Use -1 para não expirar."
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "description": "Nome exato da chave."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chave salva."
+          },
+          "400": {
+            "description": "Confirmação, tipo ou conteúdo inválido."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Excluir uma chave",
+        "description": "Exige confirmação literal do nome da chave.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirm"
+                ],
+                "properties": {
+                  "confirm": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quantidade de chaves removidas."
+          },
+          "400": {
+            "description": "Confirmação inválida."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      }
+    },
+    "/admin/redis/query": {
+      "post": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Executar consulta Redis segura",
+        "description": "Aceita apenas SCAN, TYPE, TTL, GET, HGETALL, LRANGE, SMEMBERS e ZRANGE.\nComandos administrativos, escrita, scripts e chaves fora do namespace UnoAPI são bloqueados.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "command"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "enum": [
+                      "SCAN",
+                      "TYPE",
+                      "TTL",
+                      "GET",
+                      "HGETALL",
+                      "LRANGE",
+                      "SMEMBERS",
+                      "ZRANGE"
+                    ]
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da consulta."
+          },
+          "400": {
+            "description": "Comando não permitido."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      }
+    },
     "/sessions": {
       "get": {
         "summary": "Listar sessões/configurações visíveis",

@@ -9,6 +9,8 @@ import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8';
 import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8';
 import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8';
 import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
@@ -17,6 +19,7 @@ const LOCALE_KEY = 'viperconnect_locale';
 const REFRESH_SECONDS = 15;
 const PAGE_SIZE = 20;
 const VERSION_REFRESH_MS = 15 * 60 * 1000;
+const QUEUE_REFRESH_SECONDS = 30;
 const emptyContactState = () => ({
     items: [],
     cursor: '0',
@@ -45,6 +48,24 @@ export class ViperConnectApp {
         this.groupsHasMore = false;
         this.groupsQuery = '';
         this.sessionVisibleLimit = PAGE_SIZE;
+        this.view = 'dashboard';
+        this.queues = [];
+        this.queueMessages = [];
+        this.selectedQueue = '';
+        this.queueQuery = '';
+        this.queueSession = '';
+        this.queueVisibleLimit = PAGE_SIZE;
+        this.queueRefreshIn = QUEUE_REFRESH_SECONDS;
+        this.queuesLoading = false;
+        this.queueMessagesLoading = false;
+        this.queueError = '';
+        this.redisKeys = [];
+        this.redisQuery = '';
+        this.redisSession = '';
+        this.redisQueryResult = undefined;
+        this.redisLoading = false;
+        this.redisRefreshIn = QUEUE_REFRESH_SECONDS;
+        this.redisError = '';
         this.loading = false;
         this.loadingSection = false;
         this.sectionError = '';
@@ -123,9 +144,61 @@ export class ViperConnectApp {
         }
         else if (action === 'go-dashboard') {
             this.selectedPhone = '';
+            this.view = 'dashboard';
             this.tab = 'overview';
             this.mobileOpen = false;
             this.render();
+        }
+        else if (action === 'open-queues') {
+            this.selectedPhone = '';
+            this.view = 'queues';
+            this.mobileOpen = false;
+            this.render();
+            await this.loadQueues();
+        }
+        else if (action === 'open-redis') {
+            this.selectedPhone = '';
+            this.view = 'redis';
+            this.mobileOpen = false;
+            this.render();
+            await this.loadRedisKeys();
+        }
+        else if (action === 'refresh-queues') {
+            await this.loadQueues();
+        }
+        else if (action === 'load-more-queues') {
+            this.queueVisibleLimit += PAGE_SIZE;
+            this.render();
+        }
+        else if (action === 'inspect-queue') {
+            await this.inspectQueue(actionElement.dataset.queue || '');
+        }
+        else if (action === 'open-queue-purge') {
+            this.modal = { type: 'queue-purge', queue: actionElement.dataset.queue || '' };
+            this.render();
+        }
+        else if (action === 'refresh-redis') {
+            await this.loadRedisKeys();
+        }
+        else if (action === 'select-redis-key') {
+            await this.loadRedisKey(actionElement.dataset.key || '');
+        }
+        else if (action === 'add-redis-key') {
+            this.selectedRedisKey = undefined;
+            this.modal = { type: 'redis-editor' };
+            this.render();
+        }
+        else if (action === 'edit-redis-key') {
+            if (this.selectedRedisKey) {
+                this.modal = { type: 'redis-editor' };
+                this.render();
+            }
+        }
+        else if (action === 'delete-redis-key') {
+            if (this.selectedRedisKey) {
+                this.modal = { type: 'redis-delete', key: this.selectedRedisKey.key };
+                this.render();
+            }
         }
         else if (action === 'refresh') {
             await this.loadSessions().catch(() => undefined);
@@ -233,6 +306,18 @@ export class ViperConnectApp {
         else if (form.dataset.form === 'test-message') {
             await this.sendTestMessage(data);
         }
+        else if (form.dataset.form === 'queue-purge') {
+            await this.purgeQueue(data);
+        }
+        else if (form.dataset.form === 'redis-save') {
+            await this.saveRedisKey(data);
+        }
+        else if (form.dataset.form === 'redis-delete') {
+            await this.deleteRedisKey(data);
+        }
+        else if (form.dataset.form === 'redis-query') {
+            await this.runRedisQuery(data);
+        }
     }
     handleFilter(event) {
         const input = event.target;
@@ -267,6 +352,28 @@ export class ViperConnectApp {
                 void this.loadGroups(true);
             }, 300);
         }
+        else if (input.dataset.filter === 'queues-query') {
+            this.queueQuery = input.value;
+            this.queueVisibleLimit = PAGE_SIZE;
+            this.renderAndRestoreFilter('queues-query');
+        }
+        else if (input.dataset.filter === 'queues-session') {
+            this.queueSession = input.value;
+            this.queueVisibleLimit = PAGE_SIZE;
+            this.queueMessages = [];
+            if (this.selectedQueue)
+                void this.inspectQueue(this.selectedQueue);
+            else
+                this.render();
+        }
+        else if (input.dataset.filter === 'redis-query') {
+            this.redisQuery = input.value;
+            this.renderAndRestoreFilter('redis-query');
+        }
+        else if (input.dataset.filter === 'redis-session') {
+            this.redisSession = input.value;
+            this.render();
+        }
     }
     async login(token) {
         this.api.setToken(token);
@@ -288,6 +395,7 @@ export class ViperConnectApp {
         this.api.setToken('');
         this.sessions = [];
         this.selectedPhone = '';
+        this.view = 'dashboard';
         this.modal = undefined;
         this.socket.clear();
         if (this.versionTimer)
@@ -329,7 +437,35 @@ export class ViperConnectApp {
         }
     }
     tickRefresh() {
-        if (!this.api.getToken() || this.selectedPhone || this.modal || this.loading)
+        if (!this.api.getToken() || this.modal)
+            return;
+        if (this.view === 'queues') {
+            if (this.queuesLoading || this.queueMessagesLoading)
+                return;
+            this.queueRefreshIn -= 1;
+            if (this.queueRefreshIn <= 0) {
+                void this.loadQueues().catch(() => undefined);
+                return;
+            }
+            const label = this.root.querySelector('[data-refresh-countdown]');
+            if (label)
+                label.textContent = `${this.queueRefreshIn}s`;
+            return;
+        }
+        if (this.view === 'redis') {
+            if (this.redisLoading)
+                return;
+            this.redisRefreshIn -= 1;
+            if (this.redisRefreshIn <= 0) {
+                void this.loadRedisKeys().catch(() => undefined);
+                return;
+            }
+            const label = this.root.querySelector('[data-refresh-countdown]');
+            if (label)
+                label.textContent = `${this.redisRefreshIn}s`;
+            return;
+        }
+        if (this.selectedPhone || this.loading)
             return;
         this.refreshIn -= 1;
         if (this.refreshIn <= 0) {
@@ -345,6 +481,7 @@ export class ViperConnectApp {
         if (!session)
             return;
         this.selectedPhone = phone;
+        this.view = 'dashboard';
         this.tab = 'overview';
         this.contacts = emptyContactState();
         this.contactsQuery = '';
@@ -541,6 +678,157 @@ export class ViperConnectApp {
             this.render();
         }
     }
+    async loadQueues() {
+        if (this.queuesLoading)
+            return;
+        this.queuesLoading = true;
+        this.queueError = '';
+        this.render();
+        try {
+            this.queues = await this.api.queues();
+            this.queueRefreshIn = QUEUE_REFRESH_SECONDS;
+            if (this.selectedQueue && !this.queues.some((queue) => queue.name === this.selectedQueue)) {
+                this.selectedQueue = '';
+                this.queueMessages = [];
+            }
+        }
+        catch (error) {
+            this.queueError = this.messageFor(error);
+        }
+        finally {
+            this.queuesLoading = false;
+            this.render();
+        }
+    }
+    async inspectQueue(queue) {
+        if (!queue || this.queueMessagesLoading)
+            return;
+        this.selectedQueue = queue;
+        this.queueMessagesLoading = true;
+        this.queueError = '';
+        this.render();
+        try {
+            this.queueMessages = await this.api.queueMessages(queue, this.queueSession);
+        }
+        catch (error) {
+            this.queueError = this.messageFor(error);
+            this.queueMessages = [];
+        }
+        finally {
+            this.queueMessagesLoading = false;
+            this.render();
+        }
+    }
+    async purgeQueue(data) {
+        const queue = `${data.get('queue') || ''}`;
+        if (`${data.get('confirm') || ''}` !== queue) {
+            this.showToast(t('Nome da fila não confere.'));
+            return;
+        }
+        const rawCount = `${data.get('count') || '1'}`;
+        const count = rawCount === 'all' ? 'all' : Math.min(50, Math.max(1, Number(rawCount) || 1));
+        try {
+            const result = await this.api.purgeQueue(queue, count);
+            this.modal = undefined;
+            this.showToast(t('Mensagens removidas: {count}.', {
+                count: result.removed === 'all' ? t('Todas as mensagens prontas') : result.removed,
+            }));
+            await this.loadQueues();
+            if (this.selectedQueue === queue)
+                await this.inspectQueue(queue);
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+        }
+        this.render();
+    }
+    async loadRedisKeys() {
+        if (this.redisLoading)
+            return;
+        this.redisLoading = true;
+        this.redisError = '';
+        this.render();
+        try {
+            this.redisKeys = await this.api.redisKeys(this.redisSession || this.redisQuery);
+            this.redisRefreshIn = QUEUE_REFRESH_SECONDS;
+            if (this.selectedRedisKey && !this.redisKeys.includes(this.selectedRedisKey.key)) {
+                this.selectedRedisKey = undefined;
+            }
+        }
+        catch (error) {
+            this.redisError = this.messageFor(error);
+        }
+        finally {
+            this.redisLoading = false;
+            this.render();
+        }
+    }
+    async loadRedisKey(key) {
+        if (!key || this.redisLoading)
+            return;
+        this.redisLoading = true;
+        this.redisError = '';
+        this.render();
+        try {
+            this.selectedRedisKey = await this.api.redisKey(key);
+        }
+        catch (error) {
+            this.redisError = this.messageFor(error);
+        }
+        finally {
+            this.redisLoading = false;
+            this.render();
+        }
+    }
+    async saveRedisKey(data) {
+        const key = `${data.get('key') || ''}`.trim();
+        if (`${data.get('confirm') || ''}` !== key) {
+            this.showToast(t('Nome da chave não confere.'));
+            return;
+        }
+        const raw = `${data.get('value') || ''}`;
+        let value = raw;
+        try {
+            value = JSON.parse(raw);
+        }
+        catch { }
+        try {
+            await this.api.saveRedisKey(key, `${data.get('type') || 'string'}`, value, Number(data.get('ttlSeconds') ?? -1));
+            this.modal = undefined;
+            this.showToast(t('Chave salva.'));
+            await this.loadRedisKeys();
+            await this.loadRedisKey(key);
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+        }
+    }
+    async deleteRedisKey(data) {
+        const key = `${data.get('key') || ''}`;
+        if (`${data.get('confirm') || ''}` !== key) {
+            this.showToast(t('Nome da chave não confere.'));
+            return;
+        }
+        try {
+            await this.api.deleteRedisKey(key);
+            this.modal = undefined;
+            this.selectedRedisKey = undefined;
+            this.showToast(t('Chave excluída.'));
+            await this.loadRedisKeys();
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+        }
+    }
+    async runRedisQuery(data) {
+        try {
+            this.redisQueryResult = await this.api.redisQuery(`${data.get('command') || ''}`, [`${data.get('argument') || ''}`]);
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+        }
+        this.render();
+    }
     async openConnection(phone) {
         const session = this.findSession(phone);
         if (!session)
@@ -606,34 +894,61 @@ export class ViperConnectApp {
             return;
         }
         const selected = this.findSession(this.selectedPhone);
-        const content = selected
-            ? renderSessionPage({
-                session: selected,
-                tab: this.tab,
-                contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
-                contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
-                contactCount: this.contacts.totalCount,
-                contactsQuery: this.contactsQuery,
-                groups: filterGroups(this.groups, this.groupsQuery),
-                groupsHasMore: this.groupsHasMore,
-                groupsQuery: this.groupsQuery,
-                loadingSection: this.loadingSection,
-                sectionError: this.sectionError,
-            })
-            : renderDashboard({
+        const content = this.view === 'redis'
+            ? renderRedisPage({
+                keys: this.redisKeys,
                 sessions: this.sessions,
-                query: this.query,
-                status: this.statusFilter,
-                loading: this.loading,
-                refreshIn: this.refreshIn,
-                visibleLimit: this.sessionVisibleLimit,
-            });
+                sessionFilter: this.redisSession,
+                query: this.redisQuery,
+                selected: this.selectedRedisKey,
+                queryResult: this.redisQueryResult,
+                loading: this.redisLoading,
+                refreshIn: this.redisRefreshIn,
+                error: this.redisError,
+            })
+            : this.view === 'queues'
+                ? renderQueuesPage({
+                    queues: this.queues,
+                    sessions: this.sessions,
+                    sessionPhoneFilter: this.queueSession,
+                    query: this.queueQuery,
+                    loading: this.queuesLoading,
+                    refreshIn: this.queueRefreshIn,
+                    visibleLimit: this.queueVisibleLimit,
+                    selectedQueue: this.selectedQueue,
+                    messages: this.queueMessages,
+                    messagesLoading: this.queueMessagesLoading,
+                    error: this.queueError,
+                })
+                : selected
+                    ? renderSessionPage({
+                        session: selected,
+                        tab: this.tab,
+                        contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
+                        contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
+                        contactCount: this.contacts.totalCount,
+                        contactsQuery: this.contactsQuery,
+                        groups: filterGroups(this.groups, this.groupsQuery),
+                        groupsHasMore: this.groupsHasMore,
+                        groupsQuery: this.groupsQuery,
+                        loadingSection: this.loadingSection,
+                        sectionError: this.sectionError,
+                    })
+                    : renderDashboard({
+                        sessions: this.sessions,
+                        query: this.query,
+                        status: this.statusFilter,
+                        loading: this.loading,
+                        refreshIn: this.refreshIn,
+                        visibleLimit: this.sessionVisibleLimit,
+                    });
         this.root.innerHTML =
             renderLayout({
                 content,
                 collapsed: this.collapsed,
                 mobileOpen: this.mobileOpen,
                 versionStatus: this.versionStatus,
+                activeView: this.view,
             }) +
                 this.renderModal() +
                 (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '');
@@ -643,6 +958,12 @@ export class ViperConnectApp {
             return '';
         if (this.modal.type === 'new-session')
             return renderNewSessionModal();
+        if (this.modal.type === 'queue-purge')
+            return renderQueuePurgeModal(this.modal.queue);
+        if (this.modal.type === 'redis-editor')
+            return renderRedisEditorModal(this.selectedRedisKey);
+        if (this.modal.type === 'redis-delete')
+            return renderRedisDeleteModal(this.modal.key);
         const session = this.findSession(this.modal.phone);
         if (!session)
             return '';

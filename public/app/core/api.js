@@ -101,4 +101,50 @@ export class ApiClient {
             }),
         });
     }
+    async queues() {
+        const response = await this.request('/admin/rabbitmq/queues');
+        return Array.isArray(response?.queues) ? response.queues : [];
+    }
+    async queueMessages(queue, session = '', limit = 20) {
+        const query = new URLSearchParams({ limit: `${limit}` });
+        if (session)
+            query.set('session', session);
+        const response = await this.request(`/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages?${query}`);
+        return Array.isArray(response?.messages) ? response.messages : [];
+    }
+    purgeQueue(queue, count) {
+        return this.request(`/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages`, {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm: queue, count }),
+        });
+    }
+    async redisKeys(search = '', limit = 500) {
+        const query = new URLSearchParams({ limit: `${limit}` });
+        if (search.trim())
+            query.set('search', search.trim());
+        const response = await this.request(`/admin/redis/keys?${query}`);
+        return Array.isArray(response?.keys) ? response.keys : [];
+    }
+    redisKey(key) {
+        return this.request(`/admin/redis/keys/${encodeURIComponent(key)}`);
+    }
+    saveRedisKey(key, type, value, ttlSeconds) {
+        return this.request(`/admin/redis/keys/${encodeURIComponent(key)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ confirm: key, type, value, ttlSeconds }),
+        });
+    }
+    deleteRedisKey(key) {
+        return this.request(`/admin/redis/keys/${encodeURIComponent(key)}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm: key }),
+        });
+    }
+    async redisQuery(command, args) {
+        const response = await this.request('/admin/redis/query', {
+            method: 'POST',
+            body: JSON.stringify({ command, args }),
+        });
+        return response?.result;
+    }
 }

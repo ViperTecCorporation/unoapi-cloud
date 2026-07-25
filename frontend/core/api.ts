@@ -1,4 +1,4 @@
-import type { ContactDirectoryPage, GroupPage, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
+import type { ContactDirectoryPage, GroupPage, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
 import { t } from './i18n.js'
 
 export class ApiError extends Error {
@@ -118,5 +118,62 @@ export class ApiClient {
         text: { body },
       }),
     })
+  }
+
+  async queues(): Promise<RabbitQueueInfo[]> {
+    const response = await this.request<{ queues?: RabbitQueueInfo[] }>('/admin/rabbitmq/queues')
+    return Array.isArray(response?.queues) ? response.queues : []
+  }
+
+  async queueMessages(queue: string, session = '', limit = 20): Promise<RabbitQueueMessage[]> {
+    const query = new URLSearchParams({ limit: `${limit}` })
+    if (session) query.set('session', session)
+    const response = await this.request<{ messages?: RabbitQueueMessage[] }>(
+      `/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages?${query}`,
+    )
+    return Array.isArray(response?.messages) ? response.messages : []
+  }
+
+  purgeQueue(queue: string, count: number | 'all'): Promise<{ removed: number | 'all' }> {
+    return this.request<{ removed: number | 'all' }>(
+      `/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ confirm: queue, count }),
+      },
+    )
+  }
+
+  async redisKeys(search = '', limit = 500): Promise<string[]> {
+    const query = new URLSearchParams({ limit: `${limit}` })
+    if (search.trim()) query.set('search', search.trim())
+    const response = await this.request<{ keys?: string[] }>(`/admin/redis/keys?${query}`)
+    return Array.isArray(response?.keys) ? response.keys : []
+  }
+
+  redisKey(key: string): Promise<RedisKeyDetails> {
+    return this.request<RedisKeyDetails>(`/admin/redis/keys/${encodeURIComponent(key)}`)
+  }
+
+  saveRedisKey(key: string, type: RedisKeyType, value: unknown, ttlSeconds: number): Promise<void> {
+    return this.request<void>(`/admin/redis/keys/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ confirm: key, type, value, ttlSeconds }),
+    })
+  }
+
+  deleteRedisKey(key: string): Promise<{ removed: number }> {
+    return this.request<{ removed: number }>(`/admin/redis/keys/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm: key }),
+    })
+  }
+
+  async redisQuery(command: string, args: string[]): Promise<unknown> {
+    const response = await this.request<{ result?: unknown }>('/admin/redis/query', {
+      method: 'POST',
+      body: JSON.stringify({ command, args }),
+    })
+    return response?.result
   }
 }

@@ -36,6 +36,8 @@ import { EmbeddedController } from './controllers/embedded_controller'
 import { GroupsController } from './controllers/groups_controller'
 import { PasskeyBridgeController } from './controllers/passkey_bridge_controller'
 import { ZapoContactDirectory } from './services/zapo/zapo_contact_directory'
+import { QueuesController } from './controllers/queues_controller'
+import { RedisAdminController } from './controllers/redis_admin_controller'
 
 
 export const router = (
@@ -72,6 +74,8 @@ export const router = (
   const pairingCodeController = new PairingCodeController(incoming)
   const connectController = new ConnectController(reload)
   const timerController = new TimerController()
+  const queuesController = new QueuesController()
+  const redisAdminController = new RedisAdminController()
 
 
   // Webhook (Cloud API) roteado por phone_number_id
@@ -116,6 +120,14 @@ export const router = (
   router.delete('/passkey-bridge/:bridgeId', passkeyBridgeController.cancel.bind(passkeyBridgeController))
   router.get('/ping', indexController.ping)
   router.get('/version', middleware, indexController.versionStatus.bind(indexController))
+  router.get('/admin/rabbitmq/queues', middleware, queuesController.list.bind(queuesController))
+  router.get('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.preview.bind(queuesController))
+  router.delete('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.purge.bind(queuesController))
+  router.get('/admin/redis/keys', middleware, redisAdminController.list.bind(redisAdminController))
+  router.get('/admin/redis/keys/:key', middleware, redisAdminController.get.bind(redisAdminController))
+  router.put('/admin/redis/keys/:key', middleware, redisAdminController.save.bind(redisAdminController))
+  router.delete('/admin/redis/keys/:key', middleware, redisAdminController.remove.bind(redisAdminController))
+  router.post('/admin/redis/query', middleware, redisAdminController.query.bind(redisAdminController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))
   // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)

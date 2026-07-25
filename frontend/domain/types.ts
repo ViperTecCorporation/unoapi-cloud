@@ -122,4 +122,35 @@ export interface QrBroadcast {
   ts?: number
 }
 
+export interface RabbitQueueInfo {
+  name: string
+  messages: number
+  messages_ready: number
+  messages_unacknowledged: number
+  consumers: number
+  state?: string
+  memory?: number
+  idle_since?: string
+}
+
+export interface RabbitQueueMessage {
+  exchange: string
+  routing_key: string
+  redelivered: boolean
+  message_count: number
+  properties: unknown
+  payload: unknown
+}
+
+export type RedisKeyType = 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream' | 'none'
+
+export interface RedisKeyDetails {
+  key: string
+  type: RedisKeyType
+  ttl: number
+  size: number
+  truncated: boolean
+  value: unknown
+}
+
 export type SessionTab = 'overview' | 'config' | 'contacts' | 'webhooks' | 'groups'

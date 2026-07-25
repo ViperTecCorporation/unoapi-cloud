@@ -15,7 +15,7 @@ const renderVersionStatus = (status) => {
     }
     return `<span class="workspace__icon workspace__icon--unknown" title="${t('Verificação indisponível')}">${icon('refresh')}</span><span class="workspace__copy"><strong>${escapeHtml(installed)}</strong><small>${status.installed_version ? t('Não foi possível verificar') : t('Verificando atualização…')}</small></span>`;
 };
-export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus }) => `
+export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus, activeView = 'dashboard' }) => `
   <div class="app-shell ${collapsed ? 'app-shell--collapsed' : ''} ${mobileOpen ? 'app-shell--mobile-open' : ''}">
     <aside class="sidebar" aria-label="${t('Navegação principal')}">
       <div class="brand">
@@ -23,8 +23,14 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus }) 
         <span class="brand__copy"><strong>ViperConnect</strong><small>WhatsApp Hub</small></span>
       </div>
       <nav class="sidebar__nav">
-        <button class="nav-item nav-item--active" type="button" data-action="go-dashboard" title="Dashboard">
+        <button class="nav-item ${activeView === 'dashboard' ? 'nav-item--active' : ''}" type="button" data-action="go-dashboard" title="Dashboard">
           ${icon('dashboard')}<span>Dashboard</span>
+        </button>
+        <button class="nav-item ${activeView === 'queues' ? 'nav-item--active' : ''}" type="button" data-action="open-queues" title="${t('Filas')}">
+          ${icon('queue')}<span>${t('Filas')}</span>
+        </button>
+        <button class="nav-item ${activeView === 'redis' ? 'nav-item--active' : ''}" type="button" data-action="open-redis" title="Redis">
+          ${icon('database')}<span>Redis</span>
         </button>
         <a class="nav-item" href="/docs" title="${t('Documentação')}">
           ${icon('docs')}<span>${t('Documentação')}</span>

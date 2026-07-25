@@ -4,12 +4,14 @@ import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js'
 import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
-import type { ContactDirectoryItem, GroupSummary, QrBroadcast, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
+import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
 import { renderDashboard } from './pages/dashboard.js'
 import { renderSessionPage } from './pages/session.js'
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
 import { filterContacts, filterGroups } from './features/entities.js'
 
 const TOKEN_KEY = 'whatsappApiToken'
@@ -19,6 +21,7 @@ const LOCALE_KEY = 'viperconnect_locale'
 const REFRESH_SECONDS = 15
 const PAGE_SIZE = 20
 const VERSION_REFRESH_MS = 15 * 60 * 1000
+const QUEUE_REFRESH_SECONDS = 30
 
 type ModalState =
   | { type: 'new-session' }
@@ -26,6 +29,9 @@ type ModalState =
   | { type: 'message'; phone: string; recipient?: string }
   | { type: 'webhook'; phone: string; index: number }
   | { type: 'deregister'; phone: string }
+  | { type: 'queue-purge'; queue: string }
+  | { type: 'redis-editor' }
+  | { type: 'redis-delete'; key: string }
 
 const emptyContactState = () => ({
   items: [] as ContactDirectoryItem[],
@@ -57,6 +63,25 @@ export class ViperConnectApp {
   private groupsHasMore = false
   private groupsQuery = ''
   private sessionVisibleLimit = PAGE_SIZE
+  private view: 'dashboard' | 'queues' | 'redis' = 'dashboard'
+  private queues: RabbitQueueInfo[] = []
+  private queueMessages: RabbitQueueMessage[] = []
+  private selectedQueue = ''
+  private queueQuery = ''
+  private queueSession = ''
+  private queueVisibleLimit = PAGE_SIZE
+  private queueRefreshIn = QUEUE_REFRESH_SECONDS
+  private queuesLoading = false
+  private queueMessagesLoading = false
+  private queueError = ''
+  private redisKeys: string[] = []
+  private selectedRedisKey?: RedisKeyDetails
+  private redisQuery = ''
+  private redisSession = ''
+  private redisQueryResult: unknown = undefined
+  private redisLoading = false
+  private redisRefreshIn = QUEUE_REFRESH_SECONDS
+  private redisError = ''
   private loading = false
   private loadingSection = false
   private sectionError = ''
@@ -145,9 +170,50 @@ export class ViperConnectApp {
       this.logout()
     } else if (action === 'go-dashboard') {
       this.selectedPhone = ''
+      this.view = 'dashboard'
       this.tab = 'overview'
       this.mobileOpen = false
       this.render()
+    } else if (action === 'open-queues') {
+      this.selectedPhone = ''
+      this.view = 'queues'
+      this.mobileOpen = false
+      this.render()
+      await this.loadQueues()
+    } else if (action === 'open-redis') {
+      this.selectedPhone = ''
+      this.view = 'redis'
+      this.mobileOpen = false
+      this.render()
+      await this.loadRedisKeys()
+    } else if (action === 'refresh-queues') {
+      await this.loadQueues()
+    } else if (action === 'load-more-queues') {
+      this.queueVisibleLimit += PAGE_SIZE
+      this.render()
+    } else if (action === 'inspect-queue') {
+      await this.inspectQueue(actionElement.dataset.queue || '')
+    } else if (action === 'open-queue-purge') {
+      this.modal = { type: 'queue-purge', queue: actionElement.dataset.queue || '' }
+      this.render()
+    } else if (action === 'refresh-redis') {
+      await this.loadRedisKeys()
+    } else if (action === 'select-redis-key') {
+      await this.loadRedisKey(actionElement.dataset.key || '')
+    } else if (action === 'add-redis-key') {
+      this.selectedRedisKey = undefined
+      this.modal = { type: 'redis-editor' }
+      this.render()
+    } else if (action === 'edit-redis-key') {
+      if (this.selectedRedisKey) {
+        this.modal = { type: 'redis-editor' }
+        this.render()
+      }
+    } else if (action === 'delete-redis-key') {
+      if (this.selectedRedisKey) {
+        this.modal = { type: 'redis-delete', key: this.selectedRedisKey.key }
+        this.render()
+      }
     } else if (action === 'refresh') {
       await this.loadSessions().catch(() => undefined)
     } else if (action === 'load-more-sessions') {
@@ -233,6 +299,14 @@ export class ViperConnectApp {
       await this.saveWebhook(data, Number(form.dataset.webhookIndex))
     } else if (form.dataset.form === 'test-message') {
       await this.sendTestMessage(data)
+    } else if (form.dataset.form === 'queue-purge') {
+      await this.purgeQueue(data)
+    } else if (form.dataset.form === 'redis-save') {
+      await this.saveRedisKey(data)
+    } else if (form.dataset.form === 'redis-delete') {
+      await this.deleteRedisKey(data)
+    } else if (form.dataset.form === 'redis-query') {
+      await this.runRedisQuery(data)
     }
   }
 
@@ -263,6 +337,22 @@ export class ViperConnectApp {
       this.groupSearchTimer = window.setTimeout(() => {
         void this.loadGroups(true)
       }, 300)
+    } else if (input.dataset.filter === 'queues-query') {
+      this.queueQuery = input.value
+      this.queueVisibleLimit = PAGE_SIZE
+      this.renderAndRestoreFilter('queues-query')
+    } else if (input.dataset.filter === 'queues-session') {
+      this.queueSession = input.value
+      this.queueVisibleLimit = PAGE_SIZE
+      this.queueMessages = []
+      if (this.selectedQueue) void this.inspectQueue(this.selectedQueue)
+      else this.render()
+    } else if (input.dataset.filter === 'redis-query') {
+      this.redisQuery = input.value
+      this.renderAndRestoreFilter('redis-query')
+    } else if (input.dataset.filter === 'redis-session') {
+      this.redisSession = input.value
+      this.render()
     }
   }
 
@@ -286,6 +376,7 @@ export class ViperConnectApp {
     this.api.setToken('')
     this.sessions = []
     this.selectedPhone = ''
+    this.view = 'dashboard'
     this.modal = undefined
     this.socket.clear()
     if (this.versionTimer) window.clearInterval(this.versionTimer)
@@ -322,7 +413,30 @@ export class ViperConnectApp {
   }
 
   private tickRefresh(): void {
-    if (!this.api.getToken() || this.selectedPhone || this.modal || this.loading) return
+    if (!this.api.getToken() || this.modal) return
+    if (this.view === 'queues') {
+      if (this.queuesLoading || this.queueMessagesLoading) return
+      this.queueRefreshIn -= 1
+      if (this.queueRefreshIn <= 0) {
+        void this.loadQueues().catch(() => undefined)
+        return
+      }
+      const label = this.root.querySelector<HTMLElement>('[data-refresh-countdown]')
+      if (label) label.textContent = `${this.queueRefreshIn}s`
+      return
+    }
+    if (this.view === 'redis') {
+      if (this.redisLoading) return
+      this.redisRefreshIn -= 1
+      if (this.redisRefreshIn <= 0) {
+        void this.loadRedisKeys().catch(() => undefined)
+        return
+      }
+      const label = this.root.querySelector<HTMLElement>('[data-refresh-countdown]')
+      if (label) label.textContent = `${this.redisRefreshIn}s`
+      return
+    }
+    if (this.selectedPhone || this.loading) return
     this.refreshIn -= 1
     if (this.refreshIn <= 0) {
       void this.loadSessions().catch(() => undefined)
@@ -336,6 +450,7 @@ export class ViperConnectApp {
     const session = this.findSession(phone)
     if (!session) return
     this.selectedPhone = phone
+    this.view = 'dashboard'
     this.tab = 'overview'
     this.contacts = emptyContactState()
     this.contactsQuery = ''
@@ -520,6 +635,155 @@ export class ViperConnectApp {
     }
   }
 
+  private async loadQueues(): Promise<void> {
+    if (this.queuesLoading) return
+    this.queuesLoading = true
+    this.queueError = ''
+    this.render()
+    try {
+      this.queues = await this.api.queues()
+      this.queueRefreshIn = QUEUE_REFRESH_SECONDS
+      if (this.selectedQueue && !this.queues.some((queue) => queue.name === this.selectedQueue)) {
+        this.selectedQueue = ''
+        this.queueMessages = []
+      }
+    } catch (error) {
+      this.queueError = this.messageFor(error)
+    } finally {
+      this.queuesLoading = false
+      this.render()
+    }
+  }
+
+  private async inspectQueue(queue: string): Promise<void> {
+    if (!queue || this.queueMessagesLoading) return
+    this.selectedQueue = queue
+    this.queueMessagesLoading = true
+    this.queueError = ''
+    this.render()
+    try {
+      this.queueMessages = await this.api.queueMessages(queue, this.queueSession)
+    } catch (error) {
+      this.queueError = this.messageFor(error)
+      this.queueMessages = []
+    } finally {
+      this.queueMessagesLoading = false
+      this.render()
+    }
+  }
+
+  private async purgeQueue(data: FormData): Promise<void> {
+    const queue = `${data.get('queue') || ''}`
+    if (`${data.get('confirm') || ''}` !== queue) {
+      this.showToast(t('Nome da fila não confere.'))
+      return
+    }
+    const rawCount = `${data.get('count') || '1'}`
+    const count: number | 'all' = rawCount === 'all' ? 'all' : Math.min(50, Math.max(1, Number(rawCount) || 1))
+    try {
+      const result = await this.api.purgeQueue(queue, count)
+      this.modal = undefined
+      this.showToast(t('Mensagens removidas: {count}.', {
+        count: result.removed === 'all' ? t('Todas as mensagens prontas') : result.removed,
+      }))
+      await this.loadQueues()
+      if (this.selectedQueue === queue) await this.inspectQueue(queue)
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
+  private async loadRedisKeys(): Promise<void> {
+    if (this.redisLoading) return
+    this.redisLoading = true
+    this.redisError = ''
+    this.render()
+    try {
+      this.redisKeys = await this.api.redisKeys(this.redisSession || this.redisQuery)
+      this.redisRefreshIn = QUEUE_REFRESH_SECONDS
+      if (this.selectedRedisKey && !this.redisKeys.includes(this.selectedRedisKey.key)) {
+        this.selectedRedisKey = undefined
+      }
+    } catch (error) {
+      this.redisError = this.messageFor(error)
+    } finally {
+      this.redisLoading = false
+      this.render()
+    }
+  }
+
+  private async loadRedisKey(key: string): Promise<void> {
+    if (!key || this.redisLoading) return
+    this.redisLoading = true
+    this.redisError = ''
+    this.render()
+    try {
+      this.selectedRedisKey = await this.api.redisKey(key)
+    } catch (error) {
+      this.redisError = this.messageFor(error)
+    } finally {
+      this.redisLoading = false
+      this.render()
+    }
+  }
+
+  private async saveRedisKey(data: FormData): Promise<void> {
+    const key = `${data.get('key') || ''}`.trim()
+    if (`${data.get('confirm') || ''}` !== key) {
+      this.showToast(t('Nome da chave não confere.'))
+      return
+    }
+    const raw = `${data.get('value') || ''}`
+    let value: unknown = raw
+    try {
+      value = JSON.parse(raw)
+    } catch {}
+    try {
+      await this.api.saveRedisKey(
+        key,
+        `${data.get('type') || 'string'}` as RedisKeyType,
+        value,
+        Number(data.get('ttlSeconds') ?? -1),
+      )
+      this.modal = undefined
+      this.showToast(t('Chave salva.'))
+      await this.loadRedisKeys()
+      await this.loadRedisKey(key)
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+  }
+
+  private async deleteRedisKey(data: FormData): Promise<void> {
+    const key = `${data.get('key') || ''}`
+    if (`${data.get('confirm') || ''}` !== key) {
+      this.showToast(t('Nome da chave não confere.'))
+      return
+    }
+    try {
+      await this.api.deleteRedisKey(key)
+      this.modal = undefined
+      this.selectedRedisKey = undefined
+      this.showToast(t('Chave excluída.'))
+      await this.loadRedisKeys()
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+  }
+
+  private async runRedisQuery(data: FormData): Promise<void> {
+    try {
+      this.redisQueryResult = await this.api.redisQuery(
+        `${data.get('command') || ''}`,
+        [`${data.get('argument') || ''}`],
+      )
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    this.render()
+  }
+
   private async openConnection(phone: string): Promise<void> {
     const session = this.findSession(phone)
     if (!session) return
@@ -582,7 +846,33 @@ export class ViperConnectApp {
       return
     }
     const selected = this.findSession(this.selectedPhone)
-    const content = selected
+    const content = this.view === 'redis'
+      ? renderRedisPage({
+          keys: this.redisKeys,
+          sessions: this.sessions,
+          sessionFilter: this.redisSession,
+          query: this.redisQuery,
+          selected: this.selectedRedisKey,
+          queryResult: this.redisQueryResult,
+          loading: this.redisLoading,
+          refreshIn: this.redisRefreshIn,
+          error: this.redisError,
+        })
+      : this.view === 'queues'
+      ? renderQueuesPage({
+          queues: this.queues,
+          sessions: this.sessions,
+          sessionPhoneFilter: this.queueSession,
+          query: this.queueQuery,
+          loading: this.queuesLoading,
+          refreshIn: this.queueRefreshIn,
+          visibleLimit: this.queueVisibleLimit,
+          selectedQueue: this.selectedQueue,
+          messages: this.queueMessages,
+          messagesLoading: this.queueMessagesLoading,
+          error: this.queueError,
+        })
+      : selected
       ? renderSessionPage({
           session: selected,
           tab: this.tab,
@@ -611,6 +901,7 @@ export class ViperConnectApp {
         collapsed: this.collapsed,
         mobileOpen: this.mobileOpen,
         versionStatus: this.versionStatus,
+        activeView: this.view,
       }) +
       this.renderModal() +
       (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
@@ -619,6 +910,9 @@ export class ViperConnectApp {
   private renderModal(): string {
     if (!this.modal) return ''
     if (this.modal.type === 'new-session') return renderNewSessionModal()
+    if (this.modal.type === 'queue-purge') return renderQueuePurgeModal(this.modal.queue)
+    if (this.modal.type === 'redis-editor') return renderRedisEditorModal(this.selectedRedisKey)
+    if (this.modal.type === 'redis-delete') return renderRedisDeleteModal(this.modal.key)
     const session = this.findSession(this.modal.phone)
     if (!session) return ''
     if (this.modal.type === 'connection') {
