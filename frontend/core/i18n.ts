@@ -344,6 +344,7 @@ const english = {
   'Excluir subárvore Redis': 'Delete Redis subtree',
   'Excluir todos os subitens': 'Delete all child items',
   'Excluir todos os subitens de {prefix}': 'Delete all child items under {prefix}',
+  'Total de chaves abaixo deste item': 'Total keys below this item',
   'Esta operação remove todas as chaves e subitens abaixo deste prefixo.': 'This operation removes every key and child item under this prefix.',
   'Digite o prefixo completo para confirmar': 'Type the full prefix to confirm',
   'Esta operação remove a chave e todo o seu conteúdo.': 'This operation removes the key and all its content.',

@@ -110,6 +110,7 @@ export interface RedisTreeNode {
   label: string
   path: string
   kind: 'branch' | 'key'
+  descendantCount?: number
 }
 
 export interface VersionStatus {

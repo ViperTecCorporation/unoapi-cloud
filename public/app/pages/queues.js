@@ -1,10 +1,10 @@
-import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-4b6ca6b6';
-import { icon } from '../components/icons.js?v=4.0.0-beta8-4b6ca6b6';
-import { renderModal } from '../components/modal.js?v=4.0.0-beta8-4b6ca6b6';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-4b6ca6b6';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-4b6ca6b6';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-4b6ca6b6';
-import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-db7a5209';
+import { icon } from '../components/icons.js?v=4.0.0-beta8-db7a5209';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8-db7a5209';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-db7a5209';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-db7a5209';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-db7a5209';
+import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-db7a5209';
 export const queueDescriptionKey = (name) => {
     const descriptions = {
         outgoing: 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.',

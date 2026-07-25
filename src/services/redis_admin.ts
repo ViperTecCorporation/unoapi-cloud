@@ -16,6 +16,7 @@ export type RedisTreeNode = {
   label: string
   path: string
   kind: 'branch' | 'key'
+  descendantCount?: number
 }
 
 export class RedisAdminError extends Error {
@@ -35,6 +36,7 @@ const knownRedisRootNodes: RedisTreeNode[] = [
   label: path.slice(0, -1),
   path,
   kind: 'branch',
+  descendantCount: 0,
 }))
 
 export const isAllowedRedisKey = (key: string): boolean =>
@@ -59,7 +61,16 @@ export const redisTreeNodes = (keys: string[], prefix = ''): RedisTreeNode[] => 
     const kind = separator >= 0 ? 'branch' : 'key'
     const path = kind === 'branch' ? `${prefix}${label}:` : key
     const current = nodes.get(path)
-    if (!current || kind === 'branch') nodes.set(path, { label, path, kind })
+    if (kind === 'branch') {
+      nodes.set(path, {
+        label,
+        path,
+        kind,
+        descendantCount: (current?.descendantCount || 0) + 1,
+      })
+    } else if (!current) {
+      nodes.set(path, { label, path, kind })
+    }
   })
   return [...nodes.values()]
     .sort((left, right) => {
@@ -70,7 +81,7 @@ export const redisTreeNodes = (keys: string[], prefix = ''): RedisTreeNode[] => 
 
 export const includeKnownRedisRootNodes = (nodes: RedisTreeNode[]): RedisTreeNode[] => {
   const merged = new Map<string, RedisTreeNode>()
-  const allNodes = [...nodes, ...knownRedisRootNodes]
+  const allNodes = [...knownRedisRootNodes, ...nodes]
   allNodes.forEach((node) => merged.set(node.path, node))
   return [...merged.values()].sort((left, right) => left.label.localeCompare(right.label))
 }
@@ -101,6 +112,21 @@ export class RedisAdmin {
   private assertPrefix(prefix: string): void {
     this.assertKey(prefix)
     if (!prefix.endsWith(':')) throw new RedisAdminError(400, 'redis_prefix_required')
+  }
+
+  private async scanTreeKeys(patterns: string[]): Promise<string[]> {
+    const client: any = await this.clientFactory()
+    const keys = new Set<string>()
+    for (const pattern of patterns) {
+      let cursor = '0'
+      do {
+        const result: any = await client.scan(cursor, { MATCH: pattern, COUNT: 1000 })
+        cursor = typeof result.cursor !== 'undefined' ? `${result.cursor}` : `${result[0]}`
+        const page: string[] = Array.isArray(result.keys) ? result.keys : (result[1] || [])
+        page.forEach((key) => keys.add(key))
+      } while (cursor !== '0')
+    }
+    return [...keys]
   }
 
   async listKeys(search = '', limit = 200): Promise<string[]> {
@@ -134,12 +160,9 @@ export class RedisAdmin {
 
   async listTree(prefix = '', limit = 100): Promise<RedisTreeNode[]> {
     const safeLimit = Math.min(200, Math.max(1, Number(limit) || 100))
-    const scanLimit = Math.min(5000, Math.max(200, safeLimit * 20))
-    const groups = await Promise.all(
-      redisTreePatterns(`${prefix || ''}`.trim()).map((pattern) => redisScanSome(pattern, scanLimit)),
-    )
     const normalizedPrefix = `${prefix || ''}`.trim()
-    const nodes = redisTreeNodes([...new Set(groups.flat())], normalizedPrefix)
+    const keys = await this.scanTreeKeys(redisTreePatterns(normalizedPrefix))
+    const nodes = redisTreeNodes(keys, normalizedPrefix)
     return (normalizedPrefix ? nodes : includeKnownRedisRootNodes(nodes)).slice(0, safeLimit)
   }
 

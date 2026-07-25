@@ -18,9 +18,9 @@ describe('Redis admin page', () => {
 
   test('creates one nested tree node for every colon-separated segment', () => {
     const tree = redisTreeFromKeys(['unoapi:zapo:contacts:5566'])
-    expect(tree['']).toEqual([{ label: 'unoapi', path: 'unoapi:', kind: 'branch' }])
-    expect(tree['unoapi:']).toEqual([{ label: 'zapo', path: 'unoapi:zapo:', kind: 'branch' }])
-    expect(tree['unoapi:zapo:']).toEqual([{ label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' }])
+    expect(tree['']).toEqual([{ label: 'unoapi', path: 'unoapi:', kind: 'branch', descendantCount: 1 }])
+    expect(tree['unoapi:']).toEqual([{ label: 'zapo', path: 'unoapi:zapo:', kind: 'branch', descendantCount: 1 }])
+    expect(tree['unoapi:zapo:']).toEqual([{ label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch', descendantCount: 1 }])
     expect(tree['unoapi:zapo:contacts:']).toEqual([{ label: '5566', path: 'unoapi:zapo:contacts:5566', kind: 'key' }])
     expect(redisParentPrefix('unoapi-auth:5548991710539:')).toBe('unoapi-auth:')
     expect(redisParentPrefix('unoapi-auth:')).toBe('')
@@ -102,6 +102,7 @@ describe('Redis admin page', () => {
     })
     expect(expanded).toContain('aria-expanded="true"')
     expect(renderRedisPage(base)).toContain('data-action="delete-redis-prefix"')
+    expect(renderRedisPage(base)).toContain('redis-tree__count')
     expect(expanded).toContain('data-action="delete-redis-prefix"')
     expect(expanded).toContain('btn--ghost redis-tree__delete')
   })

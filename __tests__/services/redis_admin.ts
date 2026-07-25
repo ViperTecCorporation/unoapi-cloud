@@ -65,32 +65,34 @@ describe('Redis admin service', () => {
       'unoapi:zapo:contacts:5566',
       'unoapi:zapo:status',
     ], 'unoapi:zapo:')).toEqual([
-      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch' },
-      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' },
+      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch', descendantCount: 1 },
+      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch', descendantCount: 1 },
       { label: 'status', path: 'unoapi:zapo:status', kind: 'key' },
     ])
   })
 
   test('keeps profile-picture namespaces visible at the Redis tree root', async () => {
     expect(includeKnownRedisRootNodes([])).toEqual([
-      { label: 'unoapi-profile-picture', path: 'unoapi-profile-picture:', kind: 'branch' },
-      { label: 'unoapi-profile-picture-miss', path: 'unoapi-profile-picture-miss:', kind: 'branch' },
-      { label: 'unoapi-profile-picture-refresh', path: 'unoapi-profile-picture-refresh:', kind: 'branch' },
-      { label: 'unoapi-profile-picture-webhook', path: 'unoapi-profile-picture-webhook:', kind: 'branch' },
+      { label: 'unoapi-profile-picture', path: 'unoapi-profile-picture:', kind: 'branch', descendantCount: 0 },
+      { label: 'unoapi-profile-picture-miss', path: 'unoapi-profile-picture-miss:', kind: 'branch', descendantCount: 0 },
+      { label: 'unoapi-profile-picture-refresh', path: 'unoapi-profile-picture-refresh:', kind: 'branch', descendantCount: 0 },
+      { label: 'unoapi-profile-picture-webhook', path: 'unoapi-profile-picture-webhook:', kind: 'branch', descendantCount: 0 },
     ])
   })
 
-  test('loads a bounded sample only when a Redis branch is expanded', async () => {
-    scan.mockResolvedValueOnce([
-      'unoapi:zapo:auth:5566',
-      'unoapi:zapo:contacts:5566',
-    ])
-    const admin = new RedisAdmin(jest.fn() as any)
+  test('counts every descendant while scanning a Redis branch incrementally', async () => {
+    const client = {
+      scan: jest.fn()
+        .mockResolvedValueOnce({ cursor: '7', keys: ['unoapi:zapo:auth:5566'] })
+        .mockResolvedValueOnce({ cursor: '0', keys: ['unoapi:zapo:auth:5577', 'unoapi:zapo:contacts:5566'] }),
+    }
+    const admin = new RedisAdmin(jest.fn().mockResolvedValue(client) as any)
     await expect(admin.listTree('unoapi:zapo:', 20)).resolves.toEqual([
-      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch' },
-      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' },
+      { label: 'auth', path: 'unoapi:zapo:auth:', kind: 'branch', descendantCount: 2 },
+      { label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch', descendantCount: 1 },
     ])
-    expect(scan).toHaveBeenCalledWith('unoapi:zapo:*', 400)
+    expect(client.scan).toHaveBeenNthCalledWith(1, '0', { MATCH: 'unoapi:zapo:*', COUNT: 1000 })
+    expect(client.scan).toHaveBeenNthCalledWith(2, '7', { MATCH: 'unoapi:zapo:*', COUNT: 1000 })
   })
 
   test('interleaves legacy and colon namespaces instead of starving Zapo keys', async () => {

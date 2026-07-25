@@ -860,6 +860,18 @@ tbody tr:last-child td {
   opacity: 0.68;
 }
 
+.redis-tree__count {
+  flex: 0 0 auto;
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .redis-tree__delete:hover,
 .redis-tree__delete:focus-visible {
   color: var(--danger);
