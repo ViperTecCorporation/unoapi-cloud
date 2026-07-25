@@ -856,11 +856,6 @@ tbody tr:last-child td {
 
 .redis-tree__delete {
   flex: 0 0 auto;
-  opacity: 0.55;
-}
-
-.redis-tree__row:hover .redis-tree__delete,
-.redis-tree__row:focus-within .redis-tree__delete {
   opacity: 1;
 }
 

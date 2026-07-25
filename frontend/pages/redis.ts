@@ -47,7 +47,7 @@ const renderRedisTreeNodes = (
       <button class="redis-tree__toggle" type="button" data-action="toggle-redis-node" data-prefix="${escapeHtml(node.path)}" aria-expanded="${open}">
         <span class="redis-tree__arrow" aria-hidden="true">›</span>${icon('database')}<strong>${escapeHtml(node.label)}</strong>
       </button>
-      <button class="btn btn--icon btn--ghost redis-tree__delete" type="button" data-action="delete-redis-prefix" data-prefix="${escapeHtml(node.path)}" aria-label="${escapeHtml(t('Excluir todos os subitens de {prefix}', { prefix: node.path }))}" title="${t('Excluir todos os subitens')}">${icon('trash')}</button>
+      <button class="btn btn--icon btn--danger redis-tree__delete" type="button" data-action="delete-redis-prefix" data-prefix="${escapeHtml(node.path)}" aria-label="${escapeHtml(t('Excluir todos os subitens de {prefix}', { prefix: node.path }))}" title="${t('Excluir todos os subitens')}">${icon('trash')}</button>
     </div>
     ${open ? `<div class="redis-tree__children">${children
       ? renderRedisTreeNodes(tree, node.path, expanded, selectedKey, loading)

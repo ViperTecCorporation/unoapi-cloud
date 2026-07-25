@@ -90,6 +90,7 @@ describe('Redis admin page', () => {
       expandedPrefixes: ['unoapi:'],
     })).toContain('aria-expanded="true"')
     expect(renderRedisPage(base)).toContain('data-action="delete-redis-prefix"')
+    expect(renderRedisPage(base)).toContain('btn--danger redis-tree__delete')
   })
 
   test('renders Redis maintenance in English', () => {
