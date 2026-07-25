@@ -42,6 +42,7 @@ describe('frontend components', () => {
     expect(layout).toContain('app-shell--collapsed')
     expect(layout).toContain('v4.0.0-beta8 disponível')
     expect(layout).toContain('workspace__icon--update')
+    expect(layout).toContain('<span>Português</span>')
     expect(layout.indexOf('v4.0.0-beta7')).toBeLessThan(layout.indexOf('data-action="toggle-sidebar"'))
 
     const login = renderLogin('Token inválido')
@@ -104,7 +105,7 @@ describe('frontend components', () => {
     expect(layout).toContain('Main navigation')
     expect(layout).toContain('Documentation')
     expect(layout).toContain('data-action="toggle-language"')
-    expect(layout).toContain('Português')
+    expect(layout).toContain('<span>English</span>')
     expect(renderLogin()).toContain('Enter the token configured in ViperConnect.')
     expect(renderLogin()).toContain('aria-label="Change language"')
     expect(renderModal('test', 'Test', '<p>Body</p>')).toContain('aria-label="Close"')

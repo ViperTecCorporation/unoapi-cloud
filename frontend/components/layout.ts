@@ -45,7 +45,7 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus }: 
           ${icon('theme')}<span>${t('Tema')}</span>
         </button>
         <button class="nav-item" type="button" data-action="toggle-language" title="${t('Alterar idioma')}">
-          ${icon('globe')}<span>${getLocale() === 'pt-BR' ? 'English' : 'Português'}</span>
+          ${icon('globe')}<span>${getLocale() === 'pt-BR' ? 'Português' : 'English'}</span>
         </button>
         <a class="nav-item" href="https://github.com/ViperTecCorporation/ViperConnect" target="_blank" rel="noopener" title="GitHub">
           ${icon('github')}<span>GitHub</span>
