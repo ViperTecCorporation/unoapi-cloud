@@ -7,8 +7,11 @@ import {
 } from '../../frontend/features/session_modals'
 import { renderWebhookModal, renderWebhooks, webhookPayload } from '../../frontend/features/webhooks'
 import { filterContacts, filterGroups } from '../../frontend/features/entities'
+import { setLocale } from '../../frontend/core/i18n'
 
 describe('frontend features', () => {
+  afterEach(() => setLocale('pt-BR'))
+
   test('renders session config without provider selection', () => {
     const html = renderSessionConfig({ phone: '5566', label: 'Comercial', provider: 'baileys' })
     expect(html).toContain('data-form="session-config"')
@@ -18,6 +21,16 @@ describe('frontend features', () => {
     expect(html).toContain('data-action="toggle-secret"')
     expect(html).toContain('data-action="copy-secret"')
     expect(html).toContain('data-action="toggle-tooltip"')
+    expect(html).toContain('Para desabilitar o recurso, deixe este campo em branco.')
+    expect(html).toContain('aplicação cadastrada no webhook')
+  })
+
+  test('renders call rejection help in English', () => {
+    setLocale('en')
+    const html = renderSessionConfig({ phone: '5566' })
+
+    expect(html).toContain('To disable this feature, leave this field blank.')
+    expect(html).toContain('application registered in the webhook')
   })
 
   test('maps the full session form payload', () => {

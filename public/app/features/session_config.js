@@ -67,14 +67,20 @@ export const renderSessionConfig = (session) => `
           <span>${t('Janela do histórico (dias)')}</span>
           <input name="historyMaxAgeDays" type="number" min="1" max="3650" value="${escapeHtml(session.historyMaxAgeDays || 30)}">
         </label>
-        <label class="field field--wide">
-          <span>${t('Mensagem ao rejeitar chamadas')}</span>
-          <textarea name="rejectCalls" rows="3">${escapeHtml(session.rejectCalls || '')}</textarea>
-        </label>
-        <label class="field field--wide">
-          <span>${t('Mensagem de chamada recebida/rejeitada no webhook')}</span>
-          <textarea name="rejectCallsWebhook" rows="3">${escapeHtml(session.rejectCallsWebhook || '')}</textarea>
-        </label>
+        <div class="field field--wide">
+          <span class="field-label">
+            <label for="reject-calls">${t('Mensagem ao rejeitar chamadas')}</label>
+            ${renderInfoTooltip(t('Esta mensagem é enviada ao contato quando a chamada é rejeitada. Para desabilitar o recurso, deixe este campo em branco.'))}
+          </span>
+          <textarea id="reject-calls" name="rejectCalls" rows="3">${escapeHtml(session.rejectCalls || '')}</textarea>
+        </div>
+        <div class="field field--wide">
+          <span class="field-label">
+            <label for="reject-calls-webhook">${t('Mensagem de chamada recebida/rejeitada no webhook')}</label>
+            ${renderInfoTooltip(t('Esta mensagem é enviada à aplicação cadastrada no webhook quando uma chamada é recebida ou rejeitada.'))}
+          </span>
+          <textarea id="reject-calls-webhook" name="rejectCallsWebhook" rows="3">${escapeHtml(session.rejectCallsWebhook || '')}</textarea>
+        </div>
       </div>
     </section>
 
