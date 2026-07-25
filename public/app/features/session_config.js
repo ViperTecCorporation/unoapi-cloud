@@ -99,11 +99,29 @@ export const renderSessionConfig = (session) => `
     </section>
 
     <section class="section">
-      <div class="section__heading"><div><h3>${t('Limites por sessão')}</h3><p class="muted">${t('Use zero para desativar o limite correspondente.')}</p></div></div>
+      <div class="section__heading"><div><h3>${t('Limites por sessão')}</h3><p class="muted">${t('Use zero nos limites global ou por destinatário para desativá-los.')}</p></div></div>
       <div class="form-grid form-grid--three">
-        <label class="field"><span>${t('Global por minuto')}</span><input name="rateLimitGlobalPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitGlobalPerMinute || 0)}"></label>
-        <label class="field"><span>${t('Por destinatário/minuto')}</span><input name="rateLimitPerToPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitPerToPerMinute || 0)}"></label>
-        <label class="field"><span>${t('Bloqueio (segundos)')}</span><input name="rateLimitBlockSeconds" type="number" min="0" value="${escapeHtml(session.rateLimitBlockSeconds || 60)}"></label>
+        <div class="field">
+          <span class="field-label">
+            <label for="rate-limit-global">${t('Global por minuto')}</label>
+            ${renderInfoTooltip(t('Quantidade máxima de envios desta sessão em uma janela de 60 segundos. Ao exceder, os novos envios são reagendados. Use zero para desativar este limite.'))}
+          </span>
+          <input id="rate-limit-global" name="rateLimitGlobalPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitGlobalPerMinute || 0)}">
+        </div>
+        <div class="field">
+          <span class="field-label">
+            <label for="rate-limit-recipient">${t('Por destinatário/minuto')}</label>
+            ${renderInfoTooltip(t('Quantidade máxima de envios ao mesmo destinatário em uma janela de 60 segundos. Ao exceder, os novos envios são reagendados. Use zero para desativar este limite.'))}
+          </span>
+          <input id="rate-limit-recipient" name="rateLimitPerToPerMinute" type="number" min="0" value="${escapeHtml(session.rateLimitPerToPerMinute || 0)}">
+        </div>
+        <div class="field">
+          <span class="field-label">
+            <label for="rate-limit-block">${t('Bloqueio (segundos)')}</label>
+            ${renderInfoTooltip(t('Tempo de espera antes de reprocessar um envio que excedeu um dos limites. Este campo não desativa os limites; com zero, o atraso padrão é de 60 segundos.'))}
+          </span>
+          <input id="rate-limit-block" name="rateLimitBlockSeconds" type="number" min="0" value="${escapeHtml(session.rateLimitBlockSeconds || 60)}">
+        </div>
       </div>
     </section>
 

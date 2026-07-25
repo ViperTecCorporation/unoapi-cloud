@@ -24,6 +24,9 @@ describe('frontend features', () => {
     expect(html).toContain('Só é aplicado quando “Ignorar histórico de mensagens” está desativado')
     expect(html).toContain('Para desabilitar o recurso, deixe este campo em branco.')
     expect(html).toContain('aplicação cadastrada no webhook')
+    expect(html).toContain('Quantidade máxima de envios desta sessão')
+    expect(html).toContain('Quantidade máxima de envios ao mesmo destinatário')
+    expect(html).toContain('com zero, o atraso padrão é de 60 segundos')
   })
 
   test('renders call rejection help in English', () => {
@@ -33,6 +36,9 @@ describe('frontend features', () => {
     expect(html).toContain('To disable this feature, leave this field blank.')
     expect(html).toContain('application registered in the webhook')
     expect(html).toContain('It only applies when “Ignore message history” is disabled')
+    expect(html).toContain('Maximum number of sends from this session')
+    expect(html).toContain('Maximum number of sends to the same recipient')
+    expect(html).toContain('when set to zero, the default delay is 60 seconds')
   })
 
   test('maps the full session form payload', () => {
