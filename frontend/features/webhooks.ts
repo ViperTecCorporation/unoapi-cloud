@@ -3,7 +3,7 @@ import { renderModal } from '../components/modal.js'
 import { renderStatus } from '../components/status.js'
 import { escapeHtml } from '../core/html.js'
 import type { WebhookConfig } from '../domain/types.js'
-import { renderSecretField, renderSwitchField } from '../components/form_controls.js'
+import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js'
 import { t, type TranslationKey } from '../core/i18n.js'
 
 const webhookDestination = (webhook: WebhookConfig): string => `${webhook.urlAbsolute || webhook.url || ''}`.trim()
@@ -63,7 +63,13 @@ export const renderWebhookModal = (webhook: WebhookConfig, index: number): strin
         <label class="field"><span>Header</span><input name="header" value="${escapeHtml(webhook.header || 'Authorization')}"></label>
         ${renderSecretField('token', 'Token', webhook.token || '')}
         <label class="field"><span>Timeout (ms)</span><input name="timeoutMs" type="number" min="1000" value="${escapeHtml(webhook.timeoutMs || 360000)}"></label>
-        <label class="field"><span>${t('Blacklist na saída (segundos)')}</span><input name="addToBlackListOnOutgoingMessageWithTtl" type="number" min="0" value="${escapeHtml(webhook.addToBlackListOnOutgoingMessageWithTtl || '')}"></label>
+        <div class="field">
+          <span class="field-label">
+            <label for="webhook-outgoing-blacklist">${t('Blacklist na saída (segundos)')}</label>
+            ${renderInfoTooltip(t('Após uma mensagem de saída, impede temporariamente que os eventos seguintes do mesmo destinatário sejam enviados a este webhook. O bloqueio vale somente para esta sessão e este webhook. Use zero ou deixe em branco para desativar.'))}
+          </span>
+          <input id="webhook-outgoing-blacklist" name="addToBlackListOnOutgoingMessageWithTtl" type="number" min="0" value="${escapeHtml(webhook.addToBlackListOnOutgoingMessageWithTtl || '')}">
+        </div>
       </div>
       <div class="switch-grid">
         ${webhookSwitches

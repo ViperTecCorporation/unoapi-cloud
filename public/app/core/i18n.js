@@ -141,6 +141,7 @@ const english = {
     'Editar webhook': 'Edit webhook',
     'Novo webhook': 'New webhook',
     'Blacklist na saída (segundos)': 'Outgoing blacklist (seconds)',
+    'Após uma mensagem de saída, impede temporariamente que os eventos seguintes do mesmo destinatário sejam enviados a este webhook. O bloqueio vale somente para esta sessão e este webhook. Use zero ou deixe em branco para desativar.': 'After an outgoing message, temporarily prevents subsequent events from the same recipient from being sent to this webhook. The block only applies to this session and webhook. Set it to zero or leave it blank to disable.',
     'Remover': 'Remove',
     'Salvar webhook': 'Save webhook',
     'Configuração da sessão': 'Session settings',

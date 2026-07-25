@@ -2,7 +2,7 @@ import { icon } from '../components/icons.js?v=4.0.0-beta8';
 import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
 import { renderStatus } from '../components/status.js?v=4.0.0-beta8';
 import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
-import { renderSecretField, renderSwitchField } from '../components/form_controls.js?v=4.0.0-beta8';
+import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js?v=4.0.0-beta8';
 import { t } from '../core/i18n.js?v=4.0.0-beta8';
 const webhookDestination = (webhook) => `${webhook.urlAbsolute || webhook.url || ''}`.trim();
 const isEnabled = (webhook) => webhook.enabled !== false && webhook.disabled !== true && !!webhookDestination(webhook);
@@ -49,7 +49,13 @@ export const renderWebhookModal = (webhook, index) => renderModal('webhook-edito
         <label class="field"><span>Header</span><input name="header" value="${escapeHtml(webhook.header || 'Authorization')}"></label>
         ${renderSecretField('token', 'Token', webhook.token || '')}
         <label class="field"><span>Timeout (ms)</span><input name="timeoutMs" type="number" min="1000" value="${escapeHtml(webhook.timeoutMs || 360000)}"></label>
-        <label class="field"><span>${t('Blacklist na saída (segundos)')}</span><input name="addToBlackListOnOutgoingMessageWithTtl" type="number" min="0" value="${escapeHtml(webhook.addToBlackListOnOutgoingMessageWithTtl || '')}"></label>
+        <div class="field">
+          <span class="field-label">
+            <label for="webhook-outgoing-blacklist">${t('Blacklist na saída (segundos)')}</label>
+            ${renderInfoTooltip(t('Após uma mensagem de saída, impede temporariamente que os eventos seguintes do mesmo destinatário sejam enviados a este webhook. O bloqueio vale somente para esta sessão e este webhook. Use zero ou deixe em branco para desativar.'))}
+          </span>
+          <input id="webhook-outgoing-blacklist" name="addToBlackListOnOutgoingMessageWithTtl" type="number" min="0" value="${escapeHtml(webhook.addToBlackListOnOutgoingMessageWithTtl || '')}">
+        </div>
       </div>
       <div class="switch-grid">
         ${webhookSwitches
