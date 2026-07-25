@@ -7,7 +7,6 @@ describe('frontend delivery', () => {
     const target = resolvePublicAppAsset('main.js')
 
     expect(target).toBe(path.resolve('./public/app/main.js'))
-    expect(fs.existsSync(path.resolve('./frontend/main.ts'))).toBe(true)
   })
 
   test('rejects traversal outside the public app directory', () => {

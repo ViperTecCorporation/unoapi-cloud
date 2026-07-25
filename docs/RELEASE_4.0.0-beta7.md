@@ -1,4 +1,4 @@
-# ViperConnect 4.0.0-beta6
+# ViperConnect 4.0.0-beta7
 
 - torna a Zapo o runtime padrão e remove a Baileys do grafo e das dependências
   da imagem de produção;
@@ -13,6 +13,7 @@
 - adiciona verificação automática para impedir imports Baileys no runtime Zapo;
 - atualiza documentação e exemplos de implantação em container único ou com
   responsabilidades separadas.
-- torna os testes de entrega do frontend independentes de artefatos gerados
-  antes do build e amplia o limite do teste HTTP de contatos em runners
-  concorridos.
+- torna o teste de entrega do frontend independente de artefatos gerados antes
+  do build;
+- isola o teste HTTP de contatos com Express e controller reais, evitando
+  interferência da aplicação completa entre workers paralelos do Jest.
