@@ -4,6 +4,7 @@ import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js'
 import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js'
 import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
@@ -726,7 +727,14 @@ export class ViperConnectApp {
         const entries = await Promise.all(
           prefixes.map(async (prefix) => [prefix, await this.api.redisTree(prefix)] as const),
         )
-        entries.forEach(([prefix, nodes]) => { this.redisTree[prefix] = nodes })
+        const loadedPrefixes = new Set(Object.keys(this.redisTree))
+        entries.forEach(([prefix, nodes]) => {
+          this.redisTree[prefix] = mergeRedisTreeLevel(
+            this.redisTree[prefix] || [],
+            nodes,
+            loadedPrefixes,
+          )
+        })
         this.redisKeys = []
       }
       this.redisRefreshIn = QUEUE_REFRESH_SECONDS
@@ -850,8 +858,12 @@ export class ViperConnectApp {
           delete this.redisTree[loadedPrefix]
         }
       })
+      const parentPrefix = redisParentPrefix(prefix)
+      this.redisTree[parentPrefix] = (this.redisTree[parentPrefix] || [])
+        .filter((node) => node.path !== prefix)
+      this.redisKeys = this.redisKeys.filter((key) => !key.startsWith(prefix))
       this.showToast(t('Subitens excluídos: {count}.', { count: result.removed }))
-      await this.loadRedisKeys()
+      this.render()
     } catch (error) {
       this.showToast(this.messageFor(error))
       this.render()

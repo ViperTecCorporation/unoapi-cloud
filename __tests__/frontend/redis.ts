@@ -1,4 +1,5 @@
 import { setLocale } from '../../frontend/core/i18n'
+import { mergeRedisTreeLevel, redisParentPrefix } from '../../frontend/domain/redis_tree'
 import {
   redisTreeFromKeys,
   redisValueIsRedacted,
@@ -21,6 +22,16 @@ describe('Redis admin page', () => {
     expect(tree['unoapi:']).toEqual([{ label: 'zapo', path: 'unoapi:zapo:', kind: 'branch' }])
     expect(tree['unoapi:zapo:']).toEqual([{ label: 'contacts', path: 'unoapi:zapo:contacts:', kind: 'branch' }])
     expect(tree['unoapi:zapo:contacts:']).toEqual([{ label: '5566', path: 'unoapi:zapo:contacts:5566', kind: 'key' }])
+    expect(redisParentPrefix('unoapi-auth:5548991710539:')).toBe('unoapi-auth:')
+    expect(redisParentPrefix('unoapi-auth:')).toBe('')
+    expect(mergeRedisTreeLevel(
+      [{ label: 'unoapi-auth', path: 'unoapi-auth:', kind: 'branch' }],
+      [{ label: 'unoapi', path: 'unoapi:', kind: 'branch' }],
+      new Set(['unoapi-auth:']),
+    )).toEqual([
+      { label: 'unoapi', path: 'unoapi:', kind: 'branch' },
+      { label: 'unoapi-auth', path: 'unoapi-auth:', kind: 'branch' },
+    ])
   })
 
   test('renders tree, session filter, content and safe query controls', () => {
@@ -85,12 +96,14 @@ describe('Redis admin page', () => {
         value: { name: 'Contato' },
       },
     })).toContain('aria-expanded="false"')
-    expect(renderRedisPage({
+    const expanded = renderRedisPage({
       ...base,
       expandedPrefixes: ['unoapi:'],
-    })).toContain('aria-expanded="true"')
+    })
+    expect(expanded).toContain('aria-expanded="true"')
     expect(renderRedisPage(base)).toContain('data-action="delete-redis-prefix"')
-    expect(renderRedisPage(base)).toContain('btn--danger redis-tree__delete')
+    expect(expanded).toContain('data-action="delete-redis-prefix"')
+    expect(expanded).toContain('btn--ghost redis-tree__delete')
   })
 
   test('renders Redis maintenance in English', () => {

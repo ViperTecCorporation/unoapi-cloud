@@ -1,8 +1,8 @@
-import { icon } from '../components/icons.js?v=4.0.0-beta8-06f3a62c';
-import { renderModal } from '../components/modal.js?v=4.0.0-beta8-06f3a62c';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-06f3a62c';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-06f3a62c';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-06f3a62c';
+import { icon } from '../components/icons.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8-4b6ca6b6';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-4b6ca6b6';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-4b6ca6b6';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-4b6ca6b6';
 export const redisTreeFromKeys = (keys) => {
     const tree = { '': [] };
     keys.forEach((key) => {
@@ -39,7 +39,7 @@ const renderRedisTreeNodes = (tree, prefix, expanded, selectedKey = '', loading 
       <button class="redis-tree__toggle" type="button" data-action="toggle-redis-node" data-prefix="${escapeHtml(node.path)}" aria-expanded="${open}">
         <span class="redis-tree__arrow" aria-hidden="true">›</span>${icon('database')}<strong>${escapeHtml(node.label)}</strong>
       </button>
-      <button class="btn btn--icon btn--danger redis-tree__delete" type="button" data-action="delete-redis-prefix" data-prefix="${escapeHtml(node.path)}" aria-label="${escapeHtml(t('Excluir todos os subitens de {prefix}', { prefix: node.path }))}" title="${t('Excluir todos os subitens')}">${icon('trash')}</button>
+      <button class="btn btn--icon btn--ghost redis-tree__delete" type="button" data-action="delete-redis-prefix" data-prefix="${escapeHtml(node.path)}" aria-label="${escapeHtml(t('Excluir todos os subitens de {prefix}', { prefix: node.path }))}" title="${t('Excluir todos os subitens')}">${icon('trash')}</button>
     </div>
     ${open ? `<div class="redis-tree__children">${children
         ? renderRedisTreeNodes(tree, node.path, expanded, selectedKey, loading)

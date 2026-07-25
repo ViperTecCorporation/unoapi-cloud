@@ -1,17 +1,18 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-06f3a62c';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-06f3a62c';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-06f3a62c';
-import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-06f3a62c';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-06f3a62c';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-06f3a62c';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-06f3a62c';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-06f3a62c';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-06f3a62c';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-06f3a62c';
-import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-06f3a62c';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-06f3a62c';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-06f3a62c';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-06f3a62c';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-4b6ca6b6';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-4b6ca6b6';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-4b6ca6b6';
+import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-4b6ca6b6';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-4b6ca6b6';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-4b6ca6b6';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-4b6ca6b6';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-4b6ca6b6';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-4b6ca6b6';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -776,7 +777,10 @@ export class ViperConnectApp {
             else {
                 const prefixes = ['', ...this.redisExpandedPrefixes];
                 const entries = await Promise.all(prefixes.map(async (prefix) => [prefix, await this.api.redisTree(prefix)]));
-                entries.forEach(([prefix, nodes]) => { this.redisTree[prefix] = nodes; });
+                const loadedPrefixes = new Set(Object.keys(this.redisTree));
+                entries.forEach(([prefix, nodes]) => {
+                    this.redisTree[prefix] = mergeRedisTreeLevel(this.redisTree[prefix] || [], nodes, loadedPrefixes);
+                });
                 this.redisKeys = [];
             }
             this.redisRefreshIn = QUEUE_REFRESH_SECONDS;
@@ -902,8 +906,12 @@ export class ViperConnectApp {
                     delete this.redisTree[loadedPrefix];
                 }
             });
+            const parentPrefix = redisParentPrefix(prefix);
+            this.redisTree[parentPrefix] = (this.redisTree[parentPrefix] || [])
+                .filter((node) => node.path !== prefix);
+            this.redisKeys = this.redisKeys.filter((key) => !key.startsWith(prefix));
             this.showToast(t('Subitens excluídos: {count}.', { count: result.removed }));
-            await this.loadRedisKeys();
+            this.render();
         }
         catch (error) {
             this.showToast(this.messageFor(error));
