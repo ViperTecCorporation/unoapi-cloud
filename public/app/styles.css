@@ -739,10 +739,19 @@ tbody tr:last-child td {
   overflow-wrap: anywhere;
 }
 
-.queue-flow {
-  color: var(--muted);
-  display: block;
+.queue-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
   margin-top: 4px;
+}
+
+.queue-scope span {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 7px;
 }
 
 .queue-state {

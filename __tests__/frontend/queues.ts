@@ -3,6 +3,7 @@ import {
   filterQueuesBySession,
   queueDescriptionKey,
   queueFlowLabelKey,
+  queueTooltip,
   queueNeedsAttention,
   renderQueuePurgeModal,
   renderQueuesPage,
@@ -18,15 +19,16 @@ describe('RabbitMQ queues page', () => {
   afterEach(() => setLocale('pt-BR'))
 
   test('describes known queue domains', () => {
-    expect(queueDescriptionKey('unoapi.outgoing.dead')).toContain('esgotaram')
+    expect(queueTooltip('unoapi.outgoing.dead')).toContain('esgotou')
     expect(queueDescriptionKey('unoapi.media')).toContain('mídias')
   })
 
   test('distinguishes failed API sends from failed inbound WhatsApp events', () => {
     expect(queueFlowLabelKey('unoapi.incoming.server_1.zapo.dead')).toBe('API → WhatsApp')
     expect(queueFlowLabelKey('unoapi.listener.server_1.zapo.dead')).toBe('WhatsApp → Webhooks')
-    expect(queueDescriptionKey('unoapi.incoming.server_1.zapo.dead')).toContain('API ao WhatsApp')
-    expect(queueDescriptionKey('unoapi.listener.server_1.zapo.dead')).toContain('recebidos do WhatsApp')
+    expect(queueTooltip('unoapi.incoming.server_1.zapo.dead')).toContain('comandos de envio')
+    expect(queueTooltip('unoapi.listener.server_1.zapo.dead')).toContain('eventos recebidos')
+    expect(queueTooltip('unoapi.listener.server_1.zapo.dead')).toContain('esgotou as tentativas')
   })
 
   test('marks stopped queues or unattended backlogs in red', () => {

@@ -4,53 +4,49 @@ import { renderModal } from '../components/modal.js?v=4.0.0-beta8';
 import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
 import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8';
 import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8';
+import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8';
 export const queueDescriptionKey = (name) => {
-    if (name.includes('.incoming.') && name.endsWith('.dead')) {
-        return 'Comandos enviados pela API ao WhatsApp que esgotaram as tentativas de processamento.';
-    }
-    if (name.includes('.listener.') && name.endsWith('.dead')) {
-        return 'Eventos recebidos do WhatsApp que esgotaram as tentativas de processamento e encaminhamento.';
-    }
-    if (name.endsWith('.dead'))
-        return 'Mensagens que esgotaram as tentativas e aguardam análise ou remoção.';
-    if (name.endsWith('.delayed'))
-        return 'Mensagens aguardando o tempo configurado para nova tentativa ou execução.';
-    if (name.includes('.outgoing'))
-        return 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.';
-    if (name.includes('.incoming'))
-        return 'Recebe comandos de envio destinados aos workers e sessões do WhatsApp.';
-    if (name.includes('.listener'))
-        return 'Transporta eventos recebidos do WhatsApp para o processamento da UnoAPI.';
-    if (name.includes('.media'))
-        return 'Processa download, armazenamento e preparação de mídias.';
-    if (name.includes('.transcribe'))
-        return 'Processa transcrição de mensagens de áudio.';
-    if (name.includes('.bind'))
-        return 'Vincula sessões às filas do servidor e motor responsáveis.';
-    if (name.includes('.reload'))
-        return 'Transporta solicitações de conexão e recarga das sessões.';
-    if (name.includes('.logout'))
-        return 'Transporta solicitações de desconexão e logout das sessões.';
-    if (name.includes('.bulk'))
-        return 'Processa etapas de envios em lote e seus relatórios.';
-    if (name.includes('.timer'))
-        return 'Agenda ações que precisam executar após um intervalo.';
-    if (name.includes('.broadcast'))
-        return 'Distribui eventos internos entre processos do ViperConnect.';
-    if (name.includes('.notification'))
-        return 'Processa notificações auxiliares e avisos de falha.';
-    if (name.includes('.blacklist'))
-        return 'Atualiza a blacklist temporária usada pelos webhooks.';
-    if (name.includes('.commander'))
-        return 'Recebe comandos de orquestração dos envios em lote.';
-    return 'Fila interna do ViperConnect gerenciada pelo RabbitMQ.';
+    const descriptions = {
+        outgoing: 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.',
+        incoming: 'Recebe comandos de envio destinados aos workers e sessões do WhatsApp.',
+        listener: 'Transporta eventos recebidos do WhatsApp para o processamento da UnoAPI.',
+        media: 'Processa download, armazenamento e preparação de mídias.',
+        transcribe: 'Processa transcrição de mensagens de áudio.',
+        bind: 'Vincula sessões às filas do servidor e motor responsáveis.',
+        reload: 'Transporta solicitações de conexão e recarga das sessões.',
+        logout: 'Transporta solicitações de desconexão e logout das sessões.',
+        bulk: 'Processa etapas de envios em lote e seus relatórios.',
+        timer: 'Agenda ações que precisam executar após um intervalo.',
+        broadcast: 'Distribui eventos internos entre processos do ViperConnect.',
+        notification: 'Processa notificações auxiliares e avisos de falha.',
+        blacklist: 'Atualiza a blacklist temporária usada pelos webhooks.',
+        commander: 'Recebe comandos de orquestração dos envios em lote.',
+    };
+    return descriptions[parseRabbitQueueName(name).family] || 'Fila interna do ViperConnect gerenciada pelo RabbitMQ.';
 };
 export const queueFlowLabelKey = (name) => {
-    if (name.includes('.incoming.'))
-        return 'API → WhatsApp';
-    if (name.includes('.listener.'))
-        return 'WhatsApp → Webhooks';
-    return '';
+    const labels = {
+        incoming: 'API → WhatsApp',
+        listener: 'WhatsApp → Webhooks',
+        outgoing: 'ViperConnect → Aplicações',
+        bind: 'Sessão → Worker',
+        reload: 'API → Reconexão',
+        logout: 'API → Desconexão',
+    };
+    return labels[parseRabbitQueueName(name).family] || '';
+};
+export const queueTooltip = (name) => {
+    const queue = parseRabbitQueueName(name);
+    const details = [t(queueDescriptionKey(name))];
+    if (queue.lifecycle === 'dead')
+        details.push(t('Esta variação esgotou as tentativas e aguarda análise ou remoção.'));
+    if (queue.lifecycle === 'delayed')
+        details.push(t('Esta variação aguarda o tempo configurado para nova tentativa ou execução.'));
+    if (queue.legacy)
+        details.push(t('Fila legada sem motor explícito; não recebe novas sessões no padrão atual.'));
+    if (queue.invalidServer)
+        details.push(t('Fila com servidor indefinido; indica publicação antiga ou configuração incompleta.'));
+    return details.join(' ');
 };
 export const queueNeedsAttention = (queue) => `${queue.state || 'running'}` !== 'running' || (queue.messages_ready > 0 && queue.consumers === 0);
 export const filterQueuesBySession = (queues, session) => {
@@ -127,7 +123,7 @@ export const renderQueuesPage = (options) => {
         const attention = queueNeedsAttention(queue);
         const flowLabel = queueFlowLabelKey(queue.name);
         return `<tr class="${queue.name === options.selectedQueue ? 'row--selected' : ''}">
-              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(t(queueDescriptionKey(queue.name)))}</div>${flowLabel ? `<small class="queue-flow">${t(flowLabel)}</small>` : ''}</td>
+              <td><div class="queue-name"><strong>${escapeHtml(queue.name)}</strong>${renderInfoTooltip(queueTooltip(queue.name))}</div><div class="queue-scope">${flowLabel ? `<span>${t(flowLabel)}</span>` : ''}${rabbitQueueScopeLabels(queue.name).map((label) => `<span>${t(label)}</span>`).join('')}</div></td>
               <td>${formatNumber(queue.messages_ready)}</td>
               <td>${formatNumber(queue.messages_unacknowledged)}</td>
               <td>${formatNumber(queue.consumers)}</td>
