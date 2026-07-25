@@ -1,4 +1,4 @@
-# ViperConnect 4.0.0-beta7
+# ViperConnect 4.0.0-beta8
 
 - torna a Zapo o runtime padrão e remove a Baileys do grafo e das dependências
   da imagem de produção;
@@ -17,3 +17,7 @@
   do build;
 - isola o teste HTTP de contatos com Express e controller reais, evitando
   interferência da aplicação completa entre workers paralelos do Jest.
+- adiciona instalador nativo idempotente para Debian/Ubuntu, com Node.js 24,
+  build Zapo-only, poda da Baileys, releases atômicas e units `systemd`.
+- evita recompilar TypeScript e frontend sob emulação ARM no build
+  multi-arquitetura; apenas as dependências nativas continuam por plataforma.

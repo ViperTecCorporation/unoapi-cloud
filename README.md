@@ -152,6 +152,7 @@ Arquivos principais:
 - [Ambiente](docs/ENVIRONMENT.md)
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [Arquitetura de processos Cloud](docs/CLOUD_ARCHITECTURE.md)
+- [Instalação nativa no Linux](docs/NATIVE_LINUX_INSTALLATION.md)
 - [Desenvolvimento](docs/DEVELOPMENT.md)
 - [Embedded Signup](docs/WHATSAPP_EMBEDDED.md)
 - [Histórico de mensagens](docs/MESSAGE_HISTORY.md)

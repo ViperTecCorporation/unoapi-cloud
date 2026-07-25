@@ -1,4 +1,6 @@
-FROM node:24-bookworm-slim AS builder
+# TypeScript and frontend artifacts are architecture-independent. Build them on
+# the runner architecture so arm64 images do not repeat this stage under QEMU.
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS builder
 
 ENV NODE_ENV=development
 RUN apt-get update \

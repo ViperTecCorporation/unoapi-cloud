@@ -1,0 +1,27 @@
+[Unit]
+Description=ViperConnect Cloud@@ROLE_DESCRIPTION@@
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@@SERVICE_USER@@
+Group=@@SERVICE_USER@@
+WorkingDirectory=@@INSTALL_ROOT@@/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/viperconnect/viperconnect.env
+@@ROLE_ENVIRONMENT@@
+ExecStart=/usr/bin/node @@INSTALL_ROOT@@/current/dist/src/cloud.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+LimitNOFILE=65535
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=@@STATE_ROOT@@
+
+[Install]
+WantedBy=multi-user.target

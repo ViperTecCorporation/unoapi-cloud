@@ -30,6 +30,7 @@ describe('Zapo-only runtime artifacts', () => {
     const compose = YAML.parse(fs.readFileSync(path.resolve('docker-compose.yml'), 'utf8'))
 
     expect(dockerfile).toContain('ENTRYPOINT ["node", "dist/src/cloud.js"]')
+    expect(dockerfile).toContain('FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS builder')
     expect(dockerfile).toContain('AS production-dependencies')
     expect(dockerfile).toContain('yarn install --production --frozen-lockfile')
     expect(dockerfile).toContain('FROM runtime-base AS legacy-runtime')
