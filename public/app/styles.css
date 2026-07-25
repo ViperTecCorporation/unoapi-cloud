@@ -254,7 +254,7 @@ small {
 
 .workspace {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
   align-items: center;
   gap: 9px;
   margin-top: 8px;
@@ -277,15 +277,19 @@ small {
   padding-inline: 10px;
 }
 
-.app-shell--collapsed .brand__logo,
 .app-shell--collapsed .brand__copy,
 .app-shell--collapsed .nav-item span,
-.app-shell--collapsed .workspace > span:last-child {
+.app-shell--collapsed .workspace__icon,
+.app-shell--collapsed .workspace__copy {
   display: none;
 }
 
 .app-shell--collapsed .sidebar__toggle {
   margin-inline: auto;
+}
+
+.app-shell--collapsed .brand {
+  justify-content: center;
 }
 
 .app-shell--collapsed .nav-item {
@@ -521,6 +525,33 @@ textarea:focus-visible,
   align-self: end;
 }
 
+.field--connection-peer {
+  align-content: start;
+}
+
+.field-label {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+}
+
+.secret-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px;
+  align-items: center;
+  gap: 4px;
+}
+
+.secret-field > input {
+  grid-column: 1;
+}
+
+.secret-field > .btn {
+  min-height: 36px;
+  padding: 7px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -547,10 +578,18 @@ textarea:focus-visible,
   display: flex;
   min-width: 0;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
+}
+
+.switch-field label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
 }
 
 .switch-field input {
@@ -561,6 +600,57 @@ textarea:focus-visible,
 
 .switch-field strong {
   font-weight: 500;
+}
+
+.info-tooltip {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  place-items: center;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: help;
+}
+
+.info-tooltip .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.info-tooltip::after {
+  position: absolute;
+  z-index: 90;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(280px, calc(100vw - 40px));
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  content: attr(data-tooltip);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(4px);
+  transition: 120ms ease;
+  visibility: hidden;
+}
+
+.info-tooltip:hover::after,
+.info-tooltip:focus-visible::after,
+.info-tooltip--open::after {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .table-wrap {
@@ -763,6 +853,11 @@ tbody tr:last-child td {
   gap: 12px;
 }
 
+.entity-search {
+  width: min(100%, 520px);
+  margin-bottom: 16px;
+}
+
 .entity-card {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -781,6 +876,18 @@ tbody tr:last-child td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.entity-card__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 7px;
+  overflow: visible;
+}
+
+.entity-card__actions .btn {
+  width: 32px;
+  height: 32px;
 }
 
 .avatar {
@@ -977,11 +1084,27 @@ tbody tr:last-child td {
   box-shadow: var(--shadow);
 }
 
-.login-panel__logo {
-  width: min(100%, 220px);
-  max-height: 72px;
-  object-fit: contain;
-  object-position: left center;
+.login-brand {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 14px 8px 8px;
+  border-radius: var(--radius);
+  color: #fff;
+  background: #1d1c1f;
+}
+
+.login-brand__icon {
+  width: 42px;
+  height: 42px;
+}
+
+.login-brand strong {
+  color: #fff;
+  font-size: 1.32rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 @media (max-width: 900px) {
@@ -1027,12 +1150,13 @@ tbody tr:last-child td {
   .app-shell--collapsed .brand__logo,
   .app-shell--collapsed .brand__copy,
   .app-shell--collapsed .nav-item span,
-  .app-shell--collapsed .workspace > span:last-child {
+  .app-shell--collapsed .workspace__icon,
+  .app-shell--collapsed .workspace__copy {
     display: initial;
   }
 
   .app-shell--collapsed .brand__copy,
-  .app-shell--collapsed .workspace > span:last-child {
+  .app-shell--collapsed .workspace__copy {
     display: grid;
   }
 

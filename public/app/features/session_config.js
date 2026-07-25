@@ -1,24 +1,24 @@
 import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
 import { icon } from '../components/icons.js?v=4.0.0-beta8';
+import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js?v=4.0.0-beta8';
 export const booleanSessionFields = [
-    ['autoConnect', 'Conectar automaticamente'],
-    ['ignoreGroupMessages', 'Ignorar mensagens de grupos'],
-    ['ignoreNewsletterMessages', 'Ignorar newsletters'],
-    ['ignoreHistoryMessages', 'Ignorar histórico de mensagens'],
-    ['readOnReceipt', 'Ler ao receber'],
-    ['readOnReply', 'Ler ao responder'],
-    ['markOnlineOnConnect', 'Marcar online ao conectar'],
-    ['sendProfilePicture', 'Enviar foto de perfil no webhook'],
-    ['sendConnectionStatus', 'Enviar status da conexão'],
-    ['notifyFailedMessages', 'Notificar mensagens com falha'],
-    ['composingMessage', 'Enviar “digitando”'],
-    ['sendReactionAsReply', 'Enviar reação como resposta'],
-    ['ignoreOwnMessages', 'Ignorar mensagens próprias'],
-    ['ignoreYourselfMessages', 'Ignorar mensagens para si mesmo'],
-    ['ignoreBroadcastStatuses', 'Ignorar Status'],
-    ['ignoreBroadcastMessages', 'Ignorar listas de transmissão'],
+    ['autoConnect', 'Conectar automaticamente', 'Reconecta esta sessão quando o worker for iniciado.'],
+    ['ignoreGroupMessages', 'Ignorar mensagens de grupos', 'Não encaminha mensagens recebidas em grupos aos webhooks.'],
+    ['ignoreNewsletterMessages', 'Ignorar newsletters', 'Descarta mensagens recebidas em canais e newsletters.'],
+    ['ignoreHistoryMessages', 'Ignorar histórico de mensagens', 'Não encaminha mensagens antigas durante sincronizações de histórico.'],
+    ['readOnReceipt', 'Ler ao receber', 'Marca mensagens recebidas como lidas automaticamente.'],
+    ['readOnReply', 'Ler ao responder', 'Marca a conversa como lida quando a API envia uma resposta.'],
+    ['markOnlineOnConnect', 'Marcar online ao conectar', 'Publica presença online logo após conectar a sessão.'],
+    ['sendProfilePicture', 'Enviar foto de perfil no webhook', 'Inclui fotos atualizadas nos webhooks respeitando o intervalo de cache.'],
+    ['sendConnectionStatus', 'Enviar status da conexão', 'Envia eventos de conexão e desconexão para a aplicação.'],
+    ['notifyFailedMessages', 'Notificar mensagens com falha', 'Emite status failed quando o provedor rejeita uma ação de mensagem.'],
+    ['composingMessage', 'Enviar “digitando”', 'Publica presença de digitação antes do envio.'],
+    ['sendReactionAsReply', 'Enviar reação como resposta', 'Representa reações recebidas também como eventos de resposta.'],
+    ['ignoreOwnMessages', 'Ignorar mensagens próprias', 'Descarta mensagens enviadas pelo próprio aparelho ou API.'],
+    ['ignoreYourselfMessages', 'Ignorar mensagens para si mesmo', 'Descarta conversas cujo destinatário é a própria sessão.'],
+    ['ignoreBroadcastStatuses', 'Ignorar Status', 'Não encaminha publicações de Status do WhatsApp.'],
+    ['ignoreBroadcastMessages', 'Ignorar listas de transmissão', 'Não encaminha mensagens de listas de transmissão.'],
 ];
-const checked = (value) => value === true ? 'checked' : '';
 export const renderSessionConfig = (session) => `
   <form class="stack" data-form="session-config">
     <section class="section">
@@ -34,39 +34,32 @@ export const renderSessionConfig = (session) => `
           <span>Telefone</span>
           <input value="${escapeHtml(session.phone || session.id || '')}" disabled>
         </label>
-        <label class="field">
-          <span>Tipo de conexão</span>
+        <div class="field">
+          <span class="field-label"><label for="connection-type">Tipo de conexão</label> ${renderInfoTooltip('O método só pode ser alterado depois de desconectar a sessão.')}</span>
           <input name="connectionType" type="hidden" value="${session.connectionType === 'pairing_code' ? 'pairing_code' : 'qrcode'}">
-          <select disabled aria-describedby="connection-type-hint">
+          <select id="connection-type" disabled aria-describedby="connection-type-hint">
             <option value="qrcode" ${session.connectionType !== 'pairing_code' ? 'selected' : ''}>QR Code</option>
             <option value="pairing_code" ${session.connectionType === 'pairing_code' ? 'selected' : ''}>Código de pareamento</option>
           </select>
           <small id="connection-type-hint">Para trocar o método, execute deregister e registre a sessão novamente.</small>
-        </label>
-        <label class="field">
-          <span>Servidor</span>
+        </div>
+        <label class="field field--connection-peer">
+          <span class="field-label">Servidor</span>
           <input name="server" value="${escapeHtml(session.server || 'server_1')}">
+          <small aria-hidden="true">&nbsp;</small>
         </label>
         <label class="field field--wide">
           <span>Proxy</span>
           <input name="proxyUrl" value="${escapeHtml(session.proxyUrl || '')}" placeholder="socks5://usuario:senha@host:porta">
         </label>
-        <label class="field">
-          <span>Token da sessão</span>
-          <input name="authToken" type="password" value="${escapeHtml(session.authToken || '')}" autocomplete="off">
-        </label>
+        ${renderSecretField('authToken', 'Token da sessão', session.authToken || '')}
       </div>
     </section>
 
     <section class="section">
       <div class="section__heading"><div><h3>Mensagens e comportamento</h3><p class="muted">Leitura, histórico, presença e eventos enviados à aplicação.</p></div></div>
       <div class="switch-grid">
-        ${booleanSessionFields.map(([name, label]) => `
-          <label class="switch-field">
-            <input name="${name}" type="checkbox" ${checked(session[name])}>
-            <span><strong>${label}</strong></span>
-          </label>
-        `).join('')}
+        ${booleanSessionFields.map(([name, label, description]) => renderSwitchField(name, label, description, session[name] === true)).join('')}
       </div>
       <div class="form-grid">
         <label class="field">
@@ -87,9 +80,9 @@ export const renderSessionConfig = (session) => `
     <section class="section">
       <div class="section__heading"><div><h3>Áudio e IA</h3><p class="muted">Credenciais permanecem vinculadas somente à sessão.</p></div></div>
       <div class="form-grid">
-        <label class="field"><span>OpenAI API key</span><input name="openaiApiKey" type="password" value="${escapeHtml(session.openaiApiKey || '')}" autocomplete="off"></label>
+        ${renderSecretField('openaiApiKey', 'OpenAI API key', session.openaiApiKey || '')}
         <label class="field"><span>Modelo OpenAI</span><input name="openaiApiTranscribeModel" value="${escapeHtml(session.openaiApiTranscribeModel || 'whisper-1')}"></label>
-        <label class="field"><span>Groq API key</span><input name="groqApiKey" type="password" value="${escapeHtml(session.groqApiKey || '')}" autocomplete="off"></label>
+        ${renderSecretField('groqApiKey', 'Groq API key', session.groqApiKey || '')}
         <label class="field"><span>Modelo Groq</span><input name="groqApiTranscribeModel" value="${escapeHtml(session.groqApiTranscribeModel || 'whisper-large-v3')}"></label>
         <label class="field field--wide"><span>URL base Groq</span><input name="groqApiBaseUrl" value="${escapeHtml(session.groqApiBaseUrl || 'https://api.groq.com/openai/v1')}"></label>
       </div>

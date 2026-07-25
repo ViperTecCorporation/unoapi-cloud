@@ -1,6 +1,7 @@
 export type ContactDirectoryQuery = {
   cursor?: string
   limit?: number
+  search?: string
 }
 
 export type ContactDirectoryItem = {
@@ -17,6 +18,7 @@ export type ContactDirectoryPage = {
   contacts: ContactDirectoryItem[]
   next_cursor: string
   has_more: boolean
+  total_count: number
 }
 
 export interface ContactDirectory {

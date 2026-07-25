@@ -68,12 +68,17 @@ export class ApiClient {
             method: 'POST',
         });
     }
-    contacts(phone, cursor = '0', limit = 60) {
+    contacts(phone, cursor = '0', limit = 20, search = '') {
         const query = new URLSearchParams({ cursor, limit: `${limit}` });
+        if (search.trim())
+            query.set('search', search.trim());
         return this.request(`/${encodeURIComponent(phone)}/contacts?${query}`);
     }
-    groups(phone) {
-        return this.request(`/v15.0/${encodeURIComponent(phone)}/groups`);
+    groups(phone, cursor = '0', limit = 20, search = '') {
+        const query = new URLSearchParams({ cursor, limit: `${limit}` });
+        if (search.trim())
+            query.set('search', search.trim());
+        return this.request(`/v15.0/${encodeURIComponent(phone)}/groups?${query}`);
     }
     saveWebhooks(phone, webhooks) {
         return this.register(phone, {

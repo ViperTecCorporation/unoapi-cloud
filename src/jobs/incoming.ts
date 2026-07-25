@@ -10,10 +10,7 @@ import mime from 'mime-types'
 import { v1 as uuid } from 'uuid'
 import { buildRestrictionNoticeWebhooks } from '../services/restriction_notice'
 import { isChatwootWebhook } from '../services/webhook_config'
-import {
-  buildProviderSendFailureResponse,
-  shouldReturnProviderSendFailure,
-} from '../services/providers/send_failure'
+import { buildProviderSendFailureResponse, shouldReturnProviderSendFailure } from '../services/providers/send_failure'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 
 type RetryContext = {
@@ -51,6 +48,7 @@ export class IncomingJob {
       'groupSettingUpdate',
       'groupJoinApprovalMode',
       'groupMetadata',
+      'groupProfilePicture',
     ]
     if (!allowedActions.includes(action)) {
       throw new Error(`Unknown group management action ${action}`)
@@ -64,13 +62,16 @@ export class IncomingJob {
     } catch (error) {
       if (this.isGroupInviteNotAuthorized(action, error)) {
         const err = error as any
-        logger.warn({
-          errorCode: err?.data || err?.statusCode || err?.output?.statusCode || err?.output?.payload?.statusCode,
-          errorMessage: err?.message || err?.output?.payload?.message || 'not-authorized',
-          phone,
-          groupJid: args[0],
-          action,
-        }, 'Group invite code unavailable: not authorized')
+        logger.warn(
+          {
+            errorCode: err?.data || err?.statusCode || err?.output?.statusCode || err?.output?.payload?.statusCode,
+            errorMessage: err?.message || err?.output?.payload?.message || 'not-authorized',
+            phone,
+            groupJid: args[0],
+            action,
+          },
+          'Group invite code unavailable: not authorized',
+        )
         return undefined
       }
       throw error
@@ -86,26 +87,14 @@ export class IncomingJob {
   }
 
   private async consumeProviderOperation(phone: string, data: any) {
-    const allowedActions = [
-      'contacts',
-      'requestPairingCode',
-      'resyncAppState',
-      'fetchPrivacyTokens',
-      'fetchMessageHistory',
-    ]
+    const allowedActions = ['contacts', 'requestPairingCode', 'resyncAppState', 'fetchPrivacyTokens', 'fetchMessageHistory']
     if (!allowedActions.includes(data.action)) throw new Error(`Unknown provider operation ${data.action}`)
     const fn = this.incoming[data.action]
     if (typeof fn !== 'function') throw new Error(`Incoming provider does not support operation ${data.action}`)
     return fn.call(this.incoming, phone, ...(Array.isArray(data.args) ? data.args : []))
   }
 
-  private buildOutgoingWebhookMessage(
-    phone: string,
-    payload: any,
-    idUno: string,
-    timestamp: string,
-    messagePayload: any,
-  ) {
+  private buildOutgoingWebhookMessage(phone: string, payload: any, idUno: string, timestamp: string, messagePayload: any) {
     const isGroup = typeof payload?.to === 'string' && payload.to.endsWith('@g.us')
     const groupId = isGroup ? payload.to : undefined
     const contactWaId = isGroup ? phone.replace('+', '') : normalizeUserOrGroupIdForWebhook(payload?.to)
@@ -117,7 +106,8 @@ export class IncomingJob {
       type: payload.type,
     }
     if (groupId) message.group_id = groupId
-    const userId = `${payload?.to_user_id || payload?.toUserId || payload?.user_id || payload?.contact?.user_id || payload?.from_user_id || ''}`.trim()
+    const userId =
+      `${payload?.to_user_id || payload?.toUserId || payload?.user_id || payload?.contact?.user_id || payload?.from_user_id || ''}`.trim()
     if (userId) message.from_user_id = userId
 
     const contact: any = {
@@ -167,11 +157,11 @@ export class IncomingJob {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
       logger.info(`Ignore incoming with ${phone} server ${config.server} is not server current server ${UNOAPI_SERVER_NAME}...`)
-      return;
+      return
     }
     // e se for atualização, onde pega o id?
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a = { ...data as any }
+    const a = { ...(data as any) }
     if (a.type === 'group_management') {
       return this.consumeGroupManagement(phone, a)
     }
@@ -206,7 +196,14 @@ export class IncomingJob {
       response = await this.incoming.send(phone, payload, options)
     } catch (error) {
       if (!shouldReturnProviderSendFailure(provider, error, retry)) throw error
-      logger.warn(error as any, 'Provider send failed permanently; emitting failed status provider=%s phone=%s id=%s type=%s', provider, phone, idUno, messageType)
+      logger.warn(
+        error as any,
+        'Provider send failed permanently; emitting failed status provider=%s phone=%s id=%s type=%s',
+        provider,
+        phone,
+        idUno,
+        messageType,
+      )
       response = buildProviderSendFailureResponse({
         phone,
         recipientId: waId,
@@ -225,12 +222,12 @@ export class IncomingJob {
       await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, this.queueCommander, phone, { payload }, { type: 'topic' })
     }
     const { ok, error } = response
-    const optionsOutgoing: Partial<PublishOption>  =  { delay: 0 } // evitar que 'sent' chegue após delivered/read
-    const rankStatus = (s: string) => ({ failed:0, progress:1, pending:1, sent:2, delivered:3, read:4, deleted:5 }[`${s}`] ?? -1)
+    const optionsOutgoing: Partial<PublishOption> = { delay: 0 } // evitar que 'sent' chegue após delivered/read
+    const rankStatus = (s: string) => ({ failed: 0, progress: 1, pending: 1, sent: 2, delivered: 3, read: 4, deleted: 5 })[`${s}`] ?? -1
     if (ok && ok.messages && ok.messages[0] && ok.messages[0].id) {
       const returnedId: string = ok.messages[0].id
       const { dataStore } = await config.getStore(phone, config)
-      const idProvider: string = `${await dataStore.loadProviderId?.(returnedId) || returnedId}`
+      const idProvider: string = `${(await dataStore.loadProviderId?.(returnedId)) || returnedId}`
       logger.debug('%s id %s to Unoapi id %s', config.provider, idProvider, idUno)
       const prevProviderStatus = await dataStore.loadStatus(idProvider)
       const prevUnoStatus = await dataStore.loadStatus(idUno)
@@ -248,7 +245,7 @@ export class IncomingJob {
         const extension = mime.extension(mimetype)
         const fileName = `${mediaKey}.${extension}`
         if (link && link.trim()) {
-          const response: Response = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
+          const response: Response = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET' })
           const buffer = toBuffer(await response.arrayBuffer())
           await mediaStore.saveMediaBuffer(fileName, buffer)
           messagePayload = {
@@ -315,7 +312,7 @@ export class IncomingJob {
                 UNOAPI_QUEUE_BULK_STATUS,
                 phone,
                 { payload: statusPayload, type: 'whatsapp' },
-                { type: 'topic' }
+                { type: 'topic' },
               )
               await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, statusPayload, optionsOutgoing)))
               await dataStore.setStatus(idUno, status as any)
@@ -391,7 +388,7 @@ export class IncomingJob {
               },
             ],
           },
-        ], 
+        ],
       }
       // Se já houver status mais avançado (delivered/read), não enviar 'sent'
       try {
@@ -409,7 +406,7 @@ export class IncomingJob {
         UNOAPI_QUEUE_BULK_STATUS,
         phone,
         { payload: outgingPayload, type: 'whatsapp' },
-        { type: 'topic' }
+        { type: 'topic' },
       )
       await Promise.all(config.webhooks.map((w) => this.outgoing.sendHttp(phone, w, outgingPayload, optionsOutgoing)))
       if (error) {
@@ -423,15 +420,8 @@ export class IncomingJob {
           })
           const webhooks = config.webhooks
           if (notices.length && webhooks.length) {
-            logger.warn(
-              'Sending %s restriction notice webhook(s) for %s to %s webhook(s)',
-              notices.length,
-              idUno,
-              webhooks.length,
-            )
-            await Promise.all(
-              notices.flatMap((notice) => webhooks.map((w) => this.outgoing.sendHttp(phone, w, notice, {}))),
-            )
+            logger.warn('Sending %s restriction notice webhook(s) for %s to %s webhook(s)', notices.length, idUno, webhooks.length)
+            await Promise.all(notices.flatMap((notice) => webhooks.map((w) => this.outgoing.sendHttp(phone, w, notice, {}))))
           }
         } catch (e) {
           logger.warn(e as any, 'Failed to send restriction notice webhooks for %s', idUno)

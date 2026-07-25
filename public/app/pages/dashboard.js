@@ -1,9 +1,10 @@
 import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
 import { icon } from '../components/icons.js?v=4.0.0-beta8';
 import { renderStatus } from '../components/status.js?v=4.0.0-beta8';
-import { filterSessions, isLegacySession, isOnlineStatus, sessionLabel, sessionPhone, } from '../domain/session.js?v=4.0.0-beta8';
-export const renderDashboard = ({ sessions, query, status, loading, refreshIn, }) => {
-    const visible = filterSessions(sessions, query, status);
+import { filterSessions, isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8';
+export const renderDashboard = ({ sessions, query, status, loading, refreshIn, visibleLimit }) => {
+    const filtered = filterSessions(sessions, query, status);
+    const visible = filtered.slice(0, visibleLimit);
     const online = sessions.filter((session) => isOnlineStatus(session.status)).length;
     const connecting = sessions.filter((session) => `${session.status}`.toLowerCase() === 'connecting').length;
     const offline = Math.max(0, sessions.length - online - connecting);
@@ -46,27 +47,34 @@ export const renderDashboard = ({ sessions, query, status, loading, refreshIn, }
         <table class="session-table">
           <thead><tr><th>Sessão</th><th>Status</th><th>Worker</th><th class="table-actions">Ações</th></tr></thead>
           <tbody>
-            ${visible.length ? visible.map((session) => {
-        const phone = sessionPhone(session);
-        const onlineSession = isOnlineStatus(session.status);
-        const legacySession = isLegacySession(session);
-        return `<tr>
+            ${visible.length
+        ? visible
+            .map((session) => {
+            const phone = sessionPhone(session);
+            const onlineSession = isOnlineStatus(session.status);
+            const legacySession = isLegacySession(session);
+            return `<tr>
                 <td><div class="session-identity"><span class="session-identity__icon">${icon('message')}</span><span><strong>${escapeHtml(sessionLabel(session))}</strong><small>${escapeHtml(phone)}</small></span></div></td>
                 <td>${renderStatus(session.status)}</td>
                 <td>${escapeHtml(session.server || 'server_1')}</td>
                 <td class="table-actions"><div class="row-actions">
                   <button class="btn btn--ghost" type="button" data-action="manage-session" data-phone="${escapeHtml(phone)}">${icon('settings')}Gerenciar</button>
                   ${legacySession
-            ? '<span class="legacy-label">Baileys desativada</span>'
-            : onlineSession
-                ? `<button class="btn btn--icon btn--ghost" type="button" data-action="test-message" data-phone="${escapeHtml(phone)}" aria-label="Testar mensagem">${icon('send')}</button>`
-                : `<button class="btn" type="button" data-action="connect-session" data-phone="${escapeHtml(phone)}">${icon('link')}Conectar</button>`}
+                ? '<span class="legacy-label">Baileys desativada</span>'
+                : onlineSession
+                    ? `<button class="btn btn--icon btn--ghost" type="button" data-action="test-message" data-phone="${escapeHtml(phone)}" aria-label="Testar mensagem">${icon('send')}</button>`
+                    : `<button class="btn" type="button" data-action="connect-session" data-phone="${escapeHtml(phone)}">${icon('link')}Conectar</button>`}
                 </div></td>
               </tr>`;
-    }).join('') : '<tr><td colspan="4"><div class="empty-state">Nenhuma sessão encontrada.</div></td></tr>'}
+        })
+            .join('')
+        : '<tr><td colspan="4"><div class="empty-state">Nenhuma sessão encontrada.</div></td></tr>'}
           </tbody>
         </table>
       </div>
+      ${filtered.length > visible.length
+        ? `<div class="load-more"><button class="btn" type="button" data-action="load-more-sessions">Carregar mais <span>${visible.length} de ${filtered.length}</span></button></div>`
+        : ''}
     </section>
   `;
 };

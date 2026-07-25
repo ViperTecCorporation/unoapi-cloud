@@ -129,146 +129,146 @@ paths:
                 summary: Texto
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: text
                   text:
-                    body: "Olá do Unoapi Cloud!"
+                    body: 'Olá do Unoapi Cloud!'
               textGroupMentionAll:
                 summary: Texto em grupo com @all/@todos
                 value:
                   messaging_product: whatsapp
-                  to: "120363012345678@g.us"
+                  to: '120363012345678@g.us'
                   type: text
                   text:
-                    body: "Aviso @todos"
+                    body: 'Aviso @todos'
               textGroupMentions:
                 summary: Texto em grupo com @telefone
                 value:
                   messaging_product: whatsapp
-                  to: "120363012345678@g.us"
+                  to: '120363012345678@g.us'
                   type: text
                   text:
-                    body: "Oi @5566996269251 e @5566996222471"
+                    body: 'Oi @5566996269251 e @5566996222471'
               messageEdit:
                 summary: Editar mensagem enviada
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: message_edit
                   context:
-                    message_id: "uno-message-id-original"
+                    message_id: 'uno-message-id-original'
                   text:
-                    body: "Texto editado"
+                    body: 'Texto editado'
               image:
                 summary: Imagem por link
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: image
                   image:
-                    link: "https://exemplo.com/imagem.jpg"
-                    caption: "Legenda opcional"
+                    link: 'https://exemplo.com/imagem.jpg'
+                    caption: 'Legenda opcional'
               document:
                 summary: Documento
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: document
                   document:
-                    link: "https://exemplo.com/arquivo.pdf"
-                    filename: "contrato.pdf"
+                    link: 'https://exemplo.com/arquivo.pdf'
+                    filename: 'contrato.pdf'
               audio:
                 summary: Áudio/voice
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: audio
                   audio:
-                    link: "https://exemplo.com/audio.ogg"
+                    link: 'https://exemplo.com/audio.ogg'
               video:
                 summary: Vídeo
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: video
                   video:
-                    link: "https://exemplo.com/video.mp4"
-                    caption: "Vídeo curto"
+                    link: 'https://exemplo.com/video.mp4'
+                    caption: 'Vídeo curto'
               contacts:
                 summary: Contatos (vCard simplificado)
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: contacts
                   contacts:
                     - name:
-                        formatted_name: "Fulano"
+                        formatted_name: 'Fulano'
                       phones:
-                        - wa_id: "5511988887777"
-                          phone: "+55 11 98888-7777"
+                        - wa_id: '5511988887777'
+                          phone: '+55 11 98888-7777'
               reaction:
                 summary: Reacao
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: reaction
                   reaction:
-                    message_id: "MESSAGE_ID"
-                    emoji: "👍"
+                    message_id: 'MESSAGE_ID'
+                    emoji: '👍'
               sticker:
                 summary: Figurinha
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: sticker
                   sticker:
-                    link: "https://example.com/sticker.png"
+                    link: 'https://example.com/sticker.png'
               interactiveButtons:
                 summary: Interativo - Botões
                 value:
                   messaging_product: whatsapp
-                  to: "5511999999999"
+                  to: '5511999999999'
                   type: interactive
                   interactive:
                     type: button
                     body:
-                      text: "Escolha uma opção"
+                      text: 'Escolha uma opção'
                     action:
                       buttons:
                         - type: reply
                           reply:
-                            id: "btn_1"
-                            title: "Opção 1"
+                            id: 'btn_1'
+                            title: 'Opção 1'
                         - type: reply
                           reply:
-                            id: "btn_2"
-                            title: "Opção 2"
+                            id: 'btn_2'
+                            title: 'Opção 2'
               interactiveList:
                 summary: Interativo - Lista compatível com Baileys e Zapo
                 value:
                   messaging_product: whatsapp
-                  to: "5566996269251"
+                  to: '5566996269251'
                   type: interactive
                   interactive:
                     type: list
                     header:
                       type: text
-                      text: "Menu"
+                      text: 'Menu'
                     body:
-                      text: "Escolha uma opção"
+                      text: 'Escolha uma opção'
                     footer:
-                      text: "Unoapi"
+                      text: 'Unoapi'
                     action:
-                      button: "Ver opções"
+                      button: 'Ver opções'
                       sections:
-                        - title: "Planos"
+                        - title: 'Planos'
                           rows:
-                            - id: "plan_basic"
-                              title: "Básico"
-                              description: "R$ 10"
-                            - id: "plan_pro"
-                              title: "Pro"
-                              description: "R$ 20"
+                            - id: 'plan_basic'
+                              title: 'Básico'
+                              description: 'R$ 10'
+                            - id: 'plan_pro'
+                              title: 'Pro'
+                              description: 'R$ 20'
       responses:
         '200':
           description: OK
@@ -315,7 +315,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PreflightStatusRequest'
             example:
-              statusJidList: ["5511999999999", "5511988887777"]
+              statusJidList: ['5511999999999', '5511988887777']
       responses:
         '200':
           description: Resultado da verificação
@@ -335,6 +335,17 @@ paths:
       summary: Listar grupos em cache da sessão
       parameters:
         - $ref: '#/components/parameters/PhonePath'
+        - in: query
+          name: cursor
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Deslocamento devolvido em paging.cursors.after pela página anterior
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: search
+          schema: { type: string, maxLength: 100 }
+          description: Pesquisa por nome ou JID do grupo
       responses:
         '200':
           description: Lista de grupos em cache
@@ -535,6 +546,10 @@ paths:
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - in: query
+          name: search
+          schema: { type: string, maxLength: 100 }
+          description: Pesquisa por nome, telefone, username ou LID
       responses:
         '200':
           description: Página do diretório de contatos sincronizado pela Zapo
@@ -557,7 +572,7 @@ paths:
             example:
               blocking: no_wait
               force_check: true
-              contacts: ["5511999999999"]
+              contacts: ['5511999999999']
       responses:
         '200':
           description: Resultado de validação
@@ -589,7 +604,7 @@ paths:
                   type: integer
                   description: Tempo de bloqueio em milissegundos
             example:
-              to: "5511999999999"
+              to: '5511999999999'
               ttl: 86400000
       responses:
         '200':
@@ -658,7 +673,7 @@ paths:
                   type: integer
                   description: Tempo de espera em ms
             example:
-              message: "Ainda precisamos da sua resposta"
+              message: 'Ainda precisamos da sua resposta'
               timeout: 300000
       responses:
         '200': { description: OK }
@@ -707,7 +722,7 @@ paths:
   /webhooks/whatsapp/{phone}:
     get:
       summary: Verificação do Webhook (Facebook/Meta)
-      security: []  # não requer token local
+      security: [] # não requer token local
       parameters:
         - $ref: '#/components/parameters/PhonePath'
         - in: query
@@ -729,7 +744,7 @@ paths:
         '403': { description: Token inválido }
     post:
       summary: 'Receber eventos do WhatsApp (Forward mode)'
-      security: []  # opcionalmente aberto, depende do deploy
+      security: [] # opcionalmente aberto, depende do deploy
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       requestBody:
@@ -1221,7 +1236,7 @@ components:
 
     ContactDirectoryResponse:
       type: object
-      required: [contacts, next_cursor, has_more]
+      required: [contacts, next_cursor, has_more, total_count]
       properties:
         contacts:
           type: array
@@ -1233,9 +1248,14 @@ components:
               phone_number: { type: string, description: 'Telefone somente em dígitos; celulares brasileiros normalizados com o nono dígito' }
               display_name: { type: string }
               push_name: { type: string }
+              username: { type: string, description: 'Username opcional sincronizado pela Zapo' }
+              picture: { type: string, format: uri }
               last_updated_ms: { type: integer, format: int64 }
         next_cursor: { type: string }
         has_more: { type: boolean }
+        total_count:
+          type: integer
+          description: Quantidade total de contatos armazenados no cache da sessão
 
     MediaResponse:
       type: object
@@ -1294,8 +1314,19 @@ components:
             type: object
             properties:
               jid: { type: string }
+              id: { type: string }
               subject: { type: string }
+              picture: { type: string, format: uri }
               participantsCount: { type: integer }
+              participants_count: { type: integer }
+        paging:
+          type: object
+          properties:
+            cursors:
+              type: object
+              properties:
+                before: { type: string, nullable: true }
+                after: { type: string, nullable: true }
 
     GroupDetailsResponse:
       type: object
@@ -1462,15 +1493,15 @@ components:
       example:
         object: whatsapp_business_account
         entry:
-          - id: "5566996269251"
+          - id: '5566996269251'
             changes:
               - field: messages
                 value:
                   messaging_product: whatsapp
                   messages:
-                    - from: "5566999999999"
-                      id: "MESSAGE_ID"
-                      timestamp: "1784900000"
+                    - from: '5566999999999'
+                      id: 'MESSAGE_ID'
+                      timestamp: '1784900000'
                       type: interactive
                       interactive:
                         type: list_reply

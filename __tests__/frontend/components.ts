@@ -23,13 +23,29 @@ describe('frontend components', () => {
   })
 
   test('renders the responsive shell, login and modal contracts', () => {
-    expect(renderLayout({ content: '<p>Conteúdo</p>', collapsed: true, mobileOpen: false })).toContain('app-shell--collapsed')
-    expect(renderLogin('Token inválido')).toContain('data-form="login"')
+    const layout = renderLayout({ content: '<p>Conteúdo</p>', collapsed: true, mobileOpen: false })
+    expect(layout).toContain('app-shell--collapsed')
+    expect(layout.indexOf('Viper Tec')).toBeLessThan(layout.indexOf('data-action="toggle-sidebar"'))
+
+    const login = renderLogin('Token inválido')
+    expect(login).toContain('data-form="login"')
+    expect(login).toContain('<strong>ViperConnect</strong>')
+    expect(login).toContain('Informe o token configurado no ViperConnect.')
+    expect(login).not.toContain('viperconnect_logo.svg')
     expect(renderModal('test', 'Teste', '<p>Corpo</p>')).toContain('aria-modal="true"')
   })
 
   test('renders contact and group cards with picture slots', () => {
-    expect(renderContactCards([{ user_id: '1@lid', display_name: 'Maria', last_updated_ms: 1 }])).toContain('entity-card')
-    expect(renderGroupCards([{ id: '1@g.us', subject: 'Equipe', participants_count: 4 }])).toContain('4 participantes')
+    const contact = renderContactCards(
+      [{ user_id: '1@lid', phone_number: '5566999999999', display_name: 'Maria', last_updated_ms: 1 }],
+      '5566000000000',
+    )
+    expect(contact).toContain('data-recipient="1@lid"')
+    expect(contact).toContain('data-value="5566999999999"')
+
+    const group = renderGroupCards([{ id: '1@g.us', subject: 'Equipe', participants_count: 4 }], '5566000000000')
+    expect(group).toContain('4 participantes')
+    expect(group).toContain('data-recipient="1@g.us"')
+    expect(group).toContain('data-value="1@g.us"')
   })
 })

@@ -9,6 +9,7 @@ describe('frontend pages', () => {
       status: 'all',
       loading: false,
       refreshIn: 15,
+      visibleLimit: 20,
     })
 
     expect(html).toContain('data-refresh-countdown')
@@ -22,7 +23,11 @@ describe('frontend pages', () => {
       tab: 'contacts',
       contacts: [],
       contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: '',
       groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
       loadingSection: false,
       sectionError: '',
     })
@@ -39,7 +44,11 @@ describe('frontend pages', () => {
       tab: 'overview',
       contacts: [],
       contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: '',
       groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
       loadingSection: false,
       sectionError: '',
     })
@@ -47,5 +56,41 @@ describe('frontend pages', () => {
     expect(html).toContain('Remover sessão legada')
     expect(html).not.toContain('data-action="test-message"')
     expect(html).not.toContain('data-action="session-tab"')
+  })
+
+  test('shows the number of cached contacts in the session overview', () => {
+    const html = renderSessionPage({
+      session: { phone: '5566', status: 'online', webhooks: [] },
+      tab: 'overview',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 8976,
+      contactsQuery: '',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(html).toContain('<strong>8.976</strong>')
+    expect(html).toContain('armazenados no cache Zapo')
+  })
+
+  test('limits the session list to twenty items and offers load more', () => {
+    const html = renderDashboard({
+      sessions: Array.from({ length: 21 }, (_, index) => ({
+        phone: `${5500000000000 + index}`,
+        label: `Sessão ${index}`,
+      })),
+      query: '',
+      status: 'all',
+      loading: false,
+      refreshIn: 15,
+      visibleLimit: 20,
+    })
+
+    expect(html.match(/data-action="manage-session"/g) || []).toHaveLength(20)
+    expect(html).toContain('data-action="load-more-sessions"')
   })
 })

@@ -21,4 +21,15 @@ export interface Incoming {
   groupSettingUpdate?(phone: string, jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
   groupJoinApprovalMode?(phone: string, jid: string, mode: 'on' | 'off'): Promise<void>
   groupMetadata?(phone: string, jid: string): Promise<any>
+  groupProfilePicture?(
+    phone: string,
+    jid: string,
+    forceRefresh?: boolean,
+  ): Promise<
+    | {
+        url: string
+        metadata?: Record<string, string>
+      }
+    | undefined
+  >
 }

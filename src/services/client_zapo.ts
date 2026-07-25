@@ -17,12 +17,7 @@ import { zapoStoreRegistry, type ZapoStoreRegistry } from './zapo/zapo_store_reg
 import { ZapoGroups } from './zapo/zapo_groups'
 import { normalizeZapoPhoneJid, resolveZapoPhoneJid } from './zapo/zapo_contact_resolver'
 import { ZapoMessages } from './zapo/zapo_messages'
-import {
-  isEncryptedZapoAddonMessage,
-  toUnoAddonEvent,
-  toUnoMessageEvent,
-  toUnoReceiptUpdates,
-} from './zapo/zapo_events'
+import { isEncryptedZapoAddonMessage, toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from './zapo/zapo_events'
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
 import { phoneNumberToJid } from './transformer/jid'
@@ -99,56 +94,71 @@ export class ClientZapo implements Client {
     private readonly onNewLogin: OnNewLogin,
     private readonly storeRegistry: ZapoStoreRegistry = zapoStoreRegistry,
     private readonly clientFactory: ClientFactory = defaultClientFactory,
-    private readonly leaseFactory: LeaseFactory = (session) => new RedisLease(
-      `zapo-session:${session}`,
-      ZAPO_SESSION_LEASE_TTL_MS,
-    ),
+    private readonly leaseFactory: LeaseFactory = (session) => new RedisLease(`zapo-session:${session}`, ZAPO_SESSION_LEASE_TTL_MS),
     private readonly maintenance: ZapoRedisMaintenance = zapoRedisMaintenance,
   ) {}
 
   private async emitQr(value: string) {
     const imageUrl = await QRCode.toDataURL(value)
-    await this.listener.process(this.phone, [{
-      key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
-      message: { imageMessage: { url: imageUrl, mimetype: 'image/png', caption: 'Zapo pairing' } },
-    }], 'qrcode')
+    await this.listener.process(
+      this.phone,
+      [
+        {
+          key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
+          message: { imageMessage: { url: imageUrl, mimetype: 'image/png', caption: 'Zapo pairing' } },
+        },
+      ],
+      'qrcode',
+    )
   }
 
   private async emitPairingCode(value: string) {
     const imageUrl = await createPairingCodeImageDataUrl(value)
-    await this.listener.process(this.phone, [{
-      key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
-      message: { imageMessage: { url: imageUrl, mimetype: 'image/svg+xml', caption: 'Zapo pairing code' } },
-    }], 'qrcode')
+    await this.listener.process(
+      this.phone,
+      [
+        {
+          key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
+          message: { imageMessage: { url: imageUrl, mimetype: 'image/svg+xml', caption: 'Zapo pairing code' } },
+        },
+      ],
+      'qrcode',
+    )
   }
 
   private async emitStatus(value: string) {
-    await this.listener.process(this.phone, [{
-      key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
-      message: { conversation: value },
-    }], 'status')
+    await this.listener.process(
+      this.phone,
+      [
+        {
+          key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
+          message: { conversation: value },
+        },
+      ],
+      'status',
+    )
   }
 
   private async syncGroupCache(client: ZapoClient, groupJid?: string) {
     if (!this.unoStore) return
-    const groups = groupJid
-      ? [await client.group.queryGroupMetadata(groupJid)]
-      : [...await client.group.queryAllGroups()]
-    await Promise.all(groups.map(async (group: any) => {
-      const jid = `${group?.id || group?.jid || group?.groupJid || ''}`
-      if (jid) await this.unoStore!.dataStore.setGroupMetada(jid, group)
-      await Promise.all((group?.participants || []).map(async (participant: any) => {
-        const lid = [participant?.lid, participant?.jid, participant?.id]
-          .map((value) => `${value || ''}`.trim())
-          .find((value) => value.endsWith('@lid'))
-        const phoneJid = normalizeZapoPhoneJid(
-          `${participant?.phoneNumber || participant?.phone_number || participant?.pn || ''}`,
+    const groups = groupJid ? [await client.group.queryGroupMetadata(groupJid)] : [...(await client.group.queryAllGroups())]
+    await Promise.all(
+      groups.map(async (group: any) => {
+        const jid = `${group?.id || group?.jid || group?.groupJid || ''}`
+        if (jid) await this.unoStore!.dataStore.setGroupMetada(jid, group)
+        await Promise.all(
+          (group?.participants || []).map(async (participant: any) => {
+            const lid = [participant?.lid, participant?.jid, participant?.id]
+              .map((value) => `${value || ''}`.trim())
+              .find((value) => value.endsWith('@lid'))
+            const phoneJid = normalizeZapoPhoneJid(`${participant?.phoneNumber || participant?.phone_number || participant?.pn || ''}`)
+            if (lid && phoneJid) {
+              await this.unoStore?.dataStore.setJidMapping?.(this.phone, phoneJid, lid)
+            }
+          }),
         )
-        if (lid && phoneJid) {
-          await this.unoStore?.dataStore.setJidMapping?.(this.phone, phoneJid, lid)
-        }
-      }))
-    }))
+      }),
+    )
   }
 
   private async enrichGroupMetadata<T>(message: T): Promise<T> {
@@ -159,7 +169,7 @@ export class ClientZapo implements Client {
     let metadata = await this.unoStore.dataStore.getGroupMetada(groupJid)
     if (!metadata && this.socket) {
       try {
-        metadata = await this.socket.group.queryGroupMetadata(groupJid) as any
+        metadata = (await this.socket.group.queryGroupMetadata(groupJid)) as any
         if (metadata) await this.unoStore.dataStore.setGroupMetada(groupJid, metadata)
       } catch (error) {
         logger.warn(error as any, 'Zapo group metadata lookup failed for %s', groupJid)
@@ -172,17 +182,8 @@ export class ClientZapo implements Client {
   private async forwardStoredHistory(maxAgeDays = this.config.historyMaxAgeDays, forceReplay = false) {
     if (!this.zapoSession) throw new SendError(409, 'zapo_client_not_connected')
     if (forceReplay) this.forwardedHistoryIds.clear()
-    const messages = await loadZapoHistoryMessages(
-      this.zapoSession,
-      maxAgeDays,
-      this.forwardedHistoryIds,
-    )
-    logger.info(
-      'Zapo forwarding history phone=%s days=%s messages=%s',
-      this.phone,
-      maxAgeDays,
-      messages.length,
-    )
+    const messages = await loadZapoHistoryMessages(this.zapoSession, maxAgeDays, this.forwardedHistoryIds)
+    logger.info('Zapo forwarding history phone=%s days=%s messages=%s', this.phone, maxAgeDays, messages.length)
     if (messages.length) {
       await this.listener.process(this.phone, messages, 'history')
       for (const message of messages) {
@@ -222,11 +223,7 @@ export class ClientZapo implements Client {
     const canUseCurrentPhone = currentPhoneJid && (!event.key.fromMe || currentPhoneJid !== ownPhoneJid)
     const phoneJid = canUseCurrentPhone
       ? currentPhoneJid
-      : await resolveZapoPhoneJid(
-        this.zapoSession?.contacts,
-        recipientLid,
-        event.key.fromMe ? {} : { attempts: 4, delayMs: 100 },
-      )
+      : await resolveZapoPhoneJid(this.zapoSession?.contacts, recipientLid, event.key.fromMe ? {} : { attempts: 4, delayMs: 100 })
     if (!phoneJid) return
 
     message.key.remoteJidAlt = phoneJid
@@ -291,8 +288,7 @@ export class ClientZapo implements Client {
     client.on('auth_pairing_code', ({ code }) => {
       resolvePrompt()
       this.pairingCodeIssued = true
-      void this.emitPairingCode(code)
-        .catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
+      void this.emitPairingCode(code).catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
     })
     client.on('auth_paired', async ({ credentials }) => {
       await Promise.resolve(this.zapoSession?.auth.save(credentials)).catch((error) => {
@@ -308,10 +304,18 @@ export class ClientZapo implements Client {
     })
     client.on('auth_passkey_required', ({ hasSigner }) => {
       resolvePrompt()
-      void Promise.resolve(this.listener.process(this.phone, [{
-        key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
-        message: { conversation: hasSigner ? 'zapo_passkey_signer_ready' : 'zapo_passkey_signer_required' },
-      }], 'status')).catch((error) => logger.warn(error as any, 'Could not emit Zapo passkey status for %s', this.phone))
+      void Promise.resolve(
+        this.listener.process(
+          this.phone,
+          [
+            {
+              key: { fromMe: true, remoteJid: `${this.phone.replace(/\D/g, '')}@s.whatsapp.net`, id: uuid() },
+              message: { conversation: hasSigner ? 'zapo_passkey_signer_ready' : 'zapo_passkey_signer_required' },
+            },
+          ],
+          'status',
+        ),
+      ).catch((error) => logger.warn(error as any, 'Could not emit Zapo passkey status for %s', this.phone))
     })
     client.on('connection', async (event) => {
       if (event.status === 'open') {
@@ -336,9 +340,7 @@ export class ClientZapo implements Client {
         return
       }
       this.connected = false
-      this.pendingPasskey?.reject(new SendError(502, event.isLogout
-        ? 'zapo_passkey_session_unlinked'
-        : 'zapo_passkey_connection_closed'))
+      this.pendingPasskey?.reject(new SendError(502, event.isLogout ? 'zapo_passkey_session_unlinked' : 'zapo_passkey_connection_closed'))
       try {
         await this.unoStore?.sessionStore.setStatus(this.phone, event.isLogout ? 'disconnected' : 'offline')
       } finally {
@@ -388,12 +390,7 @@ export class ClientZapo implements Client {
       }
       if (message.key.id) this.pendingIncoming.set(message.key.id, event)
       if (!event.key.fromMe && !event.key.isNewsletter) {
-        const recipientAliases = [
-          message.key.participantAlt,
-          message.key.participant,
-          message.key.remoteJidAlt,
-          message.key.remoteJid,
-        ]
+        const recipientAliases = [message.key.participantAlt, message.key.participant, message.key.remoteJidAlt, message.key.remoteJid]
           .map((jid) => `${jid || ''}`)
           .filter((jid) => jid.endsWith('@s.whatsapp.net'))
         if (recipientAliases.length) {
@@ -401,9 +398,7 @@ export class ClientZapo implements Client {
             logger.warn(error as any, 'Zapo status recipient index update failed for %s', this.phone)
           })
         }
-        const senderLid = [event.key.participant, event.key.remoteJid]
-          .map((jid) => `${jid || ''}`)
-          .find((jid) => jid.endsWith('@lid'))
+        const senderLid = [event.key.participant, event.key.remoteJid].map((jid) => `${jid || ''}`).find((jid) => jid.endsWith('@lid'))
         if (event.key.senderUsername && senderLid) {
           void zapoUsernameIndex.touch(this.phone, event.key.senderUsername, senderLid)
         }
@@ -435,9 +430,7 @@ export class ClientZapo implements Client {
       const isGroup = `${event.chatJid || ''}`.endsWith('@g.us')
       if (isGroup && this.config.ignoreGroupIndividualReceipts && event.participantJid) return
       if (isGroup && this.config.groupOnlyDeliveredStatus && event.status !== 'delivered') return
-      const contact = event.chatJid && this.zapoSession
-        ? await this.zapoSession.contacts.getByJid(event.chatJid)
-        : undefined
+      const contact = event.chatJid && this.zapoSession ? await this.zapoSession.contacts.getByJid(event.chatJid) : undefined
       const phoneJid = normalizeZapoPhoneJid(`${contact?.phoneNumber || ''}`)
       const receiptChatJid = `${event.chatJid || ''}`
       if (phoneJid && receiptChatJid.endsWith('@lid')) {
@@ -555,11 +548,13 @@ export class ClientZapo implements Client {
       )
       if (this.config.ignoreHistoryMessages || !this.zapoSession) return
       if (event.progress !== undefined && event.progress < 100) return
-      this.historySyncTask = this.historySyncTask.then(async () => {
-        await this.forwardStoredHistory()
-      }).catch((error) => {
-        logger.warn(error as any, 'Zapo history forwarding failed for %s', this.phone)
-      })
+      this.historySyncTask = this.historySyncTask
+        .then(async () => {
+          await this.forwardStoredHistory()
+        })
+        .catch((error) => {
+          logger.warn(error as any, 'Zapo history forwarding failed for %s', this.phone)
+        })
       await this.historySyncTask
     })
     client.on('offline_resume', (event) => {
@@ -622,15 +617,21 @@ export class ClientZapo implements Client {
     }
     const webhookMessage = (this.config.rejectCallsWebhook || this.config.messageCallsWebhook).trim()
     if (webhookMessage) {
-      await this.listener.process(this.phone, [{
-        key: {
-          fromMe: false,
-          id: uuid(),
-          remoteJid: call.callerPn || call.peerJid,
-          senderPn: call.callerPn,
-        },
-        message: { conversation: webhookMessage },
-      }], 'notify')
+      await this.listener.process(
+        this.phone,
+        [
+          {
+            key: {
+              fromMe: false,
+              id: uuid(),
+              remoteJid: call.callerPn || call.peerJid,
+              senderPn: call.callerPn,
+            },
+            message: { conversation: webhookMessage },
+          },
+        ],
+        'notify',
+      )
     }
   }
 
@@ -652,24 +653,33 @@ export class ClientZapo implements Client {
   private async acquireRuntimeOwnership() {
     if (!this.config.useRedis || this.lease) return
     const lease = this.leaseFactory(this.phone)
-    if (!await lease.acquire()) throw new SendError(409, `zapo_session_owned_by_another_worker: ${this.phone}`)
+    if (!(await lease.acquire())) throw new SendError(409, `zapo_session_owned_by_another_worker: ${this.phone}`)
     this.lease = lease
-    this.leaseRenewTimer = setInterval(() => {
-      void lease.renew().then(async (renewed) => {
-        if (renewed) return
-        await this.handleRuntimeOwnershipLoss('lease_lost')
-      }).catch((error) => this.handleRuntimeOwnershipLoss('lease_renewal_failed', error))
-    }, Math.max(1_000, Math.min(ZAPO_SESSION_LEASE_RENEW_MS, Math.floor(ZAPO_SESSION_LEASE_TTL_MS / 2))))
+    this.leaseRenewTimer = setInterval(
+      () => {
+        void lease
+          .renew()
+          .then(async (renewed) => {
+            if (renewed) return
+            await this.handleRuntimeOwnershipLoss('lease_lost')
+          })
+          .catch((error) => this.handleRuntimeOwnershipLoss('lease_renewal_failed', error))
+      },
+      Math.max(1_000, Math.min(ZAPO_SESSION_LEASE_RENEW_MS, Math.floor(ZAPO_SESSION_LEASE_TTL_MS / 2))),
+    )
     this.leaseRenewTimer.unref?.()
 
     void this.maintenance.pruneMessageIndexBatch(this.phone).catch((error) => {
       logger.warn(error as any, 'Zapo Redis message index maintenance failed for %s', this.phone)
     })
-    this.maintenanceTimer = setInterval(() => {
-      void this.maintenance.pruneMessageIndexBatch(this.phone).catch((error) => {
-        logger.warn(error as any, 'Zapo Redis message index maintenance failed for %s', this.phone)
-      })
-    }, Math.max(60_000, ZAPO_REDIS_MAINTENANCE_INTERVAL_MS))
+    this.maintenanceTimer = setInterval(
+      () => {
+        void this.maintenance.pruneMessageIndexBatch(this.phone).catch((error) => {
+          logger.warn(error as any, 'Zapo Redis message index maintenance failed for %s', this.phone)
+        })
+      },
+      Math.max(60_000, ZAPO_REDIS_MAINTENANCE_INTERVAL_MS),
+    )
     this.maintenanceTimer.unref?.()
   }
 
@@ -710,13 +720,16 @@ export class ClientZapo implements Client {
     await createPasskeyBridgeSession(this.phone, bridgeId, Buffer.from(requestOptions))
     this.activePasskeyBridgeId = bridgeId
     return new Promise<{ credentialId: Uint8Array; webauthnAssertion: Uint8Array }>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        if (this.pendingPasskey?.bridgeId !== bridgeId) return
-        this.pendingPasskey = undefined
-        this.activePasskeyBridgeId = undefined
-        void updatePasskeyBridgeSession(bridgeId, { status: 'timeout' })
-        reject(new SendError(408, 'zapo_passkey_assertion_timeout'))
-      }, Math.max(30, PASSKEY_BRIDGE_TTL_SECONDS || 120) * 1000)
+      const timeout = setTimeout(
+        () => {
+          if (this.pendingPasskey?.bridgeId !== bridgeId) return
+          this.pendingPasskey = undefined
+          this.activePasskeyBridgeId = undefined
+          void updatePasskeyBridgeSession(bridgeId, { status: 'timeout' })
+          reject(new SendError(408, 'zapo_passkey_assertion_timeout'))
+        },
+        Math.max(30, PASSKEY_BRIDGE_TTL_SECONDS || 120) * 1000,
+      )
       timeout.unref?.()
       this.pendingPasskey = {
         bridgeId,
@@ -768,11 +781,7 @@ export class ClientZapo implements Client {
     this.pairingCodeRequest = undefined
     this.pairingCodeIssued = false
     const requiresPairing = !(await this.zapoSession.auth.load())?.meJid
-    logger.info(
-      'Zapo session startup phone=%s mode=%s',
-      this.phone,
-      requiresPairing ? 'fresh-pairing' : 'stored-auth',
-    )
+    logger.info('Zapo session startup phone=%s mode=%s', this.phone, requiresPairing ? 'fresh-pairing' : 'stored-auth')
     if (this.config.useRedis) {
       await statusRecipients.loadOrBootstrap(this.phone).catch((error) => {
         logger.warn(error as any, 'Zapo status recipient bootstrap failed for %s', this.phone)
@@ -803,22 +812,14 @@ export class ClientZapo implements Client {
       plugins: [voipPlugin()],
     })
     this.socket = client
-    this.messages = new ZapoMessages(
-      client,
-      this.unoStore.dataStore,
-      {
-        customMessageCharactersFunction: this.config.customMessageCharactersFunction,
-        composingMessage: this.config.composingMessage,
-        readOnReply: this.config.readOnReply,
-        store: this.zapoSession,
-        phone: this.phone,
-        bindTemplate: (payload) => new Template(this.getConfig).bind(
-          this.phone,
-          payload.template.name,
-          payload.template.components,
-        ),
-      },
-    )
+    this.messages = new ZapoMessages(client, this.unoStore.dataStore, {
+      customMessageCharactersFunction: this.config.customMessageCharactersFunction,
+      composingMessage: this.config.composingMessage,
+      readOnReply: this.config.readOnReply,
+      store: this.zapoSession,
+      phone: this.phone,
+      bindTemplate: (payload) => new Template(this.getConfig).bind(this.phone, payload.template.name, payload.template.components),
+    })
     this.groups = new ZapoGroups(client, this.zapoSession, this.phone)
     this.profilePictures = new ZapoProfilePictures({
       phone: this.phone,
@@ -894,9 +895,7 @@ export class ClientZapo implements Client {
     if (!pending) throw new SendError(409, 'zapo_passkey_assertion_not_pending')
     pending.resolve({
       credentialId: Uint8Array.from(payload.credentialId),
-      webauthnAssertion: Uint8Array.from(Buffer.isBuffer(payload.assertionJson)
-        ? payload.assertionJson
-        : Buffer.from(payload.assertionJson)),
+      webauthnAssertion: Uint8Array.from(Buffer.isBuffer(payload.assertionJson) ? payload.assertionJson : Buffer.from(payload.assertionJson)),
     })
     return { ok: { success: true, bridge_id: pending.bridgeId } }
   }
@@ -907,7 +906,7 @@ export class ClientZapo implements Client {
 
   async getMessageMetadata<T>(message: T) {
     const withGroupMetadata = await this.enrichGroupMetadata(message)
-    const enriched = await this.profilePictures?.enrich(withGroupMetadata) ?? withGroupMetadata
+    const enriched = (await this.profilePictures?.enrich(withGroupMetadata)) ?? withGroupMetadata
     if (!this.socket) return enriched
     const value: any = enriched
     const id = `${value?.key?.id || ''}`
@@ -925,12 +924,8 @@ export class ClientZapo implements Client {
   async contacts(numbers: string[]): Promise<Contact[]> {
     if (!this.socket || !this.zapoSession) throw new SendError(409, 'zapo_client_not_connected')
     const output: Contact[] = new Array(numbers.length)
-    const numeric = numbers
-      .map((value, index) => ({ value: `${value || ''}`.trim(), index }))
-      .filter(({ value }) => !value.startsWith('@'))
-    const usernames = numbers
-      .map((value, index) => ({ value: `${value || ''}`.trim(), index }))
-      .filter(({ value }) => value.startsWith('@'))
+    const numeric = numbers.map((value, index) => ({ value: `${value || ''}`.trim(), index })).filter(({ value }) => !value.startsWith('@'))
+    const usernames = numbers.map((value, index) => ({ value: `${value || ''}`.trim(), index })).filter(({ value }) => value.startsWith('@'))
     for (const { value, index } of usernames) {
       const lid = await zapoUsernameIndex.resolve(this.phone, value)
       const stored = lid ? await this.zapoSession.contacts.getByJid(lid) : undefined
@@ -946,12 +941,18 @@ export class ClientZapo implements Client {
     }
     const inputs = numeric.map(({ value }) => phoneNumberToJid(value))
     const results = inputs.length ? await this.socket.profile.getLidsByPhoneNumbers(inputs) : []
-    const contacts = results.flatMap((result, index) => result.exists && result.lidJid ? [{
-      jid: result.lidJid,
-      lid: result.lidJid,
-      phoneNumber: `${result.phoneJid || inputs[index]}`.split('@')[0],
-      lastUpdatedMs: Date.now(),
-    }] : [])
+    const contacts = results.flatMap((result, index) =>
+      result.exists && result.lidJid
+        ? [
+            {
+              jid: result.lidJid,
+              lid: result.lidJid,
+              phoneNumber: `${result.phoneJid || inputs[index]}`.split('@')[0],
+              lastUpdatedMs: Date.now(),
+            },
+          ]
+        : [],
+    )
     if (contacts.length) await this.zapoSession.contacts.upsertBatch(contacts)
     for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
       const result = results[resultIndex]
@@ -960,10 +961,10 @@ export class ClientZapo implements Client {
       output[index] = {
         input: numbers[index],
         wa_id: result.exists ? `${result.phoneJid || inputs[resultIndex]}`.split('@')[0] : undefined,
-        user_id: result.exists ? (result.lidJid || undefined) : undefined,
+        user_id: result.exists ? result.lidJid || undefined : undefined,
         display_name: stored?.displayName,
         push_name: stored?.pushName,
-        status: result.exists ? 'valid' : (result.invalid ? 'invalid' : 'failed'),
+        status: result.exists ? 'valid' : result.invalid ? 'invalid' : 'failed',
       }
     }
     return output
@@ -976,19 +977,48 @@ export class ClientZapo implements Client {
     return request
   }
 
-  groupCreate(subject: string, participants: string[]) { return this.requireGroups().create(subject, participants) }
-  groupUpdateSubject(jid: string, subject: string) { return this.requireGroups().updateSubject(jid, subject) }
-  groupUpdateDescription(jid: string, description?: string) { return this.requireGroups().updateDescription(jid, description) }
-  groupUpdatePicture(jid: string, pictureUrl: string) { return this.requireGroups().updatePicture(jid, pictureUrl) }
-  async groupParticipantsUpdate(jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') { return [...await this.requireGroups().updateParticipants(jid, participants, action)] as any[] }
-  groupInviteCode(jid: string) { return this.requireGroups().inviteCode(jid) }
-  groupRevokeInvite(jid: string) { return this.requireGroups().revokeInvite(jid) }
-  async groupRequestParticipantsList(jid: string) { return [...await this.requireGroups().joinRequests(jid)] as any[] }
-  groupRequestParticipantsUpdate(jid: string, participants: string[], action: 'approve' | 'reject') { return this.requireGroups().updateJoinRequests(jid, participants, action) }
-  groupLeave(jid: string) { return this.requireGroups().leave(jid) }
-  groupSettingUpdate(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') { return this.requireGroups().updateSetting(jid, setting) }
-  groupJoinApprovalMode(jid: string, mode: 'on' | 'off') { return this.requireGroups().updateJoinApprovalMode(jid, mode) }
-  groupMetadata(jid: string) { return this.requireGroups().metadata(jid) }
+  groupCreate(subject: string, participants: string[]) {
+    return this.requireGroups().create(subject, participants)
+  }
+  groupUpdateSubject(jid: string, subject: string) {
+    return this.requireGroups().updateSubject(jid, subject)
+  }
+  groupUpdateDescription(jid: string, description?: string) {
+    return this.requireGroups().updateDescription(jid, description)
+  }
+  groupUpdatePicture(jid: string, pictureUrl: string) {
+    return this.requireGroups().updatePicture(jid, pictureUrl)
+  }
+  async groupParticipantsUpdate(jid: string, participants: string[], action: 'add' | 'remove' | 'promote' | 'demote') {
+    return [...(await this.requireGroups().updateParticipants(jid, participants, action))] as any[]
+  }
+  groupInviteCode(jid: string) {
+    return this.requireGroups().inviteCode(jid)
+  }
+  groupRevokeInvite(jid: string) {
+    return this.requireGroups().revokeInvite(jid)
+  }
+  async groupRequestParticipantsList(jid: string) {
+    return [...(await this.requireGroups().joinRequests(jid))] as any[]
+  }
+  groupRequestParticipantsUpdate(jid: string, participants: string[], action: 'approve' | 'reject') {
+    return this.requireGroups().updateJoinRequests(jid, participants, action)
+  }
+  groupLeave(jid: string) {
+    return this.requireGroups().leave(jid)
+  }
+  groupSettingUpdate(jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked') {
+    return this.requireGroups().updateSetting(jid, setting)
+  }
+  groupJoinApprovalMode(jid: string, mode: 'on' | 'off') {
+    return this.requireGroups().updateJoinApprovalMode(jid, mode)
+  }
+  groupMetadata(jid: string) {
+    return this.requireGroups().metadata(jid)
+  }
+  async groupProfilePicture(jid: string, forceRefresh = false) {
+    return this.profilePictures?.get(jid, forceRefresh)
+  }
 
   async resyncAppState() {
     if (!this.socket) throw new SendError(409, 'zapo_client_not_connected')
@@ -1008,7 +1038,10 @@ export class ClientZapo implements Client {
       const forceReplay = !!(payload.force_replay || payload.forceReplay)
       const days = payload.days ?? this.config.historyMaxAgeDays
       const task = this.historySyncTask.then(() => this.forwardStoredHistory(days, forceReplay))
-      this.historySyncTask = task.then(() => undefined, () => undefined)
+      this.historySyncTask = task.then(
+        () => undefined,
+        () => undefined,
+      )
       return { forwarded: await task }
     }
     const result = await this.socket.message.requestHistorySync({

@@ -84,13 +84,16 @@ export class ApiClient {
     })
   }
 
-  contacts(phone: string, cursor = '0', limit = 60): Promise<ContactDirectoryPage> {
+  contacts(phone: string, cursor = '0', limit = 20, search = ''): Promise<ContactDirectoryPage> {
     const query = new URLSearchParams({ cursor, limit: `${limit}` })
+    if (search.trim()) query.set('search', search.trim())
     return this.request<ContactDirectoryPage>(`/${encodeURIComponent(phone)}/contacts?${query}`)
   }
 
-  groups(phone: string): Promise<GroupPage> {
-    return this.request<GroupPage>(`/v15.0/${encodeURIComponent(phone)}/groups`)
+  groups(phone: string, cursor = '0', limit = 20, search = ''): Promise<GroupPage> {
+    const query = new URLSearchParams({ cursor, limit: `${limit}` })
+    if (search.trim()) query.set('search', search.trim())
+    return this.request<GroupPage>(`/v15.0/${encodeURIComponent(phone)}/groups?${query}`)
   }
 
   saveWebhooks(phone: string, webhooks: WebhookConfig[]): Promise<SessionConfig> {

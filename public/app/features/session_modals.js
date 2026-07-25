@@ -14,10 +14,10 @@ export const renderNewSessionModal = () => renderModal('new-session', 'Nova sess
       <div class="form-actions"><button class="btn" type="submit">${icon('plus')}Registrar sessão</button></div>
     </form>
   `, { subtitle: 'Motor Zapo' });
-export const renderMessageModal = (session) => renderModal('message-test', 'Testar mensagem', `
+export const renderMessageModal = (session, recipient = '') => renderModal('message-test', 'Testar mensagem', `
     <form class="stack" data-form="test-message">
       <input name="phone" type="hidden" value="${escapeHtml(sessionPhone(session))}">
-      <label class="field"><span>Destinatário</span><input name="to" inputmode="numeric" placeholder="55 DDD número" required></label>
+      <label class="field"><span>Destinatário</span><input name="to" value="${escapeHtml(recipient)}" placeholder="Telefone, LID ou ID do grupo" required></label>
       <label class="field"><span>Mensagem</span><textarea name="body" rows="5" required></textarea></label>
       <div class="form-actions"><button class="btn" type="submit">${icon('send')}Enviar teste</button></div>
     </form>

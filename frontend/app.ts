@@ -2,42 +2,33 @@ import { ApiClient, ApiError } from './core/api.js'
 import { digitsOnly, escapeHtml } from './core/html.js'
 import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
-import { sessionPhone } from './domain/session.js'
-import type {
-  ContactDirectoryItem,
-  GroupSummary,
-  QrBroadcast,
-  SessionConfig,
-  SessionTab,
-  WebhookConfig,
-} from './domain/types.js'
+import { isLegacySession, sessionPhone } from './domain/session.js'
+import type { ContactDirectoryItem, GroupSummary, QrBroadcast, SessionConfig, SessionTab, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
-import {
-  renderConfirmDeregisterModal,
-  renderConnectionModal,
-  renderMessageModal,
-  renderNewSessionModal,
-} from './features/session_modals.js'
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
 import { renderDashboard } from './pages/dashboard.js'
 import { renderSessionPage } from './pages/session.js'
+import { filterContacts, filterGroups } from './features/entities.js'
 
 const TOKEN_KEY = 'whatsappApiToken'
 const THEME_KEY = 'viperconnect_theme'
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed'
 const REFRESH_SECONDS = 15
+const PAGE_SIZE = 20
 
 type ModalState =
   | { type: 'new-session' }
-  | { type: 'connection', phone: string }
-  | { type: 'message', phone: string }
-  | { type: 'webhook', phone: string, index: number }
-  | { type: 'deregister', phone: string }
+  | { type: 'connection'; phone: string }
+  | { type: 'message'; phone: string; recipient?: string }
+  | { type: 'webhook'; phone: string; index: number }
+  | { type: 'deregister'; phone: string }
 
 const emptyContactState = () => ({
   items: [] as ContactDirectoryItem[],
   cursor: '0',
   hasMore: false,
+  totalCount: 0,
 })
 
 export class ViperConnectApp {
@@ -49,7 +40,13 @@ export class ViperConnectApp {
   private query = ''
   private statusFilter = 'all'
   private contacts = emptyContactState()
+  private contactsQuery = ''
+  private contactsVisibleLimit = PAGE_SIZE
   private groups: GroupSummary[] = []
+  private groupsCursor = '0'
+  private groupsHasMore = false
+  private groupsQuery = ''
+  private sessionVisibleLimit = PAGE_SIZE
   private loading = false
   private loadingSection = false
   private sectionError = ''
@@ -62,6 +59,8 @@ export class ViperConnectApp {
   private mobileOpen = false
   private toast = ''
   private refreshTimer?: number
+  private groupSearchTimer?: number
+  private contactSearchTimer?: number
 
   constructor(
     private readonly root: HTMLElement,
@@ -134,11 +133,14 @@ export class ViperConnectApp {
       this.render()
     } else if (action === 'refresh') {
       await this.loadSessions().catch(() => undefined)
+    } else if (action === 'load-more-sessions') {
+      this.sessionVisibleLimit += PAGE_SIZE
+      this.render()
     } else if (action === 'new-session') {
       this.modal = { type: 'new-session' }
       this.render()
     } else if (action === 'manage-session') {
-      this.openSession(phone)
+      await this.openSession(phone)
     } else if (action === 'session-tab') {
       await this.openSessionTab(actionElement.dataset.tab as SessionTab)
     } else if (action === 'connect-session') {
@@ -146,7 +148,7 @@ export class ViperConnectApp {
     } else if (action === 'request-connection') {
       await this.requestConnection(phone)
     } else if (action === 'test-message') {
-      this.modal = { type: 'message', phone }
+      this.modal = { type: 'message', phone, recipient: actionElement.dataset.recipient }
       this.render()
     } else if (action === 'deregister-session') {
       this.modal = { type: 'deregister', phone }
@@ -156,9 +158,25 @@ export class ViperConnectApp {
     } else if (action === 'reload-contacts') {
       await this.loadContacts(true)
     } else if (action === 'load-more-contacts') {
-      await this.loadContacts(false)
+      const target = this.contactsVisibleLimit + PAGE_SIZE
+      while (
+        filterContacts(this.contacts.items, this.contactsQuery).length < target
+        && this.contacts.hasMore
+      ) {
+        const previousCursor = this.contacts.cursor
+        const previousCount = this.contacts.items.length
+        await this.loadContacts(false)
+        if (
+          this.contacts.cursor === previousCursor
+          && this.contacts.items.length === previousCount
+        ) break
+      }
+      this.contactsVisibleLimit = target
+      this.render()
     } else if (action === 'reload-groups') {
-      await this.loadGroups()
+      await this.loadGroups(true)
+    } else if (action === 'load-more-groups') {
+      await this.loadGroups(false)
     } else if (action === 'new-webhook') {
       this.modal = { type: 'webhook', phone: this.selectedPhone, index: -1 }
       this.render()
@@ -171,6 +189,14 @@ export class ViperConnectApp {
       this.render()
     } else if (action === 'delete-webhook') {
       await this.deleteWebhook(Number(actionElement.dataset.webhookIndex))
+    } else if (action === 'toggle-tooltip') {
+      this.toggleTooltip(actionElement)
+    } else if (action === 'toggle-secret') {
+      this.toggleSecret(actionElement)
+    } else if (action === 'copy-secret') {
+      await this.copySecret(actionElement)
+    } else if (action === 'copy-value') {
+      await this.copyValue(actionElement)
     }
   }
 
@@ -197,13 +223,29 @@ export class ViperConnectApp {
     const input = event.target as HTMLInputElement | HTMLSelectElement
     if (input.dataset.filter === 'query') {
       this.query = input.value
+      this.sessionVisibleLimit = PAGE_SIZE
       this.render()
       const next = this.root.querySelector<HTMLInputElement>('[data-filter="query"]')
       next?.focus()
       next?.setSelectionRange(next.value.length, next.value.length)
     } else if (input.dataset.filter === 'status') {
       this.statusFilter = input.value
+      this.sessionVisibleLimit = PAGE_SIZE
       this.render()
+    } else if (input.dataset.filter === 'contacts-query') {
+      this.contactsQuery = input.value
+      this.renderAndRestoreFilter('contacts-query')
+      if (this.contactSearchTimer) window.clearTimeout(this.contactSearchTimer)
+      this.contactSearchTimer = window.setTimeout(() => {
+        void this.loadContacts(true)
+      }, 300)
+    } else if (input.dataset.filter === 'groups-query') {
+      this.groupsQuery = input.value
+      this.renderAndRestoreFilter('groups-query')
+      if (this.groupSearchTimer) window.clearTimeout(this.groupSearchTimer)
+      this.groupSearchTimer = window.setTimeout(() => {
+        void this.loadGroups(true)
+      }, 300)
     }
   }
 
@@ -269,14 +311,21 @@ export class ViperConnectApp {
     if (label) label.textContent = `${this.refreshIn}s`
   }
 
-  private openSession(phone: string): void {
-    if (!this.findSession(phone)) return
+  private async openSession(phone: string): Promise<void> {
+    const session = this.findSession(phone)
+    if (!session) return
     this.selectedPhone = phone
     this.tab = 'overview'
     this.contacts = emptyContactState()
+    this.contactsQuery = ''
+    this.contactsVisibleLimit = PAGE_SIZE
     this.groups = []
+    this.groupsCursor = '0'
+    this.groupsHasMore = false
+    this.groupsQuery = ''
     this.sectionError = ''
     this.render()
+    if (!isLegacySession(session)) await this.loadContacts(true)
   }
 
   private async openSessionTab(tab: SessionTab): Promise<void> {
@@ -284,26 +333,27 @@ export class ViperConnectApp {
     this.sectionError = ''
     this.render()
     if (tab === 'contacts' && !this.contacts.items.length) await this.loadContacts(true)
-    if (tab === 'groups' && !this.groups.length) await this.loadGroups()
+    if (tab === 'groups' && !this.groups.length) await this.loadGroups(true)
   }
 
   private async loadContacts(reset: boolean): Promise<void> {
     if (!this.selectedPhone || this.loadingSection) return
-    if (reset) this.contacts = emptyContactState()
+    if (reset) {
+      this.contacts = emptyContactState()
+      this.contactsVisibleLimit = PAGE_SIZE
+    }
     this.loadingSection = true
     this.sectionError = ''
     this.render()
     try {
-      const page = await this.api.contacts(
-        this.selectedPhone,
-        reset ? '0' : this.contacts.cursor,
-      )
+      const page = await this.api.contacts(this.selectedPhone, reset ? '0' : this.contacts.cursor, PAGE_SIZE, this.contactsQuery)
       const byId = new Map(this.contacts.items.map((contact) => [contact.user_id, contact]))
       page.contacts.forEach((contact) => byId.set(contact.user_id, contact))
       this.contacts = {
         items: [...byId.values()],
         cursor: page.next_cursor,
         hasMore: page.has_more,
+        totalCount: page.total_count,
       }
     } catch (error) {
       this.sectionError = this.messageFor(error)
@@ -313,14 +363,23 @@ export class ViperConnectApp {
     }
   }
 
-  private async loadGroups(): Promise<void> {
+  private async loadGroups(reset: boolean): Promise<void> {
     if (!this.selectedPhone || this.loadingSection) return
+    if (reset) {
+      this.groups = []
+      this.groupsCursor = '0'
+      this.groupsHasMore = false
+    }
     this.loadingSection = true
     this.sectionError = ''
     this.render()
     try {
-      const page = await this.api.groups(this.selectedPhone)
-      this.groups = Array.isArray(page.groups) ? page.groups : []
+      const page = await this.api.groups(this.selectedPhone, reset ? '0' : this.groupsCursor, PAGE_SIZE, this.groupsQuery)
+      const byId = new Map(this.groups.map((group) => [group.id || group.jid || '', group]))
+      page.groups.forEach((group) => byId.set(group.id || group.jid || '', group))
+      this.groups = [...byId.values()]
+      this.groupsCursor = `${page.paging?.cursors?.after || '0'}`
+      this.groupsHasMore = page.paging?.has_more === true || this.groupsCursor !== '0'
     } catch (error) {
       this.sectionError = this.messageFor(error)
     } finally {
@@ -504,27 +563,35 @@ export class ViperConnectApp {
     const selected = this.findSession(this.selectedPhone)
     const content = selected
       ? renderSessionPage({
-        session: selected,
-        tab: this.tab,
-        contacts: this.contacts.items,
-        contactsHasMore: this.contacts.hasMore,
-        groups: this.groups,
-        loadingSection: this.loadingSection,
-        sectionError: this.sectionError,
-      })
+          session: selected,
+          tab: this.tab,
+          contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
+          contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
+          contactCount: this.contacts.totalCount,
+          contactsQuery: this.contactsQuery,
+          groups: filterGroups(this.groups, this.groupsQuery),
+          groupsHasMore: this.groupsHasMore,
+          groupsQuery: this.groupsQuery,
+          loadingSection: this.loadingSection,
+          sectionError: this.sectionError,
+        })
       : renderDashboard({
-        sessions: this.sessions,
-        query: this.query,
-        status: this.statusFilter,
-        loading: this.loading,
-        refreshIn: this.refreshIn,
-      })
+          sessions: this.sessions,
+          query: this.query,
+          status: this.statusFilter,
+          loading: this.loading,
+          refreshIn: this.refreshIn,
+          visibleLimit: this.sessionVisibleLimit,
+        })
 
-    this.root.innerHTML = renderLayout({
-      content,
-      collapsed: this.collapsed,
-      mobileOpen: this.mobileOpen,
-    }) + this.renderModal() + (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
+    this.root.innerHTML =
+      renderLayout({
+        content,
+        collapsed: this.collapsed,
+        mobileOpen: this.mobileOpen,
+      }) +
+      this.renderModal() +
+      (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
   }
 
   private renderModal(): string {
@@ -535,12 +602,13 @@ export class ViperConnectApp {
     if (this.modal.type === 'connection') {
       return renderConnectionModal(session, this.connectionEvent, this.connectionLoading)
     }
-    if (this.modal.type === 'message') return renderMessageModal(session)
+    if (this.modal.type === 'message') return renderMessageModal(session, this.modal.recipient)
     if (this.modal.type === 'deregister') return renderConfirmDeregisterModal(session)
     const webhooks = session.webhooks || []
-    const webhook: WebhookConfig = this.modal.index >= 0
-      ? webhooks[this.modal.index] || { id: 'default' }
-      : { id: webhooks.length ? `webhook-${webhooks.length + 1}` : 'default', enabled: true }
+    const webhook: WebhookConfig =
+      this.modal.index >= 0
+        ? webhooks[this.modal.index] || { id: 'default' }
+        : { id: webhooks.length ? `webhook-${webhooks.length + 1}` : 'default', enabled: true }
     return renderWebhookModal(webhook, this.modal.index)
   }
 
@@ -562,6 +630,65 @@ export class ViperConnectApp {
         this.render()
       }
     }, 4_000)
+  }
+
+  private renderAndRestoreFilter(filter: string): void {
+    this.render()
+    const input = this.root.querySelector<HTMLInputElement>(`[data-filter="${filter}"]`)
+    input?.focus()
+    input?.setSelectionRange(input.value.length, input.value.length)
+  }
+
+  private toggleTooltip(button: HTMLElement): void {
+    const wasOpen = button.classList.contains('info-tooltip--open')
+    this.root.querySelectorAll<HTMLElement>('.info-tooltip--open').forEach((item) => {
+      item.classList.remove('info-tooltip--open')
+      item.setAttribute('aria-expanded', 'false')
+    })
+    if (!wasOpen) {
+      button.classList.add('info-tooltip--open')
+      button.setAttribute('aria-expanded', 'true')
+    }
+  }
+
+  private toggleSecret(button: HTMLElement): void {
+    const input = button.closest('.secret-field')?.querySelector<HTMLInputElement>('input')
+    if (!input) return
+    const visible = input.type === 'password'
+    input.type = visible ? 'text' : 'password'
+    button.setAttribute('aria-pressed', `${visible}`)
+    button.setAttribute('aria-label', `${visible ? 'Ocultar' : 'Exibir'} ${input.name}`)
+  }
+
+  private async copySecret(button: HTMLElement): Promise<void> {
+    const input = button.closest('.secret-field')?.querySelector<HTMLInputElement>('input')
+    if (!input) return
+    await this.copyText(input.value)
+    this.showToast('Valor copiado.')
+  }
+
+  private async copyValue(button: HTMLElement): Promise<void> {
+    const value = button.dataset.value || ''
+    if (!value) return
+    await this.copyText(value)
+    this.showToast(`${button.dataset.copyLabel || 'Valor'} copiado.`)
+  }
+
+  private async copyText(value: string): Promise<void> {
+    try {
+      if (!navigator.clipboard) throw new Error('clipboard_unavailable')
+      await navigator.clipboard.writeText(value)
+    } catch {
+      const input = document.createElement('textarea')
+      input.value = value
+      input.setAttribute('readonly', '')
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.append(input)
+      input.select()
+      document.execCommand('copy')
+      input.remove()
+    }
   }
 
   private startRefreshTimer(): void {

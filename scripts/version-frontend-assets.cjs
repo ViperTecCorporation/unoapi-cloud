@@ -36,7 +36,7 @@ if (require.main === module) {
   versionFrontendAssets({
     appRoot: path.join(projectRoot, 'public', 'app'),
     indexFile: path.join(projectRoot, 'public', 'index.html'),
-    version: pkg.version,
+    version: process.env.FRONTEND_ASSET_VERSION || pkg.version,
   })
 }
 

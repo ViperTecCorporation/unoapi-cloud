@@ -38,37 +38,46 @@ describe('incoming job', () => {
       provider: 'zapo',
       server: 'server_1',
       outgoingIdempotency: false,
-      webhooks: [{
-        ...defaultConfig.webhooks[0],
-        sendUpdateMessages: true,
-      }],
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendUpdateMessages: true,
+        },
+      ],
     }))
 
-    await job.consume('5566999999999', {
-      id: `uno-${type}-failed`,
-      payload: {
-        to: '5511999999999',
-        type,
-        [type]: {},
+    await job.consume(
+      '5566999999999',
+      {
+        id: `uno-${type}-failed`,
+        payload: {
+          to: '5511999999999',
+          type,
+          [type]: {},
+        },
+        options: { endpoint: 'messages' },
       },
-      options: { endpoint: 'messages' },
-    }, { countRetries: 1, maxRetries: 5 })
+      { countRetries: 1, maxRetries: 5 },
+    )
 
-    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
-      .entry[0].changes[0].value.statuses[0]
-    expect(status).toEqual(expect.objectContaining({
-      id: `uno-${type}-failed`,
-      recipient_id: '5511999999999',
-      status: 'failed',
-      errors: [expect.objectContaining({
-        code: 400,
-        title: `zapo_${type}_failed`,
-        error_data: expect.objectContaining({
-          provider: 'zapo',
-          message_type: type,
-        }),
-      })],
-    }))
+    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2].entry[0].changes[0].value.statuses[0]
+    expect(status).toEqual(
+      expect.objectContaining({
+        id: `uno-${type}-failed`,
+        recipient_id: '5511999999999',
+        status: 'failed',
+        errors: [
+          expect.objectContaining({
+            code: 400,
+            title: `zapo_${type}_failed`,
+            error_data: expect.objectContaining({
+              provider: 'zapo',
+              message_type: type,
+            }),
+          }),
+        ],
+      }),
+    )
   })
 
   test('retries a native Zapo error before emitting its failed webhook', async () => {
@@ -89,20 +98,14 @@ describe('incoming job', () => {
       payload: { to: '5511999999999', type: 'text', text: { body: 'Oi' } },
     }
 
-    await expect(job.consume(
-      '5566999999999',
-      data,
-      { countRetries: 1, maxRetries: 5 },
-    )).rejects.toThrow('socket temporarily unavailable')
+    await expect(job.consume('5566999999999', data, { countRetries: 1, maxRetries: 5 })).rejects.toThrow('socket temporarily unavailable')
     expect(outgoing.sendHttp).not.toHaveBeenCalled()
 
-    await expect(job.consume(
-      '5566999999999',
-      data,
-      { countRetries: 5, maxRetries: 5 },
-    )).resolves.toEqual(expect.objectContaining({
-      error: expect.any(Object),
-    }))
+    await expect(job.consume('5566999999999', data, { countRetries: 5, maxRetries: 5 })).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.any(Object),
+      }),
+    )
     expect(outgoing.sendHttp).toHaveBeenCalledWith(
       '5566999999999',
       expect.any(Object),
@@ -124,25 +127,32 @@ describe('incoming job', () => {
       webhooks: [{ ...defaultConfig.webhooks[0] }],
     }))
 
-    await job.consume('5566999999999', {
-      payload: {
-        message_id: 'uno-original-message',
-        status: 'read',
+    await job.consume(
+      '5566999999999',
+      {
+        payload: {
+          message_id: 'uno-original-message',
+          status: 'read',
+        },
       },
-    }, { countRetries: 1, maxRetries: 5 })
+      { countRetries: 1, maxRetries: 5 },
+    )
 
-    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
-      .entry[0].changes[0].value.statuses[0]
-    expect(status).toEqual(expect.objectContaining({
-      id: 'uno-original-message',
-      recipient_id: '5566999999999',
-      status: 'failed',
-      errors: [expect.objectContaining({
-        error_data: expect.objectContaining({
-          message_type: 'status_read',
-        }),
-      })],
-    }))
+    const status = (outgoing.sendHttp as jest.Mock).mock.calls[0][2].entry[0].changes[0].value.statuses[0]
+    expect(status).toEqual(
+      expect.objectContaining({
+        id: 'uno-original-message',
+        recipient_id: '5566999999999',
+        status: 'failed',
+        errors: [
+          expect.objectContaining({
+            error_data: expect.objectContaining({
+              message_type: 'status_read',
+            }),
+          }),
+        ],
+      }),
+    )
   })
 
   test('keeps the queue Uno id associated directly with the real provider id', async () => {
@@ -160,7 +170,7 @@ describe('incoming job', () => {
       server: 'server_1',
       outgoingIdempotency: false,
       webhooks: [],
-      getStore: async () => ({ dataStore } as any),
+      getStore: async () => ({ dataStore }) as any,
     }))
 
     await job.consume('5566999999999', {
@@ -169,11 +179,7 @@ describe('incoming job', () => {
       options: { endpoint: 'messages' },
     })
 
-    expect(incoming.send).toHaveBeenCalledWith(
-      '5566999999999',
-      expect.any(Object),
-      expect.objectContaining({ unoMessageId: 'uno-request-1' }),
-    )
+    expect(incoming.send).toHaveBeenCalledWith('5566999999999', expect.any(Object), expect.objectContaining({ unoMessageId: 'uno-request-1' }))
     expect(dataStore.setUnoId).toHaveBeenCalledWith('3EB0ZAPO', 'uno-request-1')
     expect(dataStore.setUnoId).not.toHaveBeenCalledWith('uno-request-1', 'uno-request-1')
   })
@@ -192,13 +198,15 @@ describe('incoming job', () => {
       provider: 'zapo',
       server: 'server_1',
       outgoingIdempotency: false,
-      webhooks: [{
-        ...defaultConfig.webhooks[0],
-        sendNewMessages: true,
-        url: '',
-        urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
-      }],
-      getStore: async () => ({ dataStore } as any),
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+        },
+      ],
+      getStore: async () => ({ dataStore }) as any,
     }))
 
     await job.consume('5566999554300', {
@@ -212,12 +220,8 @@ describe('incoming job', () => {
     })
 
     const payloads = (outgoing.sendHttp as jest.Mock).mock.calls.map((call) => call[2])
-    expect(payloads.some((webhook) => (
-      webhook?.entry?.[0]?.changes?.[0]?.value?.messages?.length
-    ))).toBe(false)
-    expect(payloads.some((webhook) => (
-      webhook?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.status === 'sent'
-    ))).toBe(true)
+    expect(payloads.some((webhook) => webhook?.entry?.[0]?.changes?.[0]?.value?.messages?.length)).toBe(false)
+    expect(payloads.some((webhook) => webhook?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.status === 'sent')).toBe(true)
   })
 
   test('dispatches provider contact operations without going through message sending', async () => {
@@ -225,11 +229,13 @@ describe('incoming job', () => {
     incoming.contacts = jest.fn().mockResolvedValue([{ input: '5566', status: 'valid' }])
     const job = new IncomingJob(incoming, mock<Outgoing>(), async () => ({ ...defaultConfig, server: 'server_1' }))
 
-    await expect(job.consume('556600000000', {
-      type: 'provider_operation',
-      action: 'contacts',
-      args: [['5566']],
-    })).resolves.toEqual([{ input: '5566', status: 'valid' }])
+    await expect(
+      job.consume('556600000000', {
+        type: 'provider_operation',
+        action: 'contacts',
+        args: [['5566']],
+      }),
+    ).resolves.toEqual([{ input: '5566', status: 'valid' }])
     expect(incoming.contacts).toHaveBeenCalledWith('556600000000', ['5566'])
     expect(incoming.send).not.toHaveBeenCalled()
   })
@@ -238,9 +244,13 @@ describe('incoming job', () => {
     const incoming = mock<Incoming>()
     incoming.requestPairingCode = jest.fn().mockResolvedValue('1234-5678')
     const job = new IncomingJob(incoming, mock<Outgoing>(), async () => ({ ...defaultConfig, server: 'server_1' }))
-    await expect(job.consume('5566', {
-      type: 'provider_operation', action: 'requestPairingCode', args: [],
-    })).resolves.toBe('1234-5678')
+    await expect(
+      job.consume('5566', {
+        type: 'provider_operation',
+        action: 'requestPairingCode',
+        args: [],
+      }),
+    ).resolves.toBe('1234-5678')
   })
 
   test('dispatches group management RPC payloads to the local incoming provider', async () => {
@@ -250,29 +260,42 @@ describe('incoming job', () => {
       ...defaultConfig,
       server: 'server_1',
     })
-    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([
-      { jid: '556699999999@s.whatsapp.net', status: '200' },
-    ])
+    incoming.groupParticipantsUpdate = jest.fn().mockResolvedValue([{ jid: '556699999999@s.whatsapp.net', status: '200' }])
     const job = new IncomingJob(incoming, outgoing, getConfigTest)
 
-    await expect(job.consume('556600000000', {
-      type: 'group_management',
-      action: 'groupParticipantsUpdate',
-      args: [
-        '120363040468224422@g.us',
-        ['556699999999@s.whatsapp.net'],
-        'remove',
-      ],
-    })).resolves.toEqual([
-      { jid: '556699999999@s.whatsapp.net', status: '200' },
-    ])
+    await expect(
+      job.consume('556600000000', {
+        type: 'group_management',
+        action: 'groupParticipantsUpdate',
+        args: ['120363040468224422@g.us', ['556699999999@s.whatsapp.net'], 'remove'],
+      }),
+    ).resolves.toEqual([{ jid: '556699999999@s.whatsapp.net', status: '200' }])
 
     expect(incoming.groupParticipantsUpdate).toHaveBeenCalledWith(
       '556600000000',
       '120363040468224422@g.us',
       ['556699999999@s.whatsapp.net'],
-      'remove'
+      'remove',
     )
+  })
+
+  test('dispatches group profile picture lookups to the local provider', async () => {
+    const incoming = mock<Incoming>()
+    const job = new IncomingJob(incoming, mock<Outgoing>(), async () => ({ ...defaultConfig, server: 'server_1' }))
+    incoming.groupProfilePicture = jest.fn().mockResolvedValue({
+      url: 'https://cdn.example/group.jpg',
+    })
+
+    await expect(
+      job.consume('556600000000', {
+        type: 'group_management',
+        action: 'groupProfilePicture',
+        args: ['120363040468224422@g.us', false],
+      }),
+    ).resolves.toEqual({
+      url: 'https://cdn.example/group.jpg',
+    })
+    expect(incoming.groupProfilePicture).toHaveBeenCalledWith('556600000000', '120363040468224422@g.us', false)
   })
 
   test('rejects unknown group management action', async () => {
@@ -284,11 +307,13 @@ describe('incoming job', () => {
     })
     const job = new IncomingJob(incoming, outgoing, getConfigTest)
 
-    await expect(job.consume('556600000000', {
-      type: 'group_management',
-      action: 'groupDestroyEverything',
-      args: [],
-    })).rejects.toThrow('Unknown group management action groupDestroyEverything')
+    await expect(
+      job.consume('556600000000', {
+        type: 'group_management',
+        action: 'groupDestroyEverything',
+        args: [],
+      }),
+    ).rejects.toThrow('Unknown group management action groupDestroyEverything')
   })
 
   test('returns empty group invite code when provider reports not authorized', async () => {
@@ -303,16 +328,15 @@ describe('incoming job', () => {
     incoming.groupInviteCode = jest.fn().mockRejectedValue(error)
     const job = new IncomingJob(incoming, outgoing, getConfigTest)
 
-    await expect(job.consume('556600000000', {
-      type: 'group_management',
-      action: 'groupInviteCode',
-      args: ['120363040468224422@g.us'],
-    })).resolves.toBeUndefined()
+    await expect(
+      job.consume('556600000000', {
+        type: 'group_management',
+        action: 'groupInviteCode',
+        args: ['120363040468224422@g.us'],
+      }),
+    ).resolves.toBeUndefined()
 
-    expect(incoming.groupInviteCode).toHaveBeenCalledWith(
-      '556600000000',
-      '120363040468224422@g.us'
-    )
+    expect(incoming.groupInviteCode).toHaveBeenCalledWith('556600000000', '120363040468224422@g.us')
   })
 
   test('emits meta-like group webhook when provider success has no message id', async () => {
@@ -443,7 +467,7 @@ describe('incoming job', () => {
           sendUpdateMessages: true,
         },
       ],
-      getStore: async () => ({ dataStore } as any),
+      getStore: async () => ({ dataStore }) as any,
     })
     const failedStatus = {
       object: 'whatsapp_business_account',
@@ -546,7 +570,7 @@ describe('incoming job', () => {
           sendUpdateMessages: true,
         },
       ],
-      getStore: async () => ({ dataStore } as any),
+      getStore: async () => ({ dataStore }) as any,
     })
     const failedStatus = {
       object: 'whatsapp_business_account',

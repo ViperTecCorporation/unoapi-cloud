@@ -1,12 +1,4 @@
-export type SessionStatus =
-  | 'online'
-  | 'offline'
-  | 'disconnected'
-  | 'connecting'
-  | 'standby'
-  | 'restart_required'
-  | 'forwarder'
-  | string
+export type SessionStatus = 'online' | 'offline' | 'disconnected' | 'connecting' | 'standby' | 'restart_required' | 'forwarder' | string
 
 export type ConnectionType = 'qrcode' | 'pairing_code'
 
@@ -88,6 +80,7 @@ export interface ContactDirectoryPage {
   contacts: ContactDirectoryItem[]
   next_cursor: string
   has_more: boolean
+  total_count: number
 }
 
 export interface GroupSummary {
@@ -104,6 +97,13 @@ export interface GroupSummary {
 export interface GroupPage {
   phone: string
   groups: GroupSummary[]
+  paging?: {
+    cursors?: {
+      before?: string | null
+      after?: string | null
+    }
+    has_more?: boolean
+  }
 }
 
 export interface QrBroadcast {

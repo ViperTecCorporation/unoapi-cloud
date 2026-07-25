@@ -18,7 +18,14 @@ describe('frontend core', () => {
     const fetcher = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: `${url}`, init })
       if (`${url}`.endsWith('/sessions')) return new Response(JSON.stringify({ data: [{ phone: '5566' }] }))
-      if (`${url}`.includes('/contacts?')) return new Response(JSON.stringify({ contacts: [], next_cursor: '0', has_more: false }))
+      if (`${url}`.includes('/contacts?')) {
+        return new Response(JSON.stringify({
+          contacts: [],
+          next_cursor: '0',
+          has_more: false,
+          total_count: 0,
+        }))
+      }
       if (`${url}`.endsWith('/groups')) return new Response(JSON.stringify({ phone: '5566', groups: [] }))
       if (`${url}`.endsWith('/deregister')) return new Response(null, { status: 204 })
       return new Response(JSON.stringify({ phone: '5566', status: 'online' }))
@@ -39,7 +46,7 @@ describe('frontend core', () => {
     expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe('Bearer secret')
     expect(calls.map((call) => call.url)).toEqual(expect.arrayContaining([
       'https://uno.example/sessions',
-      'https://uno.example/v15.0/5566/groups',
+      'https://uno.example/v15.0/5566/groups?cursor=0&limit=20',
       'https://uno.example/v15.0/5566/deregister',
     ]))
   })

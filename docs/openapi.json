@@ -520,6 +520,35 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Deslocamento devolvido em paging.cursors.after pela página anterior"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Pesquisa por nome ou JID do grupo"
           }
         ],
         "responses": {
@@ -881,6 +910,15 @@
               "maximum": 200,
               "default": 100
             }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Pesquisa por nome, telefone, username ou LID"
           }
         ],
         "responses": {
@@ -2108,7 +2146,8 @@
         "required": [
           "contacts",
           "next_cursor",
-          "has_more"
+          "has_more",
+          "total_count"
         ],
         "properties": {
           "contacts": {
@@ -2134,6 +2173,14 @@
                 "push_name": {
                   "type": "string"
                 },
+                "username": {
+                  "type": "string",
+                  "description": "Username opcional sincronizado pela Zapo"
+                },
+                "picture": {
+                  "type": "string",
+                  "format": "uri"
+                },
                 "last_updated_ms": {
                   "type": "integer",
                   "format": "int64"
@@ -2146,6 +2193,10 @@
           },
           "has_more": {
             "type": "boolean"
+          },
+          "total_count": {
+            "type": "integer",
+            "description": "Quantidade total de contatos armazenados no cache da sessão"
           }
         }
       },
@@ -2263,11 +2314,39 @@
                 "jid": {
                   "type": "string"
                 },
+                "id": {
+                  "type": "string"
+                },
                 "subject": {
                   "type": "string"
                 },
+                "picture": {
+                  "type": "string",
+                  "format": "uri"
+                },
                 "participantsCount": {
                   "type": "integer"
+                },
+                "participants_count": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "paging": {
+            "type": "object",
+            "properties": {
+              "cursors": {
+                "type": "object",
+                "properties": {
+                  "before": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "after": {
+                    "type": "string",
+                    "nullable": true
+                  }
                 }
               }
             }

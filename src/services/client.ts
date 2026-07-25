@@ -5,7 +5,7 @@ import { Listener } from './listener'
 
 export const clients: Map<string, Client> = new Map()
 
-export type ContactStatus = 'valid' | 'processing' | 'invalid'| 'failed'
+export type ContactStatus = 'valid' | 'processing' | 'invalid' | 'failed'
 
 export interface Contact {
   wa_id: string | undefined
@@ -18,17 +18,7 @@ export interface Contact {
 }
 
 export interface getClient {
-  ({
-    phone,
-    listener,
-    getConfig,
-    onNewLogin,
-  }: {
-    phone: string
-    listener: Listener
-    getConfig: getConfig
-    onNewLogin: OnNewLogin
-  }): Promise<Client>
+  ({ phone, listener, getConfig, onNewLogin }: { phone: string; listener: Listener; getConfig: getConfig; onNewLogin: OnNewLogin }): Promise<Client>
 }
 
 export class ConnectionInProgress extends Error {
@@ -41,7 +31,7 @@ export interface Client {
   connect(time: number): Promise<void>
 
   disconnect(options?: { preserveStatus?: boolean }): Promise<void>
-  
+
   logout(): Promise<void>
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,12 +58,9 @@ export interface Client {
     force_replay?: boolean
     forceReplay?: boolean
     days?: number
-  }): Promise<{ request_id?: string, forwarded?: number }>
+  }): Promise<{ request_id?: string; forwarded?: number }>
 
-  sendPasskeyResponse?(payload: {
-    credentialId: Buffer
-    assertionJson: Buffer | string
-  }): Promise<Response>
+  sendPasskeyResponse?(payload: { credentialId: Buffer; assertionJson: Buffer | string }): Promise<Response>
 
   sendPasskeyConfirmation?(): Promise<Response>
 
@@ -108,4 +95,15 @@ export interface Client {
   groupJoinApprovalMode?(jid: string, mode: 'on' | 'off'): Promise<void>
 
   groupMetadata?(jid: string): Promise<any>
+
+  groupProfilePicture?(
+    jid: string,
+    forceRefresh?: boolean,
+  ): Promise<
+    | {
+        url: string
+        metadata?: Record<string, string>
+      }
+    | undefined
+  >
 }

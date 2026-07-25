@@ -12,9 +12,6 @@ export const renderLayout = ({ content, collapsed, mobileOpen }: LayoutOptions):
       <div class="brand">
         <img class="brand__logo" src="/logos/viperconnect_icon.svg" alt="ViperConnect">
         <span class="brand__copy"><strong>ViperConnect</strong><small>WhatsApp Hub</small></span>
-        <button class="btn btn--icon btn--ghost sidebar__toggle" type="button" data-action="toggle-sidebar" aria-label="${collapsed ? 'Expandir menu' : 'Recolher menu'}">
-          ${icon(collapsed ? 'expand' : 'collapse')}
-        </button>
       </div>
       <nav class="sidebar__nav">
         <button class="nav-item nav-item--active" type="button" data-action="go-dashboard" title="Dashboard">
@@ -36,7 +33,10 @@ export const renderLayout = ({ content, collapsed, mobileOpen }: LayoutOptions):
         </button>
         <div class="workspace">
           <span class="workspace__icon">${icon('message')}</span>
-          <span><strong>Viper Tec</strong><small>Produção</small></span>
+          <span class="workspace__copy"><strong>Viper Tec</strong><small>Produção</small></span>
+          <button class="btn btn--icon btn--ghost sidebar__toggle" type="button" data-action="toggle-sidebar" aria-label="${collapsed ? 'Expandir menu' : 'Recolher menu'}">
+            ${icon(collapsed ? 'expand' : 'collapse')}
+          </button>
         </div>
       </div>
     </aside>
@@ -57,11 +57,14 @@ export const renderLayout = ({ content, collapsed, mobileOpen }: LayoutOptions):
 export const renderLogin = (error = ''): string => `
   <main class="login-shell">
     <section class="login-panel">
-      <img class="login-panel__logo" src="/logos/viperconnect_logo.svg" alt="ViperConnect">
+      <div class="login-brand" aria-label="ViperConnect">
+        <img class="login-brand__icon" src="/logos/viperconnect_icon.svg" alt="">
+        <strong>ViperConnect</strong>
+      </div>
       <div>
         <span class="eyebrow">Painel de gerenciamento</span>
         <h1>Acesse suas sessões</h1>
-        <p class="muted">Informe o token configurado na UnoAPI.</p>
+        <p class="muted">Informe o token configurado no ViperConnect.</p>
       </div>
       <form class="stack" data-form="login">
         <label class="field">

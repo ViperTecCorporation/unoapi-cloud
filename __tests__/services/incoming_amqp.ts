@@ -61,6 +61,7 @@ describe('service incoming amqp', () => {
     })
     amqpRpcMock.mockResolvedValueOnce({ id: '120363040468224422@g.us', subject: 'Equipe Comercial' })
     amqpRpcMock.mockResolvedValueOnce('abc123')
+    amqpRpcMock.mockResolvedValueOnce({ url: 'https://cdn.example/group.jpg' })
     const incoming = new IncomingAmqp(getConfigTest)
 
     await expect(incoming.groupCreate(phone, 'Equipe Comercial', ['556699999999@s.whatsapp.net'])).resolves.toEqual({
@@ -68,6 +69,9 @@ describe('service incoming amqp', () => {
       subject: 'Equipe Comercial',
     })
     await expect(incoming.groupInviteCode(phone, '120363040468224422@g.us')).resolves.toEqual('abc123')
+    await expect(incoming.groupProfilePicture(phone, '120363040468224422@g.us')).resolves.toEqual({
+      url: 'https://cdn.example/group.jpg',
+    })
 
     expect(amqpRpcMock).toHaveBeenNthCalledWith(
       1,
@@ -83,7 +87,7 @@ describe('service incoming amqp', () => {
         type: 'direct',
         priority: 5,
         maxRetries: 0,
-      }
+      },
     )
     expect(amqpRpcMock).toHaveBeenNthCalledWith(
       2,
@@ -99,7 +103,23 @@ describe('service incoming amqp', () => {
         type: 'direct',
         priority: 5,
         maxRetries: 0,
-      }
+      },
+    )
+    expect(amqpRpcMock).toHaveBeenNthCalledWith(
+      3,
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      `${UNOAPI_QUEUE_INCOMING}.server_1.zapo`,
+      phone,
+      {
+        type: 'group_management',
+        action: 'groupProfilePicture',
+        args: ['120363040468224422@g.us', false],
+      },
+      {
+        type: 'direct',
+        priority: 5,
+        maxRetries: 0,
+      },
     )
   })
 
@@ -125,11 +145,13 @@ describe('service incoming amqp', () => {
       provider: 'baileys',
     }))
 
-    await expect(incoming.send('5566', {
-      type: 'text',
-      to: '5577',
-      text: { body: 'teste' },
-    })).rejects.toThrow('baileys_provider_disabled_deregister_required')
+    await expect(
+      incoming.send('5566', {
+        type: 'text',
+        to: '5577',
+        text: { body: 'teste' },
+      }),
+    ).rejects.toThrow('baileys_provider_disabled_deregister_required')
     expect(amqpPublishMock).not.toHaveBeenCalled()
   })
 

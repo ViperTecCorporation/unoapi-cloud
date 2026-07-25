@@ -18,6 +18,7 @@ describe('contacts directory route', () => {
       ],
       next_cursor: '0',
       has_more: false,
+      total_count: 1,
     }
     const directory: ContactDirectory = {
       list: jest.fn().mockResolvedValue(page),
@@ -28,7 +29,11 @@ describe('contacts directory route', () => {
 
     const response = await request(app).get('/5566/contacts?limit=20').expect(200)
 
-    expect(directory.list).toHaveBeenCalledWith('5566', { cursor: undefined, limit: 20 })
+    expect(directory.list).toHaveBeenCalledWith('5566', {
+      cursor: undefined,
+      limit: 20,
+      search: undefined,
+    })
     expect(response.body).toEqual(page)
   })
 })

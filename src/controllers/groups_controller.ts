@@ -1,6 +1,17 @@
 import { Request, Response } from 'express'
 import { UNOAPI_META_GROUPS_ENABLED } from '../defaults'
-import { getContactInfo, getContactName, getGroup, getLidForPn, getPnForLid, getProfilePicture, redisKeys, BASE_KEY, setGroup, redisSetIfNotExists } from '../services/redis'
+import {
+  getContactInfo,
+  getContactName,
+  getGroup,
+  getLidForPn,
+  getPnForLid,
+  getProfilePicture,
+  redisKeys,
+  BASE_KEY,
+  setGroup,
+  redisSetIfNotExists,
+} from '../services/redis'
 import { normalizeGroupId, normalizeParticipantId } from '../services/transformer'
 import { Incoming } from '../services/incoming'
 import { Outgoing } from '../services/outgoing'
@@ -51,16 +62,18 @@ const normalizeParticipantPhoneForResponse = (rawJid?: string): string => {
 const participantInputValue = (participant?: any): string => {
   if (typeof participant === 'string' || typeof participant === 'number') return `${participant}`.trim()
   if (!participant || typeof participant !== 'object') return ''
-  return firstNonEmptyString(
-    participant.wa_id,
-    participant.phone_number,
-    participant.phoneNumber,
-    participant.pn,
-    participant.jid,
-    participant.id,
-    participant.user_id,
-    participant.lid,
-  ) || ''
+  return (
+    firstNonEmptyString(
+      participant.wa_id,
+      participant.phone_number,
+      participant.phoneNumber,
+      participant.pn,
+      participant.jid,
+      participant.id,
+      participant.user_id,
+      participant.lid,
+    ) || ''
+  )
 }
 
 const participantInputCandidates = (participant?: any): string[] => {
@@ -75,20 +88,17 @@ const participantInputCandidates = (participant?: any): string[] => {
     participant.phone_number,
     participant.phoneNumber,
     participant.pn,
-  ].map((value) => `${value || ''}`.trim()).filter(Boolean)
+  ]
+    .map((value) => `${value || ''}`.trim())
+    .filter(Boolean)
 }
 
 const participantPhoneCandidates = (participant?: any): string[] => {
   if (typeof participant === 'string' || typeof participant === 'number') return [`${participant}`.trim()].filter(Boolean)
   if (!participant || typeof participant !== 'object') return []
-  return [
-    participant.wa_id,
-    participant.phone_number,
-    participant.phoneNumber,
-    participant.pn,
-    participant.jid,
-    participant.id,
-  ].map((value) => `${value || ''}`.trim()).filter((value) => value && !value.endsWith('@lid'))
+  return [participant.wa_id, participant.phone_number, participant.phoneNumber, participant.pn, participant.jid, participant.id]
+    .map((value) => `${value || ''}`.trim())
+    .filter((value) => value && !value.endsWith('@lid'))
 }
 
 const normalizeParticipantJidForBaileys = (rawJid?: any): string => {
@@ -122,7 +132,12 @@ const verifiedParticipantPhoneCandidate = async (contact: Contact, phone: string
   }
 }
 
-const normalizeParticipantCandidatesForBaileysWithVerification = async (contact: Contact, phone: string, participant?: any, preferPhone = false): Promise<string[]> => {
+const normalizeParticipantCandidatesForBaileysWithVerification = async (
+  contact: Contact,
+  phone: string,
+  participant?: any,
+  preferPhone = false,
+): Promise<string[]> => {
   const candidates = normalizeParticipantCandidatesForBaileys(participant)
   const verifiedPhone = await verifiedParticipantPhoneCandidate(contact, phone, participant)
   if (preferPhone) {
@@ -135,11 +150,18 @@ const normalizeParticipantCandidatesForBaileysWithVerification = async (contact:
   return Array.from(new Set(candidates))
 }
 
-const normalizeParticipantsCandidatesForBaileys = async (contact: Contact, phone: string, participants?: any, preferPhone = false): Promise<string[][]> => {
-  const normalized = await Promise.all((Array.isArray(participants) ? participants : [])
-    .map((participant) => normalizeParticipantCandidatesForBaileysWithVerification(contact, phone, participant, preferPhone)))
-  return normalized
-    .filter((candidates) => candidates.length > 0)
+const normalizeParticipantsCandidatesForBaileys = async (
+  contact: Contact,
+  phone: string,
+  participants?: any,
+  preferPhone = false,
+): Promise<string[][]> => {
+  const normalized = await Promise.all(
+    (Array.isArray(participants) ? participants : []).map((participant) =>
+      normalizeParticipantCandidatesForBaileysWithVerification(contact, phone, participant, preferPhone),
+    ),
+  )
+  return normalized.filter((candidates) => candidates.length > 0)
 }
 
 const selectParticipantCandidates = (candidates: string[][], index: number): string[] => {
@@ -166,23 +188,27 @@ const isParticipantAdmin = (participant: any): boolean => {
 }
 
 const participantLid = (participant: any, sourceJid = ''): string => {
-  return firstNonEmptyString(
-    participant?.user_id,
-    participant?.lid,
-    `${sourceJid || ''}`.endsWith('@lid') ? sourceJid : '',
-    `${participant?.jid || ''}`.endsWith('@lid') ? participant.jid : '',
-    `${participant?.id || ''}`.endsWith('@lid') ? participant.id : '',
-  ) || ''
+  return (
+    firstNonEmptyString(
+      participant?.user_id,
+      participant?.lid,
+      `${sourceJid || ''}`.endsWith('@lid') ? sourceJid : '',
+      `${participant?.jid || ''}`.endsWith('@lid') ? participant.jid : '',
+      `${participant?.id || ''}`.endsWith('@lid') ? participant.id : '',
+    ) || ''
+  )
 }
 
 const participantUsername = (participant: any, contactInfo?: any): string => {
-  return firstNonEmptyString(
-    participant?.username,
-    participant?.participantUsername,
-    participant?.remoteJidUsername,
-    participant?.senderUsername,
-    contactInfo?.username,
-  ) || ''
+  return (
+    firstNonEmptyString(
+      participant?.username,
+      participant?.participantUsername,
+      participant?.remoteJidUsername,
+      participant?.senderUsername,
+      contactInfo?.username,
+    ) || ''
+  )
 }
 
 const participantRole = (participant: any): string => {
@@ -203,9 +229,7 @@ const resolveParticipantIdentity = async (phone: string, participant: any) => {
   if (!pnJid && sourceJid.endsWith('@s.whatsapp.net')) pnJid = sourceJid
   let lid = participantLid(participant, rawId || sourceJid)
   if (!pnJid && sourceJid.endsWith('@lid')) {
-    pnJid = normalizeParticipantJidForBaileys(
-      participant?.wa_id || participant?.phone_number || participant?.phoneNumber || participant?.pn
-    )
+    pnJid = normalizeParticipantJidForBaileys(participant?.wa_id || participant?.phone_number || participant?.phoneNumber || participant?.pn)
   }
 
   if (!pnJid && sourceJid && !sourceJid.endsWith('@lid')) {
@@ -215,13 +239,15 @@ const resolveParticipantIdentity = async (phone: string, participant: any) => {
 
   if (lid) {
     try {
-      const mappedPnJid = `${await getPnForLid(phone, lid) || ''}`.trim()
+      const mappedPnJid = `${(await getPnForLid(phone, lid)) || ''}`.trim()
       if (mappedPnJid) pnJid = mappedPnJid
     } catch {}
   }
 
   if (!lid && pnJid) {
-    try { lid = `${await getLidForPn(phone, pnJid) || ''}`.trim() } catch {}
+    try {
+      lid = `${(await getLidForPn(phone, pnJid)) || ''}`.trim()
+    } catch {}
   }
 
   const waId = normalizeParticipantPhoneForResponse(pnJid || sourceJid)
@@ -235,12 +261,7 @@ const resolveParticipantIdentity = async (phone: string, participant: any) => {
 }
 
 const participantDisplayName = (participant: any): string => {
-  return firstNonEmptyString(
-    participant?.name,
-    participant?.notify,
-    participant?.verifiedName,
-    participant?.pushName,
-  ) || ''
+  return firstNonEmptyString(participant?.name, participant?.notify, participant?.verifiedName, participant?.pushName) || ''
 }
 
 const resolveParticipantName = async (phone: string, participant: any, pnJid: string, lid: string): Promise<string> => {
@@ -250,7 +271,9 @@ const resolveParticipantName = async (phone: string, participant: any, pnJid: st
     const clean = `${jid || ''}`.trim()
     if (!clean) continue
     let name = ''
-    try { name = `${await getContactName(phone, clean) || ''}`.trim() } catch {}
+    try {
+      name = `${(await getContactName(phone, clean)) || ''}`.trim()
+    } catch {}
     if (!name) {
       try {
         const infoRaw = await getContactInfo(phone, clean)
@@ -350,7 +373,9 @@ const resolveNameForJid = async (phone: string, jid: string): Promise<string> =>
   const clean = `${jid || ''}`.trim()
   if (!clean) return ''
   let name = ''
-  try { name = `${await getContactName(phone, clean) || ''}`.trim() } catch {}
+  try {
+    name = `${(await getContactName(phone, clean)) || ''}`.trim()
+  } catch {}
   if (!name) {
     try {
       const infoRaw = await getContactInfo(phone, clean)
@@ -409,6 +434,33 @@ export class GroupsController {
   }
 
   private async groupPicture(phone: string, groupJid: string, group: any): Promise<string> {
+    const config = await this.getConfig(phone)
+    if (resolveWhatsAppEngine(config.provider) === 'zapo') {
+      try {
+        const store = await config.getStore(phone, config)
+        const freshUrl = await store.dataStore.getImageUrl(groupJid)
+        if (freshUrl) return freshUrl
+      } catch (error) {
+        logger.debug(error as Error, 'Could not refresh stored group picture phone=%s group=%s', phone, groupJid)
+      }
+      if (typeof this.incoming.groupProfilePicture === 'function') {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          const timeout = new Promise<undefined>((resolve) => {
+            timer = setTimeout(() => resolve(undefined), GROUP_METADATA_REFRESH_TIMEOUT_MS)
+          })
+          const remote = await Promise.race([this.incoming.groupProfilePicture(phone, groupJid, false), timeout])
+          if (remote?.url) return remote.url
+        } catch (error) {
+          logger.debug(error as Error, 'Could not download Zapo group picture phone=%s group=%s', phone, groupJid)
+        } finally {
+          if (timer) clearTimeout(timer)
+        }
+      }
+      // Zapo URLs stored in group metadata may already be expired S3 URLs.
+      // Do not leak a stale Baileys-era URL when no current object is available.
+      return ''
+    }
     const cached = await getProfilePicture(phone, groupJid)
     return `${group?.profilePicture || group?.picture || cached || ''}`
   }
@@ -419,21 +471,20 @@ export class GroupsController {
     const acquired = await redisSetIfNotExists(refreshKey, `${Date.now()}`, GROUP_METADATA_REFRESH_THROTTLE_SECONDS)
     if (!acquired) return undefined
     const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), GROUP_METADATA_REFRESH_TIMEOUT_MS))
-    const fetched = await Promise.race([
-      this.incoming.groupMetadata(phone, groupJid).catch(() => undefined),
-      timeout,
-    ])
+    const fetched = await Promise.race([this.incoming.groupMetadata(phone, groupJid).catch(() => undefined), timeout])
     if (!fetched) return undefined
     await setGroup(phone, groupJid, fetched as any)
     return fetched
   }
 
-  private async formatParticipant(phone: string, participant: any, options: { includePicture?: boolean, resolveName?: boolean } = {}) {
+  private async formatParticipant(phone: string, participant: any, options: { includePicture?: boolean; resolveName?: boolean } = {}) {
     const { sourceJid, pnJid, lid, waId, responseJid } = await resolveParticipantIdentity(phone, participant)
     const shouldResolveName = options.resolveName !== false
     let contactInfo: any
     if (shouldResolveName) {
-      try { contactInfo = parseContactInfo(await getContactInfo(phone, pnJid || sourceJid || lid)) } catch {}
+      try {
+        contactInfo = parseContactInfo(await getContactInfo(phone, pnJid || sourceJid || lid))
+      } catch {}
     }
     const username = participantUsername(participant, contactInfo)
     const resolvedName = shouldResolveName ? await resolveParticipantName(phone, participant, pnJid, lid) : participantDisplayName(participant)
@@ -481,10 +532,8 @@ export class GroupsController {
       ...(groupCreatedAt(group) ? { creation_timestamp: groupCreatedAt(group) } : {}),
     }
     if (includeParticipants) {
-      formatted.participants = await mapWithConcurrency(
-        participantsRaw,
-        GROUP_PARTICIPANTS_FORMAT_CONCURRENCY,
-        (participant) => this.formatParticipant(phone, participant)
+      formatted.participants = await mapWithConcurrency(participantsRaw, GROUP_PARTICIPANTS_FORMAT_CONCURRENCY, (participant) =>
+        this.formatParticipant(phone, participant),
       )
     }
     return formatted
@@ -495,31 +544,56 @@ export class GroupsController {
     try {
       const phone = `${req.params.phone || ''}`.trim()
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
+      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit)
+      const cursor = req.query.cursor === undefined ? 0 : Number(req.query.cursor)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+        return res.status(400).json({ error: 'limit_must_be_between_1_and_200' })
+      }
+      if (!Number.isInteger(cursor) || cursor < 0) {
+        return res.status(400).json({ error: 'cursor_must_be_a_non_negative_integer' })
+      }
+      const search = `${req.query.search || ''}`.trim().toLowerCase()
+      if (search.length > 100) {
+        return res.status(400).json({ error: 'search_must_have_at_most_100_characters' })
+      }
       const pattern = `${BASE_KEY}group:${phone}:*`
-      const keys = await redisKeys(pattern)
-      const groups = await Promise.all((keys || []).map(async (key) => {
-        const groupJid = key.substring(`${BASE_KEY}group:${phone}:`.length)
-        const group = await getGroup(phone, groupJid)
-        const participants = Array.isArray((group as any)?.participants) ? (group as any).participants : []
-        if (UNOAPI_META_GROUPS_ENABLED) {
-          return this.formatGroup(phone, groupJid, group)
-        }
-        return {
-          jid: groupJid,
-          subject: `${(group as any)?.subject || ''}`,
-          participantsCount: participants.length,
-        }
-      }))
+      const keys = [...((await redisKeys(pattern)) || [])].sort()
+      const cachedGroups = await Promise.all(
+        keys.map(async (key) => {
+          const groupJid = key.substring(`${BASE_KEY}group:${phone}:`.length)
+          const group = await getGroup(phone, groupJid)
+          return { groupJid, group }
+        }),
+      )
+      const filtered = search
+        ? cachedGroups.filter(
+            ({ groupJid, group }) => `${(group as any)?.subject || ''}`.toLowerCase().includes(search) || groupJid.toLowerCase().includes(search),
+          )
+        : cachedGroups
+      const selected = filtered.slice(cursor, cursor + limit)
+      const groups = await Promise.all(
+        selected.map(async ({ groupJid, group }) => {
+          if (UNOAPI_META_GROUPS_ENABLED) return this.formatGroup(phone, groupJid, group)
+          const participants = Array.isArray((group as any)?.participants) ? (group as any).participants : []
+          return {
+            jid: groupJid,
+            subject: `${(group as any)?.subject || ''}`,
+            participantsCount: participants.length,
+          }
+        }),
+      )
+      const nextCursor = cursor + selected.length < filtered.length ? `${cursor + selected.length}` : null
+      const paging = {
+        cursors: {
+          before: cursor > 0 ? `${Math.max(0, cursor - limit)}` : null,
+          after: nextCursor,
+        },
+      }
       if (UNOAPI_META_GROUPS_ENABLED) {
         return res.json({
           phone,
           groups,
-          paging: {
-            cursors: {
-              before: null,
-              after: null,
-            },
-          },
+          paging,
         })
       }
       return res.json({ phone, groups })
@@ -551,7 +625,12 @@ export class GroupsController {
       } catch (error) {
         if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
-        logger.warn(error as any, 'GROUP_CREATE primary failed; retrying with alternative participants phone=%s participants=%s', phone, JSON.stringify(participants))
+        logger.warn(
+          error as any,
+          'GROUP_CREATE primary failed; retrying with alternative participants phone=%s participants=%s',
+          phone,
+          JSON.stringify(participants),
+        )
         group = await createGroup(phone, subject, participants)
       }
       const groupJid = normalizeGroupJid(group?.id || group?.jid)
@@ -563,10 +642,12 @@ export class GroupsController {
       if (joinApprovalMode && groupJid) {
         await (this.ensureIncomingMethod('groupJoinApprovalMode') as any)(phone, groupJid, joinApprovalMode)
       }
-      try { if (groupJid) await setGroup(phone, groupJid, group as any) } catch {}
+      try {
+        if (groupJid) await setGroup(phone, groupJid, group as any)
+      } catch {}
       let code = ''
       try {
-        code = groupJid ? `${await (this.ensureIncomingMethod('groupInviteCode') as any)(phone, groupJid) || ''}` : ''
+        code = groupJid ? `${(await (this.ensureIncomingMethod('groupInviteCode') as any)(phone, groupJid)) || ''}` : ''
       } catch {}
       await this.emitManagementWebhook(phone, 'group_lifecycle_update', {
         group_id: groupJid,
@@ -579,10 +660,12 @@ export class GroupsController {
         description,
         ...(joinApprovalMode ? { join_approval_mode: req.body?.join_approval_mode } : {}),
         ...(code ? { invite_link: inviteLinkFromCode(code) } : {}),
-        participants: await Promise.all(participants.map(async (participant, index) => ({
-          ...(await this.formatParticipantReference(phone, participantInputs[index] || participant)),
-          status: 'invited',
-        }))),
+        participants: await Promise.all(
+          participants.map(async (participant, index) => ({
+            ...(await this.formatParticipantReference(phone, participantInputs[index] || participant)),
+            status: 'invited',
+          })),
+        ),
       })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
@@ -660,7 +743,10 @@ export class GroupsController {
       const groupJid = normalizeGroupJid(groupId)
       const group = await getGroup(phone, groupJid)
       if (!group) return res.status(404).json({ error: 'group not found in cache', group_id: groupJid })
-      const fields = `${req.query.fields || ''}`.split(',').map((field) => field.trim()).filter(Boolean)
+      const fields = `${req.query.fields || ''}`
+        .split(',')
+        .map((field) => field.trim())
+        .filter(Boolean)
       const includeParticipants = fields.includes('participants')
       return res.json(await this.formatGroup(phone, groupJid, group, includeParticipants))
     } catch (e) {
@@ -682,22 +768,22 @@ export class GroupsController {
         !cachedGroup ||
         cachedParticipants.length <= GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT ||
         queryBoolean(req.query.refresh_metadata || req.query.refreshMetadata)
-      const group = shouldRefreshMetadata ? await this.refreshGroupMetadata(phone, groupJid) || cachedGroup : cachedGroup
-      if (!group) return res.status(404).json(
-        UNOAPI_META_GROUPS_ENABLED
-          ? { error: 'group not found in cache', group_id: groupJid }
-          : { error: 'group not found in cache', groupJid }
-      )
+      const group = shouldRefreshMetadata ? (await this.refreshGroupMetadata(phone, groupJid)) || cachedGroup : cachedGroup
+      if (!group)
+        return res
+          .status(404)
+          .json(
+            UNOAPI_META_GROUPS_ENABLED ? { error: 'group not found in cache', group_id: groupJid } : { error: 'group not found in cache', groupJid },
+          )
 
       const participantsRaw: any[] = Array.isArray((group as any)?.participants) ? (group as any).participants : []
-      const resolveParticipantNames = participantsRaw.length <= GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT || queryBoolean(req.query.resolve_names || req.query.resolveNames)
+      const resolveParticipantNames =
+        participantsRaw.length <= GROUP_PARTICIPANTS_NAME_LOOKUP_LIMIT || queryBoolean(req.query.resolve_names || req.query.resolveNames)
       if (UNOAPI_META_GROUPS_ENABLED) {
         const picture = await this.groupPicture(phone, groupJid, group)
         const includeParticipantPictures = queryBoolean(req.query.include_pictures)
-        const participants = await mapWithConcurrency(
-          participantsRaw,
-          GROUP_PARTICIPANTS_FORMAT_CONCURRENCY,
-          (participant: any) => this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures, resolveName: resolveParticipantNames })
+        const participants = await mapWithConcurrency(participantsRaw, GROUP_PARTICIPANTS_FORMAT_CONCURRENCY, (participant: any) =>
+          this.formatParticipant(phone, participant, { includePicture: includeParticipantPictures, resolveName: resolveParticipantNames }),
         )
         return res.json({
           phone,
@@ -713,7 +799,9 @@ export class GroupsController {
       }
       const participants = await mapWithConcurrency(participantsRaw, GROUP_PARTICIPANTS_FORMAT_CONCURRENCY, async (participant: any) => {
         const { pnJid, waId, lid, responseJid } = await resolveParticipantIdentity(phone, participant)
-        const resolvedName = resolveParticipantNames ? await resolveParticipantName(phone, participant, pnJid, lid) : participantDisplayName(participant)
+        const resolvedName = resolveParticipantNames
+          ? await resolveParticipantName(phone, participant, pnJid, lid)
+          : participantDisplayName(participant)
         const name = firstNonEmptyString(resolvedName, waId, lid) || ''
         return {
           jid: responseJid,
@@ -756,13 +844,25 @@ export class GroupsController {
       } catch (error) {
         if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
-        logger.warn(error as any, 'GROUP_PARTICIPANTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
+        logger.warn(
+          error as any,
+          'GROUP_PARTICIPANTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s',
+          phone,
+          groupJid,
+          action,
+          JSON.stringify(participants),
+        )
         result = await updateGroupParticipants(phone, groupJid, participants, action)
       }
-      const failed = (result || []).filter((item: any) => !isSuccessfulParticipantAction(item)).map((item: any) => normalizeParticipantJidForResponse(item?.jid))
-      const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
-      const participantRefs = (await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant))))
-        .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
+      const failed = (result || [])
+        .filter((item: any) => !isSuccessfulParticipantAction(item))
+        .map((item: any) => normalizeParticipantJidForResponse(item?.jid))
+      const processed = participants
+        .map((participant) => normalizeParticipantJidForResponse(participant))
+        .filter((participant) => !failed.includes(participant))
+      const participantRefs = (
+        await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant)))
+      ).filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
       await this.emitManagementWebhook(phone, 'group_participants_update', {
         group_id: groupJid,
         action,
@@ -838,22 +938,26 @@ export class GroupsController {
       if (!phone) return res.status(400).json({ error: 'missing phone param' })
       if (!groupJid) return res.status(400).json({ error: 'missing groupId param' })
       const requests = await (this.ensureIncomingMethod('groupRequestParticipantsList') as any)(phone, groupJid)
-      const join_requests = await Promise.all((requests || []).map(async (item: any) => {
-        const jid = `${item?.jid || item?.id || item?.participant || ''}`.trim()
-        const lid = participantLid(item, jid)
-        let contactInfo: any
-        try { contactInfo = parseContactInfo(await getContactInfo(phone, jid)) } catch {}
-        const username = participantUsername(item, contactInfo)
-        const waId = normalizeParticipantPhoneForResponse(jid)
-        const name = firstNonEmptyString(await resolveNameForJid(phone, jid), username, waId, lid) || ''
-        return {
-          wa_id: waId,
-          ...(lid ? { user_id: lid } : {}),
-          ...(username ? { username } : {}),
-          name,
-          requested_at: `${item?.request_time || item?.requested_at || item?.t || ''}`,
-        }
-      }))
+      const join_requests = await Promise.all(
+        (requests || []).map(async (item: any) => {
+          const jid = `${item?.jid || item?.id || item?.participant || ''}`.trim()
+          const lid = participantLid(item, jid)
+          let contactInfo: any
+          try {
+            contactInfo = parseContactInfo(await getContactInfo(phone, jid))
+          } catch {}
+          const username = participantUsername(item, contactInfo)
+          const waId = normalizeParticipantPhoneForResponse(jid)
+          const name = firstNonEmptyString(await resolveNameForJid(phone, jid), username, waId, lid) || ''
+          return {
+            wa_id: waId,
+            ...(lid ? { user_id: lid } : {}),
+            ...(username ? { username } : {}),
+            name,
+            requested_at: `${item?.request_time || item?.requested_at || item?.t || ''}`,
+          }
+        }),
+      )
       return res.json({ group_id: groupJid, join_requests })
     } catch (e) {
       return res.status(500).json({ error: (e as any)?.message || 'internal_error' })
@@ -880,13 +984,25 @@ export class GroupsController {
       } catch (error) {
         if (!isBaileys || !isBadRequestError(error) || !hasAlternativeParticipantCandidates(participantCandidates)) throw error
         participants = selectParticipantCandidates(participantCandidates, 1)
-        logger.warn(error as any, 'GROUP_JOIN_REQUESTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s', phone, groupJid, action, JSON.stringify(participants))
+        logger.warn(
+          error as any,
+          'GROUP_JOIN_REQUESTS_UPDATE primary failed; retrying with alternative participants phone=%s group=%s action=%s participants=%s',
+          phone,
+          groupJid,
+          action,
+          JSON.stringify(participants),
+        )
         result = await updateJoinRequests(phone, groupJid, participants, action)
       }
-      const failed = (result || []).filter((item: any) => !isSuccessfulParticipantAction(item)).map((item: any) => normalizeParticipantJidForResponse(item?.jid))
-      const processed = participants.map((participant) => normalizeParticipantJidForResponse(participant)).filter((participant) => !failed.includes(participant))
-      const participantRefs = (await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant))))
-        .filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
+      const failed = (result || [])
+        .filter((item: any) => !isSuccessfulParticipantAction(item))
+        .map((item: any) => normalizeParticipantJidForResponse(item?.jid))
+      const processed = participants
+        .map((participant) => normalizeParticipantJidForResponse(participant))
+        .filter((participant) => !failed.includes(participant))
+      const participantRefs = (
+        await Promise.all(participants.map((participant, index) => this.formatParticipantReference(phone, participantInputs[index] || participant)))
+      ).filter((_participant, index) => !failed.includes(normalizeParticipantJidForResponse(participants[index])))
       await this.emitManagementWebhook(phone, 'group_participants_update', {
         group_id: groupJid,
         action,

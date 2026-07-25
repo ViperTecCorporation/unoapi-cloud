@@ -36,7 +36,7 @@ describe('ZapoProfilePictures', () => {
     })
   })
 
-  const createService = (overrides: Partial<ConstructorParameters<typeof ZapoProfilePictures>[0]> = {}) => (
+  const createService = (overrides: Partial<ConstructorParameters<typeof ZapoProfilePictures>[0]> = {}) =>
     new ZapoProfilePictures({
       phone,
       client,
@@ -48,7 +48,6 @@ describe('ZapoProfilePictures', () => {
       webhookIntervalSeconds: 0,
       ...overrides,
     })
-  )
 
   test('does nothing when profile pictures are disabled', async () => {
     const service = createService({ enabled: false })
@@ -56,6 +55,21 @@ describe('ZapoProfilePictures', () => {
 
     await expect(service.enrich(message)).resolves.toBe(message)
     expect(client.profile.getProfilePicture).not.toHaveBeenCalled()
+  })
+
+  test('allows an explicit directory lookup when webhook enrichment is disabled', async () => {
+    store.mediaStore.getProfilePictureInfo.mockResolvedValueOnce(undefined).mockResolvedValue({ url: 'https://uno.test/group.jpg' })
+    client.profile.getProfilePicture.mockResolvedValue({
+      id: 'group-picture-1',
+      url: 'https://zapo.test/group.jpg',
+      type: 'image',
+    })
+    const service = createService({ enabled: false })
+
+    await expect(service.get('120363000000@g.us')).resolves.toEqual({
+      url: 'https://uno.test/group.jpg',
+    })
+    expect(client.profile.getProfilePicture).toHaveBeenCalledWith('120363000000@g.us', 'image', undefined)
   })
 
   test('downloads a LID profile picture and persists its PN alias', async () => {
@@ -86,9 +100,9 @@ describe('ZapoProfilePictures', () => {
   test('enriches group and participant pictures independently', async () => {
     const groupJid = '120363000000@g.us'
     const saved = new Set<string>()
-    store.mediaStore.getProfilePictureInfo.mockImplementation(async (_baseUrl, jid) => (
-      saved.has(jid) ? { url: `https://uno.test/${encodeURIComponent(jid)}.jpg` } : undefined
-    ))
+    store.mediaStore.getProfilePictureInfo.mockImplementation(async (_baseUrl, jid) =>
+      saved.has(jid) ? { url: `https://uno.test/${encodeURIComponent(jid)}.jpg` } : undefined,
+    )
     store.mediaStore.saveProfilePicture.mockImplementation(async (contact) => {
       saved.add(`${contact.id}`)
     })
@@ -108,10 +122,28 @@ describe('ZapoProfilePictures', () => {
     expect(message.profilePicture).toContain(encodeURIComponent(phoneJid))
   })
 
+  test('keeps the remembered group picture in every group webhook', async () => {
+    const groupJid = '120363000000@g.us'
+    store.mediaStore.getProfilePictureInfo.mockResolvedValue({
+      url: 'https://uno.test/group.jpg',
+    })
+    const service = createService({
+      forceRefresh: false,
+      webhookIntervalSeconds: 10_800,
+    })
+    const first: TestMessage = { key: { remoteJid: groupJid, fromMe: false } }
+    const second: TestMessage = { key: { remoteJid: groupJid, fromMe: false } }
+
+    await service.enrich(first)
+    await service.enrich(second)
+
+    expect(first.groupMetadata?.profilePicture).toBe('https://uno.test/group.jpg')
+    expect(second.groupMetadata?.profilePicture).toBe('https://uno.test/group.jpg')
+    expect(store.mediaStore.getProfilePictureInfo).toHaveBeenCalledTimes(1)
+  })
+
   test('uses the local picture during the refresh interval', async () => {
-    store.mediaStore.getProfilePictureInfo
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValue({ url: 'https://uno.test/profile.jpg' })
+    store.mediaStore.getProfilePictureInfo.mockResolvedValueOnce(undefined).mockResolvedValue({ url: 'https://uno.test/profile.jpg' })
     client.profile.getProfilePicture.mockResolvedValue({ id: 'picture-1', url: 'https://zapo.test/profile.jpg' })
     const service = createService()
 
@@ -122,12 +154,8 @@ describe('ZapoProfilePictures', () => {
   })
 
   test('passes the cached picture id when checking for a later change', async () => {
-    store.mediaStore.getProfilePictureInfo
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValue({ url: 'https://uno.test/profile.jpg' })
-    client.profile.getProfilePicture
-      .mockResolvedValueOnce({ id: 'picture-1', url: 'https://zapo.test/profile.jpg' })
-      .mockResolvedValueOnce({})
+    store.mediaStore.getProfilePictureInfo.mockResolvedValueOnce(undefined).mockResolvedValue({ url: 'https://uno.test/profile.jpg' })
+    client.profile.getProfilePicture.mockResolvedValueOnce({ id: 'picture-1', url: 'https://zapo.test/profile.jpg' }).mockResolvedValueOnce({})
     const service = createService({ refreshIntervalSeconds: 0 })
 
     await service.enrich({ key: { remoteJid: lid } })

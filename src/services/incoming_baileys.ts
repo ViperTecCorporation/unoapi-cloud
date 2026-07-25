@@ -131,6 +131,14 @@ export class IncomingProvider implements Incoming {
     }
     return client.groupMetadata(jid)
   }
+
+  public async groupProfilePicture(phone: string, jid: string, forceRefresh = false) {
+    const client = clients.get(phone)
+    if (!client || typeof client.groupProfilePicture !== 'function') {
+      throw new Error(`Client ${phone} is not ready to fetch group profile pictures`)
+    }
+    return client.groupProfilePicture(jid, forceRefresh)
+  }
 }
 
 /** @deprecated Use IncomingProvider. Kept for public import compatibility. */

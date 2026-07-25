@@ -24,12 +24,13 @@ const paths = {
     webhook: '<path d="M18 16.98h1a3 3 0 1 0-2.83-4"/><path d="m6 17-1 1a3 3 0 1 0 4.24 4.24l.76-.76"/><path d="M12 12.01V11a3 3 0 1 0-4-2.83"/>',
     save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
     warning: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     message: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/>',
 };
 export const icon = (name, label = '') => {
     const path = paths[name] || paths.warning;
-    const accessible = label
-        ? `role="img" aria-label="${escapeHtml(label)}"`
-        : 'aria-hidden="true"';
+    const accessible = label ? `role="img" aria-label="${escapeHtml(label)}"` : 'aria-hidden="true"';
     return `<svg class="icon" ${accessible} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 };

@@ -47,6 +47,7 @@ const isPhoneJid = (jid: string) => jid.endsWith('@s.whatsapp.net')
 export class ZapoProfilePictures {
   private readonly pictureIds = new Map<string, string>()
   private readonly checkedAt = new Map<string, number>()
+  private readonly webhookPictures = new Map<string, ProfilePictureInfo>()
   private readonly pending = new Map<string, Promise<ProfilePictureInfo | undefined>>()
   private readonly forceRefresh: boolean
   private readonly refreshIntervalMs: number
@@ -55,10 +56,7 @@ export class ZapoProfilePictures {
 
   constructor(private readonly options: ZapoProfilePicturesOptions) {
     this.forceRefresh = options.forceRefresh ?? PROFILE_PICTURE_FORCE_REFRESH
-    this.refreshIntervalMs = Math.max(
-      0,
-      options.refreshIntervalSeconds ?? PROFILE_PICTURE_REFRESH_INTERVAL_SEC,
-    ) * 1_000
+    this.refreshIntervalMs = Math.max(0, options.refreshIntervalSeconds ?? PROFILE_PICTURE_REFRESH_INTERVAL_SEC) * 1_000
     this.webhookMarker = new ProfilePictureWebhookMarker({
       useRedis: options.store.dataStore.type === 'redis',
       intervalSeconds: options.webhookIntervalSeconds,
@@ -76,11 +74,9 @@ export class ZapoProfilePictures {
     const chatJid = `${key.remoteJid || ''}`.trim()
     if (!chatJid) return message
 
-    const contactJid = isGroupJid(chatJid)
-      ? `${key.participant || key.participantAlt || ''}`.trim()
-      : chatJid
+    const contactJid = isGroupJid(chatJid) ? `${key.participant || key.participantAlt || ''}`.trim() : chatJid
     const [groupPicture, contactPicture] = await Promise.all([
-      isGroupJid(chatJid) ? this.getForWebhook(chatJid) : undefined,
+      isGroupJid(chatJid) ? this.getForWebhook(chatJid, true) : undefined,
       contactJid ? this.getForWebhook(contactJid) : undefined,
     ])
 
@@ -99,15 +95,18 @@ export class ZapoProfilePictures {
     return message
   }
 
+  async get(jid: string, forceRefresh = false): Promise<ProfilePictureInfo | undefined> {
+    const target = await this.tryResolveTarget(jid)
+    return target ? this.getResolved(target, forceRefresh) : undefined
+  }
+
   async handleEvent(event: WaPictureEvent): Promise<void> {
     if (!this.options.enabled) return
     const jid = `${event.targetJid || event.chatJid || ''}`.trim()
     if (!jid) return
     const target = await this.resolveTarget(jid)
-    await Promise.all([
-      this.webhookMarker.invalidate(this.options.phone, target.jid),
-      this.missCache.invalidate(this.options.phone, target.jid),
-    ])
+    this.webhookPictures.delete(target.jid)
+    await Promise.all([this.webhookMarker.invalidate(this.options.phone, target.jid), this.missCache.invalidate(this.options.phone, target.jid)])
 
     if (event.action === 'delete') {
       this.pictureIds.delete(target.jid)
@@ -129,11 +128,26 @@ export class ZapoProfilePictures {
     return request
   }
 
-  private async getForWebhook(jid: string): Promise<ProfilePictureInfo | undefined> {
+  private async getForWebhook(
+    jid: string,
+    includeRemembered = false,
+  ): Promise<ProfilePictureInfo | undefined> {
     const target = await this.tryResolveTarget(jid)
-    if (!target || !await this.webhookMarker.isDue(this.options.phone, target.jid)) return undefined
+    if (!target) return undefined
+    const due = await this.webhookMarker.isDue(this.options.phone, target.jid)
+    if (!due) {
+      if (!includeRemembered) return undefined
+      const remembered = this.webhookPictures.get(target.jid)
+      if (remembered) return remembered
+      const local = await this.getResolved(target)
+      if (local) this.webhookPictures.set(target.jid, local)
+      return local
+    }
     const picture = await this.getResolved(target)
-    if (picture) await this.webhookMarker.markSent(this.options.phone, target.jid)
+    if (picture) {
+      this.webhookPictures.set(target.jid, picture)
+      await this.webhookMarker.markSent(this.options.phone, target.jid)
+    }
     return picture
   }
 
@@ -148,7 +162,7 @@ export class ZapoProfilePictures {
 
   private async load(target: PictureTarget, changed: boolean): Promise<ProfilePictureInfo | undefined> {
     const local = await this.findLocal(target)
-    if (!changed && !local && await this.missCache.has(this.options.phone, target.jid)) return undefined
+    if (!changed && !local && (await this.missCache.has(this.options.phone, target.jid))) return undefined
     if (!changed && !this.needsRefresh(target.jid, !!local)) return local
 
     const existingId = changed ? undefined : this.pictureIds.get(target.jid)
@@ -216,9 +230,7 @@ export class ZapoProfilePictures {
   private async resolveTarget(jid: string): Promise<PictureTarget> {
     if (isGroupJid(jid)) return { jid }
 
-    const contact = isLidJid(jid)
-      ? await this.options.session.contacts.getByJid(jid)
-      : await this.options.session.contacts.getByPhoneNumber(jid)
+    const contact = isLidJid(jid) ? await this.options.session.contacts.getByJid(jid) : await this.options.session.contacts.getByPhoneNumber(jid)
     const lid = `${contact?.lid || (contact?.jid?.endsWith('@lid') ? contact.jid : '') || ''}`.trim() || undefined
     const phoneJid = normalizeZapoPhoneJid(`${contact?.phoneNumber || (isPhoneJid(jid) ? jid : '')}`)
     const canonicalJid = lid || (isLidJid(jid) ? jid : phoneJid || jid)
