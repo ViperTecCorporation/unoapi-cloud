@@ -15,6 +15,8 @@ import {
 const scan = redisScanSome as jest.MockedFunction<typeof redisScanSome>
 
 describe('Redis admin service', () => {
+  beforeEach(() => scan.mockReset())
+
   test('restricts administration to UnoAPI namespaces', () => {
     expect(isAllowedRedisKey('unoapi-config:5566')).toBe(true)
     expect(isAllowedRedisKey('unoapi:zapo:contacts:5566')).toBe(true)
@@ -43,6 +45,16 @@ describe('Redis admin service', () => {
       'unoapi:zapo:contact:5566',
     ])
     expect(scan).toHaveBeenCalledWith('unoapi-*5566*', 20)
+  })
+
+  test('does not duplicate the namespace when searching a complete key', async () => {
+    scan.mockResolvedValueOnce(['unoapi:zapo:auth:5548991710539'])
+    const admin = new RedisAdmin(jest.fn() as any)
+    await expect(admin.listKeys('unoapi:zapo:auth:5548991710539', 20)).resolves.toEqual([
+      'unoapi:zapo:auth:5548991710539',
+    ])
+    expect(scan).toHaveBeenCalledTimes(1)
+    expect(scan).toHaveBeenCalledWith('unoapi:zapo:auth:5548991710539*', 20)
   })
 
   test('reads typed key content with TTL and truncation metadata', async () => {

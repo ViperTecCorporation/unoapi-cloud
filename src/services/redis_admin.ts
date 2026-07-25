@@ -50,8 +50,11 @@ export class RedisAdmin {
   async listKeys(search = '', limit = 200): Promise<string[]> {
     const safeLimit = Math.min(1000, Math.max(1, Number(limit) || 200))
     const term = `${search || ''}`.trim().replace(/[*?[\]]/g, '')
+    const patterns = isAllowedRedisKey(term)
+      ? [`${term}*`]
+      : allowedPrefixes.map((prefix) => `${prefix}*${term}*`)
     const groups = await Promise.all(
-      allowedPrefixes.map((prefix) => redisScanSome(`${prefix}*${term}*`, safeLimit)),
+      patterns.map((pattern) => redisScanSome(pattern, safeLimit)),
     )
     return [...new Set(groups.flat())].sort().slice(0, safeLimit)
   }

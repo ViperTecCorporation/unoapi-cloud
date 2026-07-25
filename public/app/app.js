@@ -369,10 +369,15 @@ export class ViperConnectApp {
         else if (input.dataset.filter === 'redis-query') {
             this.redisQuery = input.value;
             this.renderAndRestoreFilter('redis-query');
+            if (this.redisSearchTimer)
+                window.clearTimeout(this.redisSearchTimer);
+            this.redisSearchTimer = window.setTimeout(() => {
+                void this.loadRedisKeys();
+            }, 300);
         }
         else if (input.dataset.filter === 'redis-session') {
             this.redisSession = input.value;
-            this.render();
+            void this.loadRedisKeys();
         }
     }
     async login(token) {
@@ -749,7 +754,7 @@ export class ViperConnectApp {
         this.redisError = '';
         this.render();
         try {
-            this.redisKeys = await this.api.redisKeys(this.redisSession || this.redisQuery);
+            this.redisKeys = await this.api.redisKeys(this.redisQuery || this.redisSession);
             this.redisRefreshIn = QUEUE_REFRESH_SECONDS;
             if (this.selectedRedisKey && !this.redisKeys.includes(this.selectedRedisKey.key)) {
                 this.selectedRedisKey = undefined;
