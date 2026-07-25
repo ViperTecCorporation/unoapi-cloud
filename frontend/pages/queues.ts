@@ -60,12 +60,8 @@ export const filterQueuesBySession = (
   const server = `${session.server || 'server_1'}`
   const provider = `${session.provider || 'zapo'}`
   return queues.filter((queue) => {
-    if (!queue.name.includes('.server_')) return true
-    if (!queue.name.includes(`.${server}`)) return false
-    if (queue.name.includes('.zapo') || queue.name.includes('.baileys')) {
-      return queue.name.includes(`.${provider}`)
-    }
-    return true
+    const identity = parseRabbitQueueName(queue.name)
+    return identity.server === server && identity.provider === provider
   })
 }
 
@@ -136,6 +132,7 @@ export const renderQueuesPage = (options: QueuePageOptions): string => {
           ${options.sessions.map((item) => `<option value="${escapeHtml(sessionPhone(item))}" ${sessionPhone(item) === options.sessionPhoneFilter ? 'selected' : ''}>${escapeHtml(sessionLabel(item))} · ${escapeHtml(sessionPhone(item))}</option>`).join('')}
         </select></label>
       </div>
+      ${session ? `<p class="hint">${t('Mostrando somente filas do motor e servidor da sessão. Os totais da fila são compartilhados; a inspeção filtra a amostra pelo telefone selecionado.')}</p>` : ''}
       ${options.error ? `<p class="form-error">${escapeHtml(options.error)}</p>` : ''}
       <div class="table-wrap">
         <table class="queue-table">

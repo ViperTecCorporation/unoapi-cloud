@@ -293,6 +293,7 @@ const english = {
     'Servidor indefinido': 'Undefined server',
     'Dead-letter': 'Dead-letter',
     'Atrasada / retentativa': 'Delayed / retry',
+    'Mostrando somente filas do motor e servidor da sessão. Os totais da fila são compartilhados; a inspeção filtra a amostra pelo telefone selecionado.': 'Showing only queues for the session engine and server. Queue totals are shared; inspection filters the sample by the selected phone.',
     'Mensagens aguardando o tempo configurado para nova tentativa ou execução.': 'Messages waiting for the configured retry or execution delay.',
     'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.': 'Delivers ViperConnect events and webhooks to registered applications.',
     'Recebe comandos de envio destinados aos workers e sessões do WhatsApp.': 'Receives send commands intended for WhatsApp workers and sessions.',

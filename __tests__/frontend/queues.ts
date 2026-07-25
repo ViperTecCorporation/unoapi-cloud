@@ -39,7 +39,17 @@ describe('RabbitMQ queues page', () => {
   test('filters engine-specific queues by the selected session', () => {
     expect(filterQueuesBySession(queues, { phone: '5566', server: 'server_1', provider: 'zapo' }).map((queue) => queue.name)).toEqual([
       'unoapi.incoming.server_1.zapo',
-      'unoapi.outgoing.dead',
+    ])
+  })
+
+  test('does not mix global, legacy or another provider queues into a session filter', () => {
+    const mixed = [
+      ...queues,
+      { name: 'unoapi.listener.server_1.dead', messages: 1, messages_ready: 1, messages_unacknowledged: 0, consumers: 0 },
+      { name: 'unoapi.listener.server_2.zapo', messages: 1, messages_ready: 1, messages_unacknowledged: 0, consumers: 0 },
+    ]
+    expect(filterQueuesBySession(mixed, { phone: '5566', server: 'server_1', provider: 'baileys' }).map((queue) => queue.name)).toEqual([
+      'unoapi.incoming.server_1.baileys',
     ])
   })
 
