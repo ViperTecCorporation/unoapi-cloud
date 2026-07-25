@@ -66,10 +66,13 @@ export const renderSessionConfig = (session: SessionConfig): string => `
         ${booleanSessionFields.map(([name, label, description]) => renderSwitchField(name, t(label), t(description), session[name] === true)).join('')}
       </div>
       <div class="form-grid">
-        <label class="field">
-          <span>${t('Janela do histórico (dias)')}</span>
-          <input name="historyMaxAgeDays" type="number" min="1" max="3650" value="${escapeHtml(session.historyMaxAgeDays || 30)}">
-        </label>
+        <div class="field">
+          <span class="field-label">
+            <label for="history-max-age-days">${t('Janela do histórico (dias)')}</label>
+            ${renderInfoTooltip(t('Define a idade máxima das mensagens de histórico encaminhadas aos webhooks. Só é aplicado quando “Ignorar histórico de mensagens” está desativado; o WhatsApp pode limitar o histórico disponível.'))}
+          </span>
+          <input id="history-max-age-days" name="historyMaxAgeDays" type="number" min="1" max="3650" value="${escapeHtml(session.historyMaxAgeDays || 30)}">
+        </div>
         <div class="field field--wide">
           <span class="field-label">
             <label for="reject-calls">${t('Mensagem ao rejeitar chamadas')}</label>

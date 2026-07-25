@@ -21,6 +21,7 @@ describe('frontend features', () => {
     expect(html).toContain('data-action="toggle-secret"')
     expect(html).toContain('data-action="copy-secret"')
     expect(html).toContain('data-action="toggle-tooltip"')
+    expect(html).toContain('Só é aplicado quando “Ignorar histórico de mensagens” está desativado')
     expect(html).toContain('Para desabilitar o recurso, deixe este campo em branco.')
     expect(html).toContain('aplicação cadastrada no webhook')
   })
@@ -31,6 +32,7 @@ describe('frontend features', () => {
 
     expect(html).toContain('To disable this feature, leave this field blank.')
     expect(html).toContain('application registered in the webhook')
+    expect(html).toContain('It only applies when “Ignore message history” is disabled')
   })
 
   test('maps the full session form payload', () => {

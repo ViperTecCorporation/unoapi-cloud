@@ -94,6 +94,7 @@ const english = {
     'Mensagens e comportamento': 'Messages and behavior',
     'Leitura, histórico, presença e eventos enviados à aplicação.': 'Read receipts, history, presence, and events sent to the application.',
     'Janela do histórico (dias)': 'History window (days)',
+    'Define a idade máxima das mensagens de histórico encaminhadas aos webhooks. Só é aplicado quando “Ignorar histórico de mensagens” está desativado; o WhatsApp pode limitar o histórico disponível.': 'Defines the maximum age of history messages forwarded to webhooks. It only applies when “Ignore message history” is disabled; WhatsApp may limit the available history.',
     'Mensagem ao rejeitar chamadas': 'Call rejection message',
     'Esta mensagem é enviada ao contato quando a chamada é rejeitada. Para desabilitar o recurso, deixe este campo em branco.': 'This message is sent to the contact when the call is rejected. To disable this feature, leave this field blank.',
     'Mensagem de chamada recebida/rejeitada no webhook': 'Incoming/rejected call message in webhook',
