@@ -1,5 +1,20 @@
 import { icon } from './icons.js?v=4.0.0-beta8';
-export const renderLayout = ({ content, collapsed, mobileOpen }) => `
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8';
+const renderVersionStatus = (status) => {
+    const installed = status.installed_version ? `v${status.installed_version.replace(/^v/i, '')}` : 'Versão';
+    if (status.status === 'update_available') {
+        const latest = `v${`${status.latest_version || ''}`.replace(/^v/i, '')}`;
+        const iconContent = status.release_url
+            ? `<a class="workspace__icon workspace__icon--update" href="${escapeHtml(status.release_url)}" target="_blank" rel="noopener" title="Abrir ${escapeHtml(latest)}">${icon('arrowUp')}</a>`
+            : `<span class="workspace__icon workspace__icon--update">${icon('arrowUp')}</span>`;
+        return `${iconContent}<span class="workspace__copy"><strong>${escapeHtml(installed)}</strong><small>${escapeHtml(latest)} disponível</small></span>`;
+    }
+    if (status.status === 'current') {
+        return `<span class="workspace__icon workspace__icon--current" title="Versão mais atual">${icon('check')}</span><span class="workspace__copy"><strong>${escapeHtml(installed)}</strong><small>Versão mais atual</small></span>`;
+    }
+    return `<span class="workspace__icon workspace__icon--unknown" title="Verificação indisponível">${icon('refresh')}</span><span class="workspace__copy"><strong>${escapeHtml(installed)}</strong><small>${status.installed_version ? 'Não foi possível verificar' : 'Verificando atualização…'}</small></span>`;
+};
+export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus }) => `
   <div class="app-shell ${collapsed ? 'app-shell--collapsed' : ''} ${mobileOpen ? 'app-shell--mobile-open' : ''}">
     <aside class="sidebar" aria-label="Navegação principal">
       <div class="brand">
@@ -25,8 +40,7 @@ export const renderLayout = ({ content, collapsed, mobileOpen }) => `
           ${icon('logout')}<span>Sair</span>
         </button>
         <div class="workspace">
-          <span class="workspace__icon">${icon('message')}</span>
-          <span class="workspace__copy"><strong>Viper Tec</strong><small>Produção</small></span>
+          ${renderVersionStatus(versionStatus)}
           <button class="btn btn--icon btn--ghost sidebar__toggle" type="button" data-action="toggle-sidebar" aria-label="${collapsed ? 'Expandir menu' : 'Recolher menu'}">
             ${icon(collapsed ? 'expand' : 'collapse')}
           </button>

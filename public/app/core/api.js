@@ -54,6 +54,9 @@ export class ApiClient {
         const response = await this.request('/sessions');
         return Array.isArray(response?.data) ? response.data : [];
     }
+    versionStatus() {
+        return this.request('/version');
+    }
     session(phone) {
         return this.request(`/v15.0/${encodeURIComponent(phone)}`);
     }

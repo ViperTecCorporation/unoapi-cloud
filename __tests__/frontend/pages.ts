@@ -36,6 +36,8 @@ describe('frontend pages', () => {
     expect(html).toContain('data-tab="contacts"')
     expect(html).toContain('Contatos da sessão')
     expect(html).not.toContain('aria-modal="true"')
+    expect(html.indexOf('data-tab="webhooks"')).toBeLessThan(html.indexOf('data-tab="contacts"'))
+    expect(html.indexOf('data-tab="contacts"')).toBeLessThan(html.indexOf('data-tab="groups"'))
   })
 
   test('offers only removal for a suppressed Baileys session', () => {

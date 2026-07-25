@@ -273,6 +273,21 @@ small {
   background: var(--brand-soft);
 }
 
+.workspace__icon--current {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.workspace__icon--update {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.workspace__icon--unknown {
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
 .app-shell--collapsed .sidebar {
   padding-inline: 10px;
 }
@@ -880,6 +895,7 @@ tbody tr:last-child td {
 
 .entity-card__actions {
   display: flex;
+  justify-content: flex-end;
   gap: 4px;
   margin-top: 7px;
   overflow: visible;

@@ -24,8 +24,8 @@ interface SessionPageOptions {
 const tabs: Array<[SessionTab, string]> = [
   ['overview', 'Visão geral'],
   ['config', 'Configuração'],
-  ['contacts', 'Contatos'],
   ['webhooks', 'Webhooks'],
+  ['contacts', 'Contatos'],
   ['groups', 'Grupos'],
 ]
 

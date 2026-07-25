@@ -14,11 +14,18 @@ const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
 const REFRESH_SECONDS = 15;
 const PAGE_SIZE = 20;
+const VERSION_REFRESH_MS = 15 * 60 * 1000;
 const emptyContactState = () => ({
     items: [],
     cursor: '0',
     hasMore: false,
     totalCount: 0,
+});
+const emptyVersionStatus = () => ({
+    installed_version: '',
+    update_available: false,
+    status: 'unknown',
+    checked_at: '',
 });
 export class ViperConnectApp {
     constructor(root, baseUrl = window.location.origin, api = new ApiClient(baseUrl), socket = new SocketBridge(baseUrl)) {
@@ -45,6 +52,7 @@ export class ViperConnectApp {
         this.collapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
         this.mobileOpen = false;
         this.toast = '';
+        this.versionStatus = emptyVersionStatus();
         this.api = api;
         this.socket = socket;
         this.bindEvents();
@@ -60,6 +68,7 @@ export class ViperConnectApp {
         try {
             await this.loadSessions(true);
             this.startRefreshTimer();
+            this.startVersionTimer();
         }
         catch { }
     }
@@ -259,6 +268,7 @@ export class ViperConnectApp {
             await this.loadSessions(true);
             localStorage.setItem(TOKEN_KEY, token.trim());
             this.startRefreshTimer();
+            this.startVersionTimer();
         }
         catch (error) {
             this.api.setToken('');
@@ -273,6 +283,10 @@ export class ViperConnectApp {
         this.selectedPhone = '';
         this.modal = undefined;
         this.socket.clear();
+        if (this.versionTimer)
+            window.clearInterval(this.versionTimer);
+        this.versionTimer = undefined;
+        this.versionStatus = emptyVersionStatus();
         this.render();
     }
     async loadSessions(initial = false) {
@@ -612,6 +626,7 @@ export class ViperConnectApp {
                 content,
                 collapsed: this.collapsed,
                 mobileOpen: this.mobileOpen,
+                versionStatus: this.versionStatus,
             }) +
                 this.renderModal() +
                 (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '');
@@ -718,6 +733,29 @@ export class ViperConnectApp {
         if (this.refreshTimer)
             return;
         this.refreshTimer = window.setInterval(() => this.tickRefresh(), 1000);
+    }
+    startVersionTimer() {
+        void this.loadVersionStatus();
+        if (this.versionTimer)
+            return;
+        this.versionTimer = window.setInterval(() => {
+            void this.loadVersionStatus();
+        }, VERSION_REFRESH_MS);
+    }
+    async loadVersionStatus() {
+        if (!this.api.getToken())
+            return;
+        try {
+            this.versionStatus = await this.api.versionStatus();
+        }
+        catch {
+            this.versionStatus = {
+                ...this.versionStatus,
+                status: 'unknown',
+                update_available: false,
+            };
+        }
+        this.render();
     }
     messageFor(error) {
         if (error instanceof ApiError) {

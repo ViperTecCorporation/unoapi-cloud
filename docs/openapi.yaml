@@ -23,6 +23,18 @@ paths:
               schema:
                 type: string
 
+  /version:
+    get:
+      summary: Consultar versão instalada e última tag publicada
+      description: A consulta ao GitHub é feita no servidor e armazenada em cache por 15 minutos.
+      responses:
+        '200':
+          description: Estado de atualização do ViperConnect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionStatus'
+
   /sessions:
     get:
       summary: Listar sessões/configurações visíveis
@@ -821,6 +833,28 @@ components:
       description: 'JID do grupo, ex.: 120363040468224422@g.us'
 
   schemas:
+    VersionStatus:
+      type: object
+      required: [installed_version, update_available, status, checked_at]
+      properties:
+        installed_version:
+          type: string
+          example: 4.0.0-beta7
+        latest_version:
+          type: string
+          example: 4.0.0-beta8
+        update_available:
+          type: boolean
+        status:
+          type: string
+          enum: [current, update_available, unknown]
+        checked_at:
+          type: string
+          format: date-time
+        release_url:
+          type: string
+          format: uri
+
     Error400:
       type: object
       properties:

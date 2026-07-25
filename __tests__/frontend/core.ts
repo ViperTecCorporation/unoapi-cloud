@@ -18,6 +18,15 @@ describe('frontend core', () => {
     const fetcher = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: `${url}`, init })
       if (`${url}`.endsWith('/sessions')) return new Response(JSON.stringify({ data: [{ phone: '5566' }] }))
+      if (`${url}`.endsWith('/version')) {
+        return new Response(JSON.stringify({
+          installed_version: '4.0.0-beta8',
+          latest_version: '4.0.0-beta8',
+          update_available: false,
+          status: 'current',
+          checked_at: '2026-07-25T12:00:00.000Z',
+        }))
+      }
       if (`${url}`.includes('/contacts?')) {
         return new Response(JSON.stringify({
           contacts: [],
@@ -34,6 +43,7 @@ describe('frontend core', () => {
     api.setToken('secret')
 
     await expect(api.sessions()).resolves.toEqual([{ phone: '5566' }])
+    await expect(api.versionStatus()).resolves.toMatchObject({ status: 'current' })
     await api.session('5566')
     await api.register('5566', { label: 'Teste' })
     await api.contacts('5566')
@@ -42,7 +52,7 @@ describe('frontend core', () => {
     await api.sendText('5566', '5511', 'Oi')
     await api.deregister('5566')
 
-    expect(calls).toHaveLength(8)
+    expect(calls).toHaveLength(9)
     expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe('Bearer secret')
     expect(calls.map((call) => call.url)).toEqual(expect.arrayContaining([
       'https://uno.example/sessions',

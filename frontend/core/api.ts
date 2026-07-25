@@ -1,4 +1,4 @@
-import type { ContactDirectoryPage, GroupPage, SessionConfig, WebhookConfig } from '../domain/types.js'
+import type { ContactDirectoryPage, GroupPage, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,10 @@ export class ApiClient {
   async sessions(): Promise<SessionConfig[]> {
     const response = await this.request<{ data?: SessionConfig[] }>('/sessions')
     return Array.isArray(response?.data) ? response.data : []
+  }
+
+  versionStatus(): Promise<VersionStatus> {
+    return this.request<VersionStatus>('/version')
   }
 
   session(phone: string): Promise<SessionConfig> {

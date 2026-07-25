@@ -4,6 +4,7 @@ import { createRequire } from 'module'
 import fs from 'fs'
 import path from 'path'
 import YAML from 'yaml'
+import { versionStatusService } from '../services/version_status'
 
 const PUBLIC_APP_ROOT = path.resolve('./public/app')
 
@@ -121,6 +122,10 @@ class IndexController {
     logger.debug('ping body %s', JSON.stringify(req.body))
     res.set('Content-Type', 'text/plain')
     return res.status(200).send('pong!')
+  }
+
+  public async versionStatus(_req: Request, res: Response) {
+    return res.status(200).json(await versionStatusService.get())
   }
 
   public debugToken(req: Request, res: Response) {

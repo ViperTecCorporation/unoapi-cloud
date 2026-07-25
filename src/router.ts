@@ -115,6 +115,7 @@ export const router = (
   router.post('/passkey-bridge/:bridgeId/confirm', passkeyBridgeController.confirm.bind(passkeyBridgeController))
   router.delete('/passkey-bridge/:bridgeId', passkeyBridgeController.cancel.bind(passkeyBridgeController))
   router.get('/ping', indexController.ping)
+  router.get('/version', middleware, indexController.versionStatus.bind(indexController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))
   // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)

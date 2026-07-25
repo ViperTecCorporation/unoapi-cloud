@@ -106,6 +106,15 @@ export interface GroupPage {
   }
 }
 
+export interface VersionStatus {
+  installed_version: string
+  latest_version?: string
+  update_available: boolean
+  status: 'current' | 'update_available' | 'unknown'
+  checked_at: string
+  release_url?: string
+}
+
 export interface QrBroadcast {
   phone?: string
   type?: string

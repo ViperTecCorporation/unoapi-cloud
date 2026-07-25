@@ -3,7 +3,7 @@ import { digitsOnly, escapeHtml } from './core/html.js'
 import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
-import type { ContactDirectoryItem, GroupSummary, QrBroadcast, SessionConfig, SessionTab, WebhookConfig } from './domain/types.js'
+import type { ContactDirectoryItem, GroupSummary, QrBroadcast, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
@@ -16,6 +16,7 @@ const THEME_KEY = 'viperconnect_theme'
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed'
 const REFRESH_SECONDS = 15
 const PAGE_SIZE = 20
+const VERSION_REFRESH_MS = 15 * 60 * 1000
 
 type ModalState =
   | { type: 'new-session' }
@@ -29,6 +30,13 @@ const emptyContactState = () => ({
   cursor: '0',
   hasMore: false,
   totalCount: 0,
+})
+
+const emptyVersionStatus = (): VersionStatus => ({
+  installed_version: '',
+  update_available: false,
+  status: 'unknown',
+  checked_at: '',
 })
 
 export class ViperConnectApp {
@@ -58,7 +66,9 @@ export class ViperConnectApp {
   private collapsed = localStorage.getItem(SIDEBAR_KEY) === 'true'
   private mobileOpen = false
   private toast = ''
+  private versionStatus = emptyVersionStatus()
   private refreshTimer?: number
+  private versionTimer?: number
   private groupSearchTimer?: number
   private contactSearchTimer?: number
 
@@ -84,6 +94,7 @@ export class ViperConnectApp {
     try {
       await this.loadSessions(true)
       this.startRefreshTimer()
+      this.startVersionTimer()
     } catch {}
   }
 
@@ -256,6 +267,7 @@ export class ViperConnectApp {
       await this.loadSessions(true)
       localStorage.setItem(TOKEN_KEY, token.trim())
       this.startRefreshTimer()
+      this.startVersionTimer()
     } catch (error) {
       this.api.setToken('')
       this.loginError = this.messageFor(error)
@@ -270,6 +282,9 @@ export class ViperConnectApp {
     this.selectedPhone = ''
     this.modal = undefined
     this.socket.clear()
+    if (this.versionTimer) window.clearInterval(this.versionTimer)
+    this.versionTimer = undefined
+    this.versionStatus = emptyVersionStatus()
     this.render()
   }
 
@@ -589,6 +604,7 @@ export class ViperConnectApp {
         content,
         collapsed: this.collapsed,
         mobileOpen: this.mobileOpen,
+        versionStatus: this.versionStatus,
       }) +
       this.renderModal() +
       (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
@@ -694,6 +710,28 @@ export class ViperConnectApp {
   private startRefreshTimer(): void {
     if (this.refreshTimer) return
     this.refreshTimer = window.setInterval(() => this.tickRefresh(), 1_000)
+  }
+
+  private startVersionTimer(): void {
+    void this.loadVersionStatus()
+    if (this.versionTimer) return
+    this.versionTimer = window.setInterval(() => {
+      void this.loadVersionStatus()
+    }, VERSION_REFRESH_MS)
+  }
+
+  private async loadVersionStatus(): Promise<void> {
+    if (!this.api.getToken()) return
+    try {
+      this.versionStatus = await this.api.versionStatus()
+    } catch {
+      this.versionStatus = {
+        ...this.versionStatus,
+        status: 'unknown',
+        update_available: false,
+      }
+    }
+    this.render()
   }
 
   private messageFor(error: unknown): string {

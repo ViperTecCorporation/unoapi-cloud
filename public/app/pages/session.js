@@ -8,8 +8,8 @@ import { renderWebhooks } from '../features/webhooks.js?v=4.0.0-beta8';
 const tabs = [
     ['overview', 'Visão geral'],
     ['config', 'Configuração'],
-    ['contacts', 'Contatos'],
     ['webhooks', 'Webhooks'],
+    ['contacts', 'Contatos'],
     ['groups', 'Grupos'],
 ];
 const renderOverview = (session, contactCount) => `
