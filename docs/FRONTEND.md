@@ -65,7 +65,8 @@ uma sessão legada com o erro `baileys_provider_disabled_deregister_required`.
 O entrypoint padrão da imagem e o comando Linux `yarn start` usam
 `dist/src/cloud.js`. Para dividir responsabilidades, configure
 `UNOAPI_PROCESS_ROLE=web`, `broker` ou `worker`. Quando a variável não é
-declarada, o mesmo processo inicia os três papéis. Não sobrescreva o entrypoint
-da imagem com `yarn cloud`.
+declarada, o mesmo processo inicia os três papéis. O papel `broker` também
+consome campanhas, comandos e status em lote. Não sobrescreva o entrypoint da
+imagem com `yarn cloud`.
 
 Veja [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) para os modelos de container.

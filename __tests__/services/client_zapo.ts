@@ -909,6 +909,33 @@ describe('ClientZapo', () => {
     expect(normalized.message.imageMessage.url).toBeUndefined()
   })
 
+  test('restores replayed media bytes before using the official Zapo downloader', async () => {
+    client.message.downloadBytes.mockResolvedValue(Uint8Array.from([4, 5, 6]))
+    await service.connect(1)
+
+    const normalized: any = await service.getMessageMetadata({
+      key: { id: 'media-echo-1', remoteJid: '111@lid', fromMe: true },
+      messageTimestamp: 123,
+      pushName: 'Eu',
+      message: {
+        imageMessage: {
+          mimetype: 'image/jpeg',
+          directPath: '/media-echo',
+          url: 'https://mmg.whatsapp.net/encrypted',
+          mediaKey: { 1: 2, 0: 1 },
+        },
+      },
+    })
+
+    expect(client.message.downloadBytes).toHaveBeenCalledWith(expect.objectContaining({
+      imageMessage: expect.objectContaining({
+        directPath: '/media-echo',
+        mediaKey: Uint8Array.from([1, 2]),
+      }),
+    }))
+    expect(normalized.__unoapiMediaBytes).toEqual(Buffer.from([4, 5, 6]))
+  })
+
   test('bridges the official Zapo passkey signer to the existing Uno assertion endpoint', async () => {
     await service.connect(1)
     const options = (service as any).clientFactory.mock?.calls?.[0]?.[0]

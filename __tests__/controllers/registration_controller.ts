@@ -55,6 +55,33 @@ describe('RegistrationController connection type policy', () => {
     })
   })
 
+  test('a new registration replaces a disabled Baileys request with Zapo', async () => {
+    const config = { ...defaultConfig, provider: 'zapo' as const, connectionType: 'qrcode' as const }
+    storedConfigMock.mockResolvedValue(undefined)
+    const reload = mockDeep<Reload>()
+    const controller = new RegistrationController(jest.fn().mockResolvedValue(config), reload, mockDeep<Logout>())
+    const req = {
+      params: { phone: '5566000000004' },
+      body: {
+        provider: 'baileys',
+        label: 'Legacy client',
+        connectionType: 'qrcode',
+      },
+      method: 'POST',
+      headers: {},
+      query: {},
+    } as unknown as Request
+
+    await controller.register(req, response())
+
+    expect(setConfigMock).toHaveBeenCalledWith('5566000000004', {
+      provider: 'zapo',
+      label: 'Legacy client',
+      connectionType: 'qrcode',
+    })
+    expect(reload.run).toHaveBeenCalledWith('5566000000004')
+  })
+
   test('a persisted Baileys session must be deregistered instead of reconnecting', async () => {
     const config = { ...defaultConfig, provider: 'baileys' as const }
     storedConfigMock.mockResolvedValue({ provider: 'baileys' })

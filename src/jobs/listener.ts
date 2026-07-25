@@ -30,12 +30,14 @@ export class ListenerJob {
     const a = data as any
     const { messages, type } = a
     if (a.splited) {
-      // Unpack base64-encoded WAProto messages
+      // Keep the packed AMQP payload untouched so a retry can safely serialize
+      // the original envelope again.
+      let unpackedMessages = a.messages || []
       try {
-        a.messages = (a.messages || []).map(unpackWaMessage)
+        unpackedMessages = unpackedMessages.map(unpackWaMessage)
       } catch {}
       try {
-        await this.listener.process(phone, a.messages, type)
+        await this.listener.process(phone, unpackedMessages, type)
       } catch (error) {
         if (error instanceof DecryptError && options && options?.countRetries >= options?.maxRetries) {
           // send message asking to open whatsapp to see

@@ -40,6 +40,7 @@ import { createPairingCodeImageDataUrl } from './zapo/pairing_code_image'
 import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
 import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
+import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -911,12 +912,13 @@ export class ClientZapo implements Client {
     const value: any = enriched
     const id = `${value?.key?.id || ''}`
     const event = this.pendingIncoming.get(id)
-    if (!event) return enriched
     const mediaKey = mediaMessageKeys.find((key) => value?.message?.[key])
     if (!mediaKey) return enriched
     const media = value.message[mediaKey]
     if (`${media?.url || ''}`.startsWith('data:')) return enriched
-    const bytes = await this.socket.message.downloadBytes(event)
+    reviveZapoMediaBinaryFields(value)
+    const source = event || value.message
+    const bytes = await this.socket.message.downloadBytes(source as any)
     value.__unoapiMediaBytes = Buffer.from(bytes)
     return enriched
   }

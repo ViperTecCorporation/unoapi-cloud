@@ -1969,7 +1969,29 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
   const created = await setIfAbsent(key, idUno, ttlSec)
   if (!created) {
     // Another worker created it; reuse the existing uno id.
-    const existing = await redisGet(key)
+    let existing = await redisGet(key)
+    if (existing === idBaileys && idUno !== idBaileys) {
+      try {
+        const c: any = await getRedis()
+        existing = await c.eval(
+          `
+            local current = redis.call('GET', KEYS[1])
+            if current == ARGV[1] then
+              if tonumber(ARGV[3]) > 0 then
+                redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+              else
+                redis.call('SET', KEYS[1], ARGV[2])
+              end
+              return ARGV[2]
+            end
+            return current
+          `,
+          { keys: [key], arguments: [idBaileys, idUno, `${ttlSec}`] },
+        )
+      } catch {
+        existing = await redisGet(key)
+      }
+    }
     const chosen = existing || idUno
     const reverseKey = providerIdKey(phone, chosen)
     await redisSetAndExpire(reverseKey, idBaileys, ttlSec)

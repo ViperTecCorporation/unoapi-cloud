@@ -10,6 +10,16 @@ const mockClient: any = {
     store.set(key, value)
     return 'OK'
   }),
+  eval: jest.fn(async (_script: string, options: { keys: string[]; arguments: string[] }) => {
+    const [key] = options.keys
+    const [selfId, replacement] = options.arguments
+    const current = store.get(key)
+    if (current === selfId) {
+      store.set(key, replacement)
+      return replacement
+    }
+    return current || null
+  }),
   del: jest.fn(async (key: string) => (store.delete(key) ? 1 : 0)),
   expire: jest.fn(async () => 1),
   __reset: () => {
@@ -18,6 +28,7 @@ const mockClient: any = {
     mockClient.set.mockClear()
     mockClient.del.mockClear()
     mockClient.expire.mockClear()
+    mockClient.eval.mockClear()
     mockClient.ping.mockClear()
   },
 }
@@ -69,6 +80,17 @@ describe('redis.setUnoId', () => {
     const other = chosen === unoA ? unoB : unoA
     const otherProvider = await getProviderId(phone, other)
     expect(otherProvider).toBeFalsy()
+  })
+
+  it('atomically repairs a legacy provider id mapped to itself', async () => {
+    const phone = '5566996269251'
+    const providerId = '3AB30E039E9D38AE82E4'
+    const unoId = 'd1e105c0-0151-11f1-8086-41fa32916297'
+
+    await setUnoId(phone, providerId, providerId)
+    await expect(setUnoId(phone, providerId, unoId)).resolves.toBe(unoId)
+    await expect(getUnoId(phone, providerId)).resolves.toBe(unoId)
+    await expect(getProviderId(phone, unoId)).resolves.toBe(providerId)
   })
 })
 

@@ -21,7 +21,8 @@ existindo porque são carregados pelo `cloud.js`.
 `UNOAPI_PROCESS_ROLE` aceita:
 
 - `web`: frontend, HTTP, Socket.IO e publicação de comandos;
-- `broker`: filas de envio, webhook, mídia, timer e transcrição;
+- `broker`: filas de envio, webhook, mídia, timer e transcrição, além dos
+  consumidores de campanhas, comandos e status em lote;
 - `worker`: conexões e operações das sessões Zapo.
 
 Quando `UNOAPI_PROCESS_ROLE` está ausente ou vazio, o processo inicia os três
@@ -75,7 +76,8 @@ services:
 ```
 
 Somente o serviço web publica a porta HTTP. Todos os papéis precisam acessar o
-mesmo Redis/Valkey e RabbitMQ.
+mesmo Redis/Valkey e RabbitMQ. O papel `broker` também inicia internamente o
+bulker; não crie um quarto container para ele.
 
 ## Desenvolvimento
 

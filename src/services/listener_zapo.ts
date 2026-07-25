@@ -69,11 +69,11 @@ export class ListenerZapo implements Listener {
     }
   }
 
-  private isDuplicate(message: any, messageType?: string) {
+  private isDuplicate(phone: string, message: any, messageType?: string) {
     const id = `${message?.key?.id || ''}`
     const jid = `${message?.key?.remoteJid || ''}`
     if (!id || !jid || message?.update) return false
-    const key = `${jid}|${id}|${messageType || 'unknown'}`
+    const key = `${phone}|${jid}|${id}|${messageType || 'unknown'}`
     const now = Date.now()
     const previous = this.seen.get(key) || 0
     this.seen.set(key, now)
@@ -123,6 +123,8 @@ export class ListenerZapo implements Listener {
       const downloaded = normalized.__unoapiMediaBytes
       if (downloaded && store.mediaStore.saveDownloadedMedia) {
         normalized = await store.mediaStore.saveDownloadedMedia(normalized, Buffer.from(downloaded))
+      } else {
+        throw new Error('zapo_media_bytes_unavailable')
       }
       try { delete normalized.__unoapiMediaBytes } catch {}
     }
@@ -148,7 +150,7 @@ export class ListenerZapo implements Listener {
       ...(source?.update ? { update: { ...source.update } } : {}),
     }
     const messageType = this.messageType(message)
-    if (this.isDuplicate(message, messageType)) return
+    if (this.isDuplicate(phone, message, messageType)) return
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
     const normalized = await this.normalizeMessageId(store, message, config.getMessageMetadata, messageType)

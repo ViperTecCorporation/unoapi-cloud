@@ -11,9 +11,9 @@ const role = resolveCloudProcessRole(process.env.UNOAPI_PROCESS_ROLE)
 const start = async () => {
   await ensureRequiredRedis()
   if (role === 'web') return import('./web.js')
-  if (role === 'broker') return import('./broker.js')
+  if (role === 'broker') return Promise.all([import('./broker.js'), import('./bulker.js')])
   if (role === 'worker') return import('./worker.js')
-  await Promise.all([import('./web.js'), import('./worker.js'), import('./broker.js')])
+  await Promise.all([import('./web.js'), import('./worker.js'), import('./broker.js'), import('./bulker.js')])
 }
 
 start().catch((error) => {

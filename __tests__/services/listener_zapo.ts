@@ -17,6 +17,7 @@ describe('ListenerZapo', () => {
     store = mock<Store>()
     store.dataStore = mock<DataStore>()
     store.mediaStore = mock<MediaStore>()
+    ;(store.dataStore.setUnoId as jest.Mock).mockImplementation(async (_providerId: string, unoId: string) => unoId)
     outgoing = mock<Outgoing>()
     config = { ...defaultConfig, provider: 'zapo', getStore: jest.fn().mockResolvedValue(store) }
     service = new ListenerZapo(outgoing, mock<Broadcast>(), async () => config)
@@ -42,7 +43,68 @@ describe('ListenerZapo', () => {
       '5566998888888@s.whatsapp.net',
       expect.objectContaining({ id: expect.any(String) }),
     )
-    expect(outgoing.send).toHaveBeenCalledWith('5566999999999', expect.objectContaining({ entry: expect.any(Array) }))
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    expect(payload.entry[0].changes[0].value.messages[0].id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    )
+    expect(payload.entry[0].changes[0].value.messages[0].id).not.toBe('3EB0ZAPO')
+  })
+
+  test.each([
+    ['direct', { remoteJid: '123@lid', remoteJidAlt: '5566998888888@s.whatsapp.net' }],
+    ['group', {
+      remoteJid: '120363427999345040@g.us',
+      participant: '123@lid',
+      participantAlt: '5566998888888@s.whatsapp.net',
+      isGroup: true,
+    }],
+  ])('uses the Uno id for %s media storage and webhook references', async (_kind, key) => {
+    config.getMessageMetadata = jest.fn(async (message: any) => ({
+      ...message,
+      __unoapiMediaBytes: Buffer.from([1, 2, 3]),
+    }))
+    ;(store.mediaStore.saveDownloadedMedia as jest.Mock).mockImplementation(async (message: any) => ({
+      ...message,
+      message: {
+        ...message.message,
+        imageMessage: {
+          ...message.message.imageMessage,
+          url: `https://files.example/${message.key.id}.jpg`,
+        },
+      },
+    }))
+
+    await service.process('5566999999999', [{
+      key: { id: '3EB0MEDIA', fromMe: false, ...key },
+      message: { imageMessage: { mimetype: 'image/jpeg' } },
+      messageTimestamp: 1,
+    }], 'notify')
+
+    const storedMessage = (store.mediaStore.saveDownloadedMedia as jest.Mock).mock.calls[0][0]
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    const webhookMessage = payload.entry[0].changes[0].value.messages[0]
+
+    expect(storedMessage.key.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    )
+    expect(webhookMessage.id).toBe(storedMessage.key.id)
+    expect(webhookMessage.image.id).toBe(`5566999999999/${storedMessage.key.id}`)
+    expect(webhookMessage.image.url).toContain(storedMessage.key.id)
+  })
+
+  test('does not expose temporary WhatsApp media when Zapo bytes are unavailable', async () => {
+    await expect(service.process('5566999999999', [{
+      key: {
+        id: '3EB0MEDIAFALLBACK',
+        remoteJid: '123@lid',
+        remoteJidAlt: '5566998888888@s.whatsapp.net',
+        fromMe: true,
+      },
+      message: { imageMessage: { mimetype: 'image/jpeg', directPath: '/media' } },
+      messageTimestamp: 1,
+    }], 'notify')).rejects.toThrow('zapo_media_bytes_unavailable')
+    expect(store.mediaStore.saveMedia).not.toHaveBeenCalled()
+    expect(outgoing.send).not.toHaveBeenCalled()
   })
 
   test('normalizes a legacy Brazilian mobile PN only at the Zapo webhook boundary', async () => {
@@ -123,6 +185,27 @@ describe('ListenerZapo', () => {
     await service.process('5566999999999', [event], 'notify')
     await service.process('5566999999999', [event], 'notify')
     expect(outgoing.send).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not deduplicate the same group event across different sessions', async () => {
+    const event = {
+      key: {
+        id: 'shared-group-message',
+        remoteJid: '120363427999345040@g.us',
+        participant: '86110369755163@lid',
+        fromMe: true,
+        isGroup: true,
+      },
+      message: { conversation: 'eco enviado pelo aparelho' },
+      messageTimestamp: 1,
+    }
+
+    await service.process('5566996269251', [event], 'notify')
+    await service.process('5566996328386', [event], 'notify')
+
+    expect(outgoing.send).toHaveBeenCalledTimes(2)
+    expect(outgoing.send).toHaveBeenNthCalledWith(1, '5566996269251', expect.any(Object))
+    expect(outgoing.send).toHaveBeenNthCalledWith(2, '5566996328386', expect.any(Object))
   })
 
   test('does not let a group sender-key event suppress the message with the same provider id', async () => {

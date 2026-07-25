@@ -28,12 +28,23 @@ const cleanTitle = (value: unknown): string => {
   return `${value || ''}`.trim().replace(/^\d+\s*:\s*/, '')
 }
 
+export const isZapoClientNotConnected = (error: unknown): boolean => {
+  const value = error as any
+  return [
+    value?.message,
+    value?.title,
+  ].some((field) => `${field || ''}`.includes('zapo_client_not_connected'))
+}
+
 export const shouldReturnProviderSendFailure = (
   provider: WhatsAppEngine,
   error: unknown,
   retry?: RetryContext,
 ): boolean => {
   if (provider !== 'zapo') return false
+  if (isZapoClientNotConnected(error)) {
+    return !retry || retry.countRetries >= retry.maxRetries
+  }
   if (error instanceof SendError) return true
   if (!retry) return true
   return retry.countRetries >= retry.maxRetries

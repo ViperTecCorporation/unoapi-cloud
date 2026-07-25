@@ -8,6 +8,7 @@ import { parseDocument, YAMLError } from 'yaml'
 import { setConfig } from '../services/redis'
 import { UNOAPI_QUEUE_BULK_REPORT } from '../defaults'
 import logger from '../services/logger'
+import { providerQueueName } from '../services/providers/provider_queue'
 
 export class YamlParseError extends Error {
   readonly errors: YAMLError[]
@@ -73,7 +74,13 @@ export class CommanderJob {
         const config = { webhooks }
         logger.debug('Template webhooks %s', phone, JSON.stringify(webhooks))
         await setConfig(phone, config)
-        await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, `${UNOAPI_QUEUE_RELOAD}.${currentConfig.server!}`, phone , { phone }, { type: 'topic' })
+        await amqpPublish(
+          UNOAPI_EXCHANGE_BROKER_NAME,
+          providerQueueName(UNOAPI_QUEUE_RELOAD, currentConfig.server!, currentConfig.provider),
+          phone,
+          { phone },
+          { type: 'topic' },
+        )
       } else if (payload?.to && phone === payload?.to && payload?.template && payload?.template.name == 'unoapi-bulk-report') {
         logger.debug('Parsing bulk report template... %s', phone)
         const service = new Template(this.getConfig)
@@ -105,7 +112,13 @@ export class CommanderJob {
         }, {})
         logger.debug('Config template to update %s', phone, JSON.stringify(configToUpdate))
         await setConfig(phone, configToUpdate)
-        await amqpPublish(UNOAPI_EXCHANGE_BROKER_NAME, `${UNOAPI_QUEUE_RELOAD}.${currentConfig.server!}`, phone, { phone })
+        await amqpPublish(
+          UNOAPI_EXCHANGE_BROKER_NAME,
+          providerQueueName(UNOAPI_QUEUE_RELOAD, currentConfig.server!, currentConfig.provider),
+          phone,
+          { phone },
+          { type: 'topic' },
+        )
       } else {
         logger.debug(`Commander ignore`)
       }

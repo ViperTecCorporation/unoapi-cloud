@@ -41,7 +41,7 @@ role-separated deployments.
   - Example: `REDIS_URL=redis://localhost:6379`
 - `WHATSAPP_ENGINE` — default engine for new sessions without a persisted `provider`; defaults to `zapo`. Persisted legacy sessions without the field are identified as Baileys, shown offline and must be removed before a new Zapo pairing.
 - `UNOAPI_WORKER_ENGINE` — engine owned by the worker process. The supported runtime value is `zapo`; Baileys is suppressed in code and has no container.
-- `UNOAPI_PROCESS_ROLE` — optional role loaded by the cloud entrypoint: `web`, `broker` or `worker`. When omitted, the process starts all roles.
+- `UNOAPI_PROCESS_ROLE` — optional role loaded by the cloud entrypoint: `web`, `broker` or `worker`. When omitted, the process starts all roles. The `broker` role also runs bulk, commander and bulk-status consumers.
 - `AMQP_URL` Ã¢â‚¬â€ RabbitMQ URL for broker features.
   - Use to enable queue processing (web/worker model, retries, dead letters).
   - Example: `AMQP_URL=amqp://guest:guest@localhost:5672?frameMax=8192`

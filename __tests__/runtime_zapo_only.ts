@@ -6,11 +6,14 @@ describe('Zapo-only runtime artifacts', () => {
   test('compiles the cloud entry graph instead of every legacy entrypoint', () => {
     const config = JSON.parse(fs.readFileSync(path.resolve('tsconfig.runtime.json'), 'utf8'))
     const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'))
+    const cloudEntry = fs.readFileSync(path.resolve('src/cloud.ts'), 'utf8')
 
     expect(config.include).toEqual(['src/cloud.ts'])
     expect(pkg.scripts.build).toContain('-p tsconfig.runtime.json')
     expect(pkg.scripts.build).toContain('check-zapo-runtime-graph.mjs')
     expect(pkg.scripts.start).toContain('dist/src/cloud.js')
+    expect(cloudEntry).toContain("role === 'broker'")
+    expect(cloudEntry).toContain("import('./bulker.js')")
     expect(pkg.scripts['start-ts']).toBeUndefined()
     expect(pkg.scripts.standalone).toBeUndefined()
     expect(pkg.scripts['standalone-dev']).toBeUndefined()
@@ -47,6 +50,7 @@ describe('Zapo-only runtime artifacts', () => {
 
     expect(architecture).toContain('node dist/src/cloud.js')
     expect(architecture).toContain('Quando `UNOAPI_PROCESS_ROLE` está ausente ou vazio')
+    expect(architecture).toContain('consumidores de campanhas, comandos e status em lote')
     expect(nginx.services.unoapi.entrypoint).toBeUndefined()
     expect(traefik.services.unoapi.entrypoint).toBeUndefined()
   })

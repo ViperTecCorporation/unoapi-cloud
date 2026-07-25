@@ -114,6 +114,28 @@ describe('incoming job', () => {
     )
   })
 
+  test('requeues a Zapo send while the client is reconnecting', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    incoming.send = jest.fn().mockRejectedValue(new SendError(409, 'zapo_client_not_connected'))
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{ ...defaultConfig.webhooks[0] }],
+    }))
+    const data = {
+      id: 'uno-worker-restart',
+      payload: { to: '5511999999999', type: 'text', text: { body: 'Persistir no restart' } },
+    }
+
+    await expect(job.consume('5566999999999', data, { countRetries: 1, maxRetries: 5 }))
+      .rejects.toThrow('zapo_client_not_connected')
+    expect(outgoing.sendHttp).not.toHaveBeenCalled()
+  })
+
   test('preserves the original message id when a Zapo status action fails', async () => {
     const incoming = mock<Incoming>()
     const outgoing = mock<Outgoing>()

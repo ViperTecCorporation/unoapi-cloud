@@ -32,7 +32,8 @@ Configuracao:
 - `WHATSAPP_ENGINE`: padrao para novas sessoes sem valor persistido; default `zapo`. Sessoes legadas ja persistidas sem `provider` continuam Baileys.
 - `UNOAPI_WORKER_ENGINE`: motor exclusivo do processo worker; o runtime suportado e `zapo`.
 - `UNOAPI_PROCESS_ROLE`: papel opcional do entrypoint cloud (`web`, `broker` ou
-  `worker`). Quando ausente, inicia todos os papeis.
+  `worker`). Quando ausente, inicia todos os papeis. O papel `broker` inclui os
+  consumidores de bulk e commander; eles nao exigem outro container.
 - Baileys e forwarder permanecem apenas no codigo de referencia e nao possuem worker ativo.
 
 ## Estado atual Zapo-only

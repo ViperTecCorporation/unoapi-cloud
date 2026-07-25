@@ -9,15 +9,18 @@ const resolveChain = async (
 ) => {
   let current = `${initial || ''}`.trim()
   const seen = new Set<string>()
+  let resolved = false
   for (let depth = 0; current && depth < maxDepth; depth += 1) {
     if (seen.has(current)) break
     seen.add(current)
     const candidate = `${await next(current) || ''}`.trim()
-    if (!candidate || candidate === current) break
+    if (!candidate) break
+    if (candidate === current) return resolved ? current : undefined
     if (seen.has(candidate)) break
     current = candidate
+    resolved = true
   }
-  return current || undefined
+  return resolved ? current : undefined
 }
 
 export const resolveUnoMessageId = (store: IdStore, providerId: string) =>

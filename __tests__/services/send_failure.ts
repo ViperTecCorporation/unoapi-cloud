@@ -1,6 +1,7 @@
 import { SendError } from '../../src/services/send_error'
 import {
   buildProviderSendFailureResponse,
+  isZapoClientNotConnected,
   normalizeProviderSendError,
   shouldReturnProviderSendFailure,
 } from '../../src/services/providers/send_failure'
@@ -17,6 +18,22 @@ describe('provider send failure', () => {
   test('keeps native Zapo errors retryable until the last attempt', () => {
     const error = new Error('socket temporarily unavailable')
 
+    expect(shouldReturnProviderSendFailure(
+      'zapo',
+      error,
+      { countRetries: 1, maxRetries: 5 },
+    )).toBe(false)
+    expect(shouldReturnProviderSendFailure(
+      'zapo',
+      error,
+      { countRetries: 5, maxRetries: 5 },
+    )).toBe(true)
+  })
+
+  test('keeps a disconnected Zapo client retryable while the worker reconnects', () => {
+    const error = new SendError(409, 'zapo_client_not_connected')
+
+    expect(isZapoClientNotConnected(error)).toBe(true)
     expect(shouldReturnProviderSendFailure(
       'zapo',
       error,

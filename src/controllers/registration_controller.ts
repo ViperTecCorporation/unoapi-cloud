@@ -5,7 +5,7 @@ import logger from '../services/logger'
 import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
 import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
-import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
+import { resolveSessionProvider, resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 import { resolveRegistrationConnectionType } from '../services/providers/connection_type_policy'
 import { isProviderRuntimeEnabled } from '../services/providers/provider_runtime_policy'
 
@@ -46,9 +46,21 @@ export class RegistrationController {
         previousConnectionType: previousConfig.connectionType,
         requestedConnectionType: req.body.connectionType as connectionType | undefined,
       })
+      const requestedProvider = req.body.provider ?? previousConfig.provider
+      const provider = !storedConfig && !isProviderRuntimeEnabled(requestedProvider)
+        ? resolveSessionProvider(undefined)
+        : requestedProvider
+      if (provider !== requestedProvider) {
+        logger.warn(
+          'Replaced disabled provider %s with %s for new session %s',
+          requestedProvider,
+          provider,
+          phone,
+        )
+      }
       const requestedConfig = {
         ...req.body,
-        provider: req.body.provider ?? previousConfig.provider,
+        provider,
         ...(connectionType.value ? { connectionType: connectionType.value } : {}),
       }
       if (connectionType.locked) {
