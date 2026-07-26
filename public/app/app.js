@@ -1,18 +1,18 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-db7a5209';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-db7a5209';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-db7a5209';
-import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-db7a5209';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-db7a5209';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-db7a5209';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-db7a5209';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-db7a5209';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-db7a5209';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-db7a5209';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-db7a5209';
-import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-db7a5209';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-db7a5209';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-db7a5209';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-db7a5209';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-bdf985b2';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-bdf985b2';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-bdf985b2';
+import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-bdf985b2';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-bdf985b2';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-bdf985b2';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-bdf985b2';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-bdf985b2';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-bdf985b2';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-bdf985b2';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-bdf985b2';
+import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-bdf985b2';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-bdf985b2';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-bdf985b2';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-bdf985b2';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -21,6 +21,8 @@ const REFRESH_SECONDS = 15;
 const PAGE_SIZE = 20;
 const VERSION_REFRESH_MS = 15 * 60 * 1000;
 const QUEUE_REFRESH_SECONDS = 30;
+const QUEUE_MESSAGE_PAGE_SIZE = 20;
+const QUEUE_MESSAGE_MAX = 200;
 const emptyContactState = () => ({
     items: [],
     cursor: '0',
@@ -59,6 +61,8 @@ export class ViperConnectApp {
         this.queueRefreshIn = QUEUE_REFRESH_SECONDS;
         this.queuesLoading = false;
         this.queueMessagesLoading = false;
+        this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE;
+        this.queueMessageOrder = 'oldest';
         this.queueError = '';
         this.redisKeys = [];
         this.redisTree = {};
@@ -175,6 +179,10 @@ export class ViperConnectApp {
         }
         else if (action === 'inspect-queue') {
             await this.inspectQueue(actionElement.dataset.queue || '');
+        }
+        else if (action === 'load-more-queue-messages') {
+            this.queueMessageLimit = Math.min(QUEUE_MESSAGE_MAX, this.queueMessageLimit + QUEUE_MESSAGE_PAGE_SIZE);
+            await this.inspectQueue(this.selectedQueue, false);
         }
         else if (action === 'open-queue-purge') {
             this.modal = { type: 'queue-purge', queue: actionElement.dataset.queue || '' };
@@ -377,10 +385,15 @@ export class ViperConnectApp {
             this.queueSession = input.value;
             this.queueVisibleLimit = PAGE_SIZE;
             this.queueMessages = [];
+            this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE;
             if (this.selectedQueue)
                 void this.inspectQueue(this.selectedQueue);
             else
                 this.render();
+        }
+        else if (input.dataset.filter === 'queue-message-order') {
+            this.queueMessageOrder = input.value === 'sample_newest' ? 'sample_newest' : 'oldest';
+            this.render();
         }
         else if (input.dataset.filter === 'redis-query') {
             this.redisQuery = input.value;
@@ -721,15 +734,19 @@ export class ViperConnectApp {
             this.render();
         }
     }
-    async inspectQueue(queue) {
+    async inspectQueue(queue, resetLimit = true) {
         if (!queue || this.queueMessagesLoading)
             return;
+        if (resetLimit && queue !== this.selectedQueue) {
+            this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE;
+            this.queueMessageOrder = 'oldest';
+        }
         this.selectedQueue = queue;
         this.queueMessagesLoading = true;
         this.queueError = '';
         this.render();
         try {
-            this.queueMessages = await this.api.queueMessages(queue, this.queueSession);
+            this.queueMessages = await this.api.queueMessages(queue, this.queueSession, this.queueMessageLimit);
         }
         catch (error) {
             this.queueError = this.messageFor(error);
@@ -1018,6 +1035,8 @@ export class ViperConnectApp {
                     selectedQueue: this.selectedQueue,
                     messages: this.queueMessages,
                     messagesLoading: this.queueMessagesLoading,
+                    messageLimit: this.queueMessageLimit,
+                    messageOrder: this.queueMessageOrder,
                     error: this.queueError,
                 })
                 : selected

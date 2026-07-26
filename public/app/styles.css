@@ -735,6 +735,18 @@ tbody tr:last-child td {
   gap: 8px;
 }
 
+.queue-inspector-controls {
+  align-items: end;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.queue-inspector-controls .field {
+  min-width: 230px;
+}
+
 .queue-name strong {
   overflow-wrap: anywhere;
 }

@@ -68,9 +68,18 @@ describe('RabbitMQ management service', () => {
 
     await expect(manager.previewMessages('unoapi.outgoing', 20, '5566')).resolves.toHaveLength(1)
     expect(JSON.parse(`${fetcher.mock.calls[0][1]?.body}`)).toMatchObject({
-      count: 50,
+      count: 20,
       ackmode: 'ack_requeue_true',
     })
+  })
+
+  test('caps an inspection sample at 200 messages', async () => {
+    const fetcher = jest.fn(async () => new Response('[]')) as typeof fetch
+    const manager = new RabbitManagement(options, fetcher)
+
+    await manager.previewMessages('unoapi.outgoing.dead', 999)
+
+    expect(JSON.parse(`${fetcher.mock.calls[0][1]?.body}`).count).toBe(200)
   })
 
   test('removes a bounded number of messages without requeue', async () => {

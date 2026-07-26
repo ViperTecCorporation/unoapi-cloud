@@ -80,7 +80,7 @@ paths:
       parameters:
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
         - name: session
           in: query
           description: Filtra a amostra por telefone da sessão no routing key ou payload.

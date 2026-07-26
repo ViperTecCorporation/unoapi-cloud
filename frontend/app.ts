@@ -23,6 +23,8 @@ const REFRESH_SECONDS = 15
 const PAGE_SIZE = 20
 const VERSION_REFRESH_MS = 15 * 60 * 1000
 const QUEUE_REFRESH_SECONDS = 30
+const QUEUE_MESSAGE_PAGE_SIZE = 20
+const QUEUE_MESSAGE_MAX = 200
 
 type ModalState =
   | { type: 'new-session' }
@@ -75,6 +77,8 @@ export class ViperConnectApp {
   private queueRefreshIn = QUEUE_REFRESH_SECONDS
   private queuesLoading = false
   private queueMessagesLoading = false
+  private queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE
+  private queueMessageOrder: 'oldest' | 'sample_newest' = 'oldest'
   private queueError = ''
   private redisKeys: string[] = []
   private redisTree: Record<string, RedisTreeNode[]> = {}
@@ -198,6 +202,9 @@ export class ViperConnectApp {
       this.render()
     } else if (action === 'inspect-queue') {
       await this.inspectQueue(actionElement.dataset.queue || '')
+    } else if (action === 'load-more-queue-messages') {
+      this.queueMessageLimit = Math.min(QUEUE_MESSAGE_MAX, this.queueMessageLimit + QUEUE_MESSAGE_PAGE_SIZE)
+      await this.inspectQueue(this.selectedQueue, false)
     } else if (action === 'open-queue-purge') {
       this.modal = { type: 'queue-purge', queue: actionElement.dataset.queue || '' }
       this.render()
@@ -360,8 +367,12 @@ export class ViperConnectApp {
       this.queueSession = input.value
       this.queueVisibleLimit = PAGE_SIZE
       this.queueMessages = []
+      this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE
       if (this.selectedQueue) void this.inspectQueue(this.selectedQueue)
       else this.render()
+    } else if (input.dataset.filter === 'queue-message-order') {
+      this.queueMessageOrder = input.value === 'sample_newest' ? 'sample_newest' : 'oldest'
+      this.render()
     } else if (input.dataset.filter === 'redis-query') {
       this.redisQuery = input.value
       this.renderAndRestoreFilter('redis-query')
@@ -674,14 +685,18 @@ export class ViperConnectApp {
     }
   }
 
-  private async inspectQueue(queue: string): Promise<void> {
+  private async inspectQueue(queue: string, resetLimit = true): Promise<void> {
     if (!queue || this.queueMessagesLoading) return
+    if (resetLimit && queue !== this.selectedQueue) {
+      this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE
+      this.queueMessageOrder = 'oldest'
+    }
     this.selectedQueue = queue
     this.queueMessagesLoading = true
     this.queueError = ''
     this.render()
     try {
-      this.queueMessages = await this.api.queueMessages(queue, this.queueSession)
+      this.queueMessages = await this.api.queueMessages(queue, this.queueSession, this.queueMessageLimit)
     } catch (error) {
       this.queueError = this.messageFor(error)
       this.queueMessages = []
@@ -970,6 +985,8 @@ export class ViperConnectApp {
           selectedQueue: this.selectedQueue,
           messages: this.queueMessages,
           messagesLoading: this.queueMessagesLoading,
+          messageLimit: this.queueMessageLimit,
+          messageOrder: this.queueMessageOrder,
           error: this.queueError,
         })
       : selected

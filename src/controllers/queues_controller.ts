@@ -33,7 +33,7 @@ export class QueuesController {
   async preview(req: Request, res: Response) {
     if (!this.isAdmin(req)) return res.status(403).json({ error: 'admin_token_required' })
     try {
-      const count = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+      const count = Math.min(200, Math.max(1, Number(req.query.limit) || 20))
       return res.status(200).json({
         queue: req.params.queue,
         messages: await this.manager.previewMessages(req.params.queue, count, `${req.query.session || ''}`),

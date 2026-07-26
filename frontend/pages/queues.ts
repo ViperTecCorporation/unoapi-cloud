@@ -65,9 +65,13 @@ export const filterQueuesBySession = (
   })
 }
 
-const renderMessages = (messages: RabbitQueueMessage[]): string => {
+const renderMessages = (
+  messages: RabbitQueueMessage[],
+  order: 'oldest' | 'sample_newest',
+): string => {
   if (!messages.length) return `<div class="empty-state">${t('Nenhuma mensagem encontrada na amostra.')}</div>`
-  return `<div class="queue-messages">${messages.map((message, index) => `
+  const ordered = order === 'sample_newest' ? [...messages].reverse() : messages
+  return `<div class="queue-messages">${ordered.map((message, index) => `
     <article class="queue-message">
       <div class="queue-message__header">
         <strong>${t('Mensagem {index}', { index: index + 1 })}</strong>
@@ -99,6 +103,8 @@ interface QueuePageOptions {
   selectedQueue: string
   messages: RabbitQueueMessage[]
   messagesLoading: boolean
+  messageLimit: number
+  messageOrder: 'oldest' | 'sample_newest'
   error: string
 }
 
@@ -110,6 +116,10 @@ export const renderQueuesPage = (options: QueuePageOptions): string => {
   const ready = filtered.reduce((total, queue) => total + queue.messages_ready, 0)
   const dead = filtered.filter((queue) => queue.name.endsWith('.dead')).reduce((total, queue) => total + queue.messages_ready, 0)
   const consumers = filtered.reduce((total, queue) => total + queue.consumers, 0)
+  const selectedQueue = options.queues.find((queue) => queue.name === options.selectedQueue)
+  const canLoadMoreMessages = !!selectedQueue
+    && options.messageLimit < 200
+    && selectedQueue.messages_ready > options.messages.length
 
   return `
     <section class="page-header">
@@ -160,7 +170,16 @@ export const renderQueuesPage = (options: QueuePageOptions): string => {
       <div class="section__heading"><div><h2>${escapeHtml(options.selectedQueue)}</h2><p class="muted">${t('A amostra é lida e recolocada na fila; nenhuma mensagem é removida.')}</p></div>
         <button class="btn btn--danger btn--ghost" type="button" data-action="open-queue-purge" data-queue="${escapeHtml(options.selectedQueue)}">${icon('trash')}${t('Limpar mensagens')}</button>
       </div>
-      ${options.messagesLoading ? `<div class="loading-state">${t('Carregando mensagens…')}</div>` : renderMessages(options.messages)}
+      <div class="queue-inspector-controls">
+        <span class="muted">${t('{loaded} carregadas de {ready} prontas', { loaded: options.messages.length, ready: selectedQueue?.messages_ready || 0 })}</span>
+        <label class="field"><span>${t('Ordem')}</span><select data-filter="queue-message-order">
+          <option value="oldest" ${options.messageOrder === 'oldest' ? 'selected' : ''}>${t('Ordem da fila')}</option>
+          <option value="sample_newest" ${options.messageOrder === 'sample_newest' ? 'selected' : ''}>${t('Mais novas da amostra')}</option>
+        </select></label>
+      </div>
+      ${options.messageOrder === 'sample_newest' ? `<p class="hint">${t('A fila não possui timestamp. Esta opção apenas inverte as mensagens já carregadas e não representa necessariamente as mais recentes da fila inteira.')}</p>` : ''}
+      ${options.messagesLoading ? `<div class="loading-state">${t('Carregando mensagens…')}</div>` : renderMessages(options.messages, options.messageOrder)}
+      ${canLoadMoreMessages ? `<div class="load-more"><button class="btn btn--ghost" type="button" data-action="load-more-queue-messages">${t('Carregar mais')} <span>${Math.min(200, options.messageLimit + 20)}</span></button></div>` : ''}
     </section>` : ''}
   `
 }

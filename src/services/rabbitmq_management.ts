@@ -139,10 +139,11 @@ export class RabbitManagement {
 
   async previewMessages(name: string, count = 20, session = ''): Promise<RabbitQueueMessage[]> {
     this.assertQueueName(name)
+    const safeCount = Math.min(200, Math.max(1, Number(count) || 20))
     const messages = await this.request<any[]>(`${this.queuePath(name)}/get`, {
       method: 'POST',
       body: JSON.stringify({
-        count: session ? 50 : Math.min(50, Math.max(1, Number(count) || 20)),
+        count: safeCount,
         ackmode: 'ack_requeue_true',
         encoding: 'auto',
         truncate: 100_000,
@@ -151,7 +152,7 @@ export class RabbitManagement {
     return messages
       .map(normalizeRabbitMessage)
       .filter((message) => rabbitMessageMatchesSession(message, session))
-      .slice(0, Math.min(50, Math.max(1, Number(count) || 20)))
+      .slice(0, safeCount)
   }
 
   async removeMessages(name: string, count: number): Promise<number> {

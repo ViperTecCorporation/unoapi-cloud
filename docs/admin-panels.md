@@ -17,9 +17,12 @@ O painel **Filas** atualiza a cada 30 segundos, permite busca, filtro por sessã
 explica a responsabilidade de cada fila e destaca em vermelho filas paradas ou
 com mensagens prontas sem consumidor.
 
-A inspeção lê no máximo 50 mensagens com `ack_requeue_true`: os itens são
+A inspeção lê em blocos de 20, até o máximo de 200 mensagens, com
+`ack_requeue_true`: os itens são
 recolocados e não são removidos, mas sua ordem relativa pode mudar. Campos
-sensíveis do payload são mascarados.
+sensíveis do payload são mascarados. Filas antigas não possuem timestamp; a
+opção “mais novas da amostra” apenas inverte os itens carregados e não afirma
+que sejam os mais recentes da fila completa.
 
 A limpeza remove as próximas 1 a 50 mensagens prontas ou todas as mensagens
 prontas. Mensagens em processamento (`unacked`) não são removidas. A operação

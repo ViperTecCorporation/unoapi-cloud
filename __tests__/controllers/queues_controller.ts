@@ -52,7 +52,7 @@ describe('queues controller', () => {
       request({ params: { queue: 'unoapi.outgoing' }, query: { limit: '500', session: '5566' } }),
       res,
     )
-    expect(manager.previewMessages).toHaveBeenCalledWith('unoapi.outgoing', 50, '5566')
+    expect(manager.previewMessages).toHaveBeenCalledWith('unoapi.outgoing', 200, '5566')
   })
 
   test('requires exact queue confirmation before removing messages', async () => {
