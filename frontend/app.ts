@@ -202,6 +202,13 @@ export class ViperConnectApp {
       this.render()
     } else if (action === 'inspect-queue') {
       await this.inspectQueue(actionElement.dataset.queue || '')
+    } else if (action === 'back-to-queues') {
+      this.selectedQueue = ''
+      this.queueMessages = []
+      this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE
+      this.queueMessageOrder = 'oldest'
+      this.queueError = ''
+      this.render()
     } else if (action === 'load-more-queue-messages') {
       this.queueMessageLimit = Math.min(QUEUE_MESSAGE_MAX, this.queueMessageLimit + QUEUE_MESSAGE_PAGE_SIZE)
       await this.inspectQueue(this.selectedQueue, false)

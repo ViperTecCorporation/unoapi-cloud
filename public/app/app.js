@@ -1,18 +1,18 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-bdf985b2';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-bdf985b2';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-bdf985b2';
-import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-bdf985b2';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-bdf985b2';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-bdf985b2';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-bdf985b2';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-bdf985b2';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-bdf985b2';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-bdf985b2';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-bdf985b2';
-import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-bdf985b2';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-bdf985b2';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-bdf985b2';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-bdf985b2';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-3d895bbf';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-3d895bbf';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-3d895bbf';
+import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-3d895bbf';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-3d895bbf';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-3d895bbf';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-3d895bbf';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-3d895bbf';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-3d895bbf';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-3d895bbf';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-3d895bbf';
+import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-3d895bbf';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-3d895bbf';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-3d895bbf';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-3d895bbf';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -179,6 +179,14 @@ export class ViperConnectApp {
         }
         else if (action === 'inspect-queue') {
             await this.inspectQueue(actionElement.dataset.queue || '');
+        }
+        else if (action === 'back-to-queues') {
+            this.selectedQueue = '';
+            this.queueMessages = [];
+            this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE;
+            this.queueMessageOrder = 'oldest';
+            this.queueError = '';
+            this.render();
         }
         else if (action === 'load-more-queue-messages') {
             this.queueMessageLimit = Math.min(QUEUE_MESSAGE_MAX, this.queueMessageLimit + QUEUE_MESSAGE_PAGE_SIZE);

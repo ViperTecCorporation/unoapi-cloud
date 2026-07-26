@@ -242,6 +242,8 @@ const english = {
     'Falha HTTP {status}': 'HTTP failure {status}',
     'Filas': 'Queues',
     'Acompanhamento e inspeção das filas do ViperConnect': 'Monitoring and inspection of ViperConnect queues',
+    'Voltar para filas': 'Back to queues',
+    'Inspeção': 'Inspection',
     'Mensagens prontas': 'Ready messages',
     'aguardando processamento': 'waiting for processing',
     'aguardando análise': 'waiting for review',

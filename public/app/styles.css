@@ -747,6 +747,10 @@ tbody tr:last-child td {
   min-width: 230px;
 }
 
+.page-back {
+  margin-bottom: 14px;
+}
+
 .queue-name strong {
   overflow-wrap: anywhere;
 }

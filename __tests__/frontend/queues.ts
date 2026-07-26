@@ -6,6 +6,7 @@ import {
   queueTooltip,
   queueNeedsAttention,
   renderQueuePurgeModal,
+  renderQueueInspectorPage,
   renderQueuesPage,
 } from '../../frontend/pages/queues'
 
@@ -62,8 +63,8 @@ describe('RabbitMQ queues page', () => {
       loading: false,
       refreshIn: 30,
       visibleLimit: 20,
-      selectedQueue: 'unoapi.outgoing.dead',
-      messages: [{ exchange: 'unoapi', routing_key: '5566', redelivered: true, message_count: 1, properties: {}, payload: { body: 'oi' } }],
+      selectedQueue: '',
+      messages: [],
       messagesLoading: false,
       messageLimit: 20,
       messageOrder: 'oldest',
@@ -75,8 +76,30 @@ describe('RabbitMQ queues page', () => {
     expect(html).toContain('queue-state--healthy')
     expect(html).toContain('queue-state--danger')
     expect(html).toContain('data-action="open-queue-purge"')
+    expect(html).not.toContain('data-action="back-to-queues"')
+  })
+
+  test('opens inspection as a dedicated page with a back button', () => {
+    const html = renderQueueInspectorPage({
+      queues,
+      sessions: [],
+      sessionPhoneFilter: '',
+      query: '',
+      loading: false,
+      refreshIn: 30,
+      visibleLimit: 20,
+      selectedQueue: 'unoapi.outgoing.dead',
+      messages: [{ exchange: '', routing_key: '5566', redelivered: true, message_count: 2, properties: {}, payload: { id: 1 } }],
+      messagesLoading: false,
+      messageLimit: 20,
+      messageOrder: 'oldest',
+      error: '',
+    })
+    expect(html).toContain('data-action="back-to-queues"')
+    expect(html).toContain('Voltar para filas')
     expect(html).toContain('data-action="load-more-queue-messages"')
-    expect(html).toContain('data-filter="queue-message-order"')
+    expect(html).not.toContain('Filas do RabbitMQ')
+    expect(html).not.toContain('data-action="inspect-queue"')
   })
 
   test('explains that reverse order applies only to the loaded sample', () => {

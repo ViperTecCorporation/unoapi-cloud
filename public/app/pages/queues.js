@@ -1,10 +1,10 @@
-import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-bdf985b2';
-import { icon } from '../components/icons.js?v=4.0.0-beta8-bdf985b2';
-import { renderModal } from '../components/modal.js?v=4.0.0-beta8-bdf985b2';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-bdf985b2';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-bdf985b2';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-bdf985b2';
-import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-bdf985b2';
+import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-3d895bbf';
+import { icon } from '../components/icons.js?v=4.0.0-beta8-3d895bbf';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8-3d895bbf';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-3d895bbf';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-3d895bbf';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-3d895bbf';
+import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-3d895bbf';
 export const queueDescriptionKey = (name) => {
     const descriptions = {
         outgoing: 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.',
@@ -81,7 +81,44 @@ export const renderQueuePurgeModal = (queue) => renderModal('queue-purge', t('Li
       <div class="form-actions"><button class="btn btn--danger" type="submit">${icon('trash')}${t('Limpar definitivamente')}</button></div>
     </form>
   `, { subtitle: queue });
+export const renderQueueInspectorPage = (options) => {
+    const selectedQueue = options.queues.find((queue) => queue.name === options.selectedQueue);
+    const canLoadMoreMessages = !!selectedQueue
+        && options.messageLimit < 200
+        && selectedQueue.messages_ready > options.messages.length;
+    return `
+    <section class="page-header">
+      <div>
+        <button class="btn btn--ghost page-back" type="button" data-action="back-to-queues">${icon('arrowLeft')}${t('Voltar para filas')}</button>
+        <span class="eyebrow">RabbitMQ · ${t('Inspeção')}</span>
+        <h1>${escapeHtml(options.selectedQueue)}</h1>
+        <p class="muted">${t('A amostra é lida e recolocada na fila; nenhuma mensagem é removida.')}</p>
+      </div>
+      <button class="btn btn--danger btn--ghost" type="button" data-action="open-queue-purge" data-queue="${escapeHtml(options.selectedQueue)}">${icon('trash')}${t('Limpar mensagens')}</button>
+    </section>
+    <section class="stats">
+      <article class="stat-card"><span>${t('Mensagens prontas')}</span><strong>${formatNumber(selectedQueue?.messages_ready || 0)}</strong><small>${t('aguardando processamento')}</small></article>
+      <article class="stat-card"><span>${t('Em processamento')}</span><strong>${formatNumber(selectedQueue?.messages_unacknowledged || 0)}</strong><small>unacked</small></article>
+      <article class="stat-card"><span>${t('Consumidores')}</span><strong>${formatNumber(selectedQueue?.consumers || 0)}</strong><small>${t('processos ativos')}</small></article>
+    </section>
+    <section class="section queue-inspector">
+      ${options.error ? `<p class="form-error">${escapeHtml(options.error)}</p>` : ''}
+      <div class="queue-inspector-controls">
+        <span class="muted">${t('{loaded} carregadas de {ready} prontas', { loaded: options.messages.length, ready: selectedQueue?.messages_ready || 0 })}</span>
+        <label class="field"><span>${t('Ordem')}</span><select data-filter="queue-message-order">
+          <option value="oldest" ${options.messageOrder === 'oldest' ? 'selected' : ''}>${t('Ordem da fila')}</option>
+          <option value="sample_newest" ${options.messageOrder === 'sample_newest' ? 'selected' : ''}>${t('Mais novas da amostra')}</option>
+        </select></label>
+      </div>
+      ${options.messageOrder === 'sample_newest' ? `<p class="hint">${t('A fila não possui timestamp. Esta opção apenas inverte as mensagens já carregadas e não representa necessariamente as mais recentes da fila inteira.')}</p>` : ''}
+      ${options.messagesLoading ? `<div class="loading-state">${t('Carregando mensagens…')}</div>` : renderMessages(options.messages, options.messageOrder)}
+      ${canLoadMoreMessages ? `<div class="load-more"><button class="btn btn--ghost" type="button" data-action="load-more-queue-messages">${t('Carregar mais')} <span>${Math.min(200, options.messageLimit + 20)}</span></button></div>` : ''}
+    </section>
+  `;
+};
 export const renderQueuesPage = (options) => {
+    if (options.selectedQueue)
+        return renderQueueInspectorPage(options);
     const session = options.sessions.find((item) => sessionPhone(item) === options.sessionPhoneFilter);
     const filtered = filterQueuesBySession(options.queues, session)
         .filter((queue) => queue.name.toLowerCase().includes(options.query.trim().toLowerCase()));
@@ -89,10 +126,6 @@ export const renderQueuesPage = (options) => {
     const ready = filtered.reduce((total, queue) => total + queue.messages_ready, 0);
     const dead = filtered.filter((queue) => queue.name.endsWith('.dead')).reduce((total, queue) => total + queue.messages_ready, 0);
     const consumers = filtered.reduce((total, queue) => total + queue.consumers, 0);
-    const selectedQueue = options.queues.find((queue) => queue.name === options.selectedQueue);
-    const canLoadMoreMessages = !!selectedQueue
-        && options.messageLimit < 200
-        && selectedQueue.messages_ready > options.messages.length;
     return `
     <section class="page-header">
       <div><span class="eyebrow">RabbitMQ</span><h1>${t('Filas')}</h1><p class="muted">${t('Acompanhamento e inspeção das filas do ViperConnect')}</p></div>
@@ -138,20 +171,5 @@ export const renderQueuesPage = (options) => {
       </div>
       ${filtered.length > visible.length ? `<div class="load-more"><button class="btn btn--ghost" type="button" data-action="load-more-queues">${t('Carregar mais')} <span>${visible.length}/${filtered.length}</span></button></div>` : ''}
     </section>
-    ${options.selectedQueue ? `<section class="section queue-inspector">
-      <div class="section__heading"><div><h2>${escapeHtml(options.selectedQueue)}</h2><p class="muted">${t('A amostra é lida e recolocada na fila; nenhuma mensagem é removida.')}</p></div>
-        <button class="btn btn--danger btn--ghost" type="button" data-action="open-queue-purge" data-queue="${escapeHtml(options.selectedQueue)}">${icon('trash')}${t('Limpar mensagens')}</button>
-      </div>
-      <div class="queue-inspector-controls">
-        <span class="muted">${t('{loaded} carregadas de {ready} prontas', { loaded: options.messages.length, ready: selectedQueue?.messages_ready || 0 })}</span>
-        <label class="field"><span>${t('Ordem')}</span><select data-filter="queue-message-order">
-          <option value="oldest" ${options.messageOrder === 'oldest' ? 'selected' : ''}>${t('Ordem da fila')}</option>
-          <option value="sample_newest" ${options.messageOrder === 'sample_newest' ? 'selected' : ''}>${t('Mais novas da amostra')}</option>
-        </select></label>
-      </div>
-      ${options.messageOrder === 'sample_newest' ? `<p class="hint">${t('A fila não possui timestamp. Esta opção apenas inverte as mensagens já carregadas e não representa necessariamente as mais recentes da fila inteira.')}</p>` : ''}
-      ${options.messagesLoading ? `<div class="loading-state">${t('Carregando mensagens…')}</div>` : renderMessages(options.messages, options.messageOrder)}
-      ${canLoadMoreMessages ? `<div class="load-more"><button class="btn btn--ghost" type="button" data-action="load-more-queue-messages">${t('Carregar mais')} <span>${Math.min(200, options.messageLimit + 20)}</span></button></div>` : ''}
-    </section>` : ''}
   `;
 };
