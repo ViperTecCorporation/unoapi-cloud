@@ -79,6 +79,7 @@ export class ViperConnectApp {
   private queueMessagesLoading = false
   private queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE
   private queueMessageOrder: 'oldest' | 'sample_newest' = 'oldest'
+  private queueMetricFilter: 'all' | 'ready' | 'dead' | 'consumers' = 'all'
   private queueError = ''
   private redisKeys: string[] = []
   private redisTree: Record<string, RedisTreeNode[]> = {}
@@ -199,6 +200,11 @@ export class ViperConnectApp {
       await this.loadQueues()
     } else if (action === 'load-more-queues') {
       this.queueVisibleLimit += PAGE_SIZE
+      this.render()
+    } else if (action === 'filter-queues-metric') {
+      const metric = actionElement.dataset.metric as typeof this.queueMetricFilter
+      this.queueMetricFilter = this.queueMetricFilter === metric ? 'all' : metric
+      this.queueVisibleLimit = PAGE_SIZE
       this.render()
     } else if (action === 'inspect-queue') {
       await this.inspectQueue(actionElement.dataset.queue || '')
@@ -994,6 +1000,7 @@ export class ViperConnectApp {
           messagesLoading: this.queueMessagesLoading,
           messageLimit: this.queueMessageLimit,
           messageOrder: this.queueMessageOrder,
+          metricFilter: this.queueMetricFilter,
           error: this.queueError,
         })
       : selected

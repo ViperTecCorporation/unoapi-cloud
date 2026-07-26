@@ -1,6 +1,7 @@
 import { setLocale } from '../../frontend/core/i18n'
 import {
   filterQueuesBySession,
+  filterQueuesByMetric,
   queueDescriptionKey,
   queueFlowLabelKey,
   queueTooltip,
@@ -37,6 +38,19 @@ describe('RabbitMQ queues page', () => {
     expect(queueNeedsAttention(queues[1])).toBe(true)
   })
 
+  test('filters queues from each summary card', () => {
+    expect(filterQueuesByMetric(queues, 'ready').map((queue) => queue.name)).toEqual([
+      'unoapi.incoming.server_1.baileys',
+      'unoapi.outgoing.dead',
+    ])
+    expect(filterQueuesByMetric(queues, 'dead').map((queue) => queue.name)).toEqual([
+      'unoapi.outgoing.dead',
+    ])
+    expect(filterQueuesByMetric(queues, 'consumers').map((queue) => queue.name)).toEqual([
+      'unoapi.incoming.server_1.zapo',
+    ])
+  })
+
   test('filters engine-specific queues by the selected session', () => {
     expect(filterQueuesBySession(queues, { phone: '5566', server: 'server_1', provider: 'zapo' }).map((queue) => queue.name)).toEqual([
       'unoapi.incoming.server_1.zapo',
@@ -68,6 +82,7 @@ describe('RabbitMQ queues page', () => {
       messagesLoading: false,
       messageLimit: 20,
       messageOrder: 'oldest',
+      metricFilter: 'all',
       error: '',
     })
     expect(html).toContain('Acompanhamento e inspeção das filas do ViperConnect')
@@ -77,6 +92,7 @@ describe('RabbitMQ queues page', () => {
     expect(html).toContain('queue-state--danger')
     expect(html).toContain('data-action="open-queue-purge"')
     expect(html).not.toContain('data-action="back-to-queues"')
+    expect(html.match(/data-action="filter-queues-metric"/g)).toHaveLength(3)
   })
 
   test('opens inspection as a dedicated page with a back button', () => {
@@ -93,6 +109,7 @@ describe('RabbitMQ queues page', () => {
       messagesLoading: false,
       messageLimit: 20,
       messageOrder: 'oldest',
+      metricFilter: 'all',
       error: '',
     })
     expect(html).toContain('data-action="back-to-queues"')
@@ -116,6 +133,7 @@ describe('RabbitMQ queues page', () => {
       messagesLoading: false,
       messageLimit: 20,
       messageOrder: 'sample_newest',
+      metricFilter: 'all',
       error: '',
     })
     expect(html).toContain('não possui timestamp')

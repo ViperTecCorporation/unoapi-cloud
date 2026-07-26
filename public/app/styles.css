@@ -464,6 +464,26 @@ textarea:focus-visible,
   padding: 17px;
 }
 
+.stat-card--button {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.stat-card--button:hover,
+.stat-card--button:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  transform: translateY(-1px);
+}
+
+.stat-card--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
 .stat-card > span:first-child {
   color: var(--text-muted);
 }

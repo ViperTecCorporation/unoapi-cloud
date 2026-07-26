@@ -1,18 +1,18 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-3d895bbf';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-3d895bbf';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-3d895bbf';
-import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-3d895bbf';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-3d895bbf';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-3d895bbf';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-3d895bbf';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-3d895bbf';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-3d895bbf';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-3d895bbf';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-3d895bbf';
-import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-3d895bbf';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-3d895bbf';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-3d895bbf';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-3d895bbf';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-520280f1';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-520280f1';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-520280f1';
+import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-520280f1';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-520280f1';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-520280f1';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-520280f1';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-520280f1';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-520280f1';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-520280f1';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-520280f1';
+import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-520280f1';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-520280f1';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-520280f1';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-520280f1';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -63,6 +63,7 @@ export class ViperConnectApp {
         this.queueMessagesLoading = false;
         this.queueMessageLimit = QUEUE_MESSAGE_PAGE_SIZE;
         this.queueMessageOrder = 'oldest';
+        this.queueMetricFilter = 'all';
         this.queueError = '';
         this.redisKeys = [];
         this.redisTree = {};
@@ -175,6 +176,12 @@ export class ViperConnectApp {
         }
         else if (action === 'load-more-queues') {
             this.queueVisibleLimit += PAGE_SIZE;
+            this.render();
+        }
+        else if (action === 'filter-queues-metric') {
+            const metric = actionElement.dataset.metric;
+            this.queueMetricFilter = this.queueMetricFilter === metric ? 'all' : metric;
+            this.queueVisibleLimit = PAGE_SIZE;
             this.render();
         }
         else if (action === 'inspect-queue') {
@@ -1045,6 +1052,7 @@ export class ViperConnectApp {
                     messagesLoading: this.queueMessagesLoading,
                     messageLimit: this.queueMessageLimit,
                     messageOrder: this.queueMessageOrder,
+                    metricFilter: this.queueMetricFilter,
                     error: this.queueError,
                 })
                 : selected

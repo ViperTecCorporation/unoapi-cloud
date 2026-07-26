@@ -1,4 +1,4 @@
-import { ViperConnectApp } from './app.js?v=4.0.0-beta8-3d895bbf';
+import { ViperConnectApp } from './app.js?v=4.0.0-beta8-520280f1';
 const root = document.getElementById('app');
 if (!root)
     throw new Error('ViperConnect app root not found');

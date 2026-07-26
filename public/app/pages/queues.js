@@ -1,10 +1,10 @@
-import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-3d895bbf';
-import { icon } from '../components/icons.js?v=4.0.0-beta8-3d895bbf';
-import { renderModal } from '../components/modal.js?v=4.0.0-beta8-3d895bbf';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-3d895bbf';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-3d895bbf';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-3d895bbf';
-import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-3d895bbf';
+import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.0-beta8-520280f1';
+import { icon } from '../components/icons.js?v=4.0.0-beta8-520280f1';
+import { renderModal } from '../components/modal.js?v=4.0.0-beta8-520280f1';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-520280f1';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.0-beta8-520280f1';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-520280f1';
+import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.0-beta8-520280f1';
 export const queueDescriptionKey = (name) => {
     const descriptions = {
         outgoing: 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.',
@@ -58,6 +58,15 @@ export const filterQueuesBySession = (queues, session) => {
         const identity = parseRabbitQueueName(queue.name);
         return identity.server === server && identity.provider === provider;
     });
+};
+export const filterQueuesByMetric = (queues, filter) => {
+    if (filter === 'ready')
+        return queues.filter((queue) => queue.messages_ready > 0);
+    if (filter === 'dead')
+        return queues.filter((queue) => queue.name.endsWith('.dead'));
+    if (filter === 'consumers')
+        return queues.filter((queue) => queue.consumers > 0);
+    return queues;
 };
 const renderMessages = (messages, order) => {
     if (!messages.length)
@@ -120,21 +129,22 @@ export const renderQueuesPage = (options) => {
     if (options.selectedQueue)
         return renderQueueInspectorPage(options);
     const session = options.sessions.find((item) => sessionPhone(item) === options.sessionPhoneFilter);
-    const filtered = filterQueuesBySession(options.queues, session)
+    const scoped = filterQueuesBySession(options.queues, session)
         .filter((queue) => queue.name.toLowerCase().includes(options.query.trim().toLowerCase()));
+    const filtered = filterQueuesByMetric(scoped, options.metricFilter);
     const visible = filtered.slice(0, options.visibleLimit);
-    const ready = filtered.reduce((total, queue) => total + queue.messages_ready, 0);
-    const dead = filtered.filter((queue) => queue.name.endsWith('.dead')).reduce((total, queue) => total + queue.messages_ready, 0);
-    const consumers = filtered.reduce((total, queue) => total + queue.consumers, 0);
+    const ready = scoped.reduce((total, queue) => total + queue.messages_ready, 0);
+    const dead = scoped.filter((queue) => queue.name.endsWith('.dead')).reduce((total, queue) => total + queue.messages_ready, 0);
+    const consumers = scoped.reduce((total, queue) => total + queue.consumers, 0);
     return `
     <section class="page-header">
       <div><span class="eyebrow">RabbitMQ</span><h1>${t('Filas')}</h1><p class="muted">${t('Acompanhamento e inspeção das filas do ViperConnect')}</p></div>
       <button class="btn btn--ghost" type="button" data-action="refresh-queues">${icon('refresh')}${t('Atualizar agora')}</button>
     </section>
     <section class="stats">
-      <article class="stat-card"><span>${t('Mensagens prontas')}</span><strong>${formatNumber(ready)}</strong><small>${t('aguardando processamento')}</small></article>
-      <article class="stat-card"><span>Dead-letter</span><strong>${formatNumber(dead)}</strong><small>${t('aguardando análise')}</small></article>
-      <article class="stat-card"><span>${t('Consumidores')}</span><strong>${formatNumber(consumers)}</strong><small>${t('processos ativos')}</small></article>
+      <button class="stat-card stat-card--button ${options.metricFilter === 'ready' ? 'stat-card--active' : ''}" type="button" data-action="filter-queues-metric" data-metric="ready"><span>${t('Mensagens prontas')}</span><strong>${formatNumber(ready)}</strong><small>${t('Clique para filtrar filas com backlog')}</small></button>
+      <button class="stat-card stat-card--button ${options.metricFilter === 'dead' ? 'stat-card--active' : ''}" type="button" data-action="filter-queues-metric" data-metric="dead"><span>Dead-letter</span><strong>${formatNumber(dead)}</strong><small>${t('Clique para filtrar filas de falha')}</small></button>
+      <button class="stat-card stat-card--button ${options.metricFilter === 'consumers' ? 'stat-card--active' : ''}" type="button" data-action="filter-queues-metric" data-metric="consumers"><span>${t('Consumidores')}</span><strong>${formatNumber(consumers)}</strong><small>${t('Clique para filtrar filas em consumo')}</small></button>
     </section>
     <section class="section">
       <div class="section__heading">
