@@ -331,3 +331,31 @@ As sessões Baileys persistidas ficam offline e só podem usar o fluxo de
 `deregister`, que limpa seus dados legados sem iniciar um socket. O procedimento
 deliberado para recolocar o motor está em
 [BAILEYS_REACTIVATION.md](BAILEYS_REACTIVATION.md).
+
+### Limpeza one-shot das filas RabbitMQ antigas
+
+O processo `broker` executa no boot a migration
+`rabbitmq-zapo-only-queues-v1`. Ela remove somente:
+
+- filas das famílias `bind`, `incoming`, `listener`, `reload` e `logout` com
+  motor explícito `baileys`, incluindo variações `.dead` e `.delayed`;
+- filas das mesmas famílias com servidor, mas sem motor, criadas pelo
+  roteamento legado;
+- filas `reload.undefined` e suas variações.
+
+Filas Zapo e filas globais como `outgoing`, `media`, `timer`, `broadcast`,
+`notification`, `transcribe`, `bulk`, `blacklist` e `commander` são
+preservadas.
+
+Antes de excluir qualquer fila, a migration verifica todas as filas-alvo. Se
+alguma possuir consumidor ou mensagem `unacked`, a execução inteira é
+abortada, nenhuma fila é removida e o marcador não é gravado. Portanto, o
+container worker Baileys deve ser removido antes de subir a versão que contém
+essa migration.
+
+Depois do preflight, um lock Redis impede execução concorrente. A conclusão é
+registrada de forma persistente em
+`unoapi-app:migration:rabbitmq-zapo-only-queues-v1:done`, junto com os nomes
+removidos e a quantidade de mensagens descartadas. O marcador torna a
+migration idempotente e também permite que uma eventual reativação futura da
+Baileys recrie suas filas sem que elas sejam apagadas em todos os boots.

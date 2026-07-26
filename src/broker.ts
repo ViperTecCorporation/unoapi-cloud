@@ -37,6 +37,7 @@ import { addToBlacklist } from './jobs/add_to_blacklist'
 import { TimerJob } from './jobs/timer'
 import { TranscriberJob } from './jobs/transcriber'
 import { OutgoingAmqp } from './services/outgoing_amqp'
+import { runRabbitQueueCleanupMigration } from './services/rabbitmq_queue_cleanup'
 
 const incomingAmqp: Incoming = new IncomingAmqp(getConfigRedis)
 const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigRedis, isInBlacklistInRedis, addToBlacklistRedis)
@@ -60,6 +61,11 @@ if (process.env.SENTRY_DSN) {
 
 const startBroker = async () => {
   await ensureRequiredRedis()
+  try {
+    await runRabbitQueueCleanupMigration()
+  } catch (error) {
+    logger.warn(error as any, 'RabbitMQ deprecated queue cleanup migration failed; broker will continue')
+  }
 
   const prefetch = UNOAPI_QUEUE_OUTGOING_PREFETCH
 

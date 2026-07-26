@@ -94,4 +94,16 @@ describe('RabbitMQ management service', () => {
     )
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
+
+  test('deletes an allowed queue using the management API', async () => {
+    const fetcher = jest.fn(async () => new Response(null, { status: 204 })) as typeof fetch
+    const manager = new RabbitManagement(options, fetcher)
+
+    await manager.deleteQueue('unoapi.listener.server_1.baileys.dead')
+
+    expect(fetcher.mock.calls[0][0]).toBe(
+      'http://rabbitmq:15672/api/queues/%2F/unoapi.listener.server_1.baileys.dead',
+    )
+    expect(fetcher.mock.calls[0][1]?.method).toBe('DELETE')
+  })
 })

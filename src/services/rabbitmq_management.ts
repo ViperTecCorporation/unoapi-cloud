@@ -172,4 +172,9 @@ export class RabbitManagement {
     this.assertQueueName(name)
     await this.request<void>(`${this.queuePath(name)}/contents`, { method: 'DELETE' })
   }
+
+  async deleteQueue(name: string): Promise<void> {
+    this.assertQueueName(name)
+    await this.request<void>(this.queuePath(name), { method: 'DELETE' })
+  }
 }
