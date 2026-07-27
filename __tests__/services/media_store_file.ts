@@ -89,6 +89,38 @@ describe('media routes', () => {
       'zapo-media-1',
       expect.objectContaining({ id: `${phone}/zapo-media-1` }),
     )
+    expect(waMessage.message?.imageMessage?.url).toContain('zapo-media-1.jpeg')
+  })
+
+  test('replaces the nested PDF URL after storing documentWithCaptionMessage', async () => {
+    mediaStore.saveMediaBuffer = jest.fn().mockResolvedValue(true)
+    const waMessage: WAMessage = {
+      key: { id: 'zapo-pdf-1', remoteJid: '123@lid', fromMe: false },
+      message: {
+        documentWithCaptionMessage: {
+          message: {
+            documentMessage: {
+              mimetype: 'application/pdf',
+              fileName: 'ofertas.pdf',
+              fileLength: 3,
+              url: 'https://mmg.whatsapp.net/encrypted',
+            },
+          },
+        },
+      },
+    }
+
+    await mediaStore.saveDownloadedMedia!(waMessage, Buffer.from('pdf'))
+
+    expect(waMessage.message?.documentWithCaptionMessage?.message?.documentMessage?.url)
+      .toContain('zapo-pdf-1.pdf')
+    expect(dataStore.setMediaPayload).toHaveBeenCalledWith(
+      'zapo-pdf-1',
+      expect.objectContaining({
+        filename: 'ofertas.pdf',
+        id: `${phone}/zapo-pdf-1`,
+      }),
+    )
   })
 
   test('does not persist a profile picture when the download fails', async () => {

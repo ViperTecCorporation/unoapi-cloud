@@ -370,12 +370,31 @@ describe('ClientZapo', () => {
     })], 'notify')
   })
 
-  test('does not misclassify other unavailable placeholders as view-once', async () => {
+  test('forwards unavailable hosted messages as an explicit integration placeholder', async () => {
     await service.connect(1)
 
     await handlers.message_unavailable({
       key: { id: 'hosted-1', remoteJid: '111@lid', fromMe: false },
       kind: 'hosted',
+      timestampSeconds: 11,
+      pushName: 'Contato oficial',
+    })
+
+    expect(dataStore.setKey).toHaveBeenCalledWith(
+      'hosted-1',
+      expect.objectContaining({ remoteJid: '111@lid' }),
+    )
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      messageStubParameters: ['hosted_message_unavailable'],
+    })], 'notify')
+  })
+
+  test('does not forward uncategorized unavailable placeholders', async () => {
+    await service.connect(1)
+
+    await handlers.message_unavailable({
+      key: { id: 'other-1', remoteJid: '111@lid', fromMe: false },
+      kind: 'other',
     })
 
     expect(listener.process).not.toHaveBeenCalled()
@@ -934,6 +953,35 @@ describe('ClientZapo', () => {
       }),
     }))
     expect(normalized.__unoapiMediaBytes).toEqual(Buffer.from([4, 5, 6]))
+  })
+
+  test('downloads a replayed PDF wrapped in documentWithCaptionMessage', async () => {
+    client.message.downloadBytes.mockResolvedValue(Uint8Array.from([7, 8, 9]))
+    await service.connect(1)
+
+    const normalized: any = await service.getMessageMetadata({
+      key: { id: 'pdf-1', remoteJid: '111@lid', fromMe: false },
+      message: {
+        documentWithCaptionMessage: {
+          message: {
+            documentMessage: {
+              mimetype: 'application/pdf',
+              fileName: 'ofertas.pdf',
+              directPath: '/document',
+              mediaKey: { 1: 2, 0: 1 },
+            },
+          },
+        },
+      },
+    })
+
+    expect(client.message.downloadBytes).toHaveBeenCalledWith(expect.objectContaining({
+      documentMessage: expect.objectContaining({
+        fileName: 'ofertas.pdf',
+        mediaKey: Uint8Array.from([1, 2]),
+      }),
+    }))
+    expect(normalized.__unoapiMediaBytes).toEqual(Buffer.from([7, 8, 9]))
   })
 
   test('bridges the official Zapo passkey signer to the existing Uno assertion endpoint', async () => {

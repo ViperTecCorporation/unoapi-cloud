@@ -4,6 +4,10 @@ import type { getConfig } from './config'
 import type { eventType, Listener } from './listener'
 import type { Outgoing } from './outgoing'
 import {
+  activeZapoMessageMetadataResolver,
+  type ZapoMessageMetadataResolver,
+} from './zapo/zapo_message_metadata'
+import {
   fromBaileysMessageContent,
   getBinMessage,
   getMessageType,
@@ -37,6 +41,7 @@ export class ListenerZapo implements Listener {
     private readonly outgoing: Outgoing,
     private readonly broadcast: Broadcast,
     private readonly getConfig: getConfig,
+    private readonly messageMetadata: ZapoMessageMetadataResolver = activeZapoMessageMetadataResolver,
     private readonly dedupWindowMs = 30_000,
   ) {}
 
@@ -99,7 +104,7 @@ export class ListenerZapo implements Listener {
     await map(message?.update?.message?.protocolMessage?.key, 'id')
   }
 
-  private async normalizeMessageId(store: any, message: any, metadata: (value: any) => Promise<any>, messageType?: string) {
+  private async normalizeMessageId(phone: string, store: any, message: any, messageType?: string) {
     const providerId = `${message?.key?.id || ''}`.trim()
     if (!providerId) return message
 
@@ -110,7 +115,7 @@ export class ListenerZapo implements Listener {
       return message
     }
 
-    let normalized = await metadata(message)
+    let normalized = await this.messageMetadata.resolve(phone, message)
     let unoId = await resolveUnoMessageId(store.dataStore, providerId) || uuid()
     const providerKey = { ...normalized.key, id: providerId }
     unoId = await store.dataStore.setUnoId(providerId, unoId) || unoId
@@ -153,7 +158,7 @@ export class ListenerZapo implements Listener {
     if (this.isDuplicate(phone, message, messageType)) return
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
-    const normalized = await this.normalizeMessageId(store, message, config.getMessageMetadata, messageType)
+    const normalized = await this.normalizeMessageId(phone, store, message, messageType)
 
     if (normalized?.key?.id && normalized?.key?.remoteJid && !normalized?.key?.fromMe) {
       await store.dataStore.setLastIncomingKey?.(normalized.key.remoteJid, normalized.key)

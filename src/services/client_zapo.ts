@@ -2,7 +2,6 @@
 import QRCode from 'qrcode'
 import { WaClient as ZapoWaClient, createNoopLogger, type WaClient as WaClientType, type WaStoreSession } from 'zapo-js'
 import { voipPlugin, type CallInfo } from '@zapo-js/voip'
-import { createMediaProcessor } from '@zapo-js/media-utils'
 import { v1 as uuid } from 'uuid'
 import type { Client, Contact } from './client'
 import { clients } from './client'
@@ -21,12 +20,10 @@ import { isEncryptedZapoAddonMessage, toUnoAddonEvent, toUnoMessageEvent, toUnoR
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
 import { phoneNumberToJid } from './transformer/jid'
+import { normalizeMessageContent } from './transformer/message_type'
 import { Template } from './template'
 import {
   PASSKEY_BRIDGE_TTL_SECONDS,
-  AUDIO_WAVEFORM_SAMPLES,
-  CONVERT_AUDIO_MESSAGE_TO_OGG,
-  SEND_AUDIO_WAVEFORM,
   ZAPO_REDIS_MAINTENANCE_INTERVAL_MS,
   ZAPO_SESSION_LEASE_RENEW_MS,
   ZAPO_SESSION_LEASE_TTL_MS,
@@ -41,6 +38,7 @@ import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
 import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
+import { zapoMediaOptions } from './zapo/zapo_media_processor'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -51,12 +49,6 @@ type ClientFactory = (options: ConstructorParameters<typeof ZapoWaClient>[0]) =>
 type LeaseFactory = (phone: string) => RedisLease
 
 const defaultClientFactory: ClientFactory = (options) => new ZapoWaClient(options, createNoopLogger('info')) as ZapoClient
-const zapoMediaProcessor = createMediaProcessor({
-  waveformPoints: AUDIO_WAVEFORM_SAMPLES,
-  voiceNoteBitRate: 64_000,
-  voiceNoteSampleRate: 48_000,
-  voiceNoteApplication: 'voip',
-})
 const mediaMessageKeys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage'] as const
 
 export class ClientZapo implements Client {
@@ -464,14 +456,18 @@ export class ClientZapo implements Client {
     })
     client.on('message_unavailable', async (event) => {
       logger.warn('Zapo unavailable message phone=%s id=%s kind=%s', this.phone, event.key.id, event.kind)
-      if (event.kind !== 'view_once') return
+      if (!['view_once', 'hosted'].includes(event.kind)) return
 
       const message = {
         key: event.key,
         messageTimestamp: event.timestampSeconds,
         pushName: event.pushName,
         messageStubType: 'FUTUREPROOF',
-        messageStubParameters: ['view_once_unavailable'],
+        messageStubParameters: [
+          event.kind === 'view_once'
+            ? 'view_once_unavailable'
+            : 'hosted_message_unavailable',
+        ],
       }
       if (event.key.remoteJid && event.key.id) {
         await this.unoStore?.dataStore.setKey(event.key.id, event.key as never)
@@ -804,11 +800,7 @@ export class ClientZapo implements Client {
         requireFullSync: requiresPairing,
       },
       addons: { autoDecrypt: false },
-      media: {
-        processor: zapoMediaProcessor,
-        generateWaveform: SEND_AUDIO_WAVEFORM,
-        normalizeVoiceNote: CONVERT_AUDIO_MESSAGE_TO_OGG,
-      },
+      media: zapoMediaOptions,
       signPasskeyAssertion: this.signPasskeyAssertion.bind(this),
       plugins: [voipPlugin()],
     })
@@ -912,12 +904,13 @@ export class ClientZapo implements Client {
     const value: any = enriched
     const id = `${value?.key?.id || ''}`
     const event = this.pendingIncoming.get(id)
-    const mediaKey = mediaMessageKeys.find((key) => value?.message?.[key])
+    const content: any = normalizeMessageContent(value?.message)
+    const mediaKey = mediaMessageKeys.find((key) => content?.[key])
     if (!mediaKey) return enriched
-    const media = value.message[mediaKey]
+    const media = content[mediaKey]
     if (`${media?.url || ''}`.startsWith('data:')) return enriched
     reviveZapoMediaBinaryFields(value)
-    const source = event || value.message
+    const source = event || content
     const bytes = await this.socket.message.downloadBytes(source as any)
     value.__unoapiMediaBytes = Buffer.from(bytes)
     return enriched

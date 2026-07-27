@@ -317,9 +317,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     // Propagar a URL para o payload da mensagem (webhook)
     try {
       const type = initial?.messageType && mapMediaType[initial.messageType]
-      if (type && (waMessage as any)?.message?.[initial.messageType]) {
-        ;(waMessage as any).message[initial.messageType].url = downloadUrl
-      }
+      if (type && initial?.message) initial.message.url = downloadUrl
     } catch {}
     return waMessage
   }

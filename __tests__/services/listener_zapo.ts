@@ -6,12 +6,14 @@ import { ListenerZapo } from '../../src/services/listener_zapo'
 import type { MediaStore } from '../../src/services/media_store'
 import type { Outgoing } from '../../src/services/outgoing'
 import type { Store } from '../../src/services/store'
+import type { ZapoMessageMetadataResolver } from '../../src/services/zapo/zapo_message_metadata'
 
 describe('ListenerZapo', () => {
   let config: Config
   let store: Store
   let outgoing: Outgoing
   let service: ListenerZapo
+  let messageMetadata: ZapoMessageMetadataResolver
 
   beforeEach(() => {
     store = mock<Store>()
@@ -20,7 +22,10 @@ describe('ListenerZapo', () => {
     ;(store.dataStore.setUnoId as jest.Mock).mockImplementation(async (_providerId: string, unoId: string) => unoId)
     outgoing = mock<Outgoing>()
     config = { ...defaultConfig, provider: 'zapo', getStore: jest.fn().mockResolvedValue(store) }
-    service = new ListenerZapo(outgoing, mock<Broadcast>(), async () => config)
+    messageMetadata = {
+      resolve: jest.fn(async (_phone: string, message: any) => message),
+    }
+    service = new ListenerZapo(outgoing, mock<Broadcast>(), async () => config, messageMetadata)
   })
 
   test('maps the official Zapo id to an external Uno id and forwards the webhook', async () => {
@@ -59,7 +64,7 @@ describe('ListenerZapo', () => {
       isGroup: true,
     }],
   ])('uses the Uno id for %s media storage and webhook references', async (_kind, key) => {
-    config.getMessageMetadata = jest.fn(async (message: any) => ({
+    ;(messageMetadata.resolve as jest.Mock).mockImplementation(async (_phone: string, message: any) => ({
       ...message,
       __unoapiMediaBytes: Buffer.from([1, 2, 3]),
     }))
@@ -90,6 +95,66 @@ describe('ListenerZapo', () => {
     expect(webhookMessage.id).toBe(storedMessage.key.id)
     expect(webhookMessage.image.id).toBe(`5566999999999/${storedMessage.key.id}`)
     expect(webhookMessage.image.url).toContain(storedMessage.key.id)
+  })
+
+  test('downloads forwarded audio through the active client after AMQP config reload', async () => {
+    const unoId = '32f75c70-89af-11f1-bad7-835d7d7a6fda'
+    let providerIdAtResolve = ''
+    ;(store.dataStore.setUnoId as jest.Mock).mockResolvedValue(unoId)
+    config.getMessageMetadata = jest.fn(async (message: any) => message)
+    ;(messageMetadata.resolve as jest.Mock).mockImplementation(async (_phone: string, message: any) => {
+      providerIdAtResolve = message.key.id
+      return {
+        ...message,
+        __unoapiMediaBytes: Buffer.from([7, 8, 9]),
+      }
+    })
+    ;(store.mediaStore.saveDownloadedMedia as jest.Mock).mockImplementation(async (message: any) => ({
+      ...message,
+      message: {
+        ...message.message,
+        audioMessage: {
+          ...message.message.audioMessage,
+          url: `https://files.example/${message.key.id}.oga`,
+        },
+      },
+    }))
+
+    await service.process('5566999554300', [{
+      key: {
+        id: '3A941DE965A8027E92DE',
+        remoteJid: '136026060279961@lid',
+        remoteJidAlt: '556699658737@s.whatsapp.net',
+        fromMe: false,
+      },
+      message: {
+        audioMessage: {
+          mimetype: 'audio/ogg; codecs=opus',
+          directPath: '/audio',
+          mediaKey: Uint8Array.from([1, 2, 3]),
+          fileSha256: Uint8Array.from([4, 5, 6]),
+          fileEncSha256: Uint8Array.from([7, 8, 9]),
+        },
+      },
+      messageTimestamp: 1,
+    }], 'notify')
+
+    expect(config.getMessageMetadata).not.toHaveBeenCalled()
+    expect(messageMetadata.resolve).toHaveBeenCalledWith('5566999554300', expect.any(Object))
+    expect(providerIdAtResolve).toBe('3A941DE965A8027E92DE')
+    expect(store.mediaStore.saveDownloadedMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ key: expect.objectContaining({ id: unoId }) }),
+      Buffer.from([7, 8, 9]),
+    )
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    expect(payload.entry[0].changes[0].value.messages[0]).toEqual(expect.objectContaining({
+      id: unoId,
+      type: 'audio',
+      audio: expect.objectContaining({
+        id: `5566999554300/${unoId}`,
+        url: expect.stringContaining(unoId),
+      }),
+    }))
   })
 
   test('does not expose temporary WhatsApp media when Zapo bytes are unavailable', async () => {
