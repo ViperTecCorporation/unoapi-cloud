@@ -2,9 +2,11 @@
 import { proto } from 'zapo-js'
 import type { WaClient, WaSendMessageContent, WaSendMessageOptions } from 'zapo-js'
 import fetch from 'node-fetch'
+import { v4 as uuid } from 'uuid'
 import { getMimetype, toBaileysMessageContent } from '../transformer'
 import { SendError } from '../send_error'
 import { SEND_AUDIO_MESSAGE_AS_PTT } from '../../defaults'
+import { zapoMediaProcessor } from './zapo_media_processor'
 
 const mediaTypes = ['image', 'audio', 'document', 'video', 'sticker'] as const
 
@@ -71,10 +73,144 @@ const pollContent = (payload: any): WaSendMessageContent => {
 
 export type ZapoMappedMessage = {
   content: WaSendMessageContent
-  options: Pick<WaSendMessageOptions, 'mentions'>
+  options: Pick<WaSendMessageOptions, 'mentions' | 'customNodes'>
 }
 
+const interactiveBusinessNode = {
+  tag: 'biz',
+  attrs: {},
+  content: [{
+    tag: 'interactive',
+    attrs: { type: 'native_flow', v: '1' },
+    content: [{
+      tag: 'native_flow',
+      attrs: { v: '9', name: 'mixed' },
+      content: undefined,
+    }],
+  }],
+} as const
+
+const isPaymentButton = (button: any) =>
+  button?.type === 'payment_request'
+  || !!button?.payment_request
+  || !!button?.payment_setting
+  || !!button?.payment_settings
+
 const nativeButton = (button: any) => {
+  if (button?.type === 'order_status') {
+    const parameters = button.parameters || {}
+    if (!parameters.reference_id || !parameters.payment?.status) {
+      throw new SendError(400, 'order_status_parameters_required')
+    }
+    return {
+      name: 'review_order',
+      buttonParamsJson: JSON.stringify(parameters),
+    }
+  }
+  if (isPaymentButton(button)) {
+    const rawPaymentRequest = button.payment_request || button
+    const rawPaymentSettings = Array.isArray(rawPaymentRequest.payment_settings)
+      ? rawPaymentRequest.payment_settings
+      : [rawPaymentRequest.payment_setting].filter(Boolean)
+    const paymentSettings = rawPaymentSettings.map((setting: any) => {
+      if (setting?.type !== 'boleto' || !setting?.boleto?.digitable_line) return setting
+      return {
+        ...setting,
+        boleto: {
+          ...setting.boleto,
+          digitable_line: `${setting.boleto.digitable_line}`.replace(/\D/g, ''),
+        },
+      }
+    })
+    const paymentRequest = {
+      ...rawPaymentRequest,
+      ...(Array.isArray(rawPaymentRequest.payment_settings) ? { payment_settings: paymentSettings } : {}),
+      ...(rawPaymentRequest.payment_setting ? { payment_setting: paymentSettings[0] } : {}),
+    }
+    if (!paymentSettings.length) throw new SendError(400, 'payment_request_setting_required')
+    const paymentTypes = paymentSettings.map((setting: any) => setting?.type)
+    for (const setting of paymentSettings) {
+      const paymentType = setting?.type
+      if (!['pix_static_code', 'pix_dynamic_code', 'payment_link', 'boleto', 'offsite_card_pay'].includes(paymentType)) {
+        throw new SendError(400, `zapo_payment_request_type_not_supported: ${paymentType || '<empty>'}`)
+      }
+      if (paymentType === 'pix_dynamic_code') {
+        const pix = setting?.pix_dynamic_code
+        if (!pix?.code || !pix?.merchant_name || !pix?.key || !pix?.key_type) {
+          throw new SendError(400, 'pix_dynamic_code_fields_required')
+        }
+      }
+      if (paymentType === 'pix_static_code') {
+        const pix = setting?.pix_static_code
+        if (!pix?.merchant_name || !pix?.key || !pix?.key_type) {
+          throw new SendError(400, 'pix_static_code_fields_required')
+        }
+      }
+      if (paymentType === 'payment_link' && !setting?.payment_link?.uri) {
+        throw new SendError(400, 'payment_link_uri_required')
+      }
+      if (paymentType === 'boleto' && !setting?.boleto?.digitable_line) {
+        throw new SendError(400, 'boleto_digitable_line_required')
+      }
+      if (
+        paymentType === 'offsite_card_pay'
+        && (!setting?.offsite_card_pay?.last_four_digits || !setting?.offsite_card_pay?.credential_id)
+      ) {
+        throw new SendError(400, 'offsite_card_pay_fields_required')
+      }
+    }
+    if (
+      !button.order_details
+      && paymentTypes.includes('pix_dynamic_code')
+      && !paymentRequest.total_amount
+    ) {
+      throw new SendError(400, 'pix_dynamic_code_total_amount_required')
+    }
+    if (button.order_details) {
+      if (!paymentRequest.reference_id || !paymentRequest.currency || !paymentRequest.total_amount) {
+        throw new SendError(400, 'order_details_payment_parameters_required')
+      }
+      const order = paymentRequest.order && !paymentRequest.order.tax
+        ? {
+            ...paymentRequest.order,
+            tax: {
+              value: 0,
+              offset: paymentRequest.total_amount.offset || 100,
+            },
+          }
+        : paymentRequest.order
+      return {
+        name: 'review_and_pay',
+        buttonParamsJson: JSON.stringify({
+          ...paymentRequest,
+          ...(order ? { order } : {}),
+        }),
+      }
+    }
+    const paymentParams: any = {
+      currency: paymentRequest.currency || 'BRL',
+      total_amount: paymentRequest.total_amount || { value: 0, offset: 100 },
+      reference_id: paymentRequest.reference_id || uuid(),
+      type: paymentRequest.type === 'payment_request' ? 'physical-goods' : (paymentRequest.type || 'physical-goods'),
+      ...(paymentRequest.payment_type ? { payment_type: paymentRequest.payment_type } : {}),
+      payment_settings: paymentSettings,
+      share_payment_status: paymentRequest.share_payment_status || false,
+    }
+    if (paymentRequest.order) {
+      paymentParams.order = paymentRequest.order
+    } else if (!paymentTypes.includes('pix_dynamic_code')) {
+      paymentParams.order = {
+          status: 'pending',
+          subtotal: { value: 0, offset: 100 },
+          order_type: 'ORDER',
+          items: [{ name: '', amount: { value: 0, offset: 100 }, quantity: 0, sale_amount: { value: 0, offset: 100 } }],
+      }
+    }
+    return {
+      name: 'payment_info',
+      buttonParamsJson: JSON.stringify(paymentParams),
+    }
+  }
   if (button?.type === 'url' || button?.type === 'cta_url' || button?.url) {
     const value = button.url || button
     const url = typeof value === 'string' ? value : value.link || value.url || ''
@@ -103,20 +239,60 @@ const interactiveHeader = async (client: WaClient, header: any) => {
   const response = await fetch(link)
   if (!response.ok) throw new SendError(11, `interactive_header_download_failed: HTTP ${response.status}`)
   const mimetype = media.mime_type || media.mimetype || response.headers.get('content-type') || getMimetype({ type, [type]: { link } })
-  const upload = await client.message.upload(new Uint8Array(await response.arrayBuffer()), { type, mimetype })
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  const [upload, processedImage] = await Promise.all([
+    client.message.upload(bytes, { type, mimetype }),
+    type === 'image'
+      ? zapoMediaProcessor.generateImageThumbnail?.(bytes, 100)
+      : undefined,
+  ])
+  if (type === 'image' && !processedImage) {
+    throw new SendError(11, 'interactive_header_thumbnail_failed')
+  }
   return {
     title: `${header.text || ''}`,
     hasMediaAttachment: true,
-    [`${type}Message`]: { ...upload, ...(media.filename ? { fileName: media.filename } : {}) },
+    [`${type}Message`]: {
+      ...upload,
+      ...(processedImage
+        ? {
+            jpegThumbnail: processedImage.jpegThumbnail,
+            width: processedImage.width,
+            height: processedImage.height,
+          }
+        : {}),
+      ...(media.filename ? { fileName: media.filename } : {}),
+    },
   }
 }
 
 const interactiveContent = async (client: WaClient, payload: any): Promise<WaSendMessageContent> => {
   const interactive = payload?.interactive || {}
   const action = interactive.action || {}
+  const isOrderDetails = interactive.type === 'order_details'
+  const isOrderStatus = interactive.type === 'order_status'
+  if (isOrderDetails && action.name !== 'review_and_pay') {
+    throw new SendError(400, 'order_details_review_and_pay_required')
+  }
+  if (isOrderStatus && action.name !== 'review_order') {
+    throw new SendError(400, 'order_status_review_order_required')
+  }
+  const actionButtons = isOrderDetails
+    ? [{ type: 'payment_request', payment_request: action.parameters || {}, order_details: true }]
+    : isOrderStatus
+      ? [{ type: 'order_status', parameters: action.parameters || {} }]
+      : (action.buttons || [])
   const body = interactive.body?.text ? { text: `${interactive.body.text}` } : undefined
   const footer = interactive.footer?.text ? { text: `${interactive.footer.text}` } : undefined
   const header = await interactiveHeader(client, interactive.header)
+  if (isOrderDetails && header.hasMediaAttachment && !action.parameters?.order) {
+    throw new SendError(400, 'order_details_image_requires_order')
+  }
+  const paymentButtons = actionButtons.filter(isPaymentButton)
+  const isCommerceFlow = paymentButtons.length > 0 || isOrderStatus
+  if (paymentButtons.length > 1 || (paymentButtons.length === 1 && actionButtons.length !== 1)) {
+    throw new SendError(400, 'zapo_payment_request_requires_one_isolated_button')
+  }
 
   if (Array.isArray(action.sections) && action.sections.length) {
     if (header.hasMediaAttachment) {
@@ -164,17 +340,24 @@ const interactiveContent = async (client: WaClient, payload: any): Promise<WaSen
     } as WaSendMessageContent
   }
 
-  return {
-    interactiveMessage: {
-      header,
-      body,
-      footer,
-      nativeFlowMessage: {
-        buttons: (action.buttons || []).map(nativeButton),
-        messageVersion: 1,
-      },
+  const interactiveMessage = {
+    header,
+    body,
+    footer,
+    nativeFlowMessage: {
+      buttons: actionButtons.map(nativeButton),
+      messageParamsJson: isOrderStatus
+        ? '{}'
+        : isCommerceFlow
+          ? JSON.stringify({ from: 'api', templateId: uuid() })
+        : undefined,
+      messageVersion: 1,
     },
-  } as WaSendMessageContent
+  }
+  // Payment flows must remain visible to companion sessions. Wrapping
+  // payment_info in viewOnceMessage makes the transport advertise
+  // view_once=true and recipients receive only <unavailable type="view_once"/>.
+  return { interactiveMessage } as WaSendMessageContent
 }
 
 export const toZapoMessageContent = async (
@@ -217,7 +400,16 @@ export const toZapoMessageContent = async (
   if (type === 'poll') return { content: pollContent(payload), options: {} }
 
   if (type === 'interactive') {
-    return { content: await interactiveContent(client, payload), options: mentions.length ? { mentions } : {} }
+    const content = await interactiveContent(client, payload)
+    const interactive = payload?.interactive || {}
+    const carousel = interactive.carousel || interactive.action?.carousel
+    return {
+      content,
+      options: {
+        ...(mentions.length ? { mentions } : {}),
+        ...((interactive.type === 'carousel' || carousel) ? { customNodes: [interactiveBusinessNode] } : {}),
+      },
+    }
   }
 
   if (type === 'contacts') {

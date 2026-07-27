@@ -9,4 +9,8 @@ develop.Dockerfile
 README.md
 .env
 node_modules
+**/node_modules
+**/.vitepress
+!docs-site/.vitepress
+!docs-site/.vitepress/**
 yarn-error.log

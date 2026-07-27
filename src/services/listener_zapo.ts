@@ -154,6 +154,9 @@ export class ListenerZapo implements Listener {
       key: { ...(source?.key || {}) },
       ...(source?.update ? { update: { ...source.update } } : {}),
     }
+    const providerIncomingKey = message?.key?.id && !message?.key?.fromMe
+      ? { ...message.key }
+      : undefined
     const messageType = this.messageType(message)
     if (this.isDuplicate(phone, message, messageType)) return
     const config = await this.getConfig(phone)
@@ -161,9 +164,12 @@ export class ListenerZapo implements Listener {
     const normalized = await this.normalizeMessageId(phone, store, message, messageType)
 
     if (normalized?.key?.id && normalized?.key?.remoteJid && !normalized?.key?.fromMe) {
-      await store.dataStore.setLastIncomingKey?.(normalized.key.remoteJid, normalized.key)
+      const receiptKey = providerIncomingKey
+        ? { ...normalized.key, ...providerIncomingKey, id: providerIncomingKey.id }
+        : normalized.key
+      await store.dataStore.setLastIncomingKey?.(normalized.key.remoteJid, receiptKey)
       const alternate = normalized.key.remoteJidAlt || normalized.key.participantAlt
-      if (alternate) await store.dataStore.setLastIncomingKey?.(alternate, normalized.key)
+      if (alternate) await store.dataStore.setLastIncomingKey?.(alternate, receiptKey)
     }
 
     const [payload] = fromBaileysMessageContent(phone, normalized, config)

@@ -557,7 +557,7 @@
     "/v15.0/{phone}/messages": {
       "post": {
         "summary": "Enviar mensagem (WhatsApp Cloud shape)",
-        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Suporta opções de broadcast/status: `options.statusJidList` ou `statusJidList` (atalho).\n",
+        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/PhonePath"
@@ -579,6 +579,18 @@
                     "type": "text",
                     "text": {
                       "body": "Olá do Unoapi Cloud!"
+                    }
+                  }
+                },
+                "expiringText": {
+                  "summary": "Texto temporário",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "text",
+                    "ttl": 86400,
+                    "text": {
+                      "body": "Esta mensagem expira em 24 horas."
                     }
                   }
                 },
@@ -638,18 +650,22 @@
                     "type": "document",
                     "document": {
                       "link": "https://exemplo.com/arquivo.pdf",
-                      "filename": "contrato.pdf"
+                      "filename": "contrato.pdf",
+                      "caption": "Contrato para conferência",
+                      "mime_type": "application/pdf"
                     }
                   }
                 },
                 "audio": {
-                  "summary": "Áudio/voice",
+                  "summary": "Mensagem de voz",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5511999999999",
                     "type": "audio",
                     "audio": {
-                      "link": "https://exemplo.com/audio.ogg"
+                      "link": "https://exemplo.com/audio.ogg",
+                      "mime_type": "audio/ogg",
+                      "ptt": true
                     }
                   }
                 },
@@ -663,6 +679,22 @@
                       "link": "https://exemplo.com/video.mp4",
                       "caption": "Vídeo curto"
                     }
+                  }
+                },
+                "statusImage": {
+                  "summary": "Status/Story com imagem",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "status@broadcast",
+                    "type": "image",
+                    "image": {
+                      "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg",
+                      "caption": "Novidade"
+                    },
+                    "statusJidList": [
+                      "5511999999999",
+                      "5511988887777"
+                    ]
                   }
                 },
                 "contacts": {
@@ -687,7 +719,7 @@
                   }
                 },
                 "reaction": {
-                  "summary": "Reacao",
+                  "summary": "Reação",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5511999999999",
@@ -695,6 +727,37 @@
                     "reaction": {
                       "message_id": "MESSAGE_ID",
                       "emoji": "👍"
+                    }
+                  }
+                },
+                "poll": {
+                  "summary": "Enquete",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "poll",
+                    "poll": {
+                      "name": "Qual plano você prefere?",
+                      "options": [
+                        "Básico",
+                        "Profissional"
+                      ],
+                      "selectable_count": 1,
+                      "allow_add_option": false
+                    }
+                  }
+                },
+                "pollVote": {
+                  "summary": "Votar em uma enquete",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "poll_vote",
+                    "poll_vote": {
+                      "message_id": "MESSAGE_ID_DA_ENQUETE",
+                      "selected_options": [
+                        "Profissional"
+                      ]
                     }
                   }
                 },
@@ -781,7 +844,7 @@
                   }
                 },
                 "interactiveList": {
-                  "summary": "Interativo - Lista compatível com Baileys e Zapo",
+                  "summary": "Interativo - Lista",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5566996269251",
@@ -819,6 +882,363 @@
                         ]
                       }
                     }
+                  }
+                },
+                "interactiveCarousel": {
+                  "summary": "Interativo - Carrossel com imagens e botões",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "carousel",
+                      "body": {
+                        "text": "Conheça nossos planos"
+                      },
+                      "action": {
+                        "carousel": {
+                          "cards": [
+                            {
+                              "header": {
+                                "type": "image",
+                                "image": {
+                                  "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                                }
+                              },
+                              "body": {
+                                "text": "Plano Básico"
+                              },
+                              "footer": {
+                                "text": "Para começar"
+                              },
+                              "action": {
+                                "buttons": [
+                                  {
+                                    "type": "reply",
+                                    "reply": {
+                                      "id": "plan_basic",
+                                      "title": "Escolher"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "header": {
+                                "type": "image",
+                                "image": {
+                                  "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                                }
+                              },
+                              "body": {
+                                "text": "Plano Profissional"
+                              },
+                              "footer": {
+                                "text": "Mais recursos"
+                              },
+                              "action": {
+                                "buttons": [
+                                  {
+                                    "type": "cta_url",
+                                    "url": {
+                                      "title": "Ver detalhes",
+                                      "link": "https://vipertec.com.br"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "paymentPixStatic": {
+                  "summary": "Pagamento - PIX estático",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "payment_request",
+                            "payment_setting": {
+                              "type": "pix_static_code",
+                              "pix_static_code": {
+                                "merchant_name": "Minha Empresa",
+                                "key": "financeiro@minhaempresa.com.br",
+                                "key_type": "EMAIL"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "paymentPixDynamicStandalone": {
+                  "summary": "Pagamento avulso - PIX dinâmico",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "body": {
+                        "text": "Pague R$ 149,90 via PIX"
+                      },
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "payment_request",
+                            "payment_request": {
+                              "type": "digital-goods",
+                              "payment_type": "br",
+                              "payment_settings": [
+                                {
+                                  "type": "pix_dynamic_code",
+                                  "pix_dynamic_code": {
+                                    "code": "000201010212...",
+                                    "merchant_name": "Minha Empresa",
+                                    "key": "12345678000199",
+                                    "key_type": "CNPJ"
+                                  }
+                                }
+                              ],
+                              "currency": "BRL",
+                              "total_amount": {
+                                "value": 14990,
+                                "offset": 100
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "orderPixDynamic": {
+                  "summary": "Pedido com imagem e PIX dinâmico",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "header": {
+                        "type": "image",
+                        "image": {
+                          "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                        }
+                      },
+                      "body": {
+                        "text": "Revise e pague seu pedido"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "pedido-123",
+                          "type": "physical-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "pix_dynamic_code",
+                              "pix_dynamic_code": {
+                                "code": "000201010212...",
+                                "merchant_name": "Minha Empresa",
+                                "key": "12345678000199",
+                                "key_type": "CNPJ"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 50000,
+                            "offset": 100
+                          },
+                          "order": {
+                            "status": "pending",
+                            "tax": {
+                              "value": 0,
+                              "offset": 100,
+                              "description": "Sem impostos adicionais"
+                            },
+                            "items": [
+                              {
+                                "retailer_id": "produto-1",
+                                "name": "Produto",
+                                "amount": {
+                                  "value": 50000,
+                                  "offset": 100
+                                },
+                                "quantity": 1
+                              }
+                            ],
+                            "subtotal": {
+                              "value": 50000,
+                              "offset": 100
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderPaymentLink": {
+                  "summary": "Pedido simplificado com link de pagamento",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "body": {
+                        "text": "Finalize seu pagamento"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "pedido-124",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "payment_link",
+                              "payment_link": {
+                                "uri": "https://pagamentos.example.com/pedido-124"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 1500,
+                            "offset": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "subscriptionBoletoPix": {
+                  "summary": "Pedido real com boleto, PIX dinâmico e imagem",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "header": {
+                        "type": "image",
+                        "image": {
+                          "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                        }
+                      },
+                      "body": {
+                        "text": "Boleto nº 1033239253 referente à assinatura de Câmera Comodato Mensal — 1 unidade. Vencimento: 10/07/2026. Valor: R$ 60,00."
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "boleto-1033239253",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "boleto",
+                              "boleto": {
+                                "digitable_line": "36490000920005525230800000010918900000000006000"
+                              }
+                            },
+                            {
+                              "type": "pix_dynamic_code",
+                              "pix_dynamic_code": {
+                                "code": "00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595",
+                                "merchant_name": "EFISA",
+                                "key": "663b44b6c993415e9e09f92c106d4886",
+                                "key_type": "EVP"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 6000,
+                            "offset": 100
+                          },
+                          "order": {
+                            "status": "pending",
+                            "tax": {
+                              "value": 0,
+                              "offset": 100,
+                              "description": "Sem impostos adicionais"
+                            },
+                            "items": [
+                              {
+                                "retailer_id": "camera-comodato-mensal",
+                                "name": "Câmera Comodato Mensal",
+                                "amount": {
+                                  "value": 6000,
+                                  "offset": 100
+                                },
+                                "quantity": 1
+                              }
+                            ],
+                            "subtotal": {
+                              "value": 6000,
+                              "offset": 100
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderStatus": {
+                  "summary": "Confirmação do pagamento do pedido",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_status",
+                      "body": {
+                        "text": "Pagamento confirmado para o boleto nº 1033239253."
+                      },
+                      "footer": {
+                        "text": "Assinatura confirmada"
+                      },
+                      "action": {
+                        "name": "review_order",
+                        "parameters": {
+                          "reference_id": "boleto-1033239253",
+                          "order": {
+                            "status": "completed",
+                            "description": "Pagamento confirmado. Assinatura de Câmera Comodato Mensal paga."
+                          },
+                          "payment": {
+                            "status": "captured",
+                            "timestamp": 1785125734
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "markAsRead": {
+                  "summary": "Marcar mensagem como lida",
+                  "value": {
+                    "status": "read",
+                    "message_id": "MESSAGE_ID"
+                  }
+                },
+                "deleteMessage": {
+                  "summary": "Apagar mensagem enviada",
+                  "value": {
+                    "status": "deleted",
+                    "message_id": "MESSAGE_ID"
                   }
                 }
               }
@@ -1839,7 +2259,39 @@
       },
       "Error400": {
         "type": "object",
+        "required": [
+          "error",
+          "status",
+          "message"
+        ],
         "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "message",
+              "type",
+              "code"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "example": "GraphMethodException"
+              },
+              "code": {
+                "type": "integer",
+                "example": 131000
+              },
+              "error_subcode": {
+                "type": "integer"
+              },
+              "fbtrace_id": {
+                "type": "string"
+              }
+            }
+          },
           "status": {
             "type": "string",
             "example": "error"
@@ -1936,28 +2388,102 @@
           "type": {
             "type": "string"
           },
-          "options": {
+          "context": {
             "type": "object",
+            "description": "Responde ou cita uma mensagem anterior.",
+            "required": [
+              "message_id"
+            ],
             "properties": {
-              "broadcast": {
-                "type": "boolean"
-              },
-              "statusJidList": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+              "message_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "ID retornado pela UnoAPI para a mensagem citada."
               }
             }
-          },
-          "statusJidList": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Atalho equivalente a options.statusJidList. If empty/null with to=status@broadcast and type=image/video, Unoapi auto-fills from Redis contact-info (unoapi-contact-info:<phone>:*)."
           }
         }
+      },
+      "MessageStatusBroadcast": {
+        "description": "Publica imagem ou vídeo no Status/Stories. `statusJidList` limita os destinatários; quando omitido, a UnoAPI usa os contatos disponíveis para a sessão.",
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageImage"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "const": "status@broadcast"
+                  },
+                  "statusJidList": {
+                    "type": "array",
+                    "nullable": true,
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 8
+                    }
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "statusJidList": {
+                        "type": "array",
+                        "nullable": true,
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 8
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageVideo"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "const": "status@broadcast"
+                  },
+                  "statusJidList": {
+                    "type": "array",
+                    "nullable": true,
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 8
+                    }
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "statusJidList": {
+                        "type": "array",
+                        "nullable": true,
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 8
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
       },
       "MessageText": {
         "allOf": [
@@ -1966,19 +2492,25 @@
           },
           {
             "type": "object",
+            "required": [
+              "text"
+            ],
             "properties": {
               "type": {
                 "const": "text"
               },
               "text": {
                 "type": "object",
+                "required": [
+                  "body"
+                ],
                 "properties": {
                   "body": {
                     "type": "string"
                   },
                   "mentionAll": {
                     "type": "boolean",
-                    "description": "Opcional. Se true, encaminha mentionAll ao Baileys. Em grupos, `@all`/`@todos` no body também ativa automaticamente."
+                    "description": "Opcional. Se true, menciona todos os participantes. Em grupos, `@all`/`@todos` no body também ativa automaticamente."
                   },
                   "mentions": {
                     "type": "array",
@@ -2067,21 +2599,32 @@
           },
           {
             "type": "object",
+            "required": [
+              "image"
+            ],
             "properties": {
               "type": {
                 "const": "image"
               },
               "image": {
                 "type": "object",
+                "required": [
+                  "link"
+                ],
                 "properties": {
                   "link": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uri"
                   },
                   "caption": {
                     "type": "string"
                   },
                   "filename": {
                     "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/jpeg"
                   }
                 }
               }
@@ -2096,18 +2639,29 @@
           },
           {
             "type": "object",
+            "required": [
+              "video"
+            ],
             "properties": {
               "type": {
                 "const": "video"
               },
               "video": {
                 "type": "object",
+                "required": [
+                  "link"
+                ],
                 "properties": {
                   "link": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uri"
                   },
                   "caption": {
                     "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "video/mp4"
                   }
                 }
               }
@@ -2122,16 +2676,27 @@
           },
           {
             "type": "object",
+            "required": [
+              "sticker"
+            ],
             "properties": {
               "type": {
                 "const": "sticker"
               },
               "sticker": {
                 "type": "object",
+                "required": [
+                  "link"
+                ],
                 "properties": {
                   "link": {
                     "type": "string",
+                    "format": "uri",
                     "description": "PNG/JPG/GIF are auto-converted to WEBP before sending"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/webp"
                   }
                 }
               }
@@ -2146,15 +2711,30 @@
           },
           {
             "type": "object",
+            "required": [
+              "audio"
+            ],
             "properties": {
               "type": {
                 "const": "audio"
               },
               "audio": {
                 "type": "object",
+                "required": [
+                  "link"
+                ],
                 "properties": {
                   "link": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "audio/ogg"
+                  },
+                  "ptt": {
+                    "type": "boolean",
+                    "description": "Envia como mensagem de voz quando `true`."
                   }
                 }
               }
@@ -2169,18 +2749,32 @@
           },
           {
             "type": "object",
+            "required": [
+              "document"
+            ],
             "properties": {
               "type": {
                 "const": "document"
               },
               "document": {
                 "type": "object",
+                "required": [
+                  "link"
+                ],
                 "properties": {
                   "link": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uri"
                   },
                   "filename": {
                     "type": "string"
+                  },
+                  "caption": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "application/pdf"
                   }
                 }
               }
@@ -2195,17 +2789,28 @@
           },
           {
             "type": "object",
+            "required": [
+              "contacts"
+            ],
             "properties": {
               "type": {
                 "const": "contacts"
               },
               "contacts": {
                 "type": "array",
+                "minItems": 1,
                 "items": {
                   "type": "object",
+                  "required": [
+                    "name",
+                    "phones"
+                  ],
                   "properties": {
                     "name": {
                       "type": "object",
+                      "required": [
+                        "formatted_name"
+                      ],
                       "properties": {
                         "formatted_name": {
                           "type": "string"
@@ -2214,8 +2819,12 @@
                     },
                     "phones": {
                       "type": "array",
+                      "minItems": 1,
                       "items": {
                         "type": "object",
+                        "required": [
+                          "phone"
+                        ],
                         "properties": {
                           "wa_id": {
                             "type": "string"
@@ -2240,18 +2849,143 @@
           },
           {
             "type": "object",
+            "required": [
+              "reaction"
+            ],
             "properties": {
               "type": {
                 "const": "reaction"
               },
               "reaction": {
                 "type": "object",
+                "required": [
+                  "message_id",
+                  "emoji"
+                ],
                 "properties": {
                   "message_id": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "ID UnoAPI da mensagem que receberá ou removerá a reação."
                   },
                   "emoji": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Emoji da reação. Envie string vazia para remover a reação."
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessagePoll": {
+        "description": "Cria uma enquete nativa.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "poll"
+            ],
+            "properties": {
+              "type": {
+                "const": "poll"
+              },
+              "poll": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "options"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Pergunta exibida na enquete."
+                  },
+                  "options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "name"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "selectable_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Quantidade máxima de opções selecionáveis."
+                  },
+                  "allow_add_option": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "hide_participant_name": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessagePollVote": {
+        "description": "Vota em uma enquete recebida ou enviada anteriormente.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "poll_vote"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "poll_vote",
+                  "poll-vote"
+                ]
+              },
+              "poll_vote": {
+                "type": "object",
+                "required": [
+                  "message_id",
+                  "selected_options"
+                ],
+                "properties": {
+                  "message_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "ID UnoAPI da mensagem que criou a enquete."
+                  },
+                  "selected_options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 }
               }
@@ -2266,17 +3000,39 @@
           },
           {
             "type": "object",
+            "required": [
+              "interactive"
+            ],
             "properties": {
               "type": {
                 "const": "interactive"
               },
               "interactive": {
                 "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
                 "properties": {
                   "type": {
                     "const": "button"
                   },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
                   "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "footer": {
                     "type": "object",
                     "properties": {
                       "text": {
@@ -2286,17 +3042,29 @@
                   },
                   "action": {
                     "type": "object",
+                    "required": [
+                      "buttons"
+                    ],
                     "properties": {
                       "buttons": {
                         "type": "array",
+                        "minItems": 1,
                         "items": {
                           "type": "object",
+                          "required": [
+                            "type",
+                            "reply"
+                          ],
                           "properties": {
                             "type": {
                               "const": "reply"
                             },
                             "reply": {
                               "type": "object",
+                              "required": [
+                                "id",
+                                "title"
+                              ],
                               "properties": {
                                 "id": {
                                   "type": "string"
@@ -2310,6 +3078,123 @@
                         }
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "InteractiveHeader": {
+        "description": "Cabeçalho textual ou de mídia. Listas aceitam somente texto.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "image"
+            ],
+            "properties": {
+              "type": {
+                "const": "image"
+              },
+              "text": {
+                "type": "string"
+              },
+              "image": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/jpeg"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "video"
+            ],
+            "properties": {
+              "type": {
+                "const": "video"
+              },
+              "text": {
+                "type": "string"
+              },
+              "video": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "video/mp4"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "document"
+            ],
+            "properties": {
+              "type": {
+                "const": "document"
+              },
+              "text": {
+                "type": "string"
+              },
+              "document": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "application/pdf"
                   }
                 }
               }
@@ -2343,6 +3228,9 @@
                   "type": {
                     "const": "button"
                   },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
                   "body": {
                     "type": "object",
                     "required": [
@@ -2352,6 +3240,14 @@
                       "text": {
                         "type": "string",
                         "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
                       }
                     }
                   },
@@ -2626,8 +3522,997 @@
           }
         ]
       },
+      "MessageInteractiveCarousel": {
+        "description": "Carrossel nativo com 2 a 10 cartões. Cada cartão pode usar cabeçalho textual ou de mídia e botões de resposta, URL, ligação ou cópia.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "carousel"
+                  },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "carousel"
+                    ],
+                    "properties": {
+                      "carousel": {
+                        "type": "object",
+                        "required": [
+                          "cards"
+                        ],
+                        "properties": {
+                          "cards": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 10,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "header",
+                                "body",
+                                "action"
+                              ],
+                              "properties": {
+                                "header": {
+                                  "$ref": "#/components/schemas/InteractiveHeader"
+                                },
+                                "body": {
+                                  "type": "object",
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "properties": {
+                                    "text": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                },
+                                "footer": {
+                                  "type": "object",
+                                  "properties": {
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "action": {
+                                  "type": "object",
+                                  "required": [
+                                    "buttons"
+                                  ],
+                                  "properties": {
+                                    "buttons": {
+                                      "type": "array",
+                                      "minItems": 1,
+                                      "items": {
+                                        "oneOf": [
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "reply"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "reply"
+                                              },
+                                              "reply": {
+                                                "type": "object",
+                                                "required": [
+                                                  "id",
+                                                  "title"
+                                                ],
+                                                "properties": {
+                                                  "id": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "url"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_url"
+                                              },
+                                              "url": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "link"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "link": {
+                                                    "type": "string",
+                                                    "format": "uri"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "call"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_call"
+                                              },
+                                              "call": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "phone_number"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "phone_number": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "copy_code"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_copy"
+                                              },
+                                              "copy_code": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "code"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "code": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PaymentAmount": {
+        "type": "object",
+        "required": [
+          "value",
+          "offset"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Valor na menor unidade definida por `offset`."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 100
+          }
+        }
+      },
+      "PaymentSetting": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "pix_static_code"
+            ],
+            "properties": {
+              "type": {
+                "const": "pix_static_code"
+              },
+              "pix_static_code": {
+                "type": "object",
+                "required": [
+                  "merchant_name",
+                  "key",
+                  "key_type"
+                ],
+                "properties": {
+                  "merchant_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "pix_dynamic_code"
+            ],
+            "properties": {
+              "type": {
+                "const": "pix_dynamic_code"
+              },
+              "pix_dynamic_code": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "merchant_name",
+                  "key",
+                  "key_type"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "Código PIX copia e cola completo."
+                  },
+                  "merchant_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "payment_link"
+            ],
+            "properties": {
+              "type": {
+                "const": "payment_link"
+              },
+              "payment_link": {
+                "type": "object",
+                "required": [
+                  "uri"
+                ],
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "boleto"
+            ],
+            "properties": {
+              "type": {
+                "const": "boleto"
+              },
+              "boleto": {
+                "type": "object",
+                "required": [
+                  "digitable_line"
+                ],
+                "properties": {
+                  "digitable_line": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Disponível somente para contas habilitadas para pagamento em um clique.",
+            "required": [
+              "type",
+              "offsite_card_pay"
+            ],
+            "properties": {
+              "type": {
+                "const": "offsite_card_pay"
+              },
+              "offsite_card_pay": {
+                "type": "object",
+                "required": [
+                  "last_four_digits",
+                  "credential_id"
+                ],
+                "properties": {
+                  "last_four_digits": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 4
+                  },
+                  "credential_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PaymentOrder": {
+        "type": "object",
+        "required": [
+          "status",
+          "items",
+          "subtotal"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "partially_shipped",
+              "shipped",
+              "completed",
+              "canceled"
+            ]
+          },
+          "tax": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "shipping": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "discount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "amount",
+                "quantity"
+              ],
+              "properties": {
+                "retailer_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "amount": {
+                  "$ref": "#/components/schemas/PaymentAmount"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "subtotal": {
+            "$ref": "#/components/schemas/PaymentAmount"
+          }
+        }
+      },
+      "MessagePaymentRequest": {
+        "description": "Solicitação curta de pagamento PIX estático pelo fluxo Zapo `payment_info`.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "button"
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "buttons"
+                    ],
+                    "properties": {
+                      "buttons": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "payment_setting"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "payment_request"
+                                },
+                                "payment_setting": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "pix_static_code"
+                                  ],
+                                  "properties": {
+                                    "type": {
+                                      "const": "pix_static_code"
+                                    },
+                                    "pix_static_code": {
+                                      "type": "object",
+                                      "required": [
+                                        "merchant_name",
+                                        "key",
+                                        "key_type"
+                                      ],
+                                      "properties": {
+                                        "merchant_name": {
+                                          "type": "string"
+                                        },
+                                        "key": {
+                                          "type": "string"
+                                        },
+                                        "key_type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "CPF",
+                                            "CNPJ",
+                                            "EMAIL",
+                                            "PHONE",
+                                            "EVP"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "payment_request"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "payment_request"
+                                },
+                                "payment_request": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "payment_type",
+                                    "payment_settings",
+                                    "currency",
+                                    "total_amount"
+                                  ],
+                                  "properties": {
+                                    "reference_id": {
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "physical-goods",
+                                        "digital-goods"
+                                      ]
+                                    },
+                                    "payment_type": {
+                                      "const": "br"
+                                    },
+                                    "payment_settings": {
+                                      "type": "array",
+                                      "minItems": 1,
+                                      "maxItems": 1,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "type",
+                                          "pix_dynamic_code"
+                                        ],
+                                        "properties": {
+                                          "type": {
+                                            "const": "pix_dynamic_code"
+                                          },
+                                          "pix_dynamic_code": {
+                                            "type": "object",
+                                            "required": [
+                                              "code",
+                                              "merchant_name",
+                                              "key",
+                                              "key_type"
+                                            ],
+                                            "properties": {
+                                              "code": {
+                                                "type": "string"
+                                              },
+                                              "merchant_name": {
+                                                "type": "string"
+                                              },
+                                              "key": {
+                                                "type": "string"
+                                              },
+                                              "key_type": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "CPF",
+                                                  "CNPJ",
+                                                  "EMAIL",
+                                                  "PHONE",
+                                                  "EVP"
+                                                ]
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "currency": {
+                                      "const": "BRL"
+                                    },
+                                    "total_amount": {
+                                      "$ref": "#/components/schemas/PaymentAmount"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageOrderDetails": {
+        "description": "Pedido com PIX dinâmico, link, boleto ou cartão habilitado. `order` é opcional; o cabeçalho de imagem só pode ser usado quando `order` estiver presente.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "order_details"
+                  },
+                  "header": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "image"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "image"
+                      },
+                      "image": {
+                        "type": "object",
+                        "required": [
+                          "link"
+                        ],
+                        "properties": {
+                          "link": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "parameters"
+                    ],
+                    "properties": {
+                      "name": {
+                        "const": "review_and_pay"
+                      },
+                      "parameters": {
+                        "type": "object",
+                        "required": [
+                          "reference_id",
+                          "type",
+                          "payment_type",
+                          "payment_settings",
+                          "currency",
+                          "total_amount"
+                        ],
+                        "properties": {
+                          "reference_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "physical-goods",
+                              "digital-goods"
+                            ]
+                          },
+                          "payment_type": {
+                            "const": "br"
+                          },
+                          "payment_settings": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "$ref": "#/components/schemas/PaymentSetting"
+                            }
+                          },
+                          "currency": {
+                            "const": "BRL"
+                          },
+                          "total_amount": {
+                            "$ref": "#/components/schemas/PaymentAmount"
+                          },
+                          "order": {
+                            "$ref": "#/components/schemas/PaymentOrder"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageOrderStatus": {
+        "description": "Atualização do estado do pagamento e, opcionalmente, do pedido. Use a mesma `reference_id` de um `order_details` já processado para que a Uno cite o pedido original e o aplicativo atualize seu estado.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "order_status"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "parameters"
+                    ],
+                    "properties": {
+                      "name": {
+                        "const": "review_order"
+                      },
+                      "parameters": {
+                        "type": "object",
+                        "required": [
+                          "reference_id",
+                          "payment"
+                        ],
+                        "properties": {
+                          "reference_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "order": {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "processing",
+                                  "partially_shipped",
+                                  "shipped",
+                                  "completed",
+                                  "canceled"
+                                ]
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "payment": {
+                            "type": "object",
+                            "required": [
+                              "status"
+                            ],
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "captured",
+                                  "failed"
+                                ]
+                              },
+                              "timestamp": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageStatusUpdate": {
+        "type": "object",
+        "required": [
+          "status",
+          "message_id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "read",
+              "deleted"
+            ],
+            "description": "Marca a mensagem como lida ou apaga a mensagem enviada."
+          },
+          "message_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID UnoAPI da mensagem alvo."
+          }
+        }
+      },
       "MessageRequest": {
         "oneOf": [
+          {
+            "$ref": "#/components/schemas/MessageStatusBroadcast"
+          },
           {
             "$ref": "#/components/schemas/MessageText"
           },
@@ -2656,6 +4541,12 @@
             "$ref": "#/components/schemas/MessageReaction"
           },
           {
+            "$ref": "#/components/schemas/MessagePoll"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePollVote"
+          },
+          {
             "$ref": "#/components/schemas/MessageInteractiveButtons"
           },
           {
@@ -2663,22 +4554,55 @@
           },
           {
             "$ref": "#/components/schemas/MessageInteractiveList"
+          },
+          {
+            "$ref": "#/components/schemas/MessageInteractiveCarousel"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePaymentRequest"
+          },
+          {
+            "$ref": "#/components/schemas/MessageOrderDetails"
+          },
+          {
+            "$ref": "#/components/schemas/MessageOrderStatus"
+          },
+          {
+            "$ref": "#/components/schemas/MessageStatusUpdate"
           }
         ]
       },
       "MessageResponse": {
         "type": "object",
+        "required": [
+          "messaging_product",
+          "contacts",
+          "messages"
+        ],
         "properties": {
           "messaging_product": {
-            "type": "string"
+            "type": "string",
+            "const": "whatsapp"
           },
           "contacts": {
             "type": "array",
             "items": {
               "type": "object",
+              "required": [
+                "input",
+                "wa_id"
+              ],
               "properties": {
+                "input": {
+                  "type": "string",
+                  "description": "Destinatário informado na requisição."
+                },
                 "wa_id": {
                   "type": "string"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "Identificador interno do contato quando já resolvido."
                 }
               }
             }
@@ -2687,9 +4611,13 @@
             "type": "array",
             "items": {
               "type": "object",
+              "required": [
+                "id"
+              ],
               "properties": {
                 "id": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "ID UnoAPI usado em edição, reação, voto, citação e acompanhamento."
                 }
               }
             }

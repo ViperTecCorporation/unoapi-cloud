@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { WaClient, WaMessageKey, WaSendMessageContent, WaSendMessageOptions, WaStoreSession } from 'zapo-js'
+import { proto, type WaClient, type WaMessageKey, type WaSendMessageContent, type WaSendMessageOptions, type WaStoreSession } from 'zapo-js'
 import { v1 as uuid } from 'uuid'
 import type { DataStore } from '../data_store'
 import type { Response } from '../response'
@@ -26,6 +26,8 @@ const toJid = (value: string) => {
   if (target.includes('@')) return target
   return toRawPnJid(target)
 }
+
+const orderReferenceCacheId = (referenceId: string) => `zapo-order-reference:${referenceId}`
 
 export class ZapoMessages {
   private readonly identity?: ZapoIdentity
@@ -101,6 +103,37 @@ export class ZapoMessages {
       remoteJid: key.remoteJid,
       fromMe: !!key.fromMe,
       ...(key.participant ? { participant: key.participant } : {}),
+    }
+  }
+
+  private async resolveOrderStatusQuote(referenceId: string, target: string) {
+    const key = await this.dataStore.loadKey(orderReferenceCacheId(referenceId))
+    if (!key?.id || !key.remoteJid) {
+      throw new SendError(404, `order_details_reference_not_found: ${referenceId}`)
+    }
+    if (key.remoteJid !== target) {
+      throw new SendError(400, `order_details_reference_target_mismatch: ${referenceId}`)
+    }
+
+    const stored = await this.dataStore.loadMessageExact?.(key.remoteJid, key.id)
+      || await this.dataStore.loadMessage(key.remoteJid, key.id)
+    let message = stored?.message
+    if (!message && this.store) {
+      const providerRecord = await this.store.messages.getById(key.id)
+      if (providerRecord?.messageBytes?.length) {
+        message = proto.Message.decode(providerRecord.messageBytes)
+      }
+    }
+    if (!message) {
+      throw new SendError(404, `order_details_message_not_found: ${referenceId}`)
+    }
+
+    return {
+      id: key.id,
+      remoteJid: key.remoteJid,
+      fromMe: true,
+      ...(key.participant ? { participant: key.participant } : {}),
+      message,
     }
   }
 
@@ -282,6 +315,11 @@ export class ZapoMessages {
         target = key.remoteJid
         options.quote = key
       }
+      if (type === 'interactive' && payload?.interactive?.type === 'order_status') {
+        const referenceId = `${payload?.interactive?.action?.parameters?.reference_id || ''}`.trim()
+        if (!referenceId) throw new SendError(400, 'order_status_reference_id_required')
+        options.quote = await this.resolveOrderStatusQuote(referenceId, target)
+      }
       if (payload?.ttl !== undefined) options.expirationSeconds = Number(payload.ttl)
     }
 
@@ -294,6 +332,11 @@ export class ZapoMessages {
     unoId = await this.dataStore.setUnoId(result.id, unoId) || unoId
     await this.dataStore.setKey(result.id, key)
     await this.dataStore.setKey(unoId, key)
+    await this.dataStore.setMessage(target, { key, message: content } as never)
+    if (type === 'interactive' && payload?.interactive?.type === 'order_details') {
+      const referenceId = `${payload?.interactive?.action?.parameters?.reference_id || ''}`.trim()
+      if (referenceId) await this.dataStore.setKey(orderReferenceCacheId(referenceId), key)
+    }
     const input = `${payload?.to || target || ''}`
     const isGroup = input.endsWith('@g.us')
     const isUsername = !isGroup && /[a-z_]/i.test(input.replace(/@(s\.whatsapp\.net|lid)$/i, ''))
@@ -364,11 +407,12 @@ export class ZapoMessages {
       }
       if (!key?.remoteJid || !key.id || key.fromMe) return
 
-      await this.client.message.sendReceipt(key.remoteJid, key.id, {
+      const providerId = await resolveProviderMessageId(this.dataStore, key.id) || key.id
+      await this.client.message.sendReceipt(key.remoteJid, providerId, {
         type: 'read',
         ...(key.participant ? { participant: key.participant } : {}),
       })
-      logger.info('Zapo read-on-reply target=%s message=%s', target, key.id)
+      logger.info('Zapo read-on-reply target=%s message=%s', target, providerId)
     } catch (error) {
       logger.warn(error as any, 'Ignore Zapo read-on-reply error target=%s', target)
     }

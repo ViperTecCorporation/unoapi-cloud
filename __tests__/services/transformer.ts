@@ -793,6 +793,128 @@ describe('service transformer', () => {
     expect(fromBaileysMessageContent(phoneNumer, input)[0]).toEqual(output)
   })
 
+  test('fromBaileysMessageContent preserves payment link native flow details', async () => {
+    const paymentSetting = {
+      type: 'payment_link',
+      payment_link: { uri: 'https://vipertec.com.br' },
+    }
+    const input = {
+      key: {
+        remoteJid: '5566999554300@s.whatsapp.net',
+        fromMe: false,
+        id: 'payment-link-1',
+      },
+      message: {
+        interactiveMessage: {
+          body: { text: 'Finalize o pagamento' },
+          nativeFlowMessage: {
+            buttons: [{
+              name: 'payment_info',
+              buttonParamsJson: JSON.stringify({
+                display_text: 'Open payment link',
+                payment_settings: [paymentSetting],
+              }),
+            }],
+          },
+        },
+      },
+      pushName: 'Cliente',
+      messageTimestamp: '1785118589',
+    }
+
+    const message = fromBaileysMessageContent('5566996269251', input)[0].entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'interactive',
+      interactive: expect.objectContaining({
+        type: 'button',
+        action: {
+          buttons: [{
+            type: 'payment_request',
+            payment_request: {
+              title: 'Open payment link',
+              payment_settings: [paymentSetting],
+            },
+          }],
+        },
+      }),
+    }))
+  })
+
+  test('fromBaileysMessageContent preserves an order status native flow', async () => {
+    const parameters = {
+      reference_id: 'pedido-129',
+      order: { status: 'processing' },
+      payment: { status: 'captured', timestamp: 1722445231 },
+    }
+    const input = {
+      key: {
+        remoteJid: '5566999554300@s.whatsapp.net',
+        fromMe: true,
+        id: 'order-status-1',
+      },
+      message: {
+        interactiveMessage: {
+          body: { text: 'Pagamento confirmado' },
+          footer: { text: 'Preparando o pedido' },
+          nativeFlowMessage: {
+            buttons: [{
+              name: 'review_order',
+              buttonParamsJson: JSON.stringify(parameters),
+            }],
+          },
+        },
+      },
+      messageTimestamp: '1785118589',
+    }
+
+    const message = fromBaileysMessageContent('5566996269251', input)[0].entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'interactive',
+      interactive: {
+        type: 'order_status',
+        body: { text: 'Pagamento confirmado' },
+        footer: { text: 'Preparando o pedido' },
+        action: { name: 'review_order', parameters },
+      },
+    }))
+  })
+
+  test('fromBaileysMessageContent emits a one-click payment method webhook', async () => {
+    const paymentMethod = {
+      payment_method: 'offsite_card_pay',
+      payment_timestamp: 1726170122,
+      reference_id: 'pedido-128',
+      last_four_digits: '5235',
+      credential_id: 'credential-123',
+    }
+    const input = {
+      key: {
+        remoteJid: '5566999554300@s.whatsapp.net',
+        fromMe: false,
+        id: 'payment-method-1',
+      },
+      message: {
+        interactiveResponseMessage: {
+          nativeFlowResponseMessage: {
+            name: 'payment_method',
+            paramsJson: JSON.stringify(paymentMethod),
+          },
+        },
+      },
+      pushName: 'Cliente',
+      messageTimestamp: '1785118589',
+    }
+
+    const message = fromBaileysMessageContent('5566996269251', input)[0].entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'interactive',
+      interactive: {
+        type: 'payment_method',
+        payment_method: paymentMethod,
+      },
+    }))
+  })
+
   test('fromBaileysMessageContent with templateMessage url button', async () => {
     const phoneNumer = '5549998360838'
     const remotePhoneNumer = '554988290955'
@@ -2581,6 +2703,38 @@ describe('service transformer', () => {
     expect(message.timestamp).toBe(messageTimestamp)
     expect(message.type).toBe('text')
     expect(message.text).toEqual({ body: 'Mídia de visualização única indisponível neste dispositivo.' })
+  })
+
+  test('fromBaileysMessageContent emits Meta-like text webhook for hosted unavailable message', async () => {
+    const phoneNumer = '5549998093075'
+    const remoteJid = '24788516941@lid'
+    const id = `wa.${new Date().getTime()}`
+    const messageTimestamp = Math.floor(new Date().getTime() / 1000).toString()
+    const input = {
+      key: {
+        remoteJid,
+        fromMe: false,
+        id,
+      },
+      messageTimestamp,
+      pushName: 'Contato oficial',
+      messageStubType: 'FUTUREPROOF',
+      messageStubParameters: ['hosted_message_unavailable'],
+    }
+
+    const output = fromBaileysMessageContent(phoneNumer, input)[0]
+    const value = output.entry[0].changes[0].value
+    const message = value.messages[0]
+
+    expect(value.statuses).toEqual([])
+    expect(message).toEqual({
+      from_user_id: remoteJid,
+      from: '',
+      id,
+      timestamp: messageTimestamp,
+      text: { body: 'Mensagem indisponível nesta integração. Confira o aparelho.' },
+      type: 'text',
+    })
   })
 
   test('isValidPhoneNumber return false when 8 digits phone brazilian', async () => {

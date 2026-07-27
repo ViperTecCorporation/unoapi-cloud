@@ -34,6 +34,97 @@ describe('Zapo messages adapter', () => {
     })
     expect(dataStore.setUnoId).toHaveBeenCalledWith('provider-id', expect.any(String))
     expect(dataStore.setKey).toHaveBeenCalledTimes(2)
+    expect(dataStore.setMessage).toHaveBeenCalledWith(
+      '556699999999@s.whatsapp.net',
+      expect.objectContaining({
+        key: { remoteJid: '556699999999@s.whatsapp.net', id: 'provider-id', fromMe: true },
+        message: { type: 'text', text: 'Oi' },
+      }),
+    )
+  })
+
+  test('quotes the original order when sending an order status update', async () => {
+    const client = mockDeep<WaClient>()
+    const dataStore = mockDeep<DataStore>()
+    const originalMessage = {
+      interactiveMessage: {
+        body: { text: 'Pedido original' },
+        nativeFlowMessage: {
+          buttons: [{
+            name: 'review_and_pay',
+            buttonParamsJson: JSON.stringify({ reference_id: 'pedido-v5' }),
+          }],
+        },
+      },
+    }
+    client.message.send
+      .mockResolvedValueOnce({ id: 'order-provider-id' } as never)
+      .mockResolvedValueOnce({ id: 'status-provider-id' } as never)
+    dataStore.loadKey.mockImplementation(async (id) => id === 'zapo-order-reference:pedido-v5'
+      ? { remoteJid: '5511999999999@s.whatsapp.net', id: 'order-provider-id', fromMe: true }
+      : undefined)
+    dataStore.loadMessageExact?.mockResolvedValue({
+      key: { remoteJid: '5511999999999@s.whatsapp.net', id: 'order-provider-id', fromMe: true },
+      message: originalMessage,
+    } as never)
+    const messages = new ZapoMessages(client, dataStore)
+
+    await messages.send({
+      to: '5511999999999',
+      type: 'interactive',
+      interactive: {
+        type: 'order_details',
+        body: { text: 'Pedido original' },
+        action: {
+          name: 'review_and_pay',
+          parameters: {
+            reference_id: 'pedido-v5',
+            type: 'digital-goods',
+            payment_type: 'br',
+            payment_settings: [{
+              type: 'pix_dynamic_code',
+              pix_dynamic_code: { code: 'pix', merchant_name: 'Loja', key: 'chave', key_type: 'EVP' },
+            }],
+            currency: 'BRL',
+            total_amount: { value: 6000, offset: 100 },
+          },
+        },
+      },
+    })
+    await messages.send({
+      to: '5511999999999',
+      type: 'interactive',
+      interactive: {
+        type: 'order_status',
+        body: { text: 'Pagamento confirmado' },
+        action: {
+          name: 'review_order',
+          parameters: {
+            reference_id: 'pedido-v5',
+            order: { status: 'completed' },
+            payment: { status: 'captured' },
+          },
+        },
+      },
+    })
+
+    expect(dataStore.setKey).toHaveBeenCalledWith(
+      'zapo-order-reference:pedido-v5',
+      { remoteJid: '5511999999999@s.whatsapp.net', id: 'order-provider-id', fromMe: true },
+    )
+    expect(client.message.send).toHaveBeenNthCalledWith(
+      2,
+      '5511999999999@s.whatsapp.net',
+      expect.objectContaining({ interactiveMessage: expect.any(Object) }),
+      {
+        quote: {
+          id: 'order-provider-id',
+          remoteJid: '5511999999999@s.whatsapp.net',
+          fromMe: true,
+          message: originalMessage,
+        },
+      },
+    )
   })
 
   test('preserves the supplied phone while Zapo resolves its LID', async () => {
@@ -425,14 +516,19 @@ describe('Zapo messages adapter', () => {
     expect(client.message.send).toHaveBeenCalledTimes(1)
   })
 
-  test('marks the last incoming message as read after replying when configured', async () => {
+  test.each([
+    ['provider id', 'provider-incoming-1', undefined],
+    ['cached Uno id', 'uno-incoming-1', 'provider-incoming-1'],
+  ])('marks the last incoming message as read after replying with a %s', async (_kind, cachedId, mappedProviderId) => {
     const client = mockDeep<WaClient>()
     const dataStore = mockDeep<DataStore>()
     client.message.send.mockResolvedValue(publishResult)
     dataStore.getLidForPn.mockResolvedValue('123456@lid')
     dataStore.getLastIncomingKey.mockImplementation(async (jid) => jid === '123456@lid'
-      ? { remoteJid: '123456@lid', id: 'incoming-1', fromMe: false }
+      ? { remoteJid: '123456@lid', id: cachedId, fromMe: false }
       : undefined)
+    dataStore.loadProviderId.mockImplementation(async (id) =>
+      id === cachedId ? mappedProviderId : undefined)
     const messages = new ZapoMessages(client, dataStore, {
       readOnReply: true,
       phone: '5566996328386',
@@ -442,7 +538,7 @@ describe('Zapo messages adapter', () => {
 
     expect(client.message.sendReceipt).toHaveBeenCalledWith(
       '123456@lid',
-      'incoming-1',
+      'provider-incoming-1',
       { type: 'read' },
     )
   })

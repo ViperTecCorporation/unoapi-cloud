@@ -46,7 +46,7 @@ describe('ListenerZapo', () => {
     expect(store.dataStore.setKey).toHaveBeenCalledWith('3EB0ZAPO', expect.objectContaining({ id: '3EB0ZAPO' }))
     expect(store.dataStore.setLastIncomingKey).toHaveBeenCalledWith(
       '5566998888888@s.whatsapp.net',
-      expect.objectContaining({ id: expect.any(String) }),
+      expect.objectContaining({ id: '3EB0ZAPO' }),
     )
     const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
     expect(payload.entry[0].changes[0].value.messages[0].id).toMatch(

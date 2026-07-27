@@ -153,6 +153,82 @@ export class IncomingJob {
     }
   }
 
+  private paymentTextForChatwootEcho(payload: any) {
+    if (`${payload?.type || ''}` !== 'interactive') return undefined
+    const action = payload?.interactive?.action || {}
+    const buttonSettings = (Array.isArray(action.buttons) ? action.buttons : []).flatMap((button: any) => {
+      if (button?.payment_setting) return [button.payment_setting]
+      if (Array.isArray(button?.payment_request?.payment_settings)) return button.payment_request.payment_settings
+      return []
+    })
+    const settings = [
+      ...(Array.isArray(action?.parameters?.payment_settings) ? action.parameters.payment_settings : []),
+      ...buttonSettings,
+    ]
+    const paymentSetting = settings.find((setting: any) => ['pix_static_code', 'pix_dynamic_code'].includes(`${setting?.type || ''}`))
+    if (!paymentSetting) return undefined
+    const payment = paymentSetting[paymentSetting.type] || {}
+    if (!payment.merchant_name || !payment.key_type || !payment.key) return undefined
+    return `*${payment.merchant_name}*\nChave PIX tipo *${payment.key_type}*: ${payment.key}`
+  }
+
+  private buildChatwootOutgoingEchoMessage(phone: string, payload: any, idUno: string, timestamp: string, messagePayload: any) {
+    const recipient = normalizeUserOrGroupIdForWebhook(payload?.to)
+    const paymentText = this.paymentTextForChatwootEcho(payload)
+    const type = paymentText ? 'text' : payload.type
+    const content = paymentText ? { body: paymentText } : messagePayload
+    return {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: phone,
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: phone,
+                  phone_number_id: phone,
+                },
+                message_echoes: [
+                  {
+                    from: phone.replace('+', ''),
+                    to: recipient,
+                    id: idUno,
+                    timestamp,
+                    [type]: content,
+                    type,
+                  },
+                ],
+              },
+              field: 'smb_message_echoes',
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  private async sendOutgoingMessageWebhooks(
+    phone: string,
+    webhooks: any[],
+    payload: any,
+    idUno: string,
+    timestamp: string,
+    messagePayload: any,
+  ) {
+    const standardMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, messagePayload)
+    const chatwootEcho = this.buildChatwootOutgoingEchoMessage(phone, payload, idUno, timestamp, messagePayload)
+    const enabled = webhooks.filter((webhook) => webhook.sendNewMessages)
+    logger.debug('%s webhooks with sendNewMessages', enabled.length)
+    await Promise.all(enabled.map((webhook) => this.outgoing.sendHttp(
+      phone,
+      webhook,
+      isChatwootWebhook(webhook) ? chatwootEcho : standardMessage,
+      {},
+    )))
+  }
+
   async consume(phone: string, data: object, retry?: RetryContext) {
     const config = await this.getConfig(phone)
     if (config.server !== UNOAPI_SERVER_NAME) {
@@ -260,10 +336,7 @@ export class IncomingJob {
           logger.warn('Incoming media without link for %s type=%s; skipping media download/cache', idUno, payload.type)
         }
       }
-      const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, messagePayload)
-      const webhooks = config.webhooks.filter((w) => w.sendNewMessages && !isChatwootWebhook(w))
-      logger.debug('%s webhooks with sendNewMessages', webhooks.length)
-      await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
+      await this.sendOutgoingMessageWebhooks(phone, config.webhooks, payload, idUno, timestamp, messagePayload)
       // Reconcile early status updates that arrived before UNO<->provider mapping
       try {
         if (prevProviderStatus && rankStatus(prevProviderStatus) > rankStatus(prevUnoStatus || '')) {
@@ -332,10 +405,7 @@ export class IncomingJob {
       throw `Unknow response ${JSON.stringify(response)}`
     } else if (ok.success) {
       // Fallback: provedor não retornou id da mensagem, ainda assim notificar "new message" no webhook
-      const webhookMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, payload[payload.type])
-      const webhooks = config.webhooks.filter((w) => w.sendNewMessages && !isChatwootWebhook(w))
-      logger.debug('%s webhooks with sendNewMessages (fallback)', webhooks.length)
-      await Promise.all(webhooks.map((w) => this.outgoing.sendHttp(phone, w, webhookMessage, {})))
+      await this.sendOutgoingMessageWebhooks(phone, config.webhooks, payload, idUno, timestamp, payload[payload.type])
       logger.debug('Message id %s update to status %s (fallback notified)', payload?.message_id, payload?.status)
       // não retorna aqui; continua fluxo de status abaixo
     }

@@ -165,6 +165,13 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Recuperacao | reenviar preservando ID publico | `message.send({ id })` e retry interno | testado |
 | Newsletter/broadcast list | rotas e eventos atuais | coordinators dedicados | nao iniciado |
 
+Quando o servidor entrega uma mensagem de coexistência como placeholder
+`message_unavailable` com `kind=hosted`, o conteúdo original não está disponível
+para recuperação. A UnoAPI ainda encaminha ao webhook uma mensagem `type=text`
+com o aviso `Mensagem indisponível nesta integração. Confira o aparelho.` para
+evitar uma conversa sem conteúdo no sistema integrado. Isso não altera o estado
+`sem capability`: o conteúdo original continua irrecuperável.
+
 ### Falhas de envio
 
 Todas as ações que passam pelo envio comum de mensagens — texto, mídias,
@@ -187,11 +194,33 @@ em webhook de falha de mensagem.
 O adapter segue a referência oficial de tipos da Zapo:
 
 - botões usam `interactiveMessage.nativeFlowMessage`;
+- carrosséis usam `interactiveMessage.carouselMessage` e enviam explicitamente
+  o nó comercial `interactive/native_flow`, pois os botões ficam dentro dos
+  cartões e não são detectados no nível principal pela versão atual da Zapo;
 - listas usam o `listMessage` raw com `ListType.SINGLE_SELECT`;
 - listas não são convertidas para o botão native-flow `single_select`, pois esse
   formato pode ser renderizado pelo cliente como “atualize o WhatsApp”;
 - cabeçalho de mídia em lista retorna capability explícita, porque o
   `listMessage` documentado não possui esse campo.
+- cobrancas avulsas usam `payment_info`, pedidos usam
+  `order_details/review_and_pay` e atualizacoes usam `review_order`;
+  `pix_static_code` aceita a forma curta `payment_request`, enquanto
+  `pix_dynamic_code`, `payment_link`, `boleto` e `offsite_card_pay` usam uma
+  ordem `order_details/review_and_pay`, com o objeto `order` opcional;
+- pedidos detalhados aceitam cabeçalho de imagem; pedidos simplificados, sem o
+  objeto `order`, rejeitam esse cabeçalho;
+- a linha digitavel do boleto e normalizada para somente digitos antes do envio,
+  e pedidos itemizados sem `tax` recebem imposto zero com o mesmo `offset` do
+  total, pois ambos sao exigidos pelo checkout nativo;
+- atualizações usam `order_status/review_order` e preservam os objetos
+  `payment` e `order`;
+- códigos PIX, boletos, links e credenciais são gerados pelo banco ou PSP e a
+  Uno apenas os transporta; pedido, total, moeda e identificador de referência
+  não são recalculados;
+- `offsite_card_pay` depende de habilitação comercial da conta e permanece
+  pendente de validação real; o adapter e o webhook `payment_method` estão
+  cobertos por testes, mas essa modalidade não deve ser anunciada como
+  disponível para todas as sessões.
 
 Referência:
 `https://zapo.to/en/reference/message-types#interactive-business`.

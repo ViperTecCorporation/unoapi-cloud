@@ -1,0 +1,9 @@
+services:
+  docs:
+    build:
+      context: ..
+      dockerfile: docs-site/Dockerfile
+    image: viperconnect-docs:local
+    restart: unless-stopped
+    ports:
+      - "${DOCS_PORT:-8088}:8080"

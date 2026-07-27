@@ -206,7 +206,7 @@ describe('incoming job', () => {
     expect(dataStore.setUnoId).not.toHaveBeenCalledWith('uno-request-1', 'uno-request-1')
   })
 
-  test('does not emit a duplicate outgoing message echo to Chatwoot', async () => {
+  test('emits a Chatwoot-compatible outgoing message echo', async () => {
     const incoming = mock<Incoming>()
     const outgoing = mock<Outgoing>()
     const dataStore = mock<DataStore>()
@@ -242,8 +242,162 @@ describe('incoming job', () => {
     })
 
     const payloads = (outgoing.sendHttp as jest.Mock).mock.calls.map((call) => call[2])
-    expect(payloads.some((webhook) => webhook?.entry?.[0]?.changes?.[0]?.value?.messages?.length)).toBe(false)
+    const echo = payloads.find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'smb_message_echoes')
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).toEqual(expect.objectContaining({
+      from: '5566999554300',
+      to: '5549991851558',
+      id: 'uno-request-chatwoot',
+      type: 'text',
+      text: { body: 'Mensagem do Chatwoot' },
+    }))
     expect(payloads.some((webhook) => webhook?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.status === 'sent')).toBe(true)
+  })
+
+  test('renders a PIX key as text in the Chatwoot outgoing echo', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0PIX')
+    dataStore.setUnoId.mockResolvedValue('uno-pix-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-pix-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        sendNewMessages: true,
+        url: '',
+        urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+      }],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+
+    await job.consume('5566999554300', {
+      id: 'uno-pix-echo',
+      payload: {
+        to: '5549991851558',
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          action: {
+            buttons: [{
+              type: 'payment_request',
+              payment_setting: {
+                type: 'pix_static_code',
+                pix_static_code: {
+                  merchant_name: 'Viper Tec',
+                  key_type: 'EMAIL',
+                  key: 'financeiro@vipertec.com.br',
+                },
+              },
+            }],
+          },
+        },
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const echo = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'smb_message_echoes')
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).toEqual(expect.objectContaining({
+      type: 'text',
+      text: { body: '*Viper Tec*\nChave PIX tipo *EMAIL*: financeiro@vipertec.com.br' },
+    }))
+  })
+
+  test.each([
+    ['button', {
+      type: 'button',
+      body: { text: 'Escolha uma opção' },
+      action: {
+        buttons: [{
+          type: 'reply',
+          reply: { id: 'confirmar', title: 'Confirmar' },
+        }],
+      },
+    }],
+    ['list', {
+      type: 'list',
+      body: { text: 'Escolha um item' },
+      action: {
+        button: 'Abrir lista',
+        sections: [{
+          title: 'Opções',
+          rows: [{ id: 'item-1', title: 'Item 1' }],
+        }],
+      },
+    }],
+    ['carousel', {
+      type: 'carousel',
+      body: { text: 'Conheça nossos planos' },
+      action: {
+        carousel: {
+          cards: [
+            { body: { text: 'Plano Básico' } },
+            { body: { text: 'Plano Profissional' } },
+          ],
+        },
+      },
+    }],
+    ['order_status', {
+      type: 'order_status',
+      body: { text: 'Seu pedido foi atualizado' },
+      action: {
+        name: 'review_order',
+        parameters: {
+          reference_id: 'pedido-123',
+          payment: { status: 'paid' },
+        },
+      },
+    }],
+  ])('emits a Chatwoot-compatible outgoing echo for %s interactive messages', async (_name, interactive) => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0INTERACTIVE')
+    dataStore.setUnoId.mockResolvedValue('uno-interactive-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-interactive-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        sendNewMessages: true,
+        url: '',
+        urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+      }],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+
+    await job.consume('5566999554300', {
+      id: 'uno-interactive-echo',
+      payload: {
+        to: '5549991851558',
+        type: 'interactive',
+        interactive,
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const echo = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'smb_message_echoes')
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).toEqual(expect.objectContaining({
+      from: '5566999554300',
+      to: '5549991851558',
+      id: 'uno-interactive-echo',
+      type: 'interactive',
+      interactive,
+    }))
   })
 
   test('dispatches provider contact operations without going through message sending', async () => {

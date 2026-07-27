@@ -87,6 +87,14 @@ const isViewOnceUnavailableStub = (payload: any): boolean => {
   return stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')
 }
 
+const isHostedMessageUnavailableStub = (payload: any): boolean => {
+  const source = payload?.update || payload || {}
+  const stubParams = Array.isArray(source?.messageStubParameters)
+    ? source.messageStubParameters.map((p: any) => `${p}`)
+    : []
+  return stubParams.includes('hosted_message_unavailable')
+}
+
 const extractFailedStatusError = (payload: any): any => {
   const update = payload?.update || {}
   const params = Array.isArray(update?.messageStubParameters)
@@ -308,7 +316,7 @@ const parseInteractiveResponse = (binMessage: any) => {
   const name = `${native?.name || ''}`.toLowerCase()
   const isList = name.includes('list') || name.includes('single_select') || !!params?.row_id || !!params?.selected_row_id
   const isButton = name.includes('quick_reply') || name.includes('button') || !!params?.button_id || !!params?.id
-  return { id, title, description, isList, isButton, bodyText }
+  return { id, title, description, isList, isButton, bodyText, name, params }
 }
 
 const parseNativeFlowSingleSelect = (buttons: any[]) => {
@@ -1423,6 +1431,22 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       change.value.messages.push(message)
       return [data, senderPhone, senderId] as [any, string, string]
     }
+    const emitHostedMessageUnavailableMessage = () => {
+      const k: any = (payload as any)?.key || {}
+      message.type = 'text'
+      message.text = {
+        body: 'Mensagem indisponível nesta integração. Confira o aparelho.',
+      }
+      logger.info(
+        'hosted_message_unavailable detected msgId=%s remoteJid=%s fromMe=%s reason=%s',
+        k?.id || whatsappMessageId || '<none>',
+        k?.remoteJid || '<none>',
+        !!k?.fromMe,
+        'server_delivered_hosted_placeholder',
+      )
+      change.value.messages.push(message)
+      return [data, senderPhone, senderId] as [any, string, string]
+    }
     if (senderStableUserId && !fromMe) {
       message.from_user_id = senderStableUserId
     }
@@ -1639,6 +1663,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         if (isViewOnceUnavailableStub(payload)) {
           return emitViewOnceUnavailableMessage()
         }
+        if (isHostedMessageUnavailableStub(payload)) {
+          return emitHostedMessageUnavailableMessage()
+        }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
           (payload as any)?.messageStubParameters &&
@@ -1726,7 +1753,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       case 'interactiveResponseMessage': {
         const replyMessageId = binMessage?.contextInfo?.stanzaId
         const parsed = parseInteractiveResponse(binMessage)
-        if (parsed?.isList && parsed?.id) {
+        if (
+          (parsed?.name.includes('payment_method') || parsed?.name.includes('offsite_card_pay'))
+          && parsed?.params?.credential_id
+        ) {
+          message.interactive = {
+            type: 'payment_method',
+            payment_method: parsed.params,
+          }
+          message.type = 'interactive'
+        } else if (parsed?.isList && parsed?.id) {
           message.interactive = {
             type: 'list_reply',
             list_reply: {
@@ -1804,6 +1840,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const u: any = (payload && (payload as any).update) || {}
         if (isViewOnceUnavailableStub(payload)) {
           return emitViewOnceUnavailableMessage()
+        }
+        if (isHostedMessageUnavailableStub(payload)) {
+          return emitHostedMessageUnavailableMessage()
         }
         const baileysStatus = (payload as any)?.status ?? u?.status
         if (
@@ -1994,6 +2033,24 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
         const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
         for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
+          if (button?.name !== 'review_order') continue
+          let parameters: any = {}
+          try {
+            parameters = JSON.parse(button?.buttonParamsJson || '{}')
+          } catch {}
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'order_status',
+            body: { text: interactiveMessage?.body?.text || '' },
+            footer: interactiveMessage?.footer?.text
+              ? { text: interactiveMessage.footer.text }
+              : undefined,
+            action: { name: 'review_order', parameters },
+          }
+          break
+        }
+        if (message.interactive?.type === 'order_status') break
+        for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
           let params: any = {}
           try {
             params = JSON.parse(button?.buttonParamsJson || '{}')
@@ -2020,6 +2077,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                 try {
                   params = JSON.parse(button?.buttonParamsJson || '{}')
                 } catch {}
+                if (button?.name === 'payment_info') {
+                  const { display_text: displayText, ...paymentParams } = params
+                  return {
+                    type: 'payment_request',
+                    payment_request: {
+                      ...paymentParams,
+                      title: displayText || '',
+                    },
+                  }
+                }
                 if (button?.name === 'cta_url') {
                   return {
                     type: 'cta_url',
