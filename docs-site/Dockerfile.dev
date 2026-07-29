@@ -1,0 +1,10 @@
+FROM node:24-alpine
+
+WORKDIR /workspace
+RUN apk add --no-cache git
+COPY docs-site/package*.json ./docs-site/
+RUN cd docs-site && npm ci
+
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
+CMD ["node", "docs-site/scripts/dev-server.mjs"]
