@@ -10,6 +10,7 @@ import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
 import { renderDashboard } from './pages/dashboard.js'
+import { renderDocumentationPage } from './pages/documentation.js'
 import { renderSessionPage } from './pages/session.js'
 import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
 import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
@@ -67,7 +68,7 @@ export class ViperConnectApp {
   private groupsHasMore = false
   private groupsQuery = ''
   private sessionVisibleLimit = PAGE_SIZE
-  private view: 'dashboard' | 'queues' | 'redis' = 'dashboard'
+  private view: 'dashboard' | 'queues' | 'redis' | 'documentation' = 'dashboard'
   private queues: RabbitQueueInfo[] = []
   private queueMessages: RabbitQueueMessage[] = []
   private selectedQueue = ''
@@ -196,6 +197,11 @@ export class ViperConnectApp {
       this.mobileOpen = false
       this.render()
       await this.loadRedisKeys()
+    } else if (action === 'open-documentation') {
+      this.selectedPhone = ''
+      this.view = 'documentation'
+      this.mobileOpen = false
+      this.render()
     } else if (action === 'refresh-queues') {
       await this.loadQueues()
     } else if (action === 'load-more-queues') {
@@ -457,6 +463,8 @@ export class ViperConnectApp {
 
   private tickRefresh(): void {
     if (!this.api.getToken() || this.modal) return
+    // Preserve the iframe navigation and scroll position while reading docs.
+    if (this.view === 'documentation') return
     if (this.view === 'queues') {
       if (this.queuesLoading || this.queueMessagesLoading) return
       this.queueRefreshIn -= 1
@@ -972,7 +980,9 @@ export class ViperConnectApp {
       return
     }
     const selected = this.findSession(this.selectedPhone)
-    const content = this.view === 'redis'
+    const content = this.view === 'documentation'
+      ? renderDocumentationPage()
+      : this.view === 'redis'
       ? renderRedisPage({
           keys: this.redisKeys,
           tree: this.redisTree,

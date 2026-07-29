@@ -1,4 +1,5 @@
 import { renderDashboard } from '../../frontend/pages/dashboard'
+import { DOCUMENTATION_URL, renderDocumentationPage } from '../../frontend/pages/documentation'
 import { renderSessionPage } from '../../frontend/pages/session'
 import { setLocale } from '../../frontend/core/i18n'
 
@@ -42,6 +43,14 @@ describe('frontend pages', () => {
     expect(html).not.toContain('aria-modal="true"')
     expect(html.indexOf('data-tab="webhooks"')).toBeLessThan(html.indexOf('data-tab="contacts"'))
     expect(html.indexOf('data-tab="contacts"')).toBeLessThan(html.indexOf('data-tab="groups"'))
+  })
+
+  test('embeds the public documentation in the API front', () => {
+    const html = renderDocumentationPage()
+
+    expect(html).toContain(`src="${DOCUMENTATION_URL}"`)
+    expect(html).toContain('class="documentation-embed__frame"')
+    expect(html).toContain('title="Documentação"')
   })
 
   test('offers only removal for a suppressed Baileys session', () => {

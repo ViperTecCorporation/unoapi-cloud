@@ -1,8 +1,8 @@
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-520280f1';
-import { icon } from '../components/icons.js?v=4.0.0-beta8-520280f1';
-import { renderStatus } from '../components/status.js?v=4.0.0-beta8-520280f1';
-import { filterSessions, isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta8-520280f1';
-import { t } from '../core/i18n.js?v=4.0.0-beta8-520280f1';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta9-6cbd5fc8';
+import { icon } from '../components/icons.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderStatus } from '../components/status.js?v=4.0.0-beta9-6cbd5fc8';
+import { filterSessions, isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.0-beta9-6cbd5fc8';
+import { t } from '../core/i18n.js?v=4.0.0-beta9-6cbd5fc8';
 export const renderDashboard = ({ sessions, query, status, loading, refreshIn, visibleLimit }) => {
     const filtered = filterSessions(sessions, query, status);
     const visible = filtered.slice(0, visibleLimit);

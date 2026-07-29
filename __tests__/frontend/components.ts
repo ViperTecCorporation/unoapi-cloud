@@ -74,6 +74,27 @@ describe('frontend components', () => {
     expect(layout).not.toContain('Viper Tec</strong><small>Produção')
   })
 
+  test('keeps the main sidebar and marks embedded documentation as active', () => {
+    const layout = renderLayout({
+      content: '<iframe></iframe>',
+      collapsed: false,
+      mobileOpen: false,
+      activeView: 'documentation',
+      versionStatus: {
+        installed_version: '4.0.0-beta9',
+        latest_version: '4.0.0-beta9',
+        update_available: false,
+        status: 'current',
+        checked_at: '2026-07-29T12:00:00.000Z',
+      },
+    })
+
+    expect(layout).toContain('data-action="open-documentation"')
+    expect(layout).toContain('nav-item nav-item--active')
+    expect(layout).toContain('main main--documentation')
+    expect(layout).not.toContain('href="/docs"')
+  })
+
   test('renders contact and group cards with picture slots', () => {
     const contact = renderContactCards(
       [{ user_id: '1@lid', phone_number: '5566999999999', display_name: 'Maria', last_updated_ms: 1 }],

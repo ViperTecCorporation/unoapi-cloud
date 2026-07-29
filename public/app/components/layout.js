@@ -1,6 +1,6 @@
-import { icon } from './icons.js?v=4.0.0-beta8-520280f1';
-import { escapeHtml } from '../core/html.js?v=4.0.0-beta8-520280f1';
-import { getLocale, t } from '../core/i18n.js?v=4.0.0-beta8-520280f1';
+import { icon } from './icons.js?v=4.0.0-beta9-6cbd5fc8';
+import { escapeHtml } from '../core/html.js?v=4.0.0-beta9-6cbd5fc8';
+import { getLocale, t } from '../core/i18n.js?v=4.0.0-beta9-6cbd5fc8';
 const renderVersionStatus = (status) => {
     const installed = status.installed_version ? `v${status.installed_version.replace(/^v/i, '')}` : t('Versão');
     if (status.status === 'update_available') {
@@ -32,9 +32,9 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus, ac
         <button class="nav-item ${activeView === 'redis' ? 'nav-item--active' : ''}" type="button" data-action="open-redis" title="Redis">
           ${icon('database')}<span>Redis</span>
         </button>
-        <a class="nav-item" href="/docs" title="${t('Documentação')}">
+        <button class="nav-item ${activeView === 'documentation' ? 'nav-item--active' : ''}" type="button" data-action="open-documentation" title="${t('Documentação')}">
           ${icon('docs')}<span>${t('Documentação')}</span>
-        </a>
+        </button>
       </nav>
       <div class="sidebar__footer">
         <button class="nav-item" type="button" data-action="toggle-theme" title="${t('Alternar tema')}">
@@ -67,7 +67,7 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus, ac
         <button class="btn btn--icon btn--ghost" type="button" data-action="toggle-mobile-menu" aria-label="${t('Abrir menu')}">${icon('menu')}</button>
       </div>
     </div>
-    <main class="main">${content}</main>
+    <main class="main ${activeView === 'documentation' ? 'main--documentation' : ''}">${content}</main>
   </div>
 `;
 export const renderLogin = (error = '') => `

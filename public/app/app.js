@@ -1,18 +1,19 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta8-520280f1';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta8-520280f1';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta8-520280f1';
-import { SocketBridge } from './core/socket.js?v=4.0.0-beta8-520280f1';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta8-520280f1';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta8-520280f1';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta8-520280f1';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta8-520280f1';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta8-520280f1';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta8-520280f1';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta8-520280f1';
-import { renderSessionPage } from './pages/session.js?v=4.0.0-beta8-520280f1';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta8-520280f1';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta8-520280f1';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta8-520280f1';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.0-beta9-6cbd5fc8';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.0-beta9-6cbd5fc8';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.0-beta9-6cbd5fc8';
+import { SocketBridge } from './core/socket.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.0-beta9-6cbd5fc8';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.0-beta9-6cbd5fc8';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.0-beta9-6cbd5fc8';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderSessionPage } from './pages/session.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.0-beta9-6cbd5fc8';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.0-beta9-6cbd5fc8';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.0-beta9-6cbd5fc8';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -170,6 +171,12 @@ export class ViperConnectApp {
             this.mobileOpen = false;
             this.render();
             await this.loadRedisKeys();
+        }
+        else if (action === 'open-documentation') {
+            this.selectedPhone = '';
+            this.view = 'documentation';
+            this.mobileOpen = false;
+            this.render();
         }
         else if (action === 'refresh-queues') {
             await this.loadQueues();
@@ -487,6 +494,8 @@ export class ViperConnectApp {
     }
     tickRefresh() {
         if (!this.api.getToken() || this.modal)
+            return;
+        if (this.view === 'documentation')
             return;
         if (this.view === 'queues') {
             if (this.queuesLoading || this.queueMessagesLoading)
@@ -1024,59 +1033,61 @@ export class ViperConnectApp {
             return;
         }
         const selected = this.findSession(this.selectedPhone);
-        const content = this.view === 'redis'
-            ? renderRedisPage({
-                keys: this.redisKeys,
-                tree: this.redisTree,
-                expandedPrefixes: [...this.redisExpandedPrefixes],
-                sessions: this.sessions,
-                sessionFilter: this.redisSession,
-                query: this.redisQuery,
-                selected: this.selectedRedisKey,
-                queryResult: this.redisQueryResult,
-                loading: this.redisLoading,
-                refreshIn: this.redisRefreshIn,
-                error: this.redisError,
-            })
-            : this.view === 'queues'
-                ? renderQueuesPage({
-                    queues: this.queues,
+        const content = this.view === 'documentation'
+            ? renderDocumentationPage()
+            : this.view === 'redis'
+                ? renderRedisPage({
+                    keys: this.redisKeys,
+                    tree: this.redisTree,
+                    expandedPrefixes: [...this.redisExpandedPrefixes],
                     sessions: this.sessions,
-                    sessionPhoneFilter: this.queueSession,
-                    query: this.queueQuery,
-                    loading: this.queuesLoading,
-                    refreshIn: this.queueRefreshIn,
-                    visibleLimit: this.queueVisibleLimit,
-                    selectedQueue: this.selectedQueue,
-                    messages: this.queueMessages,
-                    messagesLoading: this.queueMessagesLoading,
-                    messageLimit: this.queueMessageLimit,
-                    messageOrder: this.queueMessageOrder,
-                    metricFilter: this.queueMetricFilter,
-                    error: this.queueError,
+                    sessionFilter: this.redisSession,
+                    query: this.redisQuery,
+                    selected: this.selectedRedisKey,
+                    queryResult: this.redisQueryResult,
+                    loading: this.redisLoading,
+                    refreshIn: this.redisRefreshIn,
+                    error: this.redisError,
                 })
-                : selected
-                    ? renderSessionPage({
-                        session: selected,
-                        tab: this.tab,
-                        contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
-                        contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
-                        contactCount: this.contacts.totalCount,
-                        contactsQuery: this.contactsQuery,
-                        groups: filterGroups(this.groups, this.groupsQuery),
-                        groupsHasMore: this.groupsHasMore,
-                        groupsQuery: this.groupsQuery,
-                        loadingSection: this.loadingSection,
-                        sectionError: this.sectionError,
-                    })
-                    : renderDashboard({
+                : this.view === 'queues'
+                    ? renderQueuesPage({
+                        queues: this.queues,
                         sessions: this.sessions,
-                        query: this.query,
-                        status: this.statusFilter,
-                        loading: this.loading,
-                        refreshIn: this.refreshIn,
-                        visibleLimit: this.sessionVisibleLimit,
-                    });
+                        sessionPhoneFilter: this.queueSession,
+                        query: this.queueQuery,
+                        loading: this.queuesLoading,
+                        refreshIn: this.queueRefreshIn,
+                        visibleLimit: this.queueVisibleLimit,
+                        selectedQueue: this.selectedQueue,
+                        messages: this.queueMessages,
+                        messagesLoading: this.queueMessagesLoading,
+                        messageLimit: this.queueMessageLimit,
+                        messageOrder: this.queueMessageOrder,
+                        metricFilter: this.queueMetricFilter,
+                        error: this.queueError,
+                    })
+                    : selected
+                        ? renderSessionPage({
+                            session: selected,
+                            tab: this.tab,
+                            contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
+                            contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
+                            contactCount: this.contacts.totalCount,
+                            contactsQuery: this.contactsQuery,
+                            groups: filterGroups(this.groups, this.groupsQuery),
+                            groupsHasMore: this.groupsHasMore,
+                            groupsQuery: this.groupsQuery,
+                            loadingSection: this.loadingSection,
+                            sectionError: this.sectionError,
+                        })
+                        : renderDashboard({
+                            sessions: this.sessions,
+                            query: this.query,
+                            status: this.statusFilter,
+                            loading: this.loading,
+                            refreshIn: this.refreshIn,
+                            visibleLimit: this.sessionVisibleLimit,
+                        });
         this.root.innerHTML =
             renderLayout({
                 content,
