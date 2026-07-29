@@ -180,7 +180,7 @@ describe('ZapoContactDirectory', () => {
       loadConfig,
       async () => redis as never,
       undefined,
-      undefined,
+      async () => 'https://cdn.example/cached.jpg',
       async () => 1,
     )
 
@@ -226,7 +226,7 @@ describe('ZapoContactDirectory', () => {
       loadConfig,
       async () => redis as never,
       undefined,
-      undefined,
+      async () => 'https://cdn.example/cached.jpg',
       async () => 2,
     )
 
@@ -276,7 +276,7 @@ describe('ZapoContactDirectory', () => {
       loadConfig,
       async () => redis as never,
       undefined,
-      undefined,
+      async () => 'https://cdn.example/cached.jpg',
       async (_client, pattern) => [...contacts.keys()].filter((key) => key.startsWith(pattern.slice(0, -1))).length,
     )
 

@@ -7,9 +7,9 @@ import {
 
 describe('version status', () => {
   test('compares stable and prerelease tags naturally', () => {
-    expect(readInstalledVersion()).toBe('4.0.0-beta8')
-    expect(compareVersions('v4.0.0-beta8', '4.0.0-beta7')).toBeGreaterThan(0)
-    expect(compareVersions('4.0.0', '4.0.0-beta8')).toBeGreaterThan(0)
+    expect(readInstalledVersion()).toBe('4.0.0-beta9')
+    expect(compareVersions('v4.0.0-beta9', '4.0.0-beta8')).toBeGreaterThan(0)
+    expect(compareVersions('4.0.0', '4.0.0-beta9')).toBeGreaterThan(0)
     expect(compareVersions('5.0.0-beta', '4.9.9')).toBeGreaterThan(0)
     expect(newestVersionTag([
       { name: 'invalid' },
