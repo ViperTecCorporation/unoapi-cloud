@@ -5,6 +5,7 @@ import { getClient, Client, Contact } from '../../src/services/client'
 import { Config, defaultConfig, getConfig, getConfigDefault } from '../../src/services/config'
 import { mock } from 'jest-mock-extended'
 import logger from '../../src/services/logger'
+import type { SaveContactInput } from '../../src/services/contacts/contact_book_types'
 
 class DummyClient implements Client {
   phone: string
@@ -32,6 +33,18 @@ class DummyClient implements Client {
   public async contacts(_numbers: string[]) {
     const contacts: Contact[] = []
     return contacts
+  }
+
+  public async saveContact(input: SaveContactInput) {
+    return {
+      success: true as const,
+      contact: {
+        phone_number: input.phone_number,
+        full_name: input.full_name,
+        first_name: input.first_name || input.full_name.split(' ')[0],
+        user_id: input.user_id || '123@lid',
+      },
+    }
   }
 }
 
@@ -67,5 +80,16 @@ describe('service incoming baileys', () => {
     await baileys.send(phone, payload, {})
     expect(send).toHaveBeenCalledTimes(1)
     expect(send).toHaveBeenCalledWith(payload, {})
+  })
+
+  test('delegates address-book contact creation to the client', async () => {
+    const service: Listener = mock<Listener>()
+    const incoming = new IncomingBaileys(service, getConfigDefault, getClientDummy, onNewLogin)
+    const input = { phone_number: '5511988887777', full_name: 'Maria Silva' }
+    const saveContact = jest.spyOn(dummyClient, 'saveContact')
+
+    await incoming.saveContact!('5566', input)
+
+    expect(saveContact).toHaveBeenCalledWith(input)
   })
 })

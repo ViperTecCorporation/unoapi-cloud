@@ -2,6 +2,7 @@ import { Response } from './response'
 import type { OnNewLogin } from './login_types'
 import { getConfig } from './config'
 import { Listener } from './listener'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 export const clients: Map<string, Client> = new Map()
 
@@ -67,6 +68,8 @@ export interface Client {
   getMessageMetadata<T>(message: T): Promise<T>
 
   contacts(numbers: string[]): Promise<Contact[]>
+
+  saveContact?(input: SaveContactInput): Promise<SaveContactResponse>
 
   requestPairingCode?(): Promise<string>
 

@@ -7,7 +7,7 @@ import logger from './logger'
 import { stores } from './store'
 import { dataStores } from './data_store'
 import { mediaStores } from './media_store'
-import { delConfig, delSessionStatus, delSessionTransientKeys } from './redis'
+import { delConfig, delSessionStatus, delSessionTransientKeys, delZapoSessionRuntimeLease } from './redis'
 import { resolveWhatsAppEngine } from './providers/provider_resolver'
 import { clearZapoSession } from './zapo/zapo_session_cleanup'
 import { zapoStoreRegistry, type ZapoStoreRegistry } from './zapo/zapo_store_registry'
@@ -64,12 +64,23 @@ export class LogoutBaileys implements Logout {
       // Server logout is asynchronous and may not emit its final close event
       // before the socket disconnects. Always wipe the Zapo store locally so
       // deregistration cannot silently reconnect with stale credentials.
-      await clearZapoSession(this.zapoStores.get(config).session(phone))
+      const cleanup = await clearZapoSession(this.zapoStores.get(config).session(phone))
+      for (const failure of cleanup.cacheFailures) {
+        logger.warn(
+          failure.error as any,
+          'Ignore expiring Zapo cache cleanup failure for %s (%s)',
+          phone,
+          failure.domain,
+        )
+      }
       // Legacy DataStore owns Baileys auth and remains available for rollback.
       if (config.useRedis) {
         await delConfig(phone)
         await delSessionStatus(phone)
         await delSessionTransientKeys(phone)
+        // Deregistration is an explicit destructive action. Dropping the lease
+        // makes any orphaned worker lose ownership on its next renewal.
+        await delZapoSessionRuntimeLease(phone)
       } else {
         await sessionStore.setStatus(phone, 'disconnected')
       }

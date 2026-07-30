@@ -7,6 +7,7 @@ import { getConfig } from './config'
 import { providerQueueName } from './providers/provider_queue'
 import { isProviderRuntimeEnabled } from './providers/provider_runtime_policy'
 import { SendError } from './send_error'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 type GroupManagementAction =
   | 'groupCreate'
@@ -70,6 +71,10 @@ export class IncomingAmqp implements Incoming {
       },
       { type: 'direct', priority: 5, maxRetries: 0 },
     )
+  }
+
+  public saveContact(phone: string, input: SaveContactInput) {
+    return this.providerOperation<SaveContactResponse>(phone, 'saveContact', [input])
   }
 
   public async requestPairingCode(phone: string) {

@@ -154,7 +154,7 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Grupos | listar/cache, criar, metadata, alterar e sair | `client.group` | testado |
 | Participantes | add/remove/promote/demote/aprovacoes | `client.group` | testado |
 | Presenca | online/offline, composing, recording e paused | `client.presence` | testado |
-| Contatos/perfil | verificacao de numeros e foto de grupo | profile/privacy | testado |
+| Contatos/perfil | verificacao, agenda sincronizada e foto de grupo | profile/app-state/privacy | testado |
 | Historico | sync inicial, replay persistido e sob demanda | history sync | documentado |
 | Eventos | message, receipt, addon, connection, group e username | event map/MEX | testado |
 | Privacy token | consulta, bootstrap e cache | privacy token | testado |

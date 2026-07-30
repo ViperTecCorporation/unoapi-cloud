@@ -416,6 +416,24 @@ describe('incoming job', () => {
     expect(incoming.send).not.toHaveBeenCalled()
   })
 
+  test('dispatches address-book contact creation to the local client adapter', async () => {
+    const incoming = mock<Incoming>()
+    const input = { phone_number: '5511988887777', full_name: 'Maria Silva' }
+    incoming.saveContact = jest.fn().mockResolvedValue({
+      success: true,
+      contact: { ...input, first_name: 'Maria', user_id: '123@lid' },
+    })
+    const job = new IncomingJob(incoming, mock<Outgoing>(), async () => ({ ...defaultConfig, server: 'server_1' }))
+
+    await expect(job.consume('556600000000', {
+      type: 'provider_operation',
+      action: 'saveContact',
+      args: [input],
+    })).resolves.toEqual(expect.objectContaining({ success: true }))
+
+    expect(incoming.saveContact).toHaveBeenCalledWith('556600000000', input)
+  })
+
   test('dispatches pairing-code requests to the local client adapter', async () => {
     const incoming = mock<Incoming>()
     incoming.requestPairingCode = jest.fn().mockResolvedValue('1234-5678')

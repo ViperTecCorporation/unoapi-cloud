@@ -522,6 +522,41 @@ describe('ClientZapo', () => {
     })], 'qrcode')
   })
 
+  test('ignores stale QR events after disconnect while accepting a genuine reconnect', async () => {
+    config.connectionType = 'qrcode'
+    await service.connect(1)
+    const staleQrHandler = handlers.auth_qr
+
+    await service.disconnect()
+    listener.process.mockClear()
+    await staleQrHandler({ qr: 'stale-qr-after-disconnect' })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(listener.process).not.toHaveBeenCalled()
+
+    await service.connect(1)
+    const currentQrHandler = handlers.auth_qr
+    let resolveCurrentQr = () => undefined
+    const currentQr = new Promise<void>((resolve) => {
+      resolveCurrentQr = resolve
+    })
+    listener.process.mockImplementation(async () => {
+      resolveCurrentQr()
+    })
+    await currentQrHandler({ qr: 'current-qr-after-reconnect' })
+    await currentQr
+
+    expect(listener.process).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      message: {
+        imageMessage: expect.objectContaining({
+          caption: 'Zapo pairing',
+          mimetype: 'image/png',
+        }),
+      },
+    })], 'qrcode')
+  })
+
   test('marks the Zapo passkey bridge completed only after auth_paired', async () => {
     await service.connect(1)
     const factoryOptions = (service as any).clientFactory.mock.calls[0][0]
@@ -740,6 +775,25 @@ describe('ClientZapo', () => {
       }),
       expect.objectContaining({ status: 'invalid' }),
     ])
+    session.contacts.getByJid.mockResolvedValueOnce({
+      jid: '111@lid',
+      lid: '111@lid',
+      phoneNumber: '5566111',
+      lastUpdatedMs: 1,
+    })
+    await expect(service.saveContact({
+      phone_number: '5566111',
+      full_name: 'Amor Vida',
+      user_id: '111@lid',
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      contact: expect.objectContaining({ phone_number: '5566111', user_id: '111@lid' }),
+    }))
+    expect(client.chat.set).toHaveBeenCalledWith(expect.objectContaining({
+      schema: 'Contact',
+      id: '5566111@s.whatsapp.net',
+      fullName: 'Amor Vida',
+    }))
     await expect(service.fetchMessageHistory({ count: 5 })).resolves.toEqual({ request_id: 'history-1' })
     await expect(service.fetchPrivacyTokens(['5566111@s.whatsapp.net'])).resolves.toEqual(expect.objectContaining({ stored: 1 }))
     await expect(service.requestPairingCode()).resolves.toBe('1234-5678')
@@ -794,6 +848,13 @@ describe('ClientZapo', () => {
     expect(sessionStore.setStatus).toHaveBeenLastCalledWith(phone, 'offline')
     expect((service as any).socket).toBeUndefined()
     expect((service as any).messages).toBeUndefined()
+  })
+
+  test('treats logout without a local socket as an idempotent disconnect', async () => {
+    await expect(service.logout()).resolves.toBeUndefined()
+
+    expect(client.logout).not.toHaveBeenCalled()
+    expect((service as any).socket).toBeUndefined()
   })
 
   test('clears runtime ownership even when the Zapo socket disconnect fails', async () => {

@@ -12,6 +12,7 @@ const required = [
   '/{version}/{phone}/messages',
   '/{phone}/request_code',
   '/{phone}/contacts',
+  '/{phone}/contacts/import',
   '/{version}/{phone}/groups',
 ]
 for (const route of required) {

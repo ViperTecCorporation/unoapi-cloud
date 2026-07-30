@@ -38,6 +38,7 @@ import { PasskeyBridgeController } from './controllers/passkey_bridge_controller
 import { ZapoContactDirectory } from './services/zapo/zapo_contact_directory'
 import { QueuesController } from './controllers/queues_controller'
 import { RedisAdminController } from './controllers/redis_admin_controller'
+import { ContactBookIncoming } from './services/contacts/contact_book_incoming'
 
 
 export const router = (
@@ -66,7 +67,7 @@ export const router = (
   const sessionController = new SessionController(getConfig, reload)
   const webhookController = new WebhookController(outgoing, getConfig)
   const blacklistController = new BlacklistController(addToBlacklist)
-  const contactsController = new ContactsController(contact, new ZapoContactDirectory(getConfig))
+  const contactsController = new ContactsController(contact, new ZapoContactDirectory(getConfig), new ContactBookIncoming(incoming))
   const preflightController = new PreflightController(getConfig, contact)
   const groupsController = new GroupsController(incoming, outgoing, contact, getConfig)
   const embeddedController = new EmbeddedController()
@@ -142,6 +143,7 @@ export const router = (
   router.get('/sessions/:phone', sessionController.index.bind(sessionController))
   router.get('/:phone/contacts', middleware, contactsController.get.bind(contactsController))
   router.post('/:phone/contacts', middleware, contactsController.post.bind(contactsController))
+  router.post('/:phone/contacts/import', middleware, contactsController.save.bind(contactsController))
   router.post('/:version/:phone/register', middleware, registrationController.register.bind(registrationController))
   router.post('/:version/:phone/deregister', middleware, registrationController.deregister.bind(registrationController))
   router.patch('/:version/:phone/webhooks/:webhook_id', middleware, registrationController.updateWebhook.bind(registrationController))

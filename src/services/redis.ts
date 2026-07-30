@@ -1179,6 +1179,10 @@ export const delSessionTransientKeys = async (phone: string) => {
   logger.info('Deleted %s transient redis keys for %s', totalDeleted, phone)
 }
 
+export const delZapoSessionRuntimeLease = async (phone: string) => {
+  await redisDel(`${BASE_KEY}lease:zapo-session:${phone}`)
+}
+
 export const getMessageStatus = async (phone: string, id: string) => {
   const key = messageStatusKey(phone, id)
   return redisGet(key)

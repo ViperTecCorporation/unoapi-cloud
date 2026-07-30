@@ -1,8 +1,10 @@
 import { Response } from './response'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 export interface Incoming {
   send(phone: string, payload: object, options: object): Promise<Response>
   contacts?(phone: string, numbers: string[]): Promise<any[]>
+  saveContact?(phone: string, input: SaveContactInput): Promise<SaveContactResponse>
   requestPairingCode?(phone: string): Promise<string>
   resyncAppState?(phone: string, forceSnapshot?: boolean): Promise<void>
   fetchPrivacyTokens?(phone: string, jids: string[], timeoutMs?: number): Promise<any>

@@ -13,6 +13,7 @@ jest.mock('../../src/services/redis', () => ({
   delConfig: jest.fn(),
   delSessionStatus: jest.fn(),
   delSessionTransientKeys: jest.fn(),
+  delZapoSessionRuntimeLease: jest.fn(),
 }))
 
 describe('provider logout isolation', () => {
@@ -50,6 +51,7 @@ describe('provider logout isolation', () => {
     expect(zapoSession.contacts.clear).toHaveBeenCalledTimes(1)
     expect(redis.delConfig).toHaveBeenCalledWith('5566')
     expect(redis.delSessionTransientKeys).toHaveBeenCalledWith('5566')
+    expect(redis.delZapoSessionRuntimeLease).toHaveBeenCalledWith('5566')
   })
 
   test('Zapo deregistration clears stored auth even when no client is active', async () => {
@@ -76,6 +78,7 @@ describe('provider logout isolation', () => {
     expect(getClient).not.toHaveBeenCalled()
     expect(zapoSession.auth.clear).toHaveBeenCalledTimes(1)
     expect(redis.delConfig).toHaveBeenCalledWith('5566')
+    expect(redis.delZapoSessionRuntimeLease).toHaveBeenCalledWith('5566')
   })
 
   test('Baileys logout still removes its own auth and config', async () => {

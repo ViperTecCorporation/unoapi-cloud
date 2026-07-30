@@ -1,6 +1,7 @@
-import { ContactsController } from '../../src/controllers/contacts_controller'
+import { ContactsController, parseSaveContactInput } from '../../src/controllers/contacts_controller'
 import type { Contact } from '../../src/services/contact'
 import type { ContactDirectory } from '../../src/services/contacts/contact_directory_types'
+import type { ContactBook } from '../../src/services/contacts/contact_book'
 import { SendError } from '../../src/services/send_error'
 
 const response = () => {
@@ -144,5 +145,79 @@ describe('ContactsController directory', () => {
     await controller.get({ params: { phone: '5566' }, query: {} } as never, res as never)
 
     expect(res.status).toHaveBeenCalledWith(501)
+  })
+
+  test('normalizes and saves an address-book contact', async () => {
+    const save = jest.fn().mockResolvedValue({
+      success: true,
+      contact: {
+        phone_number: '5511988887777',
+        full_name: 'Maria Silva',
+        first_name: 'Maria',
+        user_id: '123@lid',
+      },
+    })
+    const controller = new ContactsController(verifier, undefined, { save } as unknown as ContactBook)
+    const res = response()
+
+    await controller.save({
+      params: { phone: '5566999554300' },
+      body: {
+        phone_number: '+55 (11) 98888-7777',
+        full_name: '  Maria Silva  ',
+        user_id: '123@lid',
+      },
+    } as never, res as never)
+
+    expect(save).toHaveBeenCalledWith('5566999554300', {
+      phone_number: '5511988887777',
+      full_name: 'Maria Silva',
+      user_id: '123@lid',
+    })
+    expect(res.status).toHaveBeenCalledWith(200)
+  })
+
+  test.each([
+    [{ phone_number: '123', full_name: 'Maria' }, 'contact_phone_number_must_have_7_to_15_digits'],
+    [{ phone_number: '5511988887777', full_name: '' }, 'contact_full_name_must_have_1_to_256_characters'],
+    [{ phone_number: '5511988887777', full_name: 'Maria', user_id: '123' }, 'contact_user_id_must_be_a_lid'],
+  ])('rejects an invalid address-book payload %j', async (body, expectedError) => {
+    const save = jest.fn()
+    const controller = new ContactsController(verifier, undefined, { save } as unknown as ContactBook)
+    const res = response()
+
+    await controller.save({ params: { phone: '5566' }, body } as never, res as never)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.send).toHaveBeenCalledWith({ error: expectedError })
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  test('preserves a provider HTTP error returned through AMQP RPC', async () => {
+    const save = jest.fn().mockRejectedValue(new Error('409: zapo_session_owned_by_another_worker'))
+    const controller = new ContactsController(verifier, undefined, { save } as unknown as ContactBook)
+    const res = response()
+
+    await controller.save({
+      params: { phone: '5566' },
+      body: { phone_number: '5511988887777', full_name: 'Maria' },
+    } as never, res as never)
+
+    expect(res.status).toHaveBeenCalledWith(409)
+    expect(res.send).toHaveBeenCalledWith({ error: 'zapo_session_owned_by_another_worker' })
+  })
+
+  test('keeps optional address-book fields normalized', () => {
+    expect(parseSaveContactInput({
+      phone_number: '5511988887777',
+      full_name: 'Maria Silva',
+      first_name: ' Maria ',
+      username: '@maria',
+    })).toEqual({
+      phone_number: '5511988887777',
+      full_name: 'Maria Silva',
+      first_name: 'Maria',
+      username: 'maria',
+    })
   })
 })

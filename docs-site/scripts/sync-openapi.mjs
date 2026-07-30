@@ -64,6 +64,7 @@ const summaryRules = [
   ['GET', /^\/\{version\}\/\{phone\}\/phone_numbers$/, 'Listar conexões da sessão'],
   ['GET', /^\/\{phone\}\/contacts$/, 'Listar contatos armazenados'],
   ['POST', /^\/\{phone\}\/contacts$/, 'Verificar números no diretório de contatos'],
+  ['POST', /^\/\{phone\}\/contacts\/import$/, 'Adicionar ou atualizar contato na agenda do WhatsApp'],
   ['GET', /^\/webhooks\/whatsapp(?:\/\{phone\})?$/, 'Validar assinatura do webhook'],
   ['POST', /^\/webhooks\/whatsapp(?:\/\{phone\})?$/, 'Receber evento encaminhado pelo webhook'],
   ['POST', /^\/webhooks\/fake\/\{phone\}$/, 'Enviar evento de webhook para teste'],

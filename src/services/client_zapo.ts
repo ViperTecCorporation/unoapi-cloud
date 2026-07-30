@@ -39,6 +39,8 @@ import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
 import { zapoMediaOptions } from './zapo/zapo_media_processor'
+import { ZapoContactBook } from './zapo/zapo_contact_book'
+import type { SaveContactInput } from './contacts/contact_book_types'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -79,6 +81,7 @@ export class ClientZapo implements Client {
   private activePasskeyBridgeId?: string
   private pairingCodeRequest?: Promise<string>
   private pairingCodeIssued = false
+  private connectionGeneration = 0
 
   constructor(
     private readonly phone: string,
@@ -91,8 +94,9 @@ export class ClientZapo implements Client {
     private readonly maintenance: ZapoRedisMaintenance = zapoRedisMaintenance,
   ) {}
 
-  private async emitQr(value: string) {
+  private async emitQr(value: string, isCurrent: () => boolean) {
     const imageUrl = await QRCode.toDataURL(value)
+    if (!isCurrent()) return
     await this.listener.process(
       this.phone,
       [
@@ -105,8 +109,9 @@ export class ClientZapo implements Client {
     )
   }
 
-  private async emitPairingCode(value: string) {
+  private async emitPairingCode(value: string, isCurrent: () => boolean) {
     const imageUrl = await createPairingCodeImageDataUrl(value)
+    if (!isCurrent()) return
     await this.listener.process(
       this.phone,
       [
@@ -190,6 +195,7 @@ export class ClientZapo implements Client {
   private async handleConnectionFailure(client: ZapoClient, error: unknown) {
     logger.error(error as any, 'Zapo connection failed for %s', this.phone)
     if (this.socket !== client) return
+    this.connectionGeneration += 1
     this.connected = false
     this.socket = undefined
     this.messages = undefined
@@ -260,8 +266,18 @@ export class ClientZapo implements Client {
     return request
   }
 
-  private bindEvents(client: ZapoClient, resolvePrompt: () => void) {
-    client.on('auth_qr', ({ qr }) => {
+  private bindEvents(client: ZapoClient, resolvePrompt: () => void, generation: number) {
+    const isCurrent = () =>
+      this.socket === client &&
+      this.connectionGeneration === generation &&
+      !this.intentionalDisconnect
+    const onCurrent = (event: any, handler: (...args: any[]) => any) =>
+      client.on(event, (...args: any[]) => {
+        if (!isCurrent()) return
+        return handler(...args)
+      })
+
+    onCurrent('auth_qr', ({ qr }) => {
       resolvePrompt()
       if (this.config.connectionType === 'pairing_code') {
         void this.beginPairingCodeRequest(client)?.catch((error) => {
@@ -269,21 +285,21 @@ export class ClientZapo implements Client {
         })
         return
       }
-      void this.emitQr(qr).catch((error) => logger.warn(error as any, 'Could not emit Zapo QR for %s', this.phone))
+      void this.emitQr(qr, isCurrent).catch((error) => logger.warn(error as any, 'Could not emit Zapo QR for %s', this.phone))
     })
-    client.on('auth_pairing_required', ({ forceManual }) => {
+    onCurrent('auth_pairing_required', ({ forceManual }) => {
       resolvePrompt()
       if (this.config.connectionType !== 'pairing_code') return
       void this.beginPairingCodeRequest(client, forceManual)?.catch((error) => {
         logger.warn(error as any, 'Could not request Zapo pairing code for %s', this.phone)
       })
     })
-    client.on('auth_pairing_code', ({ code }) => {
+    onCurrent('auth_pairing_code', ({ code }) => {
       resolvePrompt()
       this.pairingCodeIssued = true
-      void this.emitPairingCode(code).catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
+      void this.emitPairingCode(code, isCurrent).catch((error) => logger.warn(error as any, 'Could not emit Zapo pairing code for %s', this.phone))
     })
-    client.on('auth_paired', async ({ credentials }) => {
+    onCurrent('auth_paired', async ({ credentials }) => {
       await Promise.resolve(this.zapoSession?.auth.save(credentials)).catch((error) => {
         logger.error(error as any, 'Could not persist paired Zapo credentials for %s', this.phone)
       })
@@ -295,7 +311,7 @@ export class ClientZapo implements Client {
         })
       }
     })
-    client.on('auth_passkey_required', ({ hasSigner }) => {
+    onCurrent('auth_passkey_required', ({ hasSigner }) => {
       resolvePrompt()
       void Promise.resolve(
         this.listener.process(
@@ -310,7 +326,7 @@ export class ClientZapo implements Client {
         ),
       ).catch((error) => logger.warn(error as any, 'Could not emit Zapo passkey status for %s', this.phone))
     })
-    client.on('connection', async (event) => {
+    onCurrent('connection', async (event) => {
       if (event.status === 'open') {
         const credentials = client.getCredentials()
         if (credentials) await this.zapoSession?.auth.save(credentials)
@@ -338,6 +354,7 @@ export class ClientZapo implements Client {
         await this.unoStore?.sessionStore.setStatus(this.phone, event.isLogout ? 'disconnected' : 'offline')
       } finally {
         if (this.socket === client && !event.isLogout && !this.intentionalDisconnect) {
+          this.connectionGeneration += 1
           this.socket = undefined
           this.messages = undefined
           this.groups = undefined
@@ -347,7 +364,7 @@ export class ClientZapo implements Client {
         }
       }
     })
-    client.on('message', async (event) => {
+    onCurrent('message', async (event) => {
       // Zapo emits the encrypted `message` before the decrypted `message_addon`.
       // Awaiting the documented manual path avoids the raw event winning Uno's
       // deduplication window and hiding the readable poll/reaction/edit payload.
@@ -412,14 +429,14 @@ export class ClientZapo implements Client {
         })
       }
     })
-    client.on('message_send', async (event) => {
+    onCurrent('message_send', async (event) => {
       if (!event.id) return
       const remoteJid = event.to
       const message = { key: { remoteJid, id: event.id, fromMe: true }, message: event.message }
       await this.unoStore?.dataStore.setKey(event.id, message.key as never)
       await this.unoStore?.dataStore.setMessage(remoteJid, message as never)
     })
-    client.on('receipt', async (event) => {
+    onCurrent('receipt', async (event) => {
       const isGroup = `${event.chatJid || ''}`.endsWith('@g.us')
       if (isGroup && this.config.ignoreGroupIndividualReceipts && event.participantJid) return
       if (isGroup && this.config.groupOnlyDeliveredStatus && event.status !== 'delivered') return
@@ -432,7 +449,7 @@ export class ClientZapo implements Client {
       const updates = toUnoReceiptUpdates(event, phoneJid)
       if (updates.length) await this.listener.process(this.phone, updates, 'update')
     })
-    client.on('message_addon', async (event) => {
+    onCurrent('message_addon', async (event) => {
       if (event.key.id) this.decryptedAddonIds.add(event.key.id)
       const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
       if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
@@ -446,7 +463,7 @@ export class ClientZapo implements Client {
       }
       await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
     })
-    client.on('message_protocol', async (event) => {
+    onCurrent('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)
       if (message.key.remoteJid && message.key.id) {
         await this.unoStore?.dataStore.setKey(message.key.id, message.key as never)
@@ -454,7 +471,7 @@ export class ClientZapo implements Client {
       }
       await this.listener.process(this.phone, [message], 'notify')
     })
-    client.on('message_unavailable', async (event) => {
+    onCurrent('message_unavailable', async (event) => {
       logger.warn('Zapo unavailable message phone=%s id=%s kind=%s', this.phone, event.key.id, event.kind)
       if (!['view_once', 'hosted'].includes(event.kind)) return
 
@@ -475,7 +492,7 @@ export class ClientZapo implements Client {
       }
       await this.listener.process(this.phone, [message], 'notify')
     })
-    client.on('debug_unhandled_stanza', (event) => {
+    onCurrent('debug_unhandled_stanza', (event) => {
       const from = `${event.rawNode?.attrs?.from || ''}`
       if (!from.endsWith('@g.us')) return
       logger.warn(
@@ -487,7 +504,7 @@ export class ClientZapo implements Client {
         event.reason,
       )
     })
-    client.on('mex_notification', async (event) => {
+    onCurrent('mex_notification', async (event) => {
       if (event.kind === 'username_set') {
         await zapoUsernameIndex.touch(this.phone, event.username, event.lidJid)
       } else if (event.kind === 'username_delete') {
@@ -522,7 +539,7 @@ export class ClientZapo implements Client {
         )
       }
     })
-    client.on('group', (event) => {
+    onCurrent('group', (event) => {
       const jid = event.groupJid || event.chatJid
       if (jid) void this.syncGroupCache(client, jid).catch((error) => logger.warn(error as any, 'Zapo group event sync failed for %s', jid))
       for (const participant of event.participants || []) {
@@ -530,12 +547,12 @@ export class ClientZapo implements Client {
         if (participant.username && lid) void zapoUsernameIndex.touch(this.phone, participant.username, lid)
       }
     })
-    client.on('picture', (event) => {
+    onCurrent('picture', (event) => {
       void this.profilePictures?.handleEvent(event).catch((error) => {
         logger.warn(error as any, 'Zapo profile picture event failed for %s', this.phone)
       })
     })
-    client.on('history_sync_chunk', async (event) => {
+    onCurrent('history_sync_chunk', async (event) => {
       logger.info(
         'Zapo history sync phone=%s progress=%s messages=%s conversations=%s',
         this.phone,
@@ -554,7 +571,7 @@ export class ClientZapo implements Client {
         })
       await this.historySyncTask
     })
-    client.on('offline_resume', (event) => {
+    onCurrent('offline_resume', (event) => {
       logger.info(
         'Zapo offline resume phone=%s status=%s remaining=%s total=%s forced=%s',
         this.phone,
@@ -564,7 +581,7 @@ export class ClientZapo implements Client {
         event.forced,
       )
     })
-    client.on('debug_privacy_token', (event) => {
+    onCurrent('debug_privacy_token', (event) => {
       logger.info(
         'Zapo privacy token cached phone=%s jid=%s type=%s source=%s timestamp=%s',
         this.phone,
@@ -574,7 +591,7 @@ export class ClientZapo implements Client {
         event.timestampS,
       )
     })
-    client.on('stream_failure', (event) => {
+    onCurrent('stream_failure', (event) => {
       logger.error(
         'Zapo stream failure phone=%s reason=%s code=%s message=%s',
         this.phone,
@@ -583,7 +600,7 @@ export class ClientZapo implements Client {
         `${event.failureMessage || '<none>'}`,
       )
     })
-    client.on('stanza_error', (event) => {
+    onCurrent('stanza_error', (event) => {
       logger.error(
         'Zapo stanza error phone=%s stanza=%s chat=%s code=%s text=%s',
         this.phone,
@@ -593,10 +610,10 @@ export class ClientZapo implements Client {
         event.text || '<none>',
       )
     })
-    client.on('debug_client_error', ({ error }) => {
+    onCurrent('debug_client_error', ({ error }) => {
       logger.error(error as any, 'Zapo client error for %s', this.phone)
     })
-    client.on('voip_call_incoming', (call: CallInfo) => {
+    onCurrent('voip_call_incoming', (call: CallInfo) => {
       return this.handleIncomingCall(client, call).catch((error) => {
         logger.error(error as any, 'Zapo incoming call rejection failed for %s call %s', this.phone, call.callId)
       })
@@ -691,6 +708,7 @@ export class ClientZapo implements Client {
     this.intentionalDisconnect = true
     this.connected = false
     const socket = this.socket
+    this.connectionGeneration += 1
     this.socket = undefined
     this.messages = undefined
     this.groups = undefined
@@ -804,6 +822,7 @@ export class ClientZapo implements Client {
       signPasskeyAssertion: this.signPasskeyAssertion.bind(this),
       plugins: [voipPlugin()],
     })
+    const generation = ++this.connectionGeneration
     this.socket = client
     this.messages = new ZapoMessages(client, this.unoStore.dataStore, {
       customMessageCharactersFunction: this.config.customMessageCharactersFunction,
@@ -833,7 +852,7 @@ export class ClientZapo implements Client {
         }
       }
     })
-    this.bindEvents(client, resolvePrompt)
+    this.bindEvents(client, resolvePrompt, generation)
     const socketConnect = client.connect().catch(async (error) => {
       await this.handleConnectionFailure(client, error)
       if (!promptResolved) throw error
@@ -849,10 +868,13 @@ export class ClientZapo implements Client {
     this.connected = false
     this.pendingPasskey?.reject(new SendError(409, 'zapo_passkey_connection_disconnected'))
     const socket = this.socket
+    this.connectionGeneration += 1
     this.socket = undefined
     this.messages = undefined
     this.groups = undefined
     this.profilePictures = undefined
+    this.pairingCodeRequest = undefined
+    this.pairingCodeIssued = false
     try {
       if (socket) await socket.disconnect()
       await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
@@ -865,9 +887,9 @@ export class ClientZapo implements Client {
 
   async logout() {
     this.intentionalDisconnect = true
-    if (!this.socket) throw new SendError(409, 'zapo_client_not_connected')
+    const socket = this.socket
     try {
-      await this.socket.logout()
+      if (socket) await socket.logout()
     } finally {
       await this.disconnect()
     }
@@ -963,6 +985,11 @@ export class ClientZapo implements Client {
       }
     }
     return output
+  }
+
+  async saveContact(input: SaveContactInput) {
+    if (!this.socket || !this.zapoSession) throw new SendError(409, 'zapo_client_not_connected')
+    return new ZapoContactBook(this.socket, this.zapoSession, this.phone).save(input)
   }
 
   async requestPairingCode() {

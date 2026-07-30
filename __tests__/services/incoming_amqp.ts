@@ -138,6 +138,23 @@ describe('service incoming amqp', () => {
     )
   })
 
+  test('routes address-book contact creation to the Zapo worker', async () => {
+    const phone = '556600000000'
+    const incoming = new IncomingAmqp(async () => ({ ...defaultConfig, server: 'server_2', provider: 'zapo' }))
+    const input = { phone_number: '5511988887777', full_name: 'Maria Silva' }
+    amqpRpcMock.mockResolvedValue({ success: true, contact: input })
+
+    await incoming.saveContact(phone, input)
+
+    expect(amqpRpcMock).toHaveBeenCalledWith(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      `${UNOAPI_QUEUE_INCOMING}.server_2.zapo`,
+      phone,
+      { type: 'provider_operation', action: 'saveContact', args: [input] },
+      { type: 'direct', priority: 5, maxRetries: 0 },
+    )
+  })
+
   test('rejects Baileys operations without publishing to an inactive queue', async () => {
     const incoming = new IncomingAmqp(async () => ({
       ...defaultConfig,

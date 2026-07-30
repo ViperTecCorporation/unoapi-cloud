@@ -426,7 +426,7 @@ paths:
                     caption: 'Novidade'
                   statusJidList:
                     - '5511999999999'
-                    - '5511988887777'
+                    - '5500000000002'
               contacts:
                 summary: Contatos (vCard simplificado)
                 value:
@@ -435,10 +435,10 @@ paths:
                   type: contacts
                   contacts:
                     - name:
-                        formatted_name: 'Fulano'
+                        formatted_name: 'Contato Exemplo'
                       phones:
-                        - wa_id: '5511988887777'
-                          phone: '+55 11 98888-7777'
+                        - wa_id: '5500000000002'
+                          phone: '+55 00 00000-0002'
               reaction:
                 summary: Reação
                 value:
@@ -500,7 +500,7 @@ paths:
                 summary: Interativo - Botões CTA (URL, ligação e copiar)
                 value:
                   messaging_product: whatsapp
-                  to: '5566999554300'
+                  to: '5500000000001'
                   type: interactive
                   interactive:
                     type: button
@@ -808,7 +808,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PreflightStatusRequest'
             example:
-              statusJidList: ['5511999999999', '5511988887777']
+              statusJidList: ['5511999999999', '5500000000002']
       responses:
         '200':
           description: Resultado da verificação
@@ -1065,7 +1065,7 @@ paths:
             example:
               blocking: no_wait
               force_check: true
-              contacts: ['5511999999999']
+              contacts: ['5500000000002']
       responses:
         '200':
           description: Resultado de validação
@@ -1073,6 +1073,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContactsResponse'
+
+  /{phone}/contacts/import:
+    post:
+      summary: Adicionar ou atualizar contato na agenda do WhatsApp
+      description: |
+        Salva o contato na agenda sincronizada da sessão por meio da mutação
+        oficial de app-state `Contact` da Zapo. A operação é idempotente para
+        o mesmo número.
+
+        Quando `user_id` é informado, ele deve ser um LID e tem prioridade para
+        localizar no store da Zapo o PN exato usado no envelope do WhatsApp.
+        Sem `user_id`, a própria Zapo resolve o número para LID antes de salvar.
+        A normalização brasileira de apresentação não é aplicada ao PN enviado
+        ao provider.
+      parameters:
+        - $ref: '#/components/parameters/PhonePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactImportRequest'
+            examples:
+              phoneOnly:
+                summary: Resolver o LID e adicionar o contato
+                value:
+                  phone_number: '5500000000002'
+                  full_name: Contato Exemplo
+                  first_name: Contato
+              lidFirst:
+                summary: Usar a identidade LID já conhecida pela aplicação
+                value:
+                  phone_number: '5500000000002'
+                  user_id: '000000000000002@lid'
+                  full_name: Contato Exemplo
+                  first_name: Contato
+                  username: contato_exemplo
+      responses:
+        '200':
+          description: Contato salvo; retorna a identidade canônica usada pela Zapo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactImportResponse'
+        '400':
+          description: Número, nome, LID ou username inválido
+        '404':
+          description: Não foi possível resolver o LID ou o PN exato no store Zapo
+        '409':
+          description: Sessão indisponível, desconectada ou pertencente a outro worker
 
   /{phone}/blacklist/{webhook_id}:
     post:
@@ -2455,6 +2505,57 @@ components:
         total_count:
           type: integer
           description: Quantidade total de contatos armazenados no cache da sessão
+
+    ContactImportRequest:
+      type: object
+      required: [phone_number, full_name]
+      properties:
+        phone_number:
+          type: string
+          pattern: '^\+?[0-9 ()-]{7,24}$'
+          description: Número do contato. Não inclua sufixo JID.
+          example: '5500000000002'
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          example: Contato Exemplo
+        first_name:
+          type: string
+          maxLength: 128
+          description: Opcional; quando omitido, usa a primeira palavra de full_name.
+          example: Contato
+        user_id:
+          type: string
+          pattern: '^[0-9]+@lid$'
+          description: LID canônico opcional. Quando informado, prevalece para recuperar o PN exato no store Zapo.
+          example: '123456789@lid'
+        username:
+          type: string
+          maxLength: 64
+          description: Username opcional, com ou sem @.
+          example: contato_exemplo
+
+    ContactImportResponse:
+      type: object
+      required: [success, contact]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        contact:
+          type: object
+          required: [phone_number, full_name, first_name, user_id]
+          properties:
+            phone_number:
+              type: string
+              description: PN exato armazenado e usado pela Zapo, somente em dígitos.
+            full_name: { type: string }
+            first_name: { type: string }
+            user_id:
+              type: string
+              description: LID canônico resolvido.
+            username: { type: string }
 
     MediaResponse:
       type: object

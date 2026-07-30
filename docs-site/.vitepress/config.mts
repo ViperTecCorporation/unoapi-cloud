@@ -34,6 +34,7 @@ export default defineConfig({
         text: 'Integração',
         items: [
           { text: 'Mensagens', link: '/guide/messages' },
+          { text: 'Contatos', link: '/guide/contacts' },
           { text: 'Webhooks', link: '/guide/webhooks' },
           { text: 'Referência da API', link: '/api-reference' },
         ],

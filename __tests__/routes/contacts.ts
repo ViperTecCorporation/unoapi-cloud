@@ -4,6 +4,7 @@ import { mock } from 'jest-mock-extended'
 import { ContactsController } from '../../src/controllers/contacts_controller'
 import type { Contact } from '../../src/services/contact'
 import type { ContactDirectory } from '../../src/services/contacts/contact_directory_types'
+import type { ContactBook } from '../../src/services/contacts/contact_book'
 
 describe('contacts directory route', () => {
   test('serves the contact directory page through GET /:phone/contacts', async () => {
@@ -35,5 +36,34 @@ describe('contacts directory route', () => {
       search: undefined,
     })
     expect(response.body).toEqual(page)
+  })
+
+  test('saves a contact through POST /:phone/contacts/import', async () => {
+    const contactBook: ContactBook = {
+      save: jest.fn().mockResolvedValue({
+        success: true,
+        contact: {
+          phone_number: '5511988887777',
+          full_name: 'Maria Silva',
+          first_name: 'Maria',
+          user_id: '123@lid',
+        },
+      }),
+    }
+    const controller = new ContactsController(mock<Contact>(), undefined, contactBook)
+    const app = express()
+    app.use(express.json())
+    app.post('/:phone/contacts/import', controller.save.bind(controller))
+
+    const response = await request(app)
+      .post('/5566999554300/contacts/import')
+      .send({ phone_number: '5511988887777', full_name: 'Maria Silva' })
+      .expect(200)
+
+    expect(contactBook.save).toHaveBeenCalledWith('5566999554300', {
+      phone_number: '5511988887777',
+      full_name: 'Maria Silva',
+    })
+    expect(response.body).toEqual(expect.objectContaining({ success: true }))
   })
 })

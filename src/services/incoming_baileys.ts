@@ -4,6 +4,7 @@ import { getConfig } from './config'
 import type { OnNewLogin } from './login_types'
 import logger from './logger'
 import { Listener } from './listener'
+import type { SaveContactInput } from './contacts/contact_book_types'
 
 export class IncomingProvider implements Incoming {
   private service: Listener
@@ -48,6 +49,14 @@ export class IncomingProvider implements Incoming {
 
   public async contacts(phone: string, numbers: string[]) {
     return (await this.client(phone)).contacts(numbers)
+  }
+
+  public async saveContact(phone: string, input: SaveContactInput) {
+    const client = await this.client(phone)
+    if (typeof client.saveContact !== 'function') {
+      throw new Error(`Client ${phone} does not support address-book contacts`)
+    }
+    return client.saveContact(input)
   }
 
   public async requestPairingCode(phone: string) {
