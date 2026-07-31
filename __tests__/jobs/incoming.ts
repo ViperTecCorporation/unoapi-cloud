@@ -177,6 +177,67 @@ describe('incoming job', () => {
     )
   })
 
+  test('does not block a delete status because the original message key already exists', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadKey.mockResolvedValue({
+      remoteJid: '5511999999999@lid',
+      id: 'provider-message-id',
+      fromMe: true,
+    })
+    dataStore.loadStatus.mockResolvedValue('delivered')
+    incoming.send = jest.fn().mockResolvedValue({ ok: { success: true } })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: true,
+      webhooks: [],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+    const payload = {
+      status: 'deleted',
+      message_id: 'uno-original-message',
+      recipient_id: '5511999999999',
+    }
+
+    await job.consume('5566999999999', { payload })
+
+    expect(incoming.send).toHaveBeenCalledWith(
+      '5566999999999',
+      payload,
+      expect.objectContaining({ unoMessageId: 'uno-original-message' }),
+    )
+    expect(dataStore.loadKey).not.toHaveBeenCalled()
+  })
+
+  test('keeps idempotency protection for a duplicated new message send', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadKey.mockResolvedValue({
+      remoteJid: '5511999999999@lid',
+      id: 'provider-message-id',
+      fromMe: true,
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: true,
+      webhooks: [],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+
+    await expect(job.consume('5566999999999', {
+      id: 'uno-duplicate-message',
+      payload: { to: '5511999999999', type: 'text', text: { body: 'Oi' } },
+    })).resolves.toEqual({ ok: { success: true, idempotent: true } })
+
+    expect(incoming.send).not.toHaveBeenCalled()
+  })
+
   test('keeps the queue Uno id associated directly with the real provider id', async () => {
     const incoming = mock<Incoming>()
     const outgoing = mock<Outgoing>()

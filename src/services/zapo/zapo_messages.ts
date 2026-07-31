@@ -217,6 +217,12 @@ export class ZapoMessages {
       throw new SendError(400, `unknown_message_status: ${status}`)
     }
     if (status === 'read' || status === 'deleted') {
+      const currentStatus = await this.dataStore.loadStatus(messageId)
+      const alreadyApplied = status === 'deleted'
+        ? currentStatus === 'deleted'
+        : currentStatus === 'read' || currentStatus === 'deleted'
+      if (alreadyApplied) return { ok: { success: true } }
+
       const key = await this.resolveKey(messageId)
       if (status === 'read') await this.client.message.sendReceipt(key.remoteJid, key.id, { type: 'read' })
       else await this.client.message.send(key.remoteJid, { type: 'revoke', target: key })

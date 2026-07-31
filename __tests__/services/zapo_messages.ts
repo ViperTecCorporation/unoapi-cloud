@@ -473,14 +473,44 @@ describe('Zapo messages adapter', () => {
   test('maps read and delete statuses to Zapo receipt and revoke operations', async () => {
     const client = mockDeep<WaClient>()
     const dataStore = mockDeep<DataStore>()
-    dataStore.loadKey.mockResolvedValue({ remoteJid: '1@s.whatsapp.net', id: 'm1', fromMe: false })
+    dataStore.loadProviderId.mockResolvedValue('provider-m1')
+    dataStore.loadKey.mockResolvedValue({ remoteJid: '1@s.whatsapp.net', id: 'provider-m1', fromMe: true })
     const messages = new ZapoMessages(client, dataStore)
 
-    await messages.updateStatus({ status: 'read', message_id: 'm1' })
-    await messages.updateStatus({ status: 'deleted', message_id: 'm1' })
+    await messages.updateStatus({ status: 'read', message_id: 'uno-m1' })
+    await messages.updateStatus({ status: 'deleted', message_id: 'uno-m1' })
 
-    expect(client.message.sendReceipt).toHaveBeenCalledWith('1@s.whatsapp.net', 'm1', { type: 'read' })
-    expect(client.message.send).toHaveBeenCalledWith('1@s.whatsapp.net', expect.objectContaining({ type: 'revoke' }))
+    expect(client.message.sendReceipt).toHaveBeenCalledWith('1@s.whatsapp.net', 'provider-m1', { type: 'read' })
+    expect(client.message.send).toHaveBeenCalledWith('1@s.whatsapp.net', {
+      type: 'revoke',
+      target: {
+        remoteJid: '1@s.whatsapp.net',
+        id: 'provider-m1',
+        fromMe: true,
+      },
+    })
+    expect(dataStore.setStatus).toHaveBeenNthCalledWith(1, 'uno-m1', 'read')
+    expect(dataStore.setStatus).toHaveBeenNthCalledWith(2, 'uno-m1', 'deleted')
+  })
+
+  test.each([
+    ['read', 'read'],
+    ['read', 'deleted'],
+    ['deleted', 'deleted'],
+  ])('does not repeat an already applied %s status when current status is %s', async (status, currentStatus) => {
+    const client = mockDeep<WaClient>()
+    const dataStore = mockDeep<DataStore>()
+    dataStore.loadStatus.mockResolvedValue(currentStatus as never)
+    const messages = new ZapoMessages(client, dataStore)
+
+    await expect(messages.updateStatus({ status, message_id: 'uno-m1' })).resolves.toEqual({
+      ok: { success: true },
+    })
+
+    expect(client.message.send).not.toHaveBeenCalled()
+    expect(client.message.sendReceipt).not.toHaveBeenCalled()
+    expect(dataStore.loadKey).not.toHaveBeenCalled()
+    expect(dataStore.setStatus).not.toHaveBeenCalled()
   })
 
   test('returns a clear error when a referenced message key is missing', async () => {

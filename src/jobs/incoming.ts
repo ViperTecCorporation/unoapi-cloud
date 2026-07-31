@@ -253,9 +253,12 @@ export class IncomingJob {
     const provider = resolveWhatsAppEngine(config.provider)
     const messageType = `${payload?.type || (payload?.status ? `status_${payload.status}` : 'unknown')}`
     // const retries: number = a.retries ? a.retries + 1 : 1
-    // Idempotency guard: skip send if this UNO id looks already processed
+    // Status operations target an existing message by definition. Their
+    // idempotency is handled by the provider adapter using the requested state.
+    const isStatusOperation = !!payload?.status
+    // Idempotency guard: skip a new send if this UNO id looks already processed.
     try {
-      if (config.outgoingIdempotency) {
+      if (config.outgoingIdempotency && !isStatusOperation) {
         const store = await config.getStore(phone, config)
         const existingKey = await store.dataStore.loadKey(idUno)
         const existingStatus = await store.dataStore.loadStatus(idUno)
