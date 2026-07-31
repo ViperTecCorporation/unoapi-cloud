@@ -40,6 +40,27 @@ describe('WA message AMQP envelope', () => {
     expect(unpacked.key).toEqual(expect.objectContaining(original.key))
   })
 
+  test('preserves unavailable-message stub parameters', () => {
+    const original = {
+      key: {
+        remoteJid: '120363039221813429@g.us',
+        participant: '123456789@lid',
+        participantAlt: '5566991112222@s.whatsapp.net',
+        id: 'view-once-1',
+        fromMe: false,
+        isGroup: true,
+      },
+      messageTimestamp: 10,
+      messageStubType: 'FUTUREPROOF',
+      messageStubParameters: ['view_once_unavailable'],
+    }
+
+    const unpacked = unpackWaMessage(packWaMessage(original))
+
+    expect(unpacked.messageStubParameters).toEqual(['view_once_unavailable'])
+    expect(unpacked.key).toEqual(expect.objectContaining(original.key))
+  })
+
   test('leaves non-message payloads unchanged', () => {
     const update = { update: { status: 'READ' } }
 

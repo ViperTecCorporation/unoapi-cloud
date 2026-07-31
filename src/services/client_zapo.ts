@@ -41,6 +41,8 @@ import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
 import { zapoMediaOptions } from './zapo/zapo_media_processor'
 import { ZapoContactBook } from './zapo/zapo_contact_book'
 import type { SaveContactInput } from './contacts/contact_book_types'
+import { ZapoCatalog } from './zapo/zapo_catalog'
+import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -61,6 +63,7 @@ export class ClientZapo implements Client {
   private messages?: ZapoMessages
   private groups?: ZapoGroups
   private profilePictures?: ZapoProfilePictures
+  private catalog?: ZapoCatalog
   private connectTask?: Promise<void>
   private connected = false
   private readonly pendingIncoming = new Map<string, any>()
@@ -201,6 +204,7 @@ export class ClientZapo implements Client {
     this.messages = undefined
     this.groups = undefined
     this.profilePictures = undefined
+    this.catalog = undefined
     this.pendingPasskey?.reject(new SendError(502, 'zapo_passkey_connection_failed'))
     try {
       await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
@@ -359,6 +363,7 @@ export class ClientZapo implements Client {
           this.messages = undefined
           this.groups = undefined
           this.profilePictures = undefined
+          this.catalog = undefined
           await this.releaseRuntimeOwnership()
           this.scheduleReconnect()
         }
@@ -475,17 +480,7 @@ export class ClientZapo implements Client {
       logger.warn('Zapo unavailable message phone=%s id=%s kind=%s', this.phone, event.key.id, event.kind)
       if (!['view_once', 'hosted'].includes(event.kind)) return
 
-      const message = {
-        key: event.key,
-        messageTimestamp: event.timestampSeconds,
-        pushName: event.pushName,
-        messageStubType: 'FUTUREPROOF',
-        messageStubParameters: [
-          event.kind === 'view_once'
-            ? 'view_once_unavailable'
-            : 'hosted_message_unavailable',
-        ],
-      }
+      const message = createZapoUnavailableMessage(event)
       if (event.key.remoteJid && event.key.id) {
         await this.unoStore?.dataStore.setKey(event.key.id, event.key as never)
         await this.unoStore?.dataStore.setMessage(event.key.remoteJid, message as never)
@@ -713,6 +708,7 @@ export class ClientZapo implements Client {
     this.messages = undefined
     this.groups = undefined
     this.profilePictures = undefined
+    this.catalog = undefined
     await Promise.resolve(socket?.disconnect()).catch(() => undefined)
     await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
     this.intentionalDisconnect = false
@@ -833,6 +829,7 @@ export class ClientZapo implements Client {
       bindTemplate: (payload) => new Template(this.getConfig).bind(this.phone, payload.template.name, payload.template.components),
     })
     this.groups = new ZapoGroups(client, this.zapoSession, this.phone)
+    this.catalog = new ZapoCatalog(client, this.unoStore, this.phone)
     this.profilePictures = new ZapoProfilePictures({
       phone: this.phone,
       client,
@@ -873,6 +870,7 @@ export class ClientZapo implements Client {
     this.messages = undefined
     this.groups = undefined
     this.profilePictures = undefined
+    this.catalog = undefined
     this.pairingCodeRequest = undefined
     this.pairingCodeIssued = false
     try {
@@ -921,7 +919,8 @@ export class ClientZapo implements Client {
 
   async getMessageMetadata<T>(message: T) {
     const withGroupMetadata = await this.enrichGroupMetadata(message)
-    const enriched = (await this.profilePictures?.enrich(withGroupMetadata)) ?? withGroupMetadata
+    const withCatalog = (await this.catalog?.enrich(withGroupMetadata)) ?? withGroupMetadata
+    const enriched = (await this.profilePictures?.enrich(withCatalog)) ?? withCatalog
     if (!this.socket) return enriched
     const value: any = enriched
     const id = `${value?.key?.id || ''}`

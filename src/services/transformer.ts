@@ -41,6 +41,7 @@ import {
   WEBHOOK_INCLUDE_MEDIA_DATA,
 } from '../defaults'
 import { t } from '../i18n'
+import { mapOrderMessage, mapProductMessage } from './catalog/catalog_mapper'
 
 const BAILEYS_NATIVE_FLOW_ENABLED = true
 const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
@@ -2187,17 +2188,26 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'orderMessage': {
         const order: any = binMessage || payload?.message?.orderMessage || {}
-        const itemCount = Number(order?.itemCount || 0)
-        const currency = `${order?.currencyCode || ''}`.trim()
-        const amount1000 = Number(order?.totalAmount1000 || 0)
-        const amount = Number.isFinite(amount1000) ? (amount1000 / 1000).toFixed(2) : ''
-        const summary = [
-          '*Pedido recebido*',
-          itemCount > 0 ? `Itens: ${itemCount}` : '',
-          currency && amount ? `Total: ${currency} ${amount}` : '',
-        ].filter(Boolean).join('\n')
-        message.type = 'text'
-        message.text = { body: summary || 'Pedido recebido' }
+        const catalog = mapOrderMessage(
+          order,
+          payload?.__unoapiCatalog?.orderResolution,
+          { imageUrl: payload?.__unoapiCatalog?.orderImageUrl },
+        )
+        Object.assign(message, catalog)
+        const requestMessageId = `${order?.orderRequestMessageId?.id || ''}`.trim()
+        if (requestMessageId) {
+          message.context = { message_id: requestMessageId, id: requestMessageId }
+        }
+        break
+      }
+
+      case 'productMessage': {
+        const product: any = binMessage || payload?.message?.productMessage || {}
+        const catalog = mapProductMessage(
+          product,
+          { imageUrl: payload?.__unoapiCatalog?.productImageUrl },
+        )
+        Object.assign(message, catalog)
         break
       }
 

@@ -612,7 +612,7 @@
                     "to": "120363012345678@g.us",
                     "type": "text",
                     "text": {
-                      "body": "Oi @5566996269251 e @5566996222471"
+                      "body": "Oi @5511999999999 e @5511888888888"
                     }
                   }
                 },
@@ -847,7 +847,7 @@
                   "summary": "Interativo - Lista",
                   "value": {
                     "messaging_product": "whatsapp",
-                    "to": "5566996269251",
+                    "to": "5511999999999",
                     "type": "interactive",
                     "interactive": {
                       "type": "list",
@@ -2292,11 +2292,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.0-beta7"
+            "example": "4.0.1"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.0-beta8"
+            "example": "4.0.1"
           },
           "update_available": {
             "type": "boolean"
@@ -5243,6 +5243,242 @@
           }
         }
       },
+      "CatalogImage": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL servida pelo storage configurado na UnoAPI; não é a URL criptografada temporária do WhatsApp."
+          },
+          "mime_type": {
+            "type": "string",
+            "example": "image/jpeg"
+          }
+        }
+      },
+      "CatalogVariant": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Cor"
+          },
+          "value": {
+            "type": "string",
+            "example": "Preto"
+          }
+        }
+      },
+      "CatalogProduct": {
+        "type": "object",
+        "required": [
+          "product_id",
+          "title"
+        ],
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "example": "product_123"
+          },
+          "retailer_id": {
+            "type": "string",
+            "example": "sku_001"
+          },
+          "title": {
+            "type": "string",
+            "example": "Produto de demonstração"
+          },
+          "description": {
+            "type": "string",
+            "example": "Descrição fictícia do produto"
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "price_amount_1000": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Preço multiplicado por 1000; 129900 representa BRL 129,90."
+          },
+          "sale_price_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_price": {
+            "type": "string",
+            "example": "R$ 129,90"
+          },
+          "formatted_sale_price": {
+            "type": "string",
+            "example": "R$ 119,90"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogVariant"
+            }
+          },
+          "business_owner_id": {
+            "type": "string",
+            "description": "JID/LID do proprietário comercial informado pelo WhatsApp."
+          },
+          "body": {
+            "type": "string"
+          },
+          "footer": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogOrderItem": {
+        "type": "object",
+        "required": [
+          "product_id",
+          "title",
+          "quantity"
+        ],
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "example": "product_123"
+          },
+          "retailer_id": {
+            "type": "string",
+            "example": "sku_001"
+          },
+          "title": {
+            "type": "string",
+            "example": "Produto de demonstração"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "unit_price_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "subtotal_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_unit_price": {
+            "type": "string",
+            "example": "R$ 129,90"
+          },
+          "formatted_subtotal": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogVariant"
+            }
+          }
+        }
+      },
+      "CatalogOrder": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "status",
+          "resolution_status",
+          "item_count",
+          "items"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "example": "order_123"
+          },
+          "title": {
+            "type": "string",
+            "example": "Pedido de demonstração"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inquiry",
+              "accepted",
+              "declined",
+              "unknown"
+            ]
+          },
+          "catalog_type": {
+            "type": "string",
+            "example": "NATIVE"
+          },
+          "resolution_status": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "summary",
+              "failed"
+            ],
+            "description": "resolved contém os itens consultados; summary preserva somente o resumo recebido; failed indica falha na consulta sem perder a mensagem."
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "item_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_subtotal": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "formatted_total": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "message": {
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogOrderItem"
+            }
+          }
+        }
+      },
       "WebhookInbound": {
         "description": "Mensagens recebidas (compatível com WhatsApp Cloud API)",
         "type": "object",
@@ -5298,7 +5534,18 @@
                                   "type": "string"
                                 },
                                 "type": {
-                                  "type": "string"
+                                  "type": "string",
+                                  "description": "Inclui os tipos estruturados `product` e `order` para eventos de catálogo."
+                                },
+                                "fallback_text": {
+                                  "type": "string",
+                                  "description": "Texto seguro para clientes que ainda não renderizam o componente estruturado."
+                                },
+                                "product": {
+                                  "$ref": "#/components/schemas/CatalogProduct"
+                                },
+                                "order": {
+                                  "$ref": "#/components/schemas/CatalogOrder"
                                 },
                                 "interactive": {
                                   "type": "object",
@@ -5355,7 +5602,7 @@
           "object": "whatsapp_business_account",
           "entry": [
             {
-              "id": "5566996269251",
+              "id": "5511999999999",
               "changes": [
                 {
                   "field": "messages",

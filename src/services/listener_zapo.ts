@@ -98,6 +98,7 @@ export class ListenerZapo implements Listener {
     }
     const content = getBinMessage(message as any)?.message
     await map(content?.contextInfo, 'stanzaId')
+    await map(content?.orderRequestMessageId, 'id')
     await map(message?.message?.reactionMessage?.key, 'id')
     await map(message?.message?.pollUpdateMessage?.pollCreationMessageKey, 'id')
     await map(message?.message?.protocolMessage?.key, 'id')

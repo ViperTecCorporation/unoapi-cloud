@@ -42,6 +42,7 @@ export const TYPE_MESSAGES_TO_READ = [
   'templateMessage',
   'groupInviteMessage',
   'orderMessage',
+  'productMessage',
   'pollCreationMessage',
   'pollCreationMessageV2',
   'pollCreationMessageV3',

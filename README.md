@@ -3,6 +3,7 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-4.0.1-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.1)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
 
 Gateway de API para WhatsApp mantido pela ViperTec Corporation.
@@ -11,13 +12,19 @@ Gateway de API para WhatsApp mantido pela ViperTec Corporation.
 
 ## Sobre
 
-ViperConnect é um gateway para WhatsApp com runtime Zapo e contrato HTTP inspirado na WhatsApp Cloud API. Ele foi criado para operar sessões WhatsApp, enviar mensagens, receber webhooks, integrar com Chatwoot/Typebot e manter compatibilidade com fluxos Meta-like quando necessário. A Baileys permanece somente como código legado suprimido e não integra a imagem padrão.
+ViperConnect é um gateway para WhatsApp com runtime [Zapo](https://zapo.to/en),
+contrato HTTP inspirado na WhatsApp Cloud API e documentação integrada. Ele foi
+criado para operar sessões WhatsApp, enviar mensagens, receber webhooks,
+integrar com Chatwoot/Typebot e manter compatibilidade com fluxos Meta-like
+quando necessário.
 
 O projeto é mantido pela ViperTec Corporation e é baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
 
 ## Description
 
-ViperConnect is a WhatsApp gateway with a Zapo runtime, exposing an HTTP contract inspired by the WhatsApp Cloud API. Baileys remains suppressed legacy code and is not part of the standard image.
+ViperConnect is a WhatsApp gateway powered by the
+[Zapo](https://zapo.to/en) runtime, exposing an HTTP contract inspired by the
+WhatsApp Cloud API with integrated API documentation.
 
 This project is maintained by ViperTec Corporation and is based on the original Unoapi Cloud project created by Clairton Rodrigo.
 
@@ -146,6 +153,11 @@ Com o serviço rodando:
 - Swagger UI: `/docs/swagger.html`
 - OpenAPI JSON: `/docs/openapi.json`
 
+Referências externas do runtime:
+
+- [Documentação oficial da Zapo](https://zapo.to/en/docs)
+- [Conceitos e eventos da Zapo](https://zapo.to/en/concepts/events)
+
 Arquivos principais:
 
 - [Instalação](docs/INSTALLATION.md)
@@ -156,6 +168,8 @@ Arquivos principais:
 - [Desenvolvimento](docs/DEVELOPMENT.md)
 - [Embedded Signup](docs/WHATSAPP_EMBEDDED.md)
 - [Histórico de mensagens](docs/MESSAGE_HISTORY.md)
+- [Catálogo e pedidos recebidos](docs/CATALOG_WEBHOOKS.md)
+- [Handoff Chatwoot para catálogo e pedidos](docs/chatwoot-catalog-handoff.md)
 - [Migração para o provider Zapo](docs/zapo-provider-migration.md)
 - [JIDMAP PN/LID](docs/pt-BR/JIDMAP.md)
 - [Status/Broadcast](docs/STATUS_BROADCAST.md)
@@ -193,7 +207,13 @@ ghcr.io/viperteccorporation/viperconnect
 Exemplo:
 
 ```bash
-docker pull ghcr.io/viperteccorporation/viperconnect:3.0.67
+docker pull ghcr.io/viperteccorporation/viperconnect:4.0.1
+```
+
+A tag `latest` acompanha a versão estável mais recente:
+
+```bash
+docker pull ghcr.io/viperteccorporation/viperconnect:latest
 ```
 
 ## Créditos
@@ -201,7 +221,7 @@ docker pull ghcr.io/viperteccorporation/viperconnect:3.0.67
 - Mantenedora: ViperTec Corporation <suporte@vipertec.com.br>
 - Rodrigo Caitano <caitano28@gmail.com>
 - Baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
-- Baileys: https://github.com/WhiskeySockets/Baileys
+- Runtime WhatsApp: [Zapo](https://zapo.to/en)
 
 ## Aviso legal
 

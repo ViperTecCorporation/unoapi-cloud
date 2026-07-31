@@ -1025,8 +1025,9 @@ describe('service transformer', () => {
       key: { remoteJid, fromMe: false, id },
       message: {
         orderMessage: {
+          orderId: 'order-1',
           itemCount: 2,
-          currencyCode: 'BRL',
+          totalCurrencyCode: 'BRL',
           totalAmount1000: 123450,
         },
       },
@@ -1035,9 +1036,50 @@ describe('service transformer', () => {
     }
     const out = fromBaileysMessageContent(phoneNumer, input)[0]
     const m = out.entry[0].changes[0].value.messages[0]
-    expect(m.type).toEqual('text')
-    expect(m.text.body).toContain('*Pedido recebido*')
-    expect(m.text.body).toContain('Itens: 2')
+    expect(m.type).toEqual('order')
+    expect(m.order).toEqual(expect.objectContaining({
+      order_id: 'order-1',
+      item_count: 2,
+      total_amount_1000: 123450,
+      currency: 'BRL',
+      resolution_status: 'summary',
+    }))
+    expect(m.fallback_text).toContain('*Pedido recebido*')
+  })
+
+  test('fromBaileysMessageContent with productMessage', async () => {
+    const phoneNumer = '5549998360838'
+    const input = {
+      key: { remoteJid: '554988290955@s.whatsapp.net', fromMe: false, id: 'product-message-1' },
+      message: {
+        productMessage: {
+          businessOwnerJid: '19357434396794@lid',
+          body: 'Quero este produto',
+          product: {
+            productId: 'product-1',
+            retailerId: 'sku-001',
+            title: 'Óculos Solar',
+            currencyCode: 'BRL',
+            priceAmount1000: 129900,
+          },
+        },
+      },
+      __unoapiCatalog: {
+        productImageUrl: 'https://storage.test/product-1.jpg',
+      },
+      pushName: 'Mary',
+      messageTimestamp: Math.floor(new Date().getTime() / 1000).toString(),
+    }
+    const out = fromBaileysMessageContent(phoneNumer, input)[0]
+    const m = out.entry[0].changes[0].value.messages[0]
+    expect(m.type).toEqual('product')
+    expect(m.product).toEqual(expect.objectContaining({
+      product_id: 'product-1',
+      retailer_id: 'sku-001',
+      title: 'Óculos Solar',
+      image: { url: 'https://storage.test/product-1.jpg' },
+    }))
+    expect(m.fallback_text).toContain('Óculos Solar')
   })
 
   test('fromBaileysMessageContent with pollCreationMessage', async () => {
@@ -2671,6 +2713,28 @@ describe('service transformer', () => {
       text: { body: 'Mídia de visualização única indisponível neste dispositivo.' },
       type: 'text',
     })
+  })
+
+  test('fromBaileysMessageContent recognizes the protobuf FUTUREPROOF enum value zero', () => {
+    const input = {
+      key: {
+        remoteJid: '24788516941@lid',
+        remoteJidAlt: '5566998888888@s.whatsapp.net',
+        fromMe: false,
+        id: 'view-once-protobuf-zero',
+      },
+      messageTimestamp: 10,
+      messageStubType: 0,
+      messageStubParameters: ['view_once_unavailable'],
+    }
+
+    expect(getMessageType(input)).toBe('messageStubType')
+    const output = fromBaileysMessageContent('5566999999999', input)[0]
+    const message = output.entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'text',
+      text: { body: 'Mídia de visualização única indisponível neste dispositivo.' },
+    }))
   })
 
   test('fromBaileysMessageContent emits Meta-like text webhook for view once unavailable update', async () => {

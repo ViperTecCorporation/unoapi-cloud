@@ -162,6 +162,7 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Coexistencia | fluxo Meta especifico atual | sem coordinator equivalente documentado | sem capability |
 | Chamadas | receber e rejeitar automaticamente | `@zapo-js/voip`, `client.voip.rejectCall` | testado |
 | Status | publicar e receber `status@broadcast` | `client.status` e evento message | testado |
+| Catálogo | produto compartilhado e pedido itemizado no webhook | `productMessage`, `orderMessage` e `BizQueryOrder` | concluido |
 | Recuperacao | reenviar preservando ID publico | `message.send({ id })` e retry interno | testado |
 | Newsletter/broadcast list | rotas e eventos atuais | coordinators dedicados | nao iniciado |
 
@@ -314,6 +315,29 @@ erro e nunca viram silenciosamente uma nova mensagem de texto.
 
 Edicoes recebidas pelo evento `message_addon` sao convertidas para `MESSAGE_EDIT`; antes
 do webhook, o listener converte o ID original Zapo novamente para o ID UnoAPI.
+
+### Catálogo e pedidos recebidos
+
+`productMessage` e `orderMessage` seguem os tipos oficiais documentados pela
+Zapo. O transformer publica respectivamente `messages[].type=product` e
+`messages[].type=order`, sempre com `fallback_text`.
+
+Produtos preservam identificador, SKU, título, descrição, preço, promoção, URL
+e imagem. A imagem criptografada é baixada com `client.message.downloadBytes` e
+copiada para o media storage Uno antes do webhook.
+
+Pedidos usam `orderId`, `sellerJid` e `token` somente dentro do adapter
+`ZapoOrderResolver`. A consulta MEX `BizQueryOrder`, cuja assinatura e resposta
+estão declaradas na versão oficial fixada de `zapo-js`, recupera produtos,
+quantidade, preços, moeda, variantes e imagens. O token nunca entra no
+transformer nem no webhook.
+
+Falha de consulta ou mídia não bloqueia a conversa. O pedido sai com
+`resolution_status=failed` ou `summary`; quando há itens, sai como `resolved`.
+`orderRequestMessageId` é convertido de ID Zapo para ID UnoAPI antes de preencher
+`context.message_id`.
+
+O contrato e exemplos fictícios estão em [CATALOG_WEBHOOKS.md](CATALOG_WEBHOOKS.md).
 
 O contrato operacional, as configurações por sessão e os exemplos da rota de replay/sync estão em [MESSAGE_HISTORY.md](MESSAGE_HISTORY.md).
 

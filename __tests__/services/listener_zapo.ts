@@ -7,6 +7,7 @@ import type { MediaStore } from '../../src/services/media_store'
 import type { Outgoing } from '../../src/services/outgoing'
 import type { Store } from '../../src/services/store'
 import type { ZapoMessageMetadataResolver } from '../../src/services/zapo/zapo_message_metadata'
+import { MessageFilter } from '../../src/services/message_filter'
 
 describe('ListenerZapo', () => {
   let config: Config
@@ -53,6 +54,44 @@ describe('ListenerZapo', () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     )
     expect(payload.entry[0].changes[0].value.messages[0].id).not.toBe('3EB0ZAPO')
+  })
+
+  test.each([
+    ['direct', {
+      remoteJid: '123@lid',
+      remoteJidAlt: '5566998888888@s.whatsapp.net',
+      fromMe: false,
+    }],
+    ['group', {
+      remoteJid: '120363427999345040@g.us',
+      participant: '123@lid',
+      participantAlt: '5566998888888@s.whatsapp.net',
+      fromMe: false,
+      isGroup: true,
+    }],
+  ])('forwards an unavailable view-once placeholder for %s messages with ignore-own filtering enabled', async (_kind, key) => {
+    config.ignoreOwnMessages = true
+    config.ignoreGroupMessages = false
+    const filter = new MessageFilter('5566999999999', config)
+    config.shouldIgnoreJid = filter.isIgnoreJid.bind(filter)
+    config.shouldIgnoreKey = filter.isIgnoreKey.bind(filter)
+
+    await service.process('5566999999999', [{
+      key: { id: 'view-once-unavailable', ...key },
+      messageTimestamp: 1,
+      pushName: 'Contato',
+      messageStubType: 'FUTUREPROOF',
+      messageStubParameters: ['view_once_unavailable'],
+    }], 'notify')
+
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    const value = payload.entry[0].changes[0].value
+    expect(value.messages[0]).toEqual(expect.objectContaining({
+      type: 'text',
+      text: expect.objectContaining({
+        body: 'Mídia de visualização única indisponível neste dispositivo.',
+      }),
+    }))
   })
 
   test.each([
@@ -346,6 +385,71 @@ describe('ListenerZapo', () => {
         })],
       })],
     }))
+  })
+
+  test('maps an order request reference and forwards structured catalog metadata', async () => {
+    ;(store.dataStore.loadUnoId as jest.Mock).mockImplementation(async (id: string) => (
+      id === 'request-provider-id' ? 'request-uno-id' : undefined
+    ))
+    ;(messageMetadata.resolve as jest.Mock).mockImplementation(async (_phone: string, message: any) => ({
+      ...message,
+      __unoapiCatalog: {
+        orderResolution: {
+          resolution_status: 'resolved',
+          currency: 'BRL',
+          total_amount_1000: 129900,
+          items: [{
+            product_id: 'product-1',
+            title: 'Óculos Solar',
+            quantity: 1,
+            currency: 'BRL',
+            unit_price_amount_1000: 129900,
+            subtotal_amount_1000: 129900,
+          }],
+        },
+      },
+    }))
+
+    await service.process('5566996328386', [{
+      key: {
+        id: 'order-provider-id',
+        remoteJid: 'contact@lid',
+        remoteJidAlt: '5566998888888@s.whatsapp.net',
+        fromMe: false,
+      },
+      message: {
+        orderMessage: {
+          orderId: 'order-1',
+          itemCount: 1,
+          status: 1,
+          orderRequestMessageId: { id: 'request-provider-id' },
+        },
+      },
+      messageTimestamp: 1,
+    }], 'notify')
+
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    const webhookMessage = payload.entry[0].changes[0].value.messages[0]
+    expect(webhookMessage).toEqual(expect.objectContaining({
+      type: 'order',
+      order: expect.objectContaining({
+        order_id: 'order-1',
+        resolution_status: 'resolved',
+        items: [expect.objectContaining({ product_id: 'product-1' })],
+      }),
+      context: { message_id: 'request-uno-id', id: 'request-uno-id' },
+    }))
+    expect(messageMetadata.resolve).toHaveBeenCalledWith(
+      '5566996328386',
+      expect.objectContaining({
+        message: {
+          orderMessage: expect.objectContaining({
+            orderRequestMessageId: expect.objectContaining({ id: 'request-uno-id' }),
+          }),
+        },
+      }),
+    )
+    expect(webhookMessage.fallback_text).toContain('Óculos Solar')
   })
 
   test('maps receipt ids and suppresses status regression', async () => {

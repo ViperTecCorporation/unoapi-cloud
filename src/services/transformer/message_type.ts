@@ -34,7 +34,7 @@ export const getMessageType = (payload: any) => {
     )
   }
   // 5) stubs
-  if (payload?.messageStubType) return 'messageStubType'
+  if (typeof payload?.messageStubType !== 'undefined') return 'messageStubType'
 }
 
 export const normalizeMessageContent = (

@@ -108,13 +108,18 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
   LID para o PN canonico do store porque a capability oficial
   `group_create_add_using_lid_jids` permanece desabilitada.
 - `zapo_events`: message, receipts em lote e addons ja decriptados pela Zapo.
+- `zapo_catalog`: baixa imagens de produto/pedido para o storage comum e garante
+  que falha de enriquecimento não descarte a mensagem.
+- `zapo_order_resolver`: consulta `BizQueryOrder` pelo low-level coordinator
+  público, mapeia itens e mantém o token restrito ao adapter.
 
 ## Compartilhados revisados
 
 - `transformer` e `transformer/*`: permanecem fachada publica Cloud API. A Zapo entrega
   `Proto.IMessage`, logo o mapper de conteudo e reutilizado; nenhuma chamada de socket,
   assert Signal ou Redis foi adicionada ao transformer. PN fica em `wa_id/from` e LID em
-  `user_id/from_user_id`.
+  `user_id/from_user_id`. O mapper puro `catalog/catalog_mapper` publica produto e
+  pedido estruturados sem carregar token, mídia criptografada ou dependência Zapo.
 - `data_store`, `data_store_file`, `data_store_redis`: conservam somente IDs externos,
   status, media e compatibilidade historica. Store de contato/sessao Zapo e o oficial.
 - `redis`: o store oficial Zapo e fonte dos dominios nativos. Redis Uno conserva configuracao,

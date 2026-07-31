@@ -75,7 +75,7 @@ POST /v15.0/{phone}/messages
 {
   "to": "120363012345678@g.us",
   "type": "text",
-  "text": { "body": "Oi @5566996269251 e @5566996222471" }
+  "text": { "body": "Oi @5511999999999 e @5511888888888" }
 }
 ```
 
@@ -84,7 +84,7 @@ POST /v15.0/{phone}/messages
 {
   "to": "120363012345678@g.us",
   "type": "text",
-  "text": { "body": "Oi @5566996269251, @5566996222471 @all" }
+  "text": { "body": "Oi @5511999999999, @5511888888888 @all" }
 }
 ```
 
@@ -100,7 +100,7 @@ POST /v15.0/{phone}/messages
 {
   "messaging_product": "whatsapp",
   "recipient_type": "individual",
-  "to": "5566996269251",
+  "to": "5511999999999",
   "type": "message_edit",
   "context": {
     "message_id": "uno-message-id-original"
@@ -124,9 +124,9 @@ POST /v15.0/{phone}/messages
     "message_id": "uno-message-id-original"
   },
   "text": {
-    "body": "@5566996269251 texto editado"
+    "body": "@5511999999999 texto editado"
   },
-  "mentions": ["5566996269251"]
+  "mentions": ["5511999999999"]
 }
 ```
 

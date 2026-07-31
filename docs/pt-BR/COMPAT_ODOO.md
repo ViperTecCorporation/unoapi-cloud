@@ -6,7 +6,7 @@ Para fluxo focado em WhatsApp Embedded/Chatwoot, use `docs/pt-BR/WHATSAPP_EMBEDD
 
 ## O que foi mantido para compatibilidade antiga
 
-- `phoneNumberId` continua sendo o valor que você já usa hoje (ex.: `5566996269251`).
+- `phoneNumberId` continua sendo o valor que você já usa hoje (ex.: `5511999999999`).
 - A UNO não altera automaticamente `phoneNumberId`.
 - Rotas antigas continuam ativas.
 
@@ -32,14 +32,14 @@ Para fluxo focado em WhatsApp Embedded/Chatwoot, use `docs/pt-BR/WHATSAPP_EMBEDD
 ## Configuração da sessão UNO (exemplo)
 
 ```bash
-curl -X POST "https://uno.seudominio.com/v19.0/5566996269251/register" \
+curl -X POST "https://uno.seudominio.com/v19.0/5511999999999/register" \
   -H "Authorization: seu_token_admin" \
   -H "Content-Type: application/json" \
   -d '{
     "authToken": "token_para_cliente",
     "webhookForward": {
       "version": "v19.0",
-      "phoneNumberId": "5566996269251",
+      "phoneNumberId": "5511999999999",
       "token": "token_para_cliente",
       "timeoutMs": 6000
     }
@@ -73,7 +73,7 @@ Defina variáveis:
 ```bash
 UNO_BASE="https://uno.seudominio.com"
 TOKEN="token_para_cliente"
-PHONE_NUMBER_ID="5566996269251"
+PHONE_NUMBER_ID="5511999999999"
 ```
 
 1) Validar token:
@@ -105,8 +105,8 @@ Exemplo:
 {
   "data": [
     {
-      "session_phone": "5566996269251",
-      "phone_number_id": "5566996269251",
+      "session_phone": "5511999999999",
+      "phone_number_id": "5511999999999",
       "business_account_id": "154253852486255"
     }
   ]
@@ -140,7 +140,7 @@ curl -sS -X POST \
 No conector WhatsApp do Odoo (Enterprise):
 
 1. Token/API token: use o mesmo token configurado na UNO.
-2. `Phone Number ID`: use o valor da sua sessão (comportamento antigo preservado), ex.: `5566996269251`.
+2. `Phone Number ID`: use o valor da sua sessão (comportamento antigo preservado), ex.: `5511999999999`.
 3. `WABA ID`: use o ID retornado por:
    - `GET /v19.0/me/whatsapp_business_accounts`
 4. Webhook callback:

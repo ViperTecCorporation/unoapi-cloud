@@ -14,7 +14,7 @@ Em servidores menores, configure swap antes da instalação.
 Baixe a tag imutável e prepare o ambiente:
 
 ```sh
-git clone --depth 1 --branch v4.0.0-beta8 \
+git clone --depth 1 --branch v4.0.1 \
   https://github.com/ViperTecCorporation/ViperConnect.git
 cd ViperConnect
 cp deploy/native/viperconnect.env.example /root/viperconnect.env
@@ -25,7 +25,7 @@ Execute a partir de um checkout do projeto:
 
 ```sh
 sudo bash scripts/install-native-linux.sh \
-  --tag v4.0.0-beta8 \
+  --tag v4.0.1 \
   --env-file /root/viperconnect.env
 ```
 
@@ -36,9 +36,9 @@ Sem `--role`, a unit `viperconnect.service` inicia web, broker e worker Zapo.
 Execute uma vez para cada papel:
 
 ```sh
-sudo bash scripts/install-native-linux.sh --tag v4.0.0-beta8 --role web --env-file /root/viperconnect.env
-sudo bash scripts/install-native-linux.sh --tag v4.0.0-beta8 --role broker
-sudo bash scripts/install-native-linux.sh --tag v4.0.0-beta8 --role worker
+sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role web --env-file /root/viperconnect.env
+sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role broker
+sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role worker
 ```
 
 As units criadas são:
@@ -54,9 +54,9 @@ Todas compartilham `/opt/viperconnect/current`, `/var/lib/viperconnect/data` e
 
 ```text
 /opt/viperconnect/
-  current -> releases/v4.0.0-beta8
+  current -> releases/v4.0.1
   releases/
-    v4.0.0-beta8/
+    v4.0.1/
 /var/lib/viperconnect/
   data/
 /etc/viperconnect/
@@ -65,7 +65,8 @@ Todas compartilham `/opt/viperconnect/current`, `/var/lib/viperconnect/data` e
 
 O build é realizado numa pasta temporária. O link `current` só muda depois de
 build, poda das dependências de desenvolvimento e validações concluídas.
-Baileys permanece ausente do `node_modules` usado em produção.
+O `node_modules` usado em produção contém somente o grafo necessário ao runtime
+Zapo.
 
 ## Atualização e rollback
 
@@ -93,5 +94,5 @@ curl http://127.0.0.1:9876/ping
 Antes de alterar o host, valide o plano:
 
 ```sh
-bash scripts/install-native-linux.sh --dry-run --tag v4.0.0-beta8
+bash scripts/install-native-linux.sh --dry-run --tag v4.0.1
 ```
