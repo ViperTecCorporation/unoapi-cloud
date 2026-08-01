@@ -29,58 +29,84 @@ import logger from './logger'
 import { Level } from 'pino'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import {
-  DEFAULT_BROWSER,
   LOG_LEVEL,
-  CONNECTING_TIMEOUT_MS,
-  BAILEYS_IDLE_RECONNECT_ENABLED,
-  BAILEYS_IDLE_RECONNECT_MS,
-  BAILEYS_IDLE_RECONNECT_CHECK_MS,
   MAX_CONNECT_TIME,
   MAX_CONNECT_RETRY,
   CLEAN_CONFIG_ON_DISCONNECT,
-  VALIDATE_SESSION_NUMBER,
-  QR_POST_LOGIN_SUPPRESS_MS,
-  BAILEYS_WAM_TELEMETRY,
-  BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS,
-  BAILEYS_WAM_TELEMETRY_FLUSH_MS,
-  BAILEYS_WAM_TELEMETRY_MAX_EVENTS,
 } from '../defaults'
-import { ACK_RETRY_DELAYS_MS, ACK_RETRY_MAX_ATTEMPTS, ACK_RETRY_ENABLED } from '../defaults'
-import { SELFHEAL_ASSERT_ON_DECRYPT, PERIODIC_ASSERT_ENABLED, PERIODIC_ASSERT_INTERVAL_MS, PERIODIC_ASSERT_MAX_TARGETS, PERIODIC_ASSERT_RECENT_WINDOW_MS, PERIODIC_ASSERT_FORCE, PERIODIC_ASSERT_INCLUDE_GROUPS } from '../defaults'
-import { ONE_TO_ONE_ADDRESSING_MODE, BR_SEND_ORDER_ENABLED } from '../defaults'
-import { STATUS_ALLOW_LID, GROUP_SEND_PREASSERT_SESSIONS } from '../defaults'
-import { GROUP_ASSERT_CHUNK_SIZE, GROUP_ASSERT_FLOOD_WINDOW_MS, NO_SESSION_RETRY_BASE_DELAY_MS, NO_SESSION_RETRY_PER_200_DELAY_MS, NO_SESSION_RETRY_MAX_DELAY_MS, RECEIPT_RETRY_ASSERT_COOLDOWN_MS, RECEIPT_RETRY_ASSERT_MAX_TARGETS, GROUP_LARGE_THRESHOLD } from '../defaults'
-import {
-  DELIVERY_WATCHDOG_ENABLED,
-  DELIVERY_WATCHDOG_MS,
-  DELIVERY_WATCHDOG_MAX_ATTEMPTS,
-  DELIVERY_WATCHDOG_GROUPS,
-  DELIVERY_STALE_RECOVERY_ENABLED,
-  DELIVERY_STALE_RECOVERY_MS,
-  DELIVERY_STALE_RECOVERY_SCAN_MS,
-  DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS,
-  DELIVERY_STALE_RECOVERY_MAX_PENDING,
-  DELIVERY_STALE_RECOVERY_BATCH_SIZE,
-  DELIVERY_STALE_RECOVERY_GROUPS,
-} from '../defaults'
+import { STATUS_ALLOW_LID } from '../defaults'
 import { SESSION_DIR } from './session_store_file'
 import { BASE_KEY, redisGet, redisSetAndExpire, delSignalSessionsForJids, countSignalSessionsForJids, enrichJidMapFromAuthLidCache, configKey, getLidForPnFromAuthCache, getPnForLidFromAuthCache, getHistorySyncMarker, setHistorySyncMarker, getPrivacyBootstrapSync } from './redis'
 import { readdirSync, rmSync } from 'fs'
 import { STATUS_BROADCAST_ENABLED } from '../defaults'
-import { LID_RESOLVER_ENABLED, LID_RESOLVER_BACKOFF_MS, LID_RESOLVER_SWEEP_INTERVAL_MS, LID_RESOLVER_MAX_PENDING } from '../defaults'
-import { JIDMAP_ENRICH_ENABLED, JIDMAP_ENRICH_PER_SWEEP, JIDMAP_ENRICH_AUTH_ENABLED } from '../defaults'
-import { SIGNAL_SESSION_PURGE_ENABLED } from '../defaults'
-import { GROUP_SEND_FALLBACK_ORDER } from '../defaults'
-import {
-  ONE_TO_ONE_PREASSERT_ENABLED,
-  ONE_TO_ONE_PREASSERT_COOLDOWN_MS,
-  ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
-  ONE_TO_ONE_ASSERT_PROBE_ENABLED,
-  ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST,
-  SIGNAL_CACHE_SAFE_MODE,
-} from '../defaults'
 import { t } from '../i18n'
 import { SendError } from './send_error'
+import { BAILEYS_ASSERT_POLICY } from './baileys_assert_policy'
+import { BAILEYS_IDENTITY_POLICY } from './baileys_identity_policy'
+import { BAILEYS_DELIVERY_POLICY } from './baileys_delivery_policy'
+import { BAILEYS_GROUP_POLICY } from './baileys_group_policy'
+import { BAILEYS_CONNECTION_POLICY } from './baileys_connection_policy'
+import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
+
+const {
+  receiptRetryCooldownMs: RECEIPT_RETRY_ASSERT_COOLDOWN_MS,
+  receiptRetryMaxTargets: RECEIPT_RETRY_ASSERT_MAX_TARGETS,
+  selfHealOnDecryptStub: SELFHEAL_ASSERT_ON_DECRYPT,
+  periodicEnabled: PERIODIC_ASSERT_ENABLED,
+  periodicIntervalMs: PERIODIC_ASSERT_INTERVAL_MS,
+  periodicMaxTargets: PERIODIC_ASSERT_MAX_TARGETS,
+  periodicRecentWindowMs: PERIODIC_ASSERT_RECENT_WINDOW_MS,
+  periodicForce: PERIODIC_ASSERT_FORCE,
+  periodicIncludeGroups: PERIODIC_ASSERT_INCLUDE_GROUPS,
+  oneToOnePreassertEnabled: ONE_TO_ONE_PREASSERT_ENABLED,
+  oneToOnePreassertCooldownMs: ONE_TO_ONE_PREASSERT_COOLDOWN_MS,
+  oneToOnePreassertRedisTtlSec: ONE_TO_ONE_PREASSERT_REDIS_TTL_SEC,
+  oneToOneAssertProbeEnabled: ONE_TO_ONE_ASSERT_PROBE_ENABLED,
+  oneToOnePurgeDeviceList: ONE_TO_ONE_PREASSERT_PURGE_DEVICE_LIST,
+  signalSessionPurgeEnabled: SIGNAL_SESSION_PURGE_ENABLED,
+  signalCacheSafeMode: SIGNAL_CACHE_SAFE_MODE,
+} = BAILEYS_ASSERT_POLICY
+
+const {
+  lidResolverEnabled,
+  lidResolverBackoffMs,
+  lidResolverSweepIntervalMs,
+  lidResolverMaxPending,
+} = BAILEYS_IDENTITY_POLICY
+
+const {
+  staleRecoveryEnabled,
+  staleRecoveryDelayMs,
+  staleRecoveryScanMs,
+  staleRecoveryMaxAttempts,
+  staleRecoveryMaxPending,
+  staleRecoveryBatchSize,
+  staleRecoveryGroups,
+} = BAILEYS_DELIVERY_POLICY
+
+const {
+  preassertSessions: groupPreassertSessions,
+  fallbackOrder: groupFallbackOrder,
+  largeGroupThreshold,
+  assertChunkSize: groupAssertChunkSize,
+  assertFloodWindowMs: groupAssertFloodWindowMs,
+  noSessionRetryBaseDelayMs: NO_SESSION_RETRY_BASE_DELAY_MS,
+  noSessionRetryPer200DelayMs: NO_SESSION_RETRY_PER_200_DELAY_MS,
+  noSessionRetryMaxDelayMs: NO_SESSION_RETRY_MAX_DELAY_MS,
+} = BAILEYS_GROUP_POLICY
+
+const {
+  connectingTimeoutMs: CONNECTING_TIMEOUT_MS,
+  idleReconnectEnabled: BAILEYS_IDLE_RECONNECT_ENABLED,
+  idleReconnectMs: BAILEYS_IDLE_RECONNECT_MS,
+  idleReconnectCheckMs: BAILEYS_IDLE_RECONNECT_CHECK_MS,
+  qrPostLoginSuppressMs: QR_POST_LOGIN_SUPPRESS_MS,
+  validateSessionNumber: VALIDATE_SESSION_NUMBER,
+  defaultBrowser: DEFAULT_BROWSER,
+  wamTelemetry: baileysWamTelemetry,
+} = BAILEYS_CONNECTION_POLICY
+
+const { jidMapEnrichAuthEnabled: JIDMAP_ENRICH_AUTH_ENABLED } = BAILEYS_AUTH_POLICY
 
 export const historySyncTypeName = (syncType: proto.HistorySync.HistorySyncType | undefined): string => {
   return typeof syncType === 'number'
@@ -146,7 +172,8 @@ export type OnQrCode = (qrCode: string, time: number, limit: number) => Promise<
 export type OnNotification = (text: string, important: boolean) => Promise<void>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type OnDisconnected = (phone: string, payload: any) => Promise<void>
-export type OnNewLogin = (phone: string) => Promise<void>
+import type { OnNewLogin } from './login_types'
+export type { OnNewLogin } from './login_types'
 export type OnReconnect = (time: number) => Promise<void>
 
 export interface sendMessage {
@@ -277,7 +304,7 @@ export interface groupJoinApprovalMode {
 }
 
 export interface close {
-  (): Promise<void>
+  (options?: { preserveStatus?: boolean }): Promise<void>
 }
 
 export interface logout {
@@ -316,10 +343,7 @@ export const connect = async ({
   config: Partial<Config>
 }) => {
   let sock: WASocket | undefined = undefined
-  const getOneToOneAddressingMode = (): 'pn' | 'lid' => {
-    const value = `${config.oneToOneAddressingMode || ONE_TO_ONE_ADDRESSING_MODE}`.toLowerCase()
-    return value === 'lid' ? 'lid' : 'pn'
-  }
+  let intentionalProviderHandoff = false
   const msgRetryCounterCache = (() => {
     const store = new Map<string, unknown>()
     return {
@@ -337,22 +361,6 @@ export const connect = async ({
   let historySyncInProgress = false
   const eventsMap = new Map()
   const { dataStore, state, saveCreds, sessionStore } = store
-  // Parse fallback order for addressing mode on group retries (e.g., "lid,pn" or "pn,lid").
-  // Se vazio, desabilita fallback (mantém sempre o modo preferido configurado).
-  const groupFallbackOrder: ('pn' | 'lid')[] = (() => {
-    try {
-      const raw = (GROUP_SEND_FALLBACK_ORDER || '').toString()
-      if (!raw.trim()) return []
-      const parts = raw
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter((s) => s === 'pn' || s === 'lid') as ('pn' | 'lid')[]
-      const uniq = Array.from(new Set(parts)) as ('pn' | 'lid')[]
-      if (uniq.length >= 2) return uniq.slice(0, 2)
-      if (uniq.length === 1) return uniq[0] === 'lid' ? ['lid', 'pn'] : ['pn', 'lid']
-      return []
-    } catch { return [] }
-  })()
   // Track recent group sends to enable a single fallback retry on ack 421
   const pendingGroupSends: Map<string, { to: string; message: AnyMessageContent; options: any; attempted: Set<'pn' | 'lid' | ''>; retries: number }> = new Map()
   // Throttle heavy assert operations
@@ -372,14 +380,11 @@ export const connect = async ({
   const touchSocketActivity = () => {
     lastSocketActivityAt = Date.now()
   }
-  // Track outgoing messages awaiting server ack to optionally assert sessions and resend with same id (up to 3 attempts)
-  const pendingAckResend: Map<string, { to: string; message: AnyMessageContent; options: any; attemptIndex: number; timer?: NodeJS.Timeout }> = new Map()
-  // Track recent 1:1 sends so PN->LID fallback on 463/479 works even when ACK_RETRY is disabled
+  // Track recent 1:1 sends so the focused PN->LID fallback on 463/479 remains available.
   const pendingOneToOneErrorFallbacks: Map<string, { to: string; message: AnyMessageContent; options: any; timer?: NodeJS.Timeout }> = new Map()
   // Track 1:1 PN->LID fallback retries triggered by server ack errors such as 463/479
   const pendingOneToOneAddressingFallback = new Set<string>()
   // Track messages that got only SERVER_ACK (sent) and never delivered/read, to try session recreation
-  const pendingDeliveryWatch: Map<string, { to: string; message: AnyMessageContent; options: any; attempt: number; timer?: NodeJS.Timeout }> = new Map()
   const pendingStaleDeliveryRecovery: Map<string, { to: string; message: AnyMessageContent; options: any; createdAt: number; dueAt: number; attempts: number }> = new Map()
   let staleDeliveryRecoveryTimer: NodeJS.Timeout | undefined
   // Background LID->PN resolver (per session)
@@ -391,7 +396,7 @@ export const connect = async ({
       if (!v || !isLidUser(v)) return
       const now = Date.now()
       if (!lidResolveQueue.has(v)) {
-        if (lidResolveQueue.size >= Math.max(100, LID_RESOLVER_MAX_PENDING || 0)) {
+        if (lidResolveQueue.size >= Math.max(100, lidResolverMaxPending || 0)) {
           try {
             let oldestKey: string | null = null
             let oldestSeen = Infinity
@@ -465,9 +470,9 @@ export const connect = async ({
     return false
   }
   const sweepLidResolver = async () => {
-    if (!LID_RESOLVER_ENABLED) return
+    if (!lidResolverEnabled) return
     const now = Date.now()
-    const delays = (Array.isArray(LID_RESOLVER_BACKOFF_MS) && LID_RESOLVER_BACKOFF_MS.length) ? LID_RESOLVER_BACKOFF_MS : [15000, 60000, 300000]
+    const delays = lidResolverBackoffMs
     for (const [lid, st] of Array.from(lidResolveQueue.entries())) {
       if (st.next > now) continue
       const done = await attemptResolveOne(lid)
@@ -482,11 +487,6 @@ export const connect = async ({
       if (st.attempts > delays.length) st.attempts = delays.length
       lidResolveQueue.set(lid, st)
     }
-    // No mesmo timer do LID resolver: enriquecer JIDMAP a partir do contact-info (leve, com limite por varredura)
-    try {
-      if ((config as any)?.useRedis && JIDMAP_ENRICH_ENABLED) {
-      }
-    } catch {}
     // Também espelhar o cache interno do Baileys (unoapi-auth:*:lid-mapping-*) para o JIDMAP
     try {
       if ((config as any)?.useRedis && JIDMAP_ENRICH_AUTH_ENABLED) {
@@ -495,132 +495,11 @@ export const connect = async ({
     } catch {}
   }
   const ensureLidResolverTimer = () => {
-    if (!LID_RESOLVER_ENABLED || lidResolverTimer) return
-    const every = Math.max(2000, LID_RESOLVER_SWEEP_INTERVAL_MS || 10000)
+    if (!lidResolverEnabled || lidResolverTimer) return
+    const every = Math.max(2000, lidResolverSweepIntervalMs || 10000)
     lidResolverTimer = setInterval(() => { sweepLidResolver().catch(() => undefined) }, every) as unknown as NodeJS.Timeout
+    lidResolverTimer.unref?.()
   }
-  const scheduleAckWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
-    try { if (!(ACK_RETRY_ENABLED)) return } catch { /* ignore */ return }
-    try { if (!messageId) return } catch { return }
-    const delaysEnv = (ACK_RETRY_DELAYS_MS || [])
-    const delays = (Array.isArray(delaysEnv) && delaysEnv.length > 0) ? delaysEnv : [8000, 30000, 60000]
-    const existing = pendingAckResend.get(messageId)
-    const maxAttempts = (ACK_RETRY_MAX_ATTEMPTS && ACK_RETRY_MAX_ATTEMPTS > 0) ? Math.min(ACK_RETRY_MAX_ATTEMPTS, delays.length) : delays.length
-    if (existing && existing.attemptIndex >= maxAttempts) return
-    const entry = existing || { to, message, options, attemptIndex: 0 }
-    const scheduleNext = () => {
-      if (entry.attemptIndex >= maxAttempts) return
-      const delayMs = delays[entry.attemptIndex]
-      if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
-      try {
-        const attemptNo = entry.attemptIndex + 1
-        logger.info('ACK watch: scheduling attempt %s/%s for id=%s to=%s in %sms', attemptNo, maxAttempts, messageId, entry.to, delayMs)
-      } catch {}
-      entry.timer = setTimeout(async () => {
-        try {
-          if (!pendingAckResend.has(messageId)) return
-          // Assert sessions for target (include PN variant and self when applicable)
-          try {
-            const attemptNo = entry.attemptIndex + 1
-            logger.info('ACK resend: attempt %s/%s for id=%s to=%s (assert+resend same id)', attemptNo, maxAttempts, messageId, entry.to)
-          } catch {}
-          try {
-            const assertOneToOne = async () => {
-              const set = new Set<string>()
-              set.add(entry.to)
-              try {
-                if (isLidUser(entry.to)) {
-                  try { set.add(jidNormalizedUser(entry.to)) } catch {}
-                } else if (isPnUser(entry.to)) {
-                  try {
-                    const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
-                    if (lid && typeof lid === 'string') set.add(lid)
-                  } catch {}
-                }
-                const self = state?.creds?.me?.id
-                if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
-              } catch {}
-              const targets = Array.from(set)
-              if (targets.length) await (sock as any).assertSessions(targets, true)
-            }
-            const assertGroup = async () => {
-              const gm = await dataStore.loadGroupMetada(to, sock!)
-              const raw: string[] = (gm?.participants || [])
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .map((p: any) => (p?.id || p?.jid || p?.lid || '').toString())
-                .filter((v) => !!v)
-              const lids: string[] = []
-              const pns: string[] = []
-              for (const j of raw) {
-                if (!j) continue
-                try {
-                  if (isLidUser(j)) { lids.push(j); try { const pn = jidNormalizedUser(j); if (pn) pns.push(pn as any) } catch {} }
-                  else { pns.push(j) }
-                } catch {}
-              }
-              try { const self = state?.creds?.me?.id; if (self) { if (isLidUser(self)) lids.push(self); else pns.push(self) } } catch {}
-              const unique = (arr: string[]) => Array.from(new Set(arr))
-              const lidsU = unique(lids)
-              const pnsU = unique(pns)
-              const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
-              const assertChunked = async (arr: string[]) => {
-                for (let i = 0; i < arr.length; i += chunkSize) {
-                  const chunk = arr.slice(i, i + chunkSize)
-                  try { if (chunk.length) await (sock as any).assertSessions(chunk, true) } catch (ce) { logger.warn(ce as any, 'Ignore error asserting group chunk %s-%s', i, i + chunk.length) }
-                }
-              }
-              if (lidsU.length) await assertChunked(lidsU)
-              if (pnsU.length) await assertChunked(pnsU)
-            }
-            if (typeof entry.to === 'string' && entry.to.endsWith('@g.us')) await assertGroup()
-            else await assertOneToOne()
-          } catch (e) { logger.warn(e as any, 'Ignore error asserting sessions before resend') }
-          // Resend with the same id (prefer LID when configured and mapping exists)
-          const opts = { ...(entry.options || {}), messageId }
-          let resendTo = entry.to
-          try {
-            const oneToOneAddressingMode = getOneToOneAddressingMode()
-            if (typeof entry.to === 'string' && isIndividualJid(entry.to) && oneToOneAddressingMode !== 'pn') {
-              if (isPnUser(entry.to)) {
-                try {
-                  const lid = await (dataStore as any).getLidForPn?.(phone, entry.to)
-                  if (lid && typeof lid === 'string') {
-                    resendTo = lid
-                    ;(opts as any).addressingMode = WAMessageAddressingMode.LID
-                    try { logger.warn('LID_SEND(ACK): switching PN %s -> LID %s', entry.to, resendTo) } catch {}
-                  } else {
-                    ;(opts as any).addressingMode = WAMessageAddressingMode.PN
-                  }
-                } catch {}
-              } else if (isLidUser(entry.to)) {
-                ;(opts as any).addressingMode = WAMessageAddressingMode.LID
-              }
-            }
-          } catch {}
-          try { await sock?.sendMessage(resendTo, entry.message, opts) } catch (e) { logger.warn(e as any, 'Resend with same id failed') }
-        } finally {
-          // advance attempt counter and either schedule next or fail out
-          entry.attemptIndex += 1
-          if (entry.attemptIndex < maxAttempts) {
-            scheduleNext()
-          } else {
-            // Exhausted attempts: notify own number and log
-            try {
-              const selfJid = phoneNumberToJid(phone)
-              const text = `Falha ao entregar a mensagem ${messageId} para ${entry.to} após 3 tentativas.`
-              logger.error('ACK timeout: %s', text)
-              try { await sock?.sendMessage(selfJid, { text }, {}) } catch (e) { logger.warn(e as any, 'Erro ao notificar falha no próprio número') }
-            } catch (e) { logger.warn(e as any, 'Erro ao preparar notificação de falha') }
-            try { if (entry.timer) clearTimeout(entry.timer) } catch {}
-            pendingAckResend.delete(messageId)
-          }
-        }
-      }, delayMs) as unknown as NodeJS.Timeout
-      pendingAckResend.set(messageId, entry)
-    }
-    scheduleNext()
-  }
-
   const purgeSignalSessionsFor = async (toJid: string, forceDeviceList = false) => {
     if (SIGNAL_CACHE_SAFE_MODE) return
     try {
@@ -675,139 +554,21 @@ export const connect = async ({
     } catch {}
   }
 
-  const scheduleDeliveryWatch = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
-    try { if (!DELIVERY_WATCHDOG_ENABLED || SIGNAL_CACHE_SAFE_MODE) return } catch { return }
-    try { if (!messageId) return } catch { return }
-    // Skip groups unless explicitly enabled
-    try { if (typeof to === 'string' && to.endsWith('@g.us') && !DELIVERY_WATCHDOG_GROUPS) return } catch {}
-    const maxAttempts = Math.max(0, DELIVERY_WATCHDOG_MAX_ATTEMPTS || 0)
-    const existing = pendingDeliveryWatch.get(messageId)
-    const entry = existing || { to, message, options, attempt: 0 }
-    const scheduleNext = () => {
-      if (entry.attempt >= maxAttempts) return
-      const delayMs = Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)
-      if (entry.timer) { try { clearTimeout(entry.timer) } catch {} }
-      entry.timer = setTimeout(async () => {
-        let shouldConsumeAttempt = true
-        try {
-          if (!pendingDeliveryWatch.has(messageId)) return
-          // Avoid concurrent resend flows for the same message:
-          // if ACK retry is still active, defer delivery watchdog attempt.
-          if (pendingAckResend.has(messageId)) {
-            shouldConsumeAttempt = false
-            try { logger.debug('DELIVERY watch: deferred because ACK retry is still pending for id=%s', messageId) } catch {}
-            return
-          }
-          try { logger.info('DELIVERY watch: firing attempt %s/%s for id=%s to=%s', entry.attempt + 1, maxAttempts, messageId, to) } catch {}
-          // Force: purge current signal sessions for target and assert again
-          // Purge device-list as well to force fresh device enumeration (multi-device "Aguardando" fix)
-          try { await purgeSignalSessionsFor(to, true) } catch {}
-          // Re-assert (cover PN/LID + self) and resend same id without userDevices cache
-          try {
-            const set = new Set<string>()
-            set.add(to)
-            try { if (isLidUser(to)) set.add(jidNormalizedUser(to)) } catch {}
-            const self = state?.creds?.me?.id
-            if (self) { set.add(self); try { set.add(jidNormalizedUser(self)) } catch {} }
-            const targets = Array.from(set)
-            if (targets.length) {
-              await (sock as any).assertSessions(targets, true)
-              try { logger.debug('DELIVERY watch: asserted %s targets before resend id=%s', targets.length, messageId) } catch {}
-              try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, targets) } catch {}
-            }
-          } catch {}
-          // BR alternate addressing: try toggling 12 <-> 13 digits for PN JIDs
-          let targetTo = to
-          try {
-            if (typeof to === 'string' && to.endsWith('@s.whatsapp.net')) {
-              const digits = ensurePn(to)
-              if (digits && digits.startsWith('55')) {
-                const ddd = digits.slice(2, 4)
-                let altDigits: string | null = null
-                if (digits.length === 12) {
-                  // build 13 candidate by inserting '9' after DDD when local starts with [6-9]
-                  const local = digits.slice(4)
-                  const cand13 = /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : ''
-                  if (cand13) altDigits = cand13
-                } else if (digits.length === 13) {
-                  // build 12 candidate by removing '9' after DDD
-                  const local9 = digits.slice(4)
-                  altDigits = `55${ddd}${local9.slice(1)}`
-                }
-                if (altDigits) {
-                  try {
-                    const res: any = await (sock as any)?.onWhatsApp?.(altDigits)
-                    const existsOk = Array.isArray(res) && !!res[0]?.exists && !!res[0]?.jid
-                    const altJid = Array.isArray(res) ? res[0]?.jid : undefined
-                    try { logger.info('BR_SEND_ORDER(WD): tested %s => exists=%s jid=%s', altDigits, `${existsOk}`, altJid || '<none>') } catch {}
-                    if (existsOk && altJid) {
-                      // Antes de alternar, afirma sessão do candidato alternativo para forçar renovação de chaves
-                      try {
-                        await (sock as any).assertSessions([altJid], true)
-                        try { logger.debug('BR_SEND_ORDER(WD): asserted alternate session %s', altJid) } catch {}
-                      } catch (ae) { logger.warn(ae as any, 'BR_SEND_ORDER(WD): assertSessions failed for alternate %s', altJid) }
-                      targetTo = altJid
-                      try { logger.warn('BR_SEND_ORDER(WD): choosing alternate candidate %s', targetTo) } catch {}
-                    } else {
-                      try { logger.warn('BR_SEND_ORDER(WD): keep original %s (alternate not valid)', to) } catch {}
-                    }
-                  } catch (oe) {
-                    logger.warn(oe as any, 'BR_SEND_ORDER(WD): onWhatsApp check failed for %s', altDigits)
-                  }
-                }
-              }
-            }
-          } catch {}
-          // Reassert final targets (original + escolhido) para garantir chaves antes do reenvio
-          try {
-            const finalSet = new Set<string>()
-            finalSet.add(to)
-            finalSet.add(targetTo)
-            try { if (isLidUser(to)) finalSet.add(jidNormalizedUser(to)) } catch {}
-            try { if (isLidUser(targetTo)) finalSet.add(jidNormalizedUser(targetTo)) } catch {}
-            const self = state?.creds?.me?.id
-            if (self) { finalSet.add(self); try { finalSet.add(jidNormalizedUser(self)) } catch {} }
-            const finalTargets = Array.from(finalSet)
-            if (finalTargets.length) {
-              await (sock as any).assertSessions(finalTargets, true)
-              try { logger.debug('DELIVERY watch: asserted final targets %s for resend id=%s', finalTargets.length, messageId) } catch {}
-              try { if (ONE_TO_ONE_ASSERT_PROBE_ENABLED && (config as any)?.useRedis) await countSignalSessionsForJids(phone, finalTargets) } catch {}
-            }
-          } catch (fae) { logger.warn(fae as any, 'DELIVERY watch: final assert failed before resend') }
-          const opts = { ...(entry.options || {}), messageId, useUserDevicesCache: false }
-          try { await sock?.sendMessage(targetTo, entry.message, opts); try { logger.info('DELIVERY watch: resent id=%s to=%s (same id)', messageId, targetTo) } catch {} } catch (e) { logger.warn(e as any, 'DeliveryWatch resend failed') }
-        } finally {
-          if (shouldConsumeAttempt) {
-            entry.attempt += 1
-          }
-          if (entry.attempt < maxAttempts) scheduleNext()
-          else {
-            try { if (entry.timer) clearTimeout(entry.timer) } catch {}
-            pendingDeliveryWatch.delete(messageId)
-          }
-        }
-      }, delayMs) as unknown as NodeJS.Timeout
-      pendingDeliveryWatch.set(messageId, entry)
-      try { logger.info('DELIVERY watch: scheduled attempt %s/%s for id=%s to=%s in %sms', entry.attempt + 1, maxAttempts, messageId, to, Math.max(5000, DELIVERY_WATCHDOG_MS || 45000)) } catch {}
-    }
-    scheduleNext()
-  }
-
   const isDeliveredLikeStatus = (status?: string) => {
     const s = `${status || ''}`.toLowerCase()
     return s === 'delivered' || s === 'read' || s === 'deleted' || s === 'failed'
   }
 
   const ensureStaleDeliveryRecoveryTimer = () => {
-    if (staleDeliveryRecoveryTimer || !DELIVERY_STALE_RECOVERY_ENABLED) return
-    const intervalMs = Math.max(5000, DELIVERY_STALE_RECOVERY_SCAN_MS || 30000)
+    if (staleDeliveryRecoveryTimer || !staleRecoveryEnabled) return
+    const intervalMs = Math.max(5000, staleRecoveryScanMs || 30000)
     staleDeliveryRecoveryTimer = setInterval(async () => {
       try {
         if (!pendingStaleDeliveryRecovery.size) return
         const now = Date.now()
         const batch = Array.from(pendingStaleDeliveryRecovery.entries())
           .filter(([, entry]) => entry.dueAt <= now)
-          .slice(0, Math.max(1, DELIVERY_STALE_RECOVERY_BATCH_SIZE || 1))
+          .slice(0, Math.max(1, staleRecoveryBatchSize || 1))
         for (const [messageId, entry] of batch) {
           try {
             const currentStatus = `${await dataStore.loadStatus(messageId) || ''}`.toLowerCase()
@@ -817,17 +578,17 @@ export const connect = async ({
               continue
             }
             if (currentStatus !== 'sent') {
-              entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+              entry.dueAt = now + Math.max(intervalMs, staleRecoveryDelayMs || 120000)
               logger.debug('STALE_DELIVERY recovery: wait id=%s status=%s', messageId, currentStatus || '<none>')
               continue
             }
-            if (entry.attempts >= Math.max(0, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS || 0)) {
+            if (entry.attempts >= Math.max(0, staleRecoveryMaxAttempts || 0)) {
               pendingStaleDeliveryRecovery.delete(messageId)
               logger.warn('STALE_DELIVERY recovery: exhausted id=%s to=%s status=%s', messageId, entry.to, currentStatus)
               continue
             }
             entry.attempts += 1
-            entry.dueAt = now + Math.max(intervalMs, DELIVERY_STALE_RECOVERY_MS || 120000)
+            entry.dueAt = now + Math.max(intervalMs, staleRecoveryDelayMs || 120000)
             logger.warn('STALE_DELIVERY recovery: attempt=%s id=%s to=%s status=%s', entry.attempts, messageId, entry.to, currentStatus)
             try { await purgeSignalSessionsFor(entry.to, true) } catch {}
             const targets = new Set<string>()
@@ -867,18 +628,18 @@ export const connect = async ({
         logger.warn(e as any, 'STALE_DELIVERY recovery: interval failed')
       }
     }, intervalMs) as unknown as NodeJS.Timeout
-    try { (staleDeliveryRecoveryTimer as any)?.unref?.() } catch {}
-    try { logger.info('STALE_DELIVERY recovery enabled: delay=%sms scan=%sms attempts=%s batch=%s', DELIVERY_STALE_RECOVERY_MS, intervalMs, DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS, DELIVERY_STALE_RECOVERY_BATCH_SIZE) } catch {}
+    staleDeliveryRecoveryTimer.unref?.()
+    try { logger.info('STALE_DELIVERY recovery enabled: delay=%sms scan=%sms attempts=%s batch=%s', staleRecoveryDelayMs, intervalMs, staleRecoveryMaxAttempts, staleRecoveryBatchSize) } catch {}
   }
 
   const scheduleStaleDeliveryRecovery = (to: string, messageId: string, message: AnyMessageContent, options: any) => {
     try {
-      if (!DELIVERY_STALE_RECOVERY_ENABLED || SIGNAL_CACHE_SAFE_MODE) return
+      if (!staleRecoveryEnabled || SIGNAL_CACHE_SAFE_MODE) return
       if (!messageId || !to) return
       const isGroup = typeof to === 'string' && to.endsWith('@g.us')
-      if (isGroup && !DELIVERY_STALE_RECOVERY_GROUPS) return
+      if (isGroup && !staleRecoveryGroups) return
       if (!isGroup && !isIndividualJid(to)) return
-      const maxPending = Math.max(100, DELIVERY_STALE_RECOVERY_MAX_PENDING || 0)
+      const maxPending = Math.max(100, staleRecoveryMaxPending || 0)
       if (!pendingStaleDeliveryRecovery.has(messageId) && pendingStaleDeliveryRecovery.size >= maxPending) {
         let oldestKey = ''
         let oldestAt = Infinity
@@ -891,7 +652,7 @@ export const connect = async ({
         if (oldestKey) pendingStaleDeliveryRecovery.delete(oldestKey)
       }
       const now = Date.now()
-      const delayMs = Math.max(30000, DELIVERY_STALE_RECOVERY_MS || 120000)
+      const delayMs = Math.max(30000, staleRecoveryDelayMs || 120000)
       pendingStaleDeliveryRecovery.set(messageId, {
         to,
         message,
@@ -1107,6 +868,7 @@ export const connect = async ({
             logger.debug('Ignore periodic assert (interval): %s', (e as any)?.message || e)
           }
         }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
+        periodicAssertTimer.unref?.()
       }
     } catch {}
     try {
@@ -1134,6 +896,7 @@ export const connect = async ({
             idleReconnectInProgress = false
           }
         }, BAILEYS_IDLE_RECONNECT_CHECK_MS) as unknown as NodeJS.Timeout
+        idleReconnectTimer.unref?.()
       }
     } catch {}
   }
@@ -1143,6 +906,11 @@ export const connect = async ({
     // Limpar timer do assert periódico ao desconectar
     try { if (periodicAssertTimer) { clearInterval(periodicAssertTimer); periodicAssertTimer = undefined; logger.debug('PERIODIC_ASSERT: timer cleared on close') } } catch {}
     try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined; logger.debug('IDLE_WATCHDOG: timer cleared on close') } } catch {}
+    if (intentionalProviderHandoff) {
+      logger.info('%s ignore close event during provider handoff', phone)
+      sock = undefined
+      return
+    }
     const { lastDisconnect } = payload || {}
     const statusCode = lastDisconnect?.error?.output?.statusCode
     if (await sessionStore.isStatusOffline(phone)) {
@@ -1198,9 +966,9 @@ export const connect = async ({
     // Consider new Alt addressing fields introduced with LIDs
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const k: any = key as any
-    let remoteJid = key.remoteJid || k.remoteJidAlt
+    const remoteJid = key.remoteJid || k.remoteJidAlt
     const id = key.id
-    let participant = key.participant || k.participantAlt
+    const participant = key.participant || k.participantAlt
     // For status@broadcast receipts, avoid attempting resend via getMessage
     let jid = remoteJid
     if (!jid && participant) {
@@ -1241,7 +1009,6 @@ export const connect = async ({
         try {
           const msgs: any[] = (upsert && upsert.messages) || []
           const now = Date.now()
-          const targets = new Set<string>()
           for (const m of msgs) {
             try {
               // Track recent contacts
@@ -1331,37 +1098,24 @@ export const connect = async ({
           } catch {}
           if (Array.isArray(updates)) {
             for (const u of updates) {
-              // Clear pending ack tracking once any status is observed for the message id
+              // Clear the short-lived 1:1 error fallback once a definitive status arrives.
               try {
                 const kid = u?.key?.id || u?.id
                 const st = u?.update?.status ?? u?.status
                 const stubParams = Array.isArray(u?.update?.messageStubParameters) ? u.update.messageStubParameters : []
                 const preserveAckRetry = stubParams.includes('463') || stubParams.includes('479')
                 if (kid && (st !== undefined && st !== null)) {
-                  const tracked = pendingAckResend.get(kid)
-                  if (tracked && !preserveAckRetry) {
-                    try { logger.info('ACK watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
-                    try { if (tracked.timer) clearTimeout(tracked.timer) } catch {}
-                    pendingAckResend.delete(kid)
-                  }
                   const fallbackTracked = pendingOneToOneErrorFallbacks.get(kid)
                   if (fallbackTracked && !preserveAckRetry) {
                     try { if (fallbackTracked.timer) clearTimeout(fallbackTracked.timer) } catch {}
                     pendingOneToOneErrorFallbacks.delete(kid)
                   }
-                  // Clear delivery watchdog only on delivered/read
                   const delivered = (() => {
                     if (typeof st === 'number') return st >= 3 // 3: DELIVERY_ACK, 4/5: READ/PLAYED
                     const s = `${st}`.toUpperCase()
                     return s === 'DELIVERY_ACK' || s === 'READ' || s === 'PLAYED'
                   })()
                   if (delivered) {
-                    const dw = pendingDeliveryWatch.get(kid)
-                    if (dw) {
-                      try { logger.info('DELIVERY watch: clearing on status=%s id=%s', `${st}`, kid) } catch {}
-                      try { if (dw.timer) clearTimeout(dw.timer) } catch {}
-                      pendingDeliveryWatch.delete(kid)
-                    }
                     clearStaleDeliveryRecovery(kid, `${st}`)
                   }
                 }
@@ -1426,14 +1180,14 @@ export const connect = async ({
                 isPnUser(key.remoteJid) &&
                 (params.includes('463') || params.includes('479'))
               ) {
-                const pending = pendingAckResend.get(key.id)
-                const fallbackPending = pending || pendingOneToOneErrorFallbacks.get(key.id)
+                const fallbackPending = pendingOneToOneErrorFallbacks.get(key.id)
                 if (fallbackPending && !pendingOneToOneAddressingFallback.has(key.id)) {
                   let lid: string | undefined
                   try { lid = await (dataStore as any).getLidForPn?.(phone, key.remoteJid) } catch {}
                   if (lid && typeof lid === 'string' && isLidUser(lid as any)) {
                     pendingOneToOneAddressingFallback.add(key.id)
-                    setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    const fallbackTimer = setTimeout(() => pendingOneToOneAddressingFallback.delete(key.id), 60_000)
+                    fallbackTimer.unref?.()
                     fallbackPending.to = lid
                     fallbackPending.options = {
                       ...(fallbackPending.options || {}),
@@ -1677,10 +1431,15 @@ export const connect = async ({
           logger.warn(e as any, 'Ignore error in periodic assert interval')
         }
       }, PERIODIC_ASSERT_INTERVAL_MS) as unknown as NodeJS.Timeout
+      periodicAssertTimer.unref?.()
     }
   } catch {}
 
   const reconnect = async (lastStatusCode?: number) => {
+    if (intentionalProviderHandoff) {
+      logger.info('%s reconnect skipped during provider handoff', phone)
+      return
+    }
     if (config.useRedis) {
       try {
         const key = configKey(phone)
@@ -1726,7 +1485,9 @@ export const connect = async ({
     }
   }
 
-  const close = async () => {
+  const close = async (options?: { preserveStatus?: boolean }) => {
+    const preserveStatus = options?.preserveStatus === true
+    if (preserveStatus) intentionalProviderHandoff = true
     logger.info(`${phone} close`)
     try { if (lidResolverTimer) { clearInterval(lidResolverTimer); lidResolverTimer = undefined } } catch {}
     try { if (idleReconnectTimer) { clearInterval(idleReconnectTimer); idleReconnectTimer = undefined } } catch {}
@@ -1759,7 +1520,7 @@ export const connect = async ({
       }
     }
     sock = undefined
-    if (!await sessionStore.isStatusRestartRequired(phone)) {
+    if (!preserveStatus && !await sessionStore.isStatusRestartRequired(phone)) {
       await sessionStore.setStatus(phone, 'offline')
     }
   }
@@ -1853,8 +1614,6 @@ export const connect = async ({
       const cached = await (dataStore as any).getContactInfo?.(cacheKey)
       const cachedLid = normalizeLidJid(cached?.lidJid)
       const cachedPn = cached?.pnJid && isPnUser(cached.pnJid as any) ? `${cached.pnJid}` : ''
-      const addressingMode = getOneToOneAddressingMode()
-      if (addressingMode === 'pn' && cachedPn) return cachedPn
       if (cachedLid) return cachedLid
       if (cachedPn) return cachedPn
     } catch {}
@@ -1893,7 +1652,7 @@ export const connect = async ({
         try { if (lidJid) await (dataStore as any).setContactInfo?.(lidJid, info) } catch {}
         try { if (validPn && lidJid) await (dataStore as any).setJidMapping?.(phone, validPn, lidJid) } catch {}
 
-        const resolved = getOneToOneAddressingMode() === 'pn' && validPn ? validPn : (lidJid || validPn || rawId)
+        const resolved = lidJid || validPn || rawId
         logger.info('USERNAME_RESOLVE: %s -> %s pn=%s lid=%s', recipient, resolved, validPn || '<none>', lidJid || '<none>')
         return resolved
       }
@@ -1988,10 +1747,8 @@ export const connect = async ({
     await validateStatus()
     // Prefer LID for 1:1 when possível; manter grupos inalterados
     const forceRemoteJid = options?.forceRemoteJid
-    const skipBrSendOrder = options?.skipBrSendOrder
     const forceSessionRefresh = !!(options?.forceSessionRefresh || options?.forceDeliveryRecovery)
     const forceSessionDeviceList = options?.forceDeviceList !== false
-    const oneToOneAddressingMode = getOneToOneAddressingMode()
     let idCandidate = forceRemoteJid || to
     if (!forceRemoteJid) {
       const usernameResolved = await resolveUsernameRecipient(idCandidate)
@@ -2044,135 +1801,29 @@ export const connect = async ({
       logger.debug(e as any, 'AUTH_CANONICAL: ignore error resolving canonical 1:1 destination')
     }
     let id = forceRemoteJid ? idCandidate : (isIndividualJid(idCandidate) ? await exists(idCandidate) : idCandidate)
-    try {
-      logger.debug('1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s skipBrSendOrder=%s brSendOrder=%s', to, idCandidate, id || '<none>', !!forceRemoteJid, !!skipBrSendOrder, !!BR_SEND_ORDER_ENABLED)
-    } catch {}
-    // BR send-order: tentar 12 dígitos primeiro; se não existir, tentar 13. Webhooks permanecem 13.
-    // Quando o input vier como LID, e o modo 1:1 for 'pn', usar o PN resolvido via exists() para aplicar a regra.
-    try {
-      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
-        // Reactions (and similar) require the exact remote key JID.
-        // Do not apply BR heuristics to the destination.
-      } else {
-        let raw = ensurePn(idCandidate)
-      try {
-        if ((!raw || raw.length === 0) && oneToOneAddressingMode === 'pn') {
-          raw = ensurePn(`${id || ''}`)
-        }
-      } catch {}
-      if (raw && raw.startsWith('55') && (raw.length === 12 || raw.length === 13)) {
-        const to12 = (() => {
-          if (raw.length === 12) return raw
-          const ddd = raw.slice(2, 4)
-          const local9 = raw.slice(4)
-          return `55${ddd}${local9.slice(1)}`
-        })()
-        const to13 = (() => {
-          if (raw.length === 13) return raw
-          const ddd = raw.slice(2, 4)
-          const local = raw.slice(4)
-          return /[6-9]/.test(local[0]) ? `55${ddd}9${local}` : raw
-        })()
-        let chosen: string | undefined
-        try {
-          const r12: any = await (sock as any)?.onWhatsApp?.(to12)
-          if (Array.isArray(r12) && r12[0]?.exists && r12[0]?.jid) {
-            chosen = r12[0].jid
-            logger.warn('BR_SEND_ORDER: using 12-digit candidate %s -> %s', to12, chosen)
-          }
-        } catch {}
-        if (!chosen) {
-          try {
-            const r13: any = await (sock as any)?.onWhatsApp?.(to13)
-            if (Array.isArray(r13) && r13[0]?.exists && r13[0]?.jid) {
-              chosen = r13[0].jid
-              logger.warn('BR_SEND_ORDER: fallback to 13-digit candidate %s -> %s', to13, chosen)
-            }
-          } catch {}
-        }
-        if (chosen) {
-          id = chosen
-        }
-      }
-      }
-    } catch {}
-    // preferAddressingMode declarado acima
-    // BR 9º dígito: só preferir LID quando o modo 1:1 NÃO for 'pn'.
-    // Em modo 'pn', mantemos PN para evitar enviar via LID.
-    try {
-      if (!BR_SEND_ORDER_ENABLED || forceRemoteJid || skipBrSendOrder) {
-        // Skip BR guard when disabled or explicitly bypassed.
-      } else if (oneToOneAddressingMode !== 'pn') {
-        const inDigits = `${idCandidate}`.replace(/\D/g, '')
-        const outDigits = `${id || ''}`.split('@')[0].replace(/\D/g, '')
-        if (
-          inDigits.startsWith('55') && inDigits.length === 13 && inDigits.charAt(4) === '9' &&
-          outDigits.startsWith('55') && outDigits.length === 12
-        ) {
-          try {
-            const lid = await (dataStore as any).getLidForPn?.(phone, (id as string))
-            if (lid && typeof lid === 'string') {
-              logger.warn('BR_GUARD: prefer LID %s over PN mismatch (%s vs %s)', lid, inDigits, outDigits)
-              id = lid
-            } else {
-              logger.warn('BR_GUARD: keeping WA JID %s for send (input=%s); webhook will normalize to 13-digit', id, inDigits)
-            }
-          } catch {}
-        }
-      }
-    } catch {}
+    logger.debug(
+      '1:1 resolve: to=%s idCandidate=%s resolved=%s forceRemoteJid=%s',
+      to,
+      idCandidate,
+      id || '<none>',
+      !!forceRemoteJid,
+    )
     let preferAddressingMode: WAMessageAddressingMode | undefined = undefined
     try {
       if (id && isIndividualJid(id)) {
-        if (oneToOneAddressingMode === 'pn') {
-          // Força PN: se for LID, tentar obter PN pelo cache/mapeamento e, se necessário, por exists()
-          if (isLidUser(id)) {
-            try {
-              let pnJid: string | undefined
-              try { pnJid = await (dataStore as any).getPnForLid?.(phone, id) } catch {}
-              if (!pnJid) {
-                try { const cand = jidNormalizedUser(id); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {}
-              }
-              if (!pnJid) {
-                try {
-                  const digits = (() => { try { return jidToPhoneNumber(id, '') } catch { return '' } })() || ensurePn(idCandidate)
-                  if (digits) {
-                    const waJid = await exists(digits)
-                    if (waJid && isPnUser(waJid as any)) pnJid = waJid as any
-                  }
-                } catch {}
-              }
-              if (pnJid && isPnUser(pnJid as any)) {
-                logger.debug('1:1 send: forçando PN %s (de LID %s)', pnJid, id)
-                id = pnJid
-                preferAddressingMode = WAMessageAddressingMode.PN
-              } else {
-                // Manter preferência PN para options; id pode seguir LID se PN não for resolvível com segurança
-                preferAddressingMode = WAMessageAddressingMode.PN
-                logger.debug('1:1 send: preferência PN, mas sem PN resolvido para %s; mantendo destino atual', id)
-              }
-            } catch {
-              preferAddressingMode = WAMessageAddressingMode.PN
-            }
-          } else {
-            preferAddressingMode = WAMessageAddressingMode.PN
-          }
+        if (isLidUser(id)) {
+          preferAddressingMode = WAMessageAddressingMode.LID
+          try { scheduleLidResolve(id) } catch {}
         } else {
-          // Padrão LID: manter LID; ou, se PN, usar LID se mapeado
-          if (isLidUser(id)) {
-            preferAddressingMode = WAMessageAddressingMode.LID
-            try { scheduleLidResolve(id) } catch {}
-          } else {
-            try {
-              const lid = await (dataStore as any).getLidForPn?.(phone, id)
-              if (lid && typeof lid === 'string') {
-                logger.debug('1:1 send: trocando alvo para LID %s (a partir do PN %s)', lid, id)
-                id = lid
-                preferAddressingMode = WAMessageAddressingMode.LID
-                try { scheduleLidResolve(id) } catch {}
-              }
-            } catch {}
-          }
+          try {
+            const lid = await (dataStore as any).getLidForPn?.(phone, id)
+            if (lid && typeof lid === 'string') {
+              logger.debug('1:1 send: trocando alvo para LID %s (a partir do PN %s)', lid, id)
+              id = lid
+              preferAddressingMode = WAMessageAddressingMode.LID
+              try { scheduleLidResolve(id) } catch {}
+            }
+          } catch {}
         }
       }
     } catch {}
@@ -2266,7 +1917,7 @@ export const connect = async ({
     }
     // For group sends, proactively assert sessions with safeguards for large groups
     try {
-      if (id && id.endsWith('@g.us') && GROUP_SEND_PREASSERT_SESSIONS) {
+      if (id && id.endsWith('@g.us') && groupPreassertSessions) {
         const gm = await dataStore.loadGroupMetada(id, sock!)
         const raw: string[] = (gm?.participants || [])
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2277,15 +1928,15 @@ export const connect = async ({
         try {
           const now = Date.now()
           const last = lastGroupAssert.get(id) || 0
-          if (now - last < GROUP_ASSERT_FLOOD_WINDOW_MS) {
-            logger.debug('Skip preassert for %s (within flood window %sms)', id, GROUP_ASSERT_FLOOD_WINDOW_MS)
+          if (now - last < groupAssertFloodWindowMs) {
+            logger.debug('Skip preassert for %s (within flood window %sms)', id, groupAssertFloodWindowMs)
             throw new Error('skip_preassert_flood_window')
           }
           lastGroupAssert.set(id, now)
         } catch {}
         // For very large groups, skip heavy asserts; manter LID como modo preferencial
-        if (groupSize > GROUP_LARGE_THRESHOLD) {
-          logger.debug('Skip preassert for large group %s (size=%s > %s)', id, groupSize, GROUP_LARGE_THRESHOLD)
+        if (groupSize > largeGroupThreshold) {
+          logger.debug('Skip preassert for large group %s (size=%s > %s)', id, groupSize, largeGroupThreshold)
           // skip heavy assert entirely for large groups
           throw new Error('skip_preassert_large_group')
         }
@@ -2316,7 +1967,7 @@ export const connect = async ({
         const unique = (arr: string[]) => Array.from(new Set(arr))
         const lidsU = unique(lids)
         const pnsU = unique(pnsFallback)
-        const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
+        const chunkSize = Math.max(20, groupAssertChunkSize)
         const assertChunked = async (arr: string[]) => {
           for (let i = 0; i < arr.length; i += chunkSize) {
             const chunk = arr.slice(i, i + chunkSize)
@@ -2443,33 +2094,14 @@ export const connect = async ({
       // general path: send, with fallback when libsignal reports missing sessions
       let full
       try {
-        // Guarda final: respeitar o modo 1:1 imediatamente antes do envio
+        // Guarda final: conversas 1:1 usam LID quando o mapeamento está disponível.
         try {
           if (typeof id === 'string' && isIndividualJid(id)) {
-            if (oneToOneAddressingMode === 'lid' && isPnUser(id)) {
+            if (isPnUser(id)) {
               const lid = await (dataStore as any).getLidForPn?.(phone, id)
               if (lid && typeof lid === 'string') {
                 id = lid
                 ;(opts as any).addressingMode = WAMessageAddressingMode.LID
-              }
-            } else if (oneToOneAddressingMode === 'pn' && isLidUser(id)) {
-              let pnJid: string | undefined
-              try { pnJid = await (dataStore as any).getPnForLid?.(phone, id) } catch {}
-              if (!pnJid) {
-                try { const cand = jidNormalizedUser(id); if (cand && isPnUser(cand as any)) pnJid = cand as any } catch {}
-              }
-              if (!pnJid) {
-                try {
-                  const digits = (() => { try { return jidToPhoneNumber(id, '') } catch { return '' } })() || ensurePn(idCandidate)
-                  if (digits) {
-                    const waJid = await exists(digits)
-                    if (waJid && isPnUser(waJid as any)) pnJid = waJid as any
-                  }
-                } catch {}
-              }
-              if (pnJid && isPnUser(pnJid as any)) {
-                id = pnJid
-                ;(opts as any).addressingMode = WAMessageAddressingMode.PN
               }
             }
           }
@@ -2483,8 +2115,8 @@ export const connect = async ({
             // Flood window guard per group
             const now = Date.now()
             const last = lastGroupAssert.get(id) || 0
-            if (now - last < GROUP_ASSERT_FLOOD_WINDOW_MS) {
-              logger.warn('Skip heavy assert for %s (within flood window %sms)', id, GROUP_ASSERT_FLOOD_WINDOW_MS)
+            if (now - last < groupAssertFloodWindowMs) {
+              logger.warn('Skip heavy assert for %s (within flood window %sms)', id, groupAssertFloodWindowMs)
               throw err
             }
             lastGroupAssert.set(id, now)
@@ -2518,7 +2150,7 @@ export const connect = async ({
             const targets = Array.from(new Set([...lids, ...pnsFallback]))
             const groupSize = raw.length
             // If the group is very large, avoid heavy asserts and rely on PN addressing + delays
-            if (groupSize > GROUP_LARGE_THRESHOLD) {
+            if (groupSize > largeGroupThreshold) {
               const extra = Math.min(NO_SESSION_RETRY_MAX_DELAY_MS, (Math.ceil(groupSize / 200) * NO_SESSION_RETRY_PER_200_DELAY_MS))
               logger.warn('Large group (%s) detected for %s; skipping heavy assert and retrying after %sms', groupSize, id, NO_SESSION_RETRY_BASE_DELAY_MS + extra)
               try { await delay(NO_SESSION_RETRY_BASE_DELAY_MS + extra) } catch {}
@@ -2528,7 +2160,7 @@ export const connect = async ({
             }
             if (targets.length) {
               // Try bulk first, then chunked, then split-by-scheme (LID vs PN) chunked
-              const chunkSize = Math.max(20, GROUP_ASSERT_CHUNK_SIZE)
+              const chunkSize = Math.max(20, groupAssertChunkSize)
               const assertChunked = async (arr: string[]) => {
                 for (let i = 0; i < arr.length; i += chunkSize) {
                   const chunk = arr.slice(i, i + chunkSize)
@@ -2607,10 +2239,9 @@ export const connect = async ({
                 if (current?.timer === entry.timer) pendingOneToOneErrorFallbacks.delete(mid)
               } catch {}
             }, 90_000) as unknown as NodeJS.Timeout
+            entry.timer.unref?.()
             pendingOneToOneErrorFallbacks.set(mid, entry)
           }
-          scheduleAckWatch(id, mid, message, opts)
-          scheduleDeliveryWatch(id, mid, message, opts)
           scheduleStaleDeliveryRecovery(id, mid, message, opts)
         }
       } catch {}
@@ -2734,14 +2365,15 @@ export const connect = async ({
   if (config.autoRestartMs) {
     const message = t('auto_restart', config.autoRestartMs)
     await onNotification(message, true)
-    setInterval(reconnect, config.autoRestartMs)
+    const autoRestartTimer = setInterval(reconnect, config.autoRestartMs)
+    autoRestartTimer.unref?.()
   }
 
   const rejectCall: rejectCall = async (callId: string, callFrom: string) => {
     await validateStatus()
     // A rejeição precisa usar o mesmo identificador que originou o evento de chamada.
     // Apenas removemos sufixo técnico de device (:NN) para não enviar JID inválido ao Baileys.
-    let target = normalizeReceiptJid(callFrom) || callFrom
+    const target = normalizeReceiptJid(callFrom) || callFrom
     logger.info('CALL_REJECT final target: callId=%s from=%s target=%s', callId, callFrom, target)
     try {
       const result = await sock?.rejectCall(callId, target)
@@ -2881,7 +2513,8 @@ export const connect = async ({
     const socketConfig: UserFacingSocketConfig = {
       auth: state,
       logger: loggerBaileys,
-      markOnlineOnConnect: config.markOnlineOnConnect !== false,
+      markOnlineOnConnect: config.markOnlineOnConnect === true
+        || (config.markOnlineOnConnect as unknown) === 'true',
       syncFullHistory: allowFullHistoryForSession,
       shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
         const syncType = msg?.syncType as proto.HistorySync.HistorySyncType | undefined
@@ -2929,12 +2562,7 @@ export const connect = async ({
       qrTimeout: config.qrTimeoutMs,
       countryCode: `${(config as any).baileysCountryCode || 'BR'}`.toUpperCase(),
     }
-    ;(socketConfig as any).wamTelemetry = {
-      enabled: BAILEYS_WAM_TELEMETRY,
-      debugEvents: BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS,
-      flushIntervalMs: BAILEYS_WAM_TELEMETRY_FLUSH_MS,
-      maxEvents: BAILEYS_WAM_TELEMETRY_MAX_EVENTS,
-    }
+    ;(socketConfig as any).wamTelemetry = baileysWamTelemetry
     if (whatsappVersion) {
       socketConfig.version = whatsappVersion
       resolvedWhatsappVersion = whatsappVersion
@@ -2998,7 +2626,7 @@ export const connect = async ({
           try {
             return target(...argumentsList)
           } catch (error) {
-            console.error(error, error.isBoom, !error.isServer)
+            logger.error(error, 'Baileys proxy invocation failed isBoom=%s isServer=%s', error?.isBoom, error?.isServer)
             if (error && error.isBoom && !error.isServer) {
               onClose({ lastDisconnect: { error } })
               return
@@ -3010,7 +2638,7 @@ export const connect = async ({
       }
       sock = new Proxy(proxy, handler)
     } catch (error: any) {
-      console.log(error, error.isBoom, !error.isServer)
+      logger.error(error, 'Baileys socket creation failed isBoom=%s isServer=%s', error?.isBoom, error?.isServer)
       if (error && error.isBoom && !error.isServer) {
         await onClose({ lastDisconnect: { error } })
         return false
@@ -3047,7 +2675,7 @@ export const connect = async ({
           const message = t('pairing_code', beatyCode)
           await onNotification(message, true)
         } catch (error) {
-          console.error(error)
+          logger.error(error, 'Baileys pairing-code request failed')
           throw error
         }
       }

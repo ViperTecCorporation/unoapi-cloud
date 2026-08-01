@@ -18,7 +18,7 @@ import {
 } from './defaults'
 
 import { amqpConsume } from './amqp'
-import { startRedis } from './services/redis'
+import { ensureRequiredRedis } from './services/redis_runtime'
 import { OutgoingCloudApi } from './services/outgoing_cloud_api'
 import { getConfigRedis } from './services/config_redis'
 import logger from './services/logger'
@@ -37,6 +37,7 @@ import { addToBlacklist } from './jobs/add_to_blacklist'
 import { TimerJob } from './jobs/timer'
 import { TranscriberJob } from './jobs/transcriber'
 import { OutgoingAmqp } from './services/outgoing_amqp'
+import { runRabbitQueueCleanupMigration } from './services/rabbitmq_queue_cleanup'
 
 const incomingAmqp: Incoming = new IncomingAmqp(getConfigRedis)
 const outgoingCloudApi: Outgoing = new OutgoingCloudApi(getConfigRedis, isInBlacklistInRedis, addToBlacklistRedis)
@@ -59,7 +60,12 @@ if (process.env.SENTRY_DSN) {
 }
 
 const startBroker = async () => {
-  await startRedis()
+  await ensureRequiredRedis()
+  try {
+    await runRabbitQueueCleanupMigration()
+  } catch (error) {
+    logger.warn(error as any, 'RabbitMQ deprecated queue cleanup migration failed; broker will continue')
+  }
 
   const prefetch = UNOAPI_QUEUE_OUTGOING_PREFETCH
 
@@ -148,7 +154,10 @@ const startBroker = async () => {
 
   logger.info('Unoapi Cloud version %s started broker!', version)
 }
-startBroker()
+startBroker().catch((error) => {
+  logger.error(error, 'Failed to start broker: Redis is required')
+  process.exit(1)
+})
 
 process.on('uncaughtException', (reason: any) => {
   if (process.env.SENTRY_DSN) {

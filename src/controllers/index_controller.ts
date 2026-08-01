@@ -4,6 +4,14 @@ import { createRequire } from 'module'
 import fs from 'fs'
 import path from 'path'
 import YAML from 'yaml'
+import { versionStatusService } from '../services/version_status'
+
+const PUBLIC_APP_ROOT = path.resolve('./public/app')
+
+export const resolvePublicAppAsset = (file: string): string | undefined => {
+  const target = path.resolve(PUBLIC_APP_ROOT, `${file || ''}`)
+  return target.startsWith(`${PUBLIC_APP_ROOT}${path.sep}`) ? target : undefined
+}
 
 class IndexController {
 
@@ -100,6 +108,13 @@ class IndexController {
     return res.type('image/png').sendFile(path.resolve('./logos/favicon-32x32.png'))
   }
 
+  public appFile(req: Request, res: Response) {
+    const file = (req.params as any)[0] || ''
+    const target = resolvePublicAppAsset(file)
+    if (!target) return res.status(404).send('Not found')
+    return res.sendFile(target)
+  }
+
   public ping(req: Request, res: Response) {
     logger.debug('ping method %s', JSON.stringify(req.method))
     logger.debug('ping headers %s', JSON.stringify(req.headers))
@@ -107,6 +122,10 @@ class IndexController {
     logger.debug('ping body %s', JSON.stringify(req.body))
     res.set('Content-Type', 'text/plain')
     return res.status(200).send('pong!')
+  }
+
+  public async versionStatus(_req: Request, res: Response) {
+    return res.status(200).json(await versionStatusService.get())
   }
 
   public debugToken(req: Request, res: Response) {

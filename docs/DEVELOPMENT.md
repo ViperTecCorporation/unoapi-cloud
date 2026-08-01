@@ -22,7 +22,7 @@
 - Health: `GET /ping` → `pong!`
 - Session UI: `GET /session/{phone}` → QR code + pairing/config UI via Socket.IO.
 - Send Message: `POST /v15.0/{phone}/messages` (Cloud API shape).
-- Contacts validation (standalone): `POST /{phone}/contacts`.
+- Contacts validation: `POST /{phone}/contacts`.
 - Group cache list: `GET /v15.0/{phone}/groups`.
 - Group participants: `GET /v15.0/{phone}/groups/{groupId}/participants`.
 
@@ -75,7 +75,7 @@ POST /v15.0/{phone}/messages
 {
   "to": "120363012345678@g.us",
   "type": "text",
-  "text": { "body": "Oi @5566996269251 e @5566996222471" }
+  "text": { "body": "Oi @5511999999999 e @5511888888888" }
 }
 ```
 
@@ -84,14 +84,14 @@ POST /v15.0/{phone}/messages
 {
   "to": "120363012345678@g.us",
   "type": "text",
-  "text": { "body": "Oi @5566996269251, @5566996222471 @all" }
+  "text": { "body": "Oi @5511999999999, @5511888888888 @all" }
 }
 ```
 
 ## Message Edit Payload
 
 Unoapi accepts a Meta-like `type: "message_edit"` payload on `POST /v15.0/{phone}/messages`.
-This is an Unoapi/Baileys extension; the official Meta Cloud API does not expose this send payload.
+This is an Unoapi extension supported by both Baileys and Zapo; the official Meta Cloud API does not expose this send payload.
 
 1:1 example:
 
@@ -100,7 +100,7 @@ POST /v15.0/{phone}/messages
 {
   "messaging_product": "whatsapp",
   "recipient_type": "individual",
-  "to": "5566996269251",
+  "to": "5511999999999",
   "type": "message_edit",
   "context": {
     "message_id": "uno-message-id-original"
@@ -124,16 +124,17 @@ POST /v15.0/{phone}/messages
     "message_id": "uno-message-id-original"
   },
   "text": {
-    "body": "@5566996269251 edited text"
+    "body": "@5511999999999 edited text"
   },
-  "mentions": ["5566996269251"]
+  "mentions": ["5511999999999"]
 }
 ```
 
 Rules:
 - `context.message_id` must be the Unoapi id of the original sent message.
-- Unoapi resolves that id to the original Baileys provider id/key through DataStore/Redis.
-- The final Baileys call is equivalent to `sock.sendMessage(jid, { text, edit: originalMessageKey })`.
+- Unoapi resolves that id to the original provider id/key through DataStore.
+- The original message must have been sent by the connected account (`fromMe: true`).
+- Baileys uses `sock.sendMessage(jid, { text, edit: originalMessageKey })`; Zapo uses `client.message.send(jid, content, { editKey: { id, participant? } })`.
 - For group edits, `to` should be the group id (`@g.us`). Mentions follow the same normalization rules as group text messages.
 
 ## Status/Broadcast Testing

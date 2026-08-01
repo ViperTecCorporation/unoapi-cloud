@@ -8,7 +8,7 @@ Important: UNO emulates Graph-like API calls, but it does not replace the real M
 
 ## Backward compatibility kept
 
-- `phoneNumberId` remains the value you already use today (for example: `5566996269251`).
+- `phoneNumberId` remains the value you already use today (for example: `5511999999999`).
 - UNO does not auto-change `phoneNumberId`.
 - Legacy routes remain available.
 
@@ -34,14 +34,14 @@ Important: UNO emulates Graph-like API calls, but it does not replace the real M
 ## UNO session setup example
 
 ```bash
-curl -X POST "https://uno.yourdomain.com/v19.0/5566996269251/register" \
+curl -X POST "https://uno.yourdomain.com/v19.0/5511999999999/register" \
   -H "Authorization: your_admin_token" \
   -H "Content-Type: application/json" \
   -d '{
     "authToken": "client_token",
     "webhookForward": {
       "version": "v19.0",
-      "phoneNumberId": "5566996269251",
+      "phoneNumberId": "5511999999999",
       "token": "client_token",
       "timeoutMs": 6000
     }
@@ -75,7 +75,7 @@ Set variables:
 ```bash
 UNO_BASE="https://uno.yourdomain.com"
 TOKEN="client_token"
-PHONE_NUMBER_ID="5566996269251"
+PHONE_NUMBER_ID="5511999999999"
 ```
 
 1) Validate token:
@@ -120,8 +120,8 @@ Example:
 {
   "data": [
     {
-      "session_phone": "5566996269251",
-      "phone_number_id": "5566996269251",
+      "session_phone": "5511999999999",
+      "phone_number_id": "5511999999999",
       "business_account_id": "154253852486255"
     }
   ]
@@ -155,7 +155,7 @@ curl -sS -X POST \
 In Odoo WhatsApp connector (Enterprise):
 
 1. API token: same token configured in UNO.
-2. `Phone Number ID`: use your session value (legacy behavior preserved), example `5566996269251`.
+2. `Phone Number ID`: use your session value (legacy behavior preserved), example `5511999999999`.
 3. `WABA ID`: use the value returned by:
    - `GET /v19.0/me/whatsapp_business_accounts`
 4. Webhook callback:

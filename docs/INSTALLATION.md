@@ -9,6 +9,10 @@ This material covers the installation and initial configuration of Unoapi Cloud 
 - Linux Debian or Ubuntu
 - Domains
 
+For a native Debian/Ubuntu installation without Docker, use the tested
+`systemd` installer documented in
+[NATIVE_LINUX_INSTALLATION.md](NATIVE_LINUX_INSTALLATION.md).
+
 ## Server Setup
 
 ### Requirements

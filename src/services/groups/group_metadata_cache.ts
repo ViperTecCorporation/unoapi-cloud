@@ -1,17 +1,17 @@
-import { GroupMetadata } from '@whiskeysockets/baileys'
+import type { WhatsAppGroupMetadata } from '../whatsapp_types'
 
 const hasText = (value: unknown) => typeof value === 'string' && value.trim().length > 0
 
 export const mergeGroupMetadataForCache = (
-  previous: GroupMetadata | undefined,
-  next: GroupMetadata,
-): GroupMetadata => {
+  previous: WhatsAppGroupMetadata | undefined,
+  next: WhatsAppGroupMetadata,
+): WhatsAppGroupMetadata => {
   if (!previous) return next
 
   const merged = {
     ...previous,
     ...next,
-  } as GroupMetadata
+  } as WhatsAppGroupMetadata
 
   if (!hasText((next as any).subject) && hasText((previous as any).subject)) {
     const writable = merged as any

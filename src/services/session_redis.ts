@@ -1,4 +1,4 @@
-import { BufferJSON } from '@whiskeysockets/baileys'
+import { bufferJson } from './buffer_json'
 import { setAuth, getAuth, delAuth, getAuthRawMany } from './redis'
 import { session, writeData, readData, readManyData, removeData, getKey } from './session'
 import logger from './logger'
@@ -14,7 +14,7 @@ export const sessionRedis: session = async (phone: string) => {
         getBase(key),
         data,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (value: any) => JSON.stringify(value, BufferJSON.replacer)
+        (value: any) => JSON.stringify(value, bufferJson.replacer)
       )
     } catch (error) {
       logger.error(error, 'Error on write auth')
@@ -26,7 +26,7 @@ export const sessionRedis: session = async (phone: string) => {
     try {
       return getAuth(getBase(key), (value: string) => {
         try {
-          return value ? JSON.parse(value, BufferJSON.reviver) : null
+          return value ? JSON.parse(value, bufferJson.reviver) : null
         } catch (error) {
           logger.error(`Error on parsing auth: ${value}`)
           throw error
@@ -52,7 +52,7 @@ export const sessionRedis: session = async (phone: string) => {
           continue
         }
         try {
-          out[keys[i]] = JSON.parse(raw, BufferJSON.reviver)
+          out[keys[i]] = JSON.parse(raw, bufferJson.reviver)
         } catch (error) {
           logger.error(`Error on parsing auth: ${raw}`)
           throw error

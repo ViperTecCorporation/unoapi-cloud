@@ -2,6 +2,11 @@
 
 This guide explains key environment variables, when to use them, and why. Copy `.env.example` to `.env` and adjust for your setup.
 
+See [FRONTEND.md](FRONTEND.md) for the panel architecture and legacy Baileys
+worker operation.
+See [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) for single-container and
+role-separated deployments.
+
 ## Core Server
 
 - `PORT` Ã¢â‚¬â€ HTTP port. Default `9876`.
@@ -16,12 +21,6 @@ This guide explains key environment variables, when to use them, and why. Copy `
 - `CONNECTION_TYPE` Ã¢â‚¬â€ `qrcode` | `pairing_code`. Default `qrcode`.
   - Use `pairing_code` for headless pairing without showing QR.
   - Example: `CONNECTION_TYPE=pairing_code`
-- `QR_TIMEOUT_MS` Ã¢â‚¬â€ Time to wait for QR scan. Default `60000`.
-  - Increase on slow pairing scenarios.
-  - Example: `QR_TIMEOUT_MS=120000`
-- `VALIDATE_SESSION_NUMBER` Ã¢â‚¬â€ Ensure configured phone matches session. Default `false`.
-  - Use `true` to prevent cross-session mismatches.
-  - Example: `VALIDATE_SESSION_NUMBER=true`
 - `CLEAN_CONFIG_ON_DISCONNECT` Ã¢â‚¬â€ Clean saved configs when disconnecting. Default `false`.
   - Use to force a fresh state on disconnect.
   - Example: `CLEAN_CONFIG_ON_DISCONNECT=true`
@@ -36,9 +35,13 @@ This guide explains key environment variables, when to use them, and why. Copy `
 
 ## Redis & RabbitMQ
 
-- `REDIS_URL` Ã¢â‚¬â€ Redis connection string.
-  - Use to enable Redis store (sessions/data). Without it, filesystem store is used.
+- `REDIS_URL` Ã¢â‚¬â€ Redis/Valkey connection string. Required for every UnoAPI runtime.
+  - Startup fails before opening HTTP or AMQP consumers when it is missing or Redis cannot answer `PING`.
+  - Filesystem is only a media backend when S3 is absent; it is not a fallback for sessions, configuration, IDs, leases or caches.
   - Example: `REDIS_URL=redis://localhost:6379`
+- `WHATSAPP_ENGINE` — default engine for new sessions without a persisted `provider`; defaults to `zapo`. Persisted legacy sessions without the field are identified as Baileys, shown offline and must be removed before a new Zapo pairing.
+- `UNOAPI_WORKER_ENGINE` — engine owned by the worker process. The supported runtime value is `zapo`; Baileys is suppressed in code and has no container.
+- `UNOAPI_PROCESS_ROLE` — optional role loaded by the cloud entrypoint: `web`, `broker` or `worker`. When omitted, the process starts all roles. The `broker` role also runs bulk, commander and bulk-status consumers.
 - `AMQP_URL` Ã¢â‚¬â€ RabbitMQ URL for broker features.
   - Use to enable queue processing (web/worker model, retries, dead letters).
   - Example: `AMQP_URL=amqp://guest:guest@localhost:5672?frameMax=8192`
@@ -72,100 +75,28 @@ This guide explains key environment variables, when to use them, and why. Copy `
 
 ## Group Sending
 
-- `GROUP_SEND_MEMBERSHIP_CHECK` Ã¢â‚¬â€ Warn if not a group member. Default `true`.
-- `GROUP_SEND_PREASSERT_SESSIONS` Ã¢â‚¬â€ Pre-assert sessions for participants. Default `true`.
-- `GROUP_SEND_ADDRESSING_MODE` Ã¢â‚¬â€ Prefer `pn` or `lid`. Default unset (treated as LID by default).
-- `GROUP_SEND_FALLBACK_ORDER` Ã¢â‚¬â€ Fallback order on ack 421, e.g., `pn,lid`. Default `pn,lid`.
-  - Use to improve reliability in groups under network/device quirks.
-  - Example: `GROUP_SEND_ADDRESSING_MODE=pn`
+Baileys group membership checks, LID addressing and Signal assert limits are
+internal policies in `src/services/baileys_group_policy.ts`. They have no
+environment overrides and are not used by Zapo.
 
-## ACK-retry (server-ack resend)
+## Baileys delivery recovery
 
-- `ACK_RETRY_ENABLED` — Enable/disable scheduling of ACK-retry. Default `true`.
-  - Set `false` to disable the resend attempts triggered by server-ack only.
-- `ACK_RETRY_DELAYS_MS` — Comma-separated delays (ms) between retries. Default `8000,30000,60000`.
-- `ACK_RETRY_MAX_ATTEMPTS` — Optional hard cap for attempts. If > 0, limits retries to this number.
-
-Example:
-```
-ACK_RETRY_ENABLED=false
-# Or keep enabled and reduce attempts
-# ACK_RETRY_MAX_ATTEMPTS=1
-```
-
-## Low-cost delivery recovery
-
-- `DELIVERY_STALE_RECOVERY_ENABLED` — Enables automatic recovery for 1:1 messages that remain only as `sent`. Default `true`.
-- `DELIVERY_STALE_RECOVERY_MS` — Minimum age before recovery is attempted. Default `45000`.
-- `DELIVERY_STALE_RECOVERY_SCAN_MS` — One scan interval per session. Default `15000`.
-- `DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS` — Max resend attempts per stuck message. Default `1`.
-- `DELIVERY_STALE_RECOVERY_BATCH_SIZE` — Max stale messages recovered per scan. Default `3`.
-- `DELIVERY_STALE_RECOVERY_MAX_PENDING` — Local queue cap per session. Default `2000`.
-- `DELIVERY_STALE_RECOVERY_GROUPS` — Also recover group sends. Default `false`.
-
-This is lighter than `DELIVERY_WATCHDOG_ENABLED`: it does not create one timer per message and only refreshes Signal/device-list when the stored status is still `sent` after the configured window.
-
-Example:
-```
-DELIVERY_WATCHDOG_ENABLED=false
-DELIVERY_STALE_RECOVERY_ENABLED=true
-DELIVERY_STALE_RECOVERY_MS=45000
-DELIVERY_STALE_RECOVERY_SCAN_MS=15000
-DELIVERY_STALE_RECOVERY_MAX_ATTEMPTS=1
-DELIVERY_STALE_RECOVERY_BATCH_SIZE=3
-```
+Recovery for Baileys messages stuck at `sent` is an internal bounded policy in
+`src/services/baileys_delivery_policy.ts`. It has no environment overrides and
+is not used by Zapo.
 
 ## One‑to‑One (Direct) Sending
 
-- `ONE_TO_ONE_ADDRESSING_MODE` — Prefer addressing for direct chats. `pn` | `lid`. Default `pn`.
-  - `pn`: send using phone‑number JID (`@s.whatsapp.net`). Avoids split threads in some clients (iPhone).
-  - `lid`: prefer LID (`@lid`) when mapping exists; may reduce first‑contact session issues.
-- `ONE_TO_ONE_PREASSERT_ENABLED` — Pre‑assert Signal sessions for the peer before sending. Default `true`.
-  - Improves reliability in the first message after long idle periods or device changes.
-- `ONE_TO_ONE_PREASSERT_COOLDOWN_MS` — Per‑recipient cooldown for pre‑assert (milliseconds). Default `7200000` (120 minutes).
-  - Reduces CPU/Redis usage by not pre‑asserting on every message to the same contact.
-- `ONE_TO_ONE_ASSERT_PROBE_ENABLED` — When `true`, log a Redis key count probe after pre‑assert (observability only). Default `false`.
-  - Leave `false` to avoid extra Redis scans in production.
+- Direct chats always use the canonical LID (`@lid`) for transport. Phone numbers remain additional identity metadata and this behavior is not configurable.
+- Baileys Signal pre-assert, decrypt self-heal, periodic assert and session-purge safeguards are internal policies. They are not runtime environment settings and are never read by the Zapo adapter.
+- Baileys LID-to-PN background enrichment is bounded by `src/services/baileys_identity_policy.ts`; it has no environment overrides and is not used by Zapo.
 
-Example:
-```env
-# Prefer PN for 1:1 and pre‑assert at most once every 2 hours per recipient
-ONE_TO_ONE_ADDRESSING_MODE=pn
-ONE_TO_ONE_PREASSERT_ENABLED=true
-ONE_TO_ONE_PREASSERT_COOLDOWN_MS=7200000
-# Keep probe disabled to save Redis
-ONE_TO_ONE_ASSERT_PROBE_ENABLED=false
-```
-
-Large groups (No-sessions mitigation & throttles)
-- `GROUP_LARGE_THRESHOLD` Ã¢â‚¬â€ Consider a group as Ã¢â‚¬Å“largeÃ¢â‚¬Â when participant count exceeds this threshold. Default `800`.
-  - When large, the client skips heavy preÃ¢â‚¬â€˜asserts to reduce load. Addressing remains LID by default (unless configured), and fallback toggles addressing according to `GROUP_SEND_FALLBACK_ORDER` if needed.
-  - Example: `GROUP_LARGE_THRESHOLD=1000`
-- `GROUP_ASSERT_CHUNK_SIZE` Ã¢â‚¬â€ Chunk size for `assertSessions()` in group fallbacks. Default `100` (min 20).
-  - Example: `GROUP_ASSERT_CHUNK_SIZE=80`
-- `GROUP_ASSERT_FLOOD_WINDOW_MS` Ã¢â‚¬â€ Flood window to avoid repeated heavy asserts per group. Default `5000`.
-  - Example: `GROUP_ASSERT_FLOOD_WINDOW_MS=10000`
-- `GROUP_METADATA_EVENT_REFRESH_ENABLED` — Refresh the Redis group metadata cache after Baileys `groups.update` and `group-participants.update` events. Default `true`.
-  - This keeps member counts closer to WhatsApp without forcing every `/groups/:id/participants` read to hit Baileys.
-- `GROUP_METADATA_EVENT_REFRESH_DEBOUNCE_MS` — Delay before refreshing a changed group metadata entry. Default `1500`.
-- `GROUP_METADATA_EVENT_REFRESH_MIN_INTERVAL_MS` — Minimum interval between full metadata refreshes for the same group. Default `60000`.
-  - Increase this if large groups generate many participant events and the VPS is under pressure.
-- `NO_SESSION_RETRY_BASE_DELAY_MS` Ã¢â‚¬â€ Base delay before retrying send after asserts. Default `150`.
-- `NO_SESSION_RETRY_PER_200_DELAY_MS` Ã¢â‚¬â€ Extra delay per 200 targets. Default `300`.
-- `NO_SESSION_RETRY_MAX_DELAY_MS` Ã¢â‚¬â€ Cap for adaptive delay. Default `2000`.
-  - Example: `NO_SESSION_RETRY_BASE_DELAY_MS=250`, `NO_SESSION_RETRY_PER_200_DELAY_MS=400`, `NO_SESSION_RETRY_MAX_DELAY_MS=3000`
-- `RECEIPT_RETRY_ASSERT_COOLDOWN_MS` Ã¢â‚¬â€ Cooldown between asserts triggered by `message-receipt.update` retry per group. Default `15000`.
-- `RECEIPT_RETRY_ASSERT_MAX_TARGETS` Ã¢â‚¬â€ Limit targets for receipt-based asserts. Default `400`.
-
-## Server ACK Retry (assert + resend)
-
-- `ACK_RETRY_DELAYS_MS` Ã¢â‚¬â€ Comma-separated delays in milliseconds for retries when no server ACK is observed. Default `8000,30000,60000` (8s, 30s, 60s).
-  - Example: `ACK_RETRY_DELAYS_MS=5000,15000,45000`
-- `ACK_RETRY_MAX_ATTEMPTS` Ã¢â‚¬â€ Hard cap on number of attempts. Default `0` (use the number of entries from `ACK_RETRY_DELAYS_MS`).
-  - Example: `ACK_RETRY_MAX_ATTEMPTS=2`
+Large-group metadata refresh and bounded No-sessions recovery are internal
+Baileys policies in `src/services/baileys_group_policy.ts`. The generic
+server-ACK resend loop and BR 12/13 digit send-order heuristic were removed.
 
 Reliability note:
-- On a rare libsignal error Ã¢â‚¬Å“No sessionsÃ¢â‚¬Â during group sends, the service reÃ¢â‚¬â€˜asserts sessions (chunked) and retries once. If it still fails, it toggles addressing mode following `GROUP_SEND_FALLBACK_ORDER` and tries again.
+- On a rare libsignal error Ã¢â‚¬Å“No sessionsÃ¢â‚¬Â during group sends, the service applies the bounded internal Baileys recovery policy.
 
 ### Group receipt/status fan-out controls
 
@@ -192,16 +123,7 @@ GROUP_ONLY_DELIVERED_STATUS=false
 
 ## One-to-One (Direct) Sending
 
-- ONE_TO_ONE_ADDRESSING_MODE â€” Prefer addressing mode for direct chats (1:1). Default pn.
-  - pn (recommended): send via PN. Avoids cases where @lid opens a separate conversation or messages do not show up on some devices.
-  - lid: prefer sending via LID when available (can reduce first-contact session/decrypt errors, but may split threads).
-  - Example:
-    ```env
-    # default (PN)
-    ONE_TO_ONE_ADDRESSING_MODE=pn
-    # or prefer LID
-    # ONE_TO_ONE_ADDRESSING_MODE=lid
-    ```
+Direct chats always use the canonical LID (`@lid`) for transport. Phone numbers remain additional identity metadata and this behavior is not configurable.
 
 Webhook normalization
 - WEBHOOK_PREFER_PN_OVER_LID â€” If 	rue (default), webhook payloads prefer PN in wa_id, rom and 
@@ -210,31 +132,17 @@ ecipient_id when safely resolvable; otherwise a LID/JID may be returned.## LID/P
 - `JIDMAP_CACHE_ENABLED` Ã¢â‚¬â€ Enable PNÃ¢â€ â€LID cache. Default `true`.
   - Stores perÃ¢â‚¬â€˜session mapping between LID JIDs and PN JIDs to reduce runtime lookups and improve delivery in large groups.
 
-## Session Self‑Heal & Periodic Assert
+## Baileys Signal recovery
 
-- `SELFHEAL_ASSERT_ON_DECRYPT` — When `true` (default), asserts sessions for the remote participant when inbound messages arrive without decryptable content (e.g., only `senderKeyDistributionMessage`).
-- `PERIODIC_ASSERT_ENABLED` — Periodically assert sessions for recent contacts (default `true`).
-- `PERIODIC_ASSERT_INTERVAL_MS` — Interval between periodic asserts (default `600000`).
-- `PERIODIC_ASSERT_MAX_TARGETS` — Max recent contacts per batch (default `200`).
-- `PERIODIC_ASSERT_RECENT_WINDOW_MS` — Only contacts seen within this window are considered (default `3600000`).
-
-Example:
-```env
-SELFHEAL_ASSERT_ON_DECRYPT=true
-PERIODIC_ASSERT_ENABLED=true
-PERIODIC_ASSERT_INTERVAL_MS=600000
-PERIODIC_ASSERT_MAX_TARGETS=200
-PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
-```
+Signal assert/recovery values are maintained in `src/services/baileys_assert_policy.ts`.
+They remain isolated from Zapo and intentionally have no environment overrides.
   - Example: `JIDMAP_CACHE_ENABLED=true`
 - `JIDMAP_TTL_SECONDS` Ã¢â‚¬â€ TTL for cache entries. Default `604800` (7 days).
   - Example: `JIDMAP_TTL_SECONDS=604800`
   - Set `0` or a negative value to keep mappings without expiration.
 
-- `JIDMAP_ENRICH_ENABLED` ? Background enrich (sweep) for JIDMAP. Default `false`.
-  - Keep `false` when on-the-fly mapping during send/receive is enough.
-- `JIDMAP_ENRICH_AUTH_ENABLED` ? Background enrich from auth lid-mapping cache. Default `true`.
-  - Requires Redis; enable only if you want periodic backfill.
+Baileys auth-to-JIDMAP enrichment is an internal bounded policy in
+`src/services/baileys_auth_policy.ts`.
 
 ## LID/PN Behavior
 
@@ -259,8 +167,9 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 - `UNOAPI_MESSAGE_RETRY_DELAY` Ã¢â‚¬â€ Default delay used by helpers when publishing delayed messages (ms). Default `10000`.
   - Note: the consumer retry path uses a fixed 60s requeue delay.
   - Example: `UNOAPI_MESSAGE_RETRY_DELAY=15000`
-- `CONSUMER_TIMEOUT_MS` Ã¢â‚¬â€ Max time (ms) allowed for a consumer to process a message before forcing retry. Default `15000`.
-  - Example: `CONSUMER_TIMEOUT_MS=15000`
+- `CONSUMER_TIMEOUT_MS` — Max time (ms) allowed for a consumer to process a message before forcing retry. Default `450000`.
+  - Keep it greater than the largest session webhook timeout.
+  - Example: `CONSUMER_TIMEOUT_MS=450000`
 - `NOTIFY_FAILED_MESSAGES` Ã¢â‚¬â€ Send a diagnostic text to the session number when retries are exhausted. Default `true`.
   - Example: `NOTIFY_FAILED_MESSAGES=false`
 
@@ -277,35 +186,32 @@ PERIODIC_ASSERT_RECENT_WINDOW_MS=3600000
 Fail fast when a webhook endpoint is offline to avoid queue backlog.
 
 - `WEBHOOK_CB_ENABLED` — Enable/disable the circuit breaker. Default `true`.
-- `WEBHOOK_CB_FAILURE_THRESHOLD` — Failures within the window required to open the circuit. Default `1`.
+- `WEBHOOK_CB_FAILURE_THRESHOLD` — Transient failures within the window required to open the circuit. Default `3`.
 - `WEBHOOK_CB_FAILURE_TTL_MS` — Failure counting window (ms). Default `300000`.
 - `WEBHOOK_CB_OPEN_MS` — How long the circuit stays open (skip sends) after tripping. Default `120000`.
-- `WEBHOOK_CB_REQUEUE_DELAY_MS` — Delay (ms) used to requeue when the circuit is open. Default `300000`.
-- `WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS` — Local CB map cleanup interval (ms). Default `3600000`.
+- `WEBHOOK_CB_REQUEUE_DELAY_MS` — Delay (ms) used to requeue when the circuit is open. Default `120000`.
+- `WEBHOOK_CB_HALF_OPEN_PROBE_MS` — Minimum lease for the single half-open recovery probe. Default `30000`; the webhook timeout wins when larger.
 
 Behavior:
 - When open, webhook delivery is skipped for that endpoint.
-- After the open window, sends are attempted again automatically.
-- When open, the message is requeued with a longer delay to avoid retry storms.
+- Circuit state is isolated by session and webhook ID.
+- Network errors, HTTP `408`, `425`, `429`, and `5xx` count as circuit failures. Permanent `4xx` payload/auth errors do not take the whole endpoint offline.
+- After the open window, exactly one request probes the endpoint. Other deliveries remain queued until the probe succeeds or the circuit opens again.
+- Deliveries skipped because the circuit is already open do not consume the AMQP retry budget. Real HTTP/network attempts still consume retries.
+- The default requeue delay matches the open window so recovered endpoints resume without an extra idle gap.
 
 ## Media & Timeouts
 
 ### Inbound deduplication
 
-Some providers/devices may occasionally emit the same WA message more than once during reconnects or history sync. Use the window below to suppress duplicates quickly arriving backÃ¢â‚¬â€˜toÃ¢â‚¬â€˜back.
-
-- `INBOUND_DEDUP_WINDOW_MS` Ã¢â‚¬â€ Skip processing a message if another with the same `remoteJid` and `id` arrives within this window (ms). Default `7000`.
-  - Example: `INBOUND_DEDUP_WINDOW_MS=5000`
+Baileys suppresses immediate duplicate events through the internal bounded
+window in `src/services/baileys_listener_policy.ts`.
 
 ### Baileys app-state sync
 
-- `BAILEYS_CLEAR_APP_STATE_SYNC_ON_CONNECT` - Clears Baileys `app-state-sync-version` before each connect. Default `false`.
-  - Keep disabled in normal operation because clearing it forces WhatsApp/Baileys to rebuild app-state snapshots and can increase memory/CPU during reconnect storms.
-  - Enable only as an emergency self-heal when logs show stale app-state decode failures such as `failed to find key to decode mutation`.
-- `BAILEYS_ALLOW_FULL_HISTORY_SYNC` - Forces Baileys `FULL`, `INITIAL_BOOTSTRAP`, and `ON_DEMAND` history sync even when the session already has the Redis history-sync marker. Default `false`.
-  - New unmarked sessions can still do their first full/bootstrap sync when `IGNORE_HISTORY_MESSAGES=false`.
-  - Uno writes `unoapi-history-sync:<phone>:started` when heavy history sync starts, and later reconnects skip heavy sync for that same session unless this flag is enabled.
-  - On application startup, existing configured sessions are marked automatically. When a session is removed/logout and its config/auth is deleted, this marker is deleted too.
+Baileys app-state clearing remains disabled and full-history override remains
+disabled in `src/services/baileys_connection_policy.ts`. New unmarked sessions
+can still perform their normal first sync when history import is enabled.
 - `AUTO_CONNECT_CONCURRENCY` - Maximum sessions connecting in parallel during service startup. Default `1`.
   - Keep low on small containers to avoid reconnect storms and memory spikes.
 
@@ -323,8 +229,10 @@ Skip sending the same message again when a job retry happens after a successful 
 
 ### Profile Pictures
 
-- Canonical filename: always by phone number (PN). If input is LID, map to PN first and save `<pn>.jpg`.
+- Canonical identity: Zapo uses LID and preserves PN as an additional alias when known; groups keep `@g.us`. Baileys remains compatible with PN-first lookups.
 - Force refresh: `PROFILE_PICTURE_FORCE_REFRESH=true` (default) re-fetches from WhatsApp before returning the local/storage URL.
+- Missing-picture cache: `PROFILE_PICTURE_NOT_FOUND_TTL_SEC=10800` (default: 3 hours) prevents repeated Zapo lookups after privacy/404/no-picture responses. Redis stores one ZSET per session and picture events invalidate the matching member immediately. Set `0` to disable.
+- Webhook interval: `PROFILE_PICTURE_WEBHOOK_INTERVAL_SEC=10800` (default: 3 hours) controls when the same contact/group picture is included again. Redis stores one ZSET per session, not one key per contact. Set `0` for the legacy always-populated behavior.
 - Prefetch on send: the client prefetches the destination picture on outbound messages (1:1 and groups) to keep the cache fresh.
 - Robust fetch order: for 1:1, attempts PN first, then mapped LID, using modes `image` then `preview`.
 - S3 safety: checks object existence (HeadObject) before generating a presigned URL.
@@ -350,7 +258,7 @@ Skip sending the same message again when a job retry happens after a successful 
 - URLs returned to webhooks
   - S3: A preÃ¢â‚¬â€˜signed URL is generated per request using `DATA_URL_TTL` (seconds). Link expires after TTL.
   - Filesystem: A public URL is generated from `BASE_URL`, using the download route: `BASE_URL/v15.0/download/<phone>/profile-pictures/<canonical>.jpg`.
-  - First fetch: on the very first retrieval the service may return the WhatsApp CDN URL while it downloads and persists the image; subsequent events will use the storage URL (S3 or filesystem).
+  - First fetch: the provider URL is persisted before enrichment; webhooks receive the Uno storage URL, never the temporary Zapo CDN URL.
 
 - Lifetime and cleanup
   - `DATA_TTL` Ã¢â‚¬â€ Default retention for stored media (including profile pictures) in seconds. Default 30 days.
@@ -371,18 +279,17 @@ Skip sending the same message again when a job retry happens after a successful 
   - Increase when sending large media from slow servers.
   - Example: `FETCH_TIMEOUT_MS=15000`
 - `SEND_AUDIO_MESSAGE_AS_PTT` Ã¢â‚¬â€ Mark outgoing audio as PTT (voice note). Default `false`.
-- `CONVERT_AUDIO_TO_PTT` Ã¢â‚¬â€ Force conversion to OGG/Opus for PTT. Default `false`.
   - Use when clients expect voice notes with waveform.
   - Example:
     ```env
     SEND_AUDIO_MESSAGE_AS_PTT=true
-    CONVERT_AUDIO_TO_PTT=true
+    CONVERT_AUDIO_MESSAGE_TO_OGG=true
     ```
 
 ## Proxy
 
-- `PROXY_URL` Ã¢â‚¬â€ SOCKS/HTTP proxy for Baileys.
-  - Use when outbound connections must go through a proxy.
+- `PROXY_URL` — SOCKS proxy shared by Baileys and Zapo. Zapo applies it to
+  the WhatsApp WebSocket, media CDN upload/download and link-preview fetches.
   - Example: `PROXY_URL=socks5://user:pass@proxy.local:1080`
 
 ## Webhooks & Notifications
@@ -409,11 +316,9 @@ Skip sending the same message again when a job retry happens after a successful 
   STORAGE_SECRET_ACCESS_KEY=minioadmin
   STORAGE_FORCE_PATH_STYLE=true
   ```
-- Headless pairing and stricter validation:
+- Headless pairing:
   ```env
   CONNECTION_TYPE=pairing_code
-  QR_TIMEOUT_MS=120000
-  VALIDATE_SESSION_NUMBER=true
   ```
 
 ## Ready-to-use examples
@@ -426,3 +331,28 @@ Skip sending the same message again when a job retry happens after a successful 
 ### Id Mapping (Baileys -> Unoapi)
 
 To keep a stable Unoapi id for the same Baileys message under retries or concurrent consumers, the service uses a Redis SET NX guard when persisting idBaileys -> idUno. This prevents multiple unoapi-id_rev entries for the same message when races occur.
+### Zapo e caches temporais
+
+| Variavel | Padrao | Uso |
+|---|---:|---|
+| `STATUS_RECIPIENT_RETENTION_SEC` | `2592000` | Retencao de destinatarios recentes de Status |
+| `CONTACT_INFO_TTL_SEC` | `2592000` | Expiracao do cache legado de contatos |
+| `ZAPO_REDIS_MESSAGES_TTL_MS` | `2592000000` | TTL do store oficial de mensagens Zapo |
+| `ZAPO_REDIS_THREADS_TTL_MS` | `2592000000` | TTL do store oficial de threads Zapo |
+| `ZAPO_REDIS_CONTACTS_TTL_MS` | `2592000000` | TTL do store oficial de contatos Zapo |
+| `ZAPO_REDIS_PRIVACY_TOKEN_TTL_MS` | `2592000000` | TTL do store oficial de privacy tokens Zapo |
+| `ZAPO_REDIS_SESSION_CRYPTO_TTL_MS` | `7776000000` | TTL deslizante de Signal, prekeys, sender keys e app-state; auth principal nao expira |
+| `ZAPO_REDIS_KEY_PREFIX` | `unoapi:zapo:` | Namespace exclusivo do store oficial Zapo; o valor legado `unoapi-zapo:` e convertido automaticamente |
+| `ZAPO_REDIS_MAINTENANCE_INTERVAL_MS` | `3600000` | Intervalo da remocao incremental de IDs vencidos dos indices de mensagem |
+| `ZAPO_SESSION_LEASE_TTL_MS` | `60000` | Validade da posse distribuida de uma sessao por worker |
+| `ZAPO_SESSION_LEASE_RENEW_MS` | `20000` | Renovacao da posse; o runtime limita o intervalo a metade do TTL |
+
+Layout das chaves:
+
+- `unoapi-zapo:*`: store oficial da Zapo. Mensagens, threads, contatos e tokens possuem TTL por dominio; credencial auth permanece persistente.
+- `unoapi-lease:zapo-session:<sessao>`: trava distribuida. Somente um worker abre o socket ou conduz o novo pareamento da sessao.
+- `unoapi-status-recipients:<sessao>`: um sorted set temporal por sessao, sem criar uma chave por contato.
+- `unoapi-zapo-username-lid:<sessao>` e `:seen`: hash de aliases mais sorted set de expiracao por campo.
+- `unoapi-id*`, status e media: contratos publicos Uno compartilhados pelos dois motores.
+
+O indice oficial `msg:idx` e limpo incrementalmente porque o TTL do sorted set de uma conversa ativa pode ser renovado enquanto hashes de mensagens antigas ja expiraram. Se a renovacao da trava falhar, o worker Zapo desconecta de forma conservadora para evitar dois sockets na mesma conta. Todos os runtimes e replicas Zapo exigem Redis; SQLite permanece apenas como codigo de migracao/compatibilidade e nao e um modo de execucao suportado.

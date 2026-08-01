@@ -10,6 +10,16 @@ const mockClient: any = {
     store.set(key, value)
     return 'OK'
   }),
+  eval: jest.fn(async (_script: string, options: { keys: string[]; arguments: string[] }) => {
+    const [key] = options.keys
+    const [selfId, replacement] = options.arguments
+    const current = store.get(key)
+    if (current === selfId) {
+      store.set(key, replacement)
+      return replacement
+    }
+    return current || null
+  }),
   del: jest.fn(async (key: string) => (store.delete(key) ? 1 : 0)),
   expire: jest.fn(async () => 1),
   __reset: () => {
@@ -18,6 +28,7 @@ const mockClient: any = {
     mockClient.set.mockClear()
     mockClient.del.mockClear()
     mockClient.expire.mockClear()
+    mockClient.eval.mockClear()
     mockClient.ping.mockClear()
   },
 }
@@ -28,7 +39,19 @@ jest.mock('@redis/client', () => ({
 
 process.env.REDIS_URL = 'redis://mock'
 
-import { getProviderId, getUnoId, setUnoId, setJidMapping, getLidForPn, getPnForLid } from '../../src/services/redis'
+import {
+  acquireWebhookCircuitProbe,
+  closeWebhookCircuit,
+  getProviderId,
+  getUnoId,
+  isWebhookCircuitOpen,
+  isWebhookCircuitRecovering,
+  openWebhookCircuit,
+  setUnoId,
+  setJidMapping,
+  getLidForPn,
+  getPnForLid,
+} from '../../src/services/redis'
 
 describe('redis.setUnoId', () => {
   beforeEach(() => {
@@ -41,7 +64,7 @@ describe('redis.setUnoId', () => {
     const unoA = 'd1e105c0-0151-11f1-8086-41fa32916297'
     const unoB = 'cfc5edf0-0151-11f1-8086-41fa32916297'
 
-    await Promise.all([
+    const results = await Promise.all([
       setUnoId(phone, idBaileys, unoA),
       setUnoId(phone, idBaileys, unoB),
     ])
@@ -49,6 +72,7 @@ describe('redis.setUnoId', () => {
     const chosen = await getUnoId(phone, idBaileys)
     expect(chosen).toBeTruthy()
     expect([unoA, unoB]).toContain(chosen)
+    expect(results).toEqual([chosen, chosen])
 
     const provider = await getProviderId(phone, chosen!)
     expect(provider).toBe(idBaileys)
@@ -56,6 +80,17 @@ describe('redis.setUnoId', () => {
     const other = chosen === unoA ? unoB : unoA
     const otherProvider = await getProviderId(phone, other)
     expect(otherProvider).toBeFalsy()
+  })
+
+  it('atomically repairs a legacy provider id mapped to itself', async () => {
+    const phone = '5566996269251'
+    const providerId = '3AB30E039E9D38AE82E4'
+    const unoId = 'd1e105c0-0151-11f1-8086-41fa32916297'
+
+    await setUnoId(phone, providerId, providerId)
+    await expect(setUnoId(phone, providerId, unoId)).resolves.toBe(unoId)
+    await expect(getUnoId(phone, providerId)).resolves.toBe(unoId)
+    await expect(getProviderId(phone, unoId)).resolves.toBe(providerId)
   })
 })
 
@@ -87,5 +122,37 @@ describe('redis.setJidMapping', () => {
     expect(await getPnForLid(phone, '190280070385782@lid')).toBe(pn)
     expect(await getPnForLid(phone, '190280070385782:35@lid')).toBe(pn)
     expect(await getLidForPn(phone, pn)).toBe('190280070385782@lid')
+  })
+})
+
+describe('redis webhook circuit breaker', () => {
+  beforeEach(() => {
+    mockClient.__reset()
+  })
+
+  it('keeps recovery state and grants only one half-open probe', async () => {
+    await openWebhookCircuit('5511', 'chatwoot', 120000, 30000)
+
+    expect(await isWebhookCircuitOpen('5511', 'chatwoot')).toBe(true)
+    expect(await isWebhookCircuitRecovering('5511', 'chatwoot')).toBe(true)
+    expect(await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)).toBe(true)
+    expect(await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)).toBe(false)
+  })
+
+  it('isolates an open circuit by session even when the webhook id is equal', async () => {
+    await openWebhookCircuit('5511000000001', 'default', 120000, 30000)
+
+    expect(await isWebhookCircuitOpen('5511000000001', 'default')).toBe(true)
+    expect(await isWebhookCircuitOpen('5511000000002', 'default')).toBe(false)
+  })
+
+  it('clears open, failure, recovery and probe state after success', async () => {
+    await openWebhookCircuit('5511', 'chatwoot', 120000, 30000)
+    await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)
+    await closeWebhookCircuit('5511', 'chatwoot')
+
+    expect(await isWebhookCircuitOpen('5511', 'chatwoot')).toBe(false)
+    expect(await isWebhookCircuitRecovering('5511', 'chatwoot')).toBe(false)
+    expect(await acquireWebhookCircuitProbe('5511', 'chatwoot', 30000)).toBe(true)
   })
 })

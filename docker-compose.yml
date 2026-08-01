@@ -10,7 +10,7 @@ x-base: &base
   working_dir: /app
   env_file: 
     - /.env
-  environment:
+  environment: &base-environment
     NODE_ENV: development
     CHOKIDAR_USEPOLLING: "1"
     CHOKIDAR_INTERVAL: "300"
@@ -19,20 +19,46 @@ x-base: &base
     REDIS_URL: redis://redis:6379
     STORAGE_ENDPOINT: https://af1ce4a18c7a153046fbdc9ce50db632.r2.cloudflarestorage.com/
     GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
+  depends_on:
+    redis:
+      condition: service_healthy
 
 services:
-  cloud:
+  web:
     <<: *base
     restart: on-failure
     entrypoint:
       - sh
       - -lc
       - yarn install --check-files && yarn cloud-dev
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: web
     ports:
       - 9876:9876
       - 9229:9229
-    env_file: 
+    env_file:
     - /.env
+
+  broker:
+    <<: *base
+    restart: on-failure
+    entrypoint: [sh, -lc, "yarn install --check-files && yarn cloud-dev"]
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: broker
+
+  # O worker Baileys foi suprimido. O codigo legado permanece apenas como
+  # referencia/rollback e nao deve ser reativado sem restaurar a politica,
+  # os testes e o runbook operacional.
+  worker-zapo:
+    <<: *base
+    restart: on-failure
+    entrypoint: [sh, -lc, "yarn install --check-files && yarn cloud-dev"]
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: worker
+      UNOAPI_WORKER_ENGINE: zapo
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -49,6 +75,11 @@ services:
     volumes:
       - redis:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     ports:
       - 6379:6379
 

@@ -1,0 +1,28 @@
+{
+  "name": "@viperconnect/docs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:deploy": "node scripts/sync-deployment-examples.mjs",
+    "sync:openapi": "node scripts/sync-openapi.mjs",
+    "sync": "npm run sync:openapi && npm run sync:deploy",
+    "predev": "npm run sync",
+    "dev": "vitepress dev --host 0.0.0.0",
+    "prebuild": "npm run sync",
+    "build": "vitepress build",
+    "preview": "vitepress preview --host 0.0.0.0",
+    "test": "npm run sync && node scripts/validate-docs.mjs && vitepress build",
+    "test:live": "node scripts/smoke-api.mjs"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "1.63.0",
+    "serve": "14.2.6",
+    "vitepress": "1.6.4",
+    "vue": "3.5.40",
+    "yaml": "2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

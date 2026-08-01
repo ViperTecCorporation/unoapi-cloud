@@ -3,7 +3,9 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-4.0.1-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.1)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
+[![Documentação](https://img.shields.io/badge/docs-viperconnect.vipertec.net-9d3836)](https://viperconnect.vipertec.net/)
 
 Gateway de API para WhatsApp mantido pela ViperTec Corporation.
 
@@ -11,13 +13,21 @@ Gateway de API para WhatsApp mantido pela ViperTec Corporation.
 
 ## Sobre
 
-ViperConnect é um gateway para WhatsApp baseado em Baileys, com contrato HTTP inspirado na WhatsApp Cloud API. Ele foi criado para operar sessões WhatsApp, enviar mensagens, receber webhooks, integrar com Chatwoot/Typebot e manter compatibilidade com fluxos Meta-like quando necessário.
+ViperConnect é um gateway completo para integrar aplicações ao WhatsApp. Ele foi
+criado para operar sessões, enviar e receber mensagens, processar webhooks e
+integrar com Chatwoot e Typebot por meio de uma API HTTP estável.
+
+Consulte a [documentação oficial do ViperConnect](https://viperconnect.vipertec.net/)
+para instalar, configurar, conectar sessões e explorar todos os endpoints.
 
 O projeto é mantido pela ViperTec Corporation e é baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
 
 ## Description
 
-ViperConnect is a WhatsApp gateway based on Baileys, exposing an HTTP contract inspired by the WhatsApp Cloud API. It is designed to operate WhatsApp sessions, send messages, receive webhooks, integrate with Chatwoot/Typebot, and preserve compatibility with Meta-like flows when needed.
+ViperConnect is a complete WhatsApp gateway for session management, messaging,
+webhooks, and Chatwoot or Typebot integrations through a stable HTTP API. See
+the [official ViperConnect documentation](https://viperconnect.vipertec.net/)
+for installation guides and the interactive API reference.
 
 This project is maintained by ViperTec Corporation and is based on the original Unoapi Cloud project created by Clairton Rodrigo.
 
@@ -28,7 +38,7 @@ This project is maintained by ViperTec Corporation and is based on the original 
 - Webhooks por sessão, com suporte a múltiplos endpoints.
 - Controle para desabilitar um webhook específico sem remover a configuração.
 - Integração com Chatwoot e Typebot.
-- Redis/Valkey para sessões, cache e configurações.
+- Redis/Valkey obrigatório para sessões, cache, configurações, IDs e coordenação dos workers.
 - RabbitMQ para processamento assíncrono.
 - Storage S3 compatível para mídias.
 - Normalização PN/LID para reduzir problemas de endereçamento no WhatsApp.
@@ -36,36 +46,11 @@ This project is maintained by ViperTec Corporation and is based on the original 
 
 ## Início rápido
 
-### Docker Compose com Nginx
+Escolha o modo de instalação na documentação oficial:
 
-Use o exemplo em:
-
-```text
-docs/examples/docker-compose.unoapi-nginx.yml
-```
-
-Ele sobe ViperConnect, RabbitMQ e Valkey, expondo a porta `9876` para o Nginx ou outro proxy reverso.
-
-### Docker Compose com Traefik
-
-Use o exemplo em:
-
-```text
-docs/examples/docker-compose.unoapi-traefik.yml
-```
-
-Ele usa a network externa `traefik-public` e labels Traefik para publicar o serviço em HTTPS.
-
-### Typebot
-
-Exemplos para publicar Typebot integrado ao ViperConnect:
-
-```text
-docs/examples/docker-compose.typebot-nginx.yml
-docs/examples/docker-compose.typebot-traefik.yml
-```
-
-Guia de configuração: [examples/typebot/README.md](examples/typebot/README.md).
+- [Instalação](https://viperconnect.vipertec.net/guide/installation)
+- [Docker Compose](https://viperconnect.vipertec.net/guide/docker-compose)
+- [Instalador nativo para Linux](https://viperconnect.vipertec.net/guide/install-native-linux)
 
 ### Manager
 
@@ -115,7 +100,8 @@ curl -X POST "https://unoapi.seudominio.com.br/v15.0/5566999999999/messages" \
 | `EMBEDDED_SIGNUP_APP_ID` | App ID do Embedded Signup |
 | `EMBEDDED_SIGNUP_APP_SECRET` | App Secret do Embedded Signup |
 
-Veja a lista completa em [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) e [docs/pt-BR/AMBIENTE.md](docs/pt-BR/AMBIENTE.md).
+Veja a configuração completa na
+[documentação oficial](https://viperconnect.vipertec.net/guide/installation).
 
 ## Webhooks
 
@@ -138,24 +124,19 @@ Quando `enabled` é omitido, o webhook continua ativo por padrão. Isso preserva
 
 ## Documentação
 
-Com o serviço rodando:
+A documentação pública oficial está disponível em:
 
-- Manager: `/`
-- Documentação: `/docs`
-- OpenAPI UI: `/docs/openapi.html`
-- Swagger UI: `/docs/swagger.html`
-- OpenAPI JSON: `/docs/openapi.json`
+**[viperconnect.vipertec.net](https://viperconnect.vipertec.net/)**
 
-Arquivos principais:
+- [Guias de instalação e configuração](https://viperconnect.vipertec.net/guide/installation)
+- [Conexão de sessões](https://viperconnect.vipertec.net/guide/connection)
+- [Envio de mensagens](https://viperconnect.vipertec.net/guide/messages)
+- [Webhooks](https://viperconnect.vipertec.net/guide/webhooks)
+- [Referência interativa da API](https://viperconnect.vipertec.net/api-reference)
+- [OpenAPI JSON](https://viperconnect.vipertec.net/openapi.json)
 
-- [Instalação](docs/INSTALLATION.md)
-- [Ambiente](docs/ENVIRONMENT.md)
-- [Arquitetura](docs/ARCHITECTURE.md)
-- [Desenvolvimento](docs/DEVELOPMENT.md)
-- [Embedded Signup](docs/WHATSAPP_EMBEDDED.md)
-- [JIDMAP PN/LID](docs/pt-BR/JIDMAP.md)
-- [Status/Broadcast](docs/STATUS_BROADCAST.md)
-- [Transcrição de áudio](docs/TRANSCRIPTION_AUDIO.md)
+O portal de documentação também pode ser aberto pelo item **Documentação**
+no Manager do ViperConnect.
 
 ## Desenvolvimento
 
@@ -189,7 +170,13 @@ ghcr.io/viperteccorporation/viperconnect
 Exemplo:
 
 ```bash
-docker pull ghcr.io/viperteccorporation/viperconnect:3.0.67
+docker pull ghcr.io/viperteccorporation/viperconnect:4.0.1
+```
+
+A tag `latest` acompanha a versão estável mais recente:
+
+```bash
+docker pull ghcr.io/viperteccorporation/viperconnect:latest
 ```
 
 ## Créditos
@@ -197,7 +184,7 @@ docker pull ghcr.io/viperteccorporation/viperconnect:3.0.67
 - Mantenedora: ViperTec Corporation <suporte@vipertec.com.br>
 - Rodrigo Caitano <caitano28@gmail.com>
 - Baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
-- Baileys: https://github.com/WhiskeySockets/Baileys
+- Runtime de comunicação: Zapo
 
 ## Aviso legal
 

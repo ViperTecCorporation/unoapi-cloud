@@ -1,0 +1,47 @@
+import { defineConfig } from 'vitepress'
+
+export default defineConfig({
+  lang: 'pt-BR',
+  title: 'ViperConnect Developers',
+  description: 'Documentação oficial e referência interativa da API ViperConnect.',
+  cleanUrls: true,
+  lastUpdated: true,
+  head: [
+    ['link', { rel: 'icon', href: '/viperconnect_icon.svg' }],
+    ['meta', { name: 'theme-color', content: '#9d3836' }],
+  ],
+  themeConfig: {
+    logo: '/viperconnect_icon.svg',
+    siteTitle: 'ViperConnect Developers',
+    nav: [
+      { text: 'Guias', link: '/guide/installation' },
+      { text: 'API', link: '/api-reference' },
+      { text: 'GitHub', link: 'https://github.com/ViperTecCorporation/ViperConnect' },
+    ],
+    sidebar: [
+      {
+        text: 'Comece aqui',
+        items: [
+          { text: 'Visão geral', link: '/' },
+          { text: 'Instalação', link: '/guide/installation' },
+          { text: 'Instalador Linux', link: '/guide/install-native-linux' },
+          { text: 'Docker Compose', link: '/guide/docker-compose' },
+          { text: 'Conectar uma sessão', link: '/guide/connection' },
+          { text: 'Arquitetura e cobertura', link: '/guide/architecture' },
+        ],
+      },
+      {
+        text: 'Integração',
+        items: [
+          { text: 'Mensagens', link: '/guide/messages' },
+          { text: 'Contatos', link: '/guide/contacts' },
+          { text: 'Webhooks', link: '/guide/webhooks' },
+          { text: 'Referência da API', link: '/api-reference' },
+        ],
+      },
+    ],
+    search: { provider: 'local' },
+    socialLinks: [{ icon: 'github', link: 'https://github.com/ViperTecCorporation/ViperConnect' }],
+    footer: { message: 'ViperConnect by ViperTec Corporation' },
+  },
+})

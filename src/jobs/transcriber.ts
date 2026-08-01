@@ -5,7 +5,7 @@ import { Outgoing } from '../services/outgoing'
 import { BASE_URL } from '../defaults'
 import mediaToBuffer from '../utils/media_to_buffer'
 import { extractDestinyPhone, jidToPhoneNumber } from '../services/transformer'
-import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
+import { jidNormalizedUser, isPnUser } from '../services/whatsapp_jid'
 import { v1 as uuid } from 'uuid'
 import Audio2TextJS from 'audio2textjs'
 import { writeFileSync, rmSync, existsSync, mkdirSync } from 'fs'
@@ -240,7 +240,7 @@ export class TranscriberJob {
         const ds: any = store?.dataStore
         const v: any = output?.entry?.[0]?.changes?.[0]?.value || {}
         const toPnIfMapped = async (x?: string): Promise<string> => {
-          let val = `${x || ''}`
+          const val = `${x || ''}`
           if (!val) return val
           if (val.includes('@g.us')) return val
           // 1) JID LID explícito -> tentar PN via cache/normalização

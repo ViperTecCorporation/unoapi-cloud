@@ -4,6 +4,17 @@
 
 Antes de mexer em `src/services/transformer.ts`, leia [docs/transformer-refactor.md](docs/transformer-refactor.md). Esse arquivo documenta a forma segura de modularizar o transformer sem quebrar imports, contratos publicos ou testes.
 
+Antes de mexer em qualquer arquivo de `src/services/providers`, `src/services/zapo`, filas de workers ou selecao de motor por sessao, leia [docs/zapo-provider-migration.md](docs/zapo-provider-migration.md). A documentacao oficial da Zapo e os testes existentes da UnoAPI sao a fonte de verdade para essa migracao.
+
+## Regra obrigatoria para a migracao Zapo
+
+- Nao traduza chamadas por semelhanca de nome. Confirme assinatura, retorno e evento na documentacao ou no codigo publico oficial da Zapo.
+- Todo metodo ou funcao nova deve ter caso de teste proprio. Reaproveite os testes existentes da Baileys como contrato de comportamento da UnoAPI.
+- Um endpoint so pode ser marcado como suportado na Zapo depois de adapter, teste e documentacao estarem concluidos.
+- Capacidade ausente deve retornar erro explicito de capability; nunca use fallback silencioso para Baileys em uma sessao configurada como Zapo.
+- A migracao de credenciais Baileys para Zapo deve ser idempotente, concorrente-segura e nao deve apagar a origem. Isso permite rollback enquanto os dois motores coexistirem.
+- Mantenha arquivos pequenos e separados por dominio. Nao crie um `client_zapo.ts` monolitico equivalente ao `client_baileys.ts`.
+
 ## Organizacao do projeto
 
 Este projeto ja possui uma organizacao base por responsabilidade. Ao criar ou alterar codigo TypeScript, mantenha as novas classes dentro das camadas existentes:
@@ -70,24 +81,34 @@ Use este criterio antes de criar ou alterar uma classe:
 
 ## Telemetria Baileys WAM
 
-A Uno habilita a telemetria WAM/w:stats da Baileys por padrao para aproximar o comportamento do WhatsApp Web:
-
-- `BAILEYS_WAM_TELEMETRY=true`
-- `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=false`
-- `BAILEYS_WAM_TELEMETRY_FLUSH_MS=5000`
-- `BAILEYS_WAM_TELEMETRY_MAX_EVENTS=50`
-
-Mantenha `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=false` em producao salvo durante investigacao pontual. Com `true`, cada evento individual gera `WAM_TELEMETRY_COMMIT` e o log fica volumoso. O acompanhamento normal deve usar os logs resumidos `WAM_TELEMETRY_ENABLED`, `WAM_TELEMETRY_FLUSH`, `WAM_TELEMETRY_SEND_OK` e `WAM_TELEMETRY_SEND_ERROR`.
+A Uno habilita internamente a telemetria WAM/w:stats da Baileys para aproximar
+o comportamento do WhatsApp Web. Essa configuracao fica isolada em
+`src/services/baileys_connection_policy.ts`, sem ENVs publicas. O debug por
+evento permanece desativado e o acompanhamento normal usa os logs resumidos
+`WAM_TELEMETRY_ENABLED`, `WAM_TELEMETRY_FLUSH`, `WAM_TELEMETRY_SEND_OK` e
+`WAM_TELEMETRY_SEND_ERROR`.
 
 Quando retomar melhorias nessa area, use [docs/wam-telemetry-follow-up-plan.md](docs/wam-telemetry-follow-up-plan.md) como ponto de partida.
 
-## Guard de envio sem TC token
+## Guard Baileys de envio sem TC token
 
-A Uno aplica uma politica por sessao para reduzir risco de shadow ban/erro `463`: envios 1:1 sem `tctoken` entram em uma janela movel no Redis. Por padrao:
+A política para reduzir risco de shadow ban/erro `463` é interna e exclusiva da
+Baileys. Ela fica isolada em `src/services/privacy_token_quota.ts`, sem ENVs
+públicas: monitoramento ativo, bloqueio desativado, limite de 40 ocorrências em
+uma janela móvel de 24 horas no Redis. A Zapo não usa esse guard.
 
-- `UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED=true`
-- `UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED=false`
-- `UNOAPI_MISSING_TC_TOKEN_LIMIT=40`
-- `UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS=24`
+A Uno apenas conta envios 1:1 Baileys sem `tctoken` e expõe o uso por sessão.
+Não habilite bloqueio sem uma revisão explícita da política, porque alguns
+contatos podem não ter token recuperável. A Baileys continua sendo a fonte de
+verdade para metadata final de token quando disponível.
 
-Por padrao, a Uno apenas conta envios 1:1 sem `tctoken` e expoe o uso por sessao. Ela nao deve bloquear o envio enquanto `UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED=false`, porque alguns contatos podem nao ter token recuperavel. Se a env de bloqueio estiver `true` e o limite for atingido, antes de bloquear a Uno tenta recuperar `tctoken` no servidor via Baileys; se recuperar, envia normalmente. Se continuar sem `tctoken`, bloqueia antes de chamar o envio real, retorna status `failed` e emite webhook auxiliar para a aplicacao e para a propria sessao com o resumo da mensagem original. A Baileys deve continuar sendo a fonte de verdade para metadata final de token quando disponivel.
+## Diretorio de contatos Zapo
+
+A rota `GET /{phone}/contacts` lista o cache de contatos da sessao Zapo com paginacao por cursor. Preserve o contrato LID-first:
+
+- `user_id` deve conter o LID canonico;
+- `phone_number` deve conter somente digitos, sem sufixo JID;
+- celulares brasileiros de 8 digitos devem receber o nono digito, mas telefones fixos nao podem ser alterados;
+- `username` deve ser incluido como campo opcional assim que a Zapo passar a fornecer ou sincronizar esse dado no store;
+- `username` complementa a identidade e nunca deve substituir `user_id` ou `phone_number`;
+- toda alteracao de normalizacao, paginacao ou username exige teste de service e teste da rota HTTP.

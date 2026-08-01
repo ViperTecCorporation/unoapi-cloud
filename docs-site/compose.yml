@@ -1,0 +1,7 @@
+services:
+  docs:
+    image: ghcr.io/viperteccorporation/viperconnect-docs:${DOCS_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "${DOCS_PORT:-8088}:8080"

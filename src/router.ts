@@ -11,6 +11,7 @@ import { indexController } from './controllers/index_controller'
 import { WebhookController } from './controllers/webhook_controller'
 import { WebhookFakeController } from './controllers/webhook_fake_controller'
 import { ContactsController } from './controllers/contacts_controller'
+import { JidMapController } from './controllers/jidmap_controller'
 import { TemplatesController } from './controllers/templates_controller'
 import { MessagesController } from './controllers/messages_controller'
 import { MarketingMessagesController } from './controllers/marketing_messages_controller'
@@ -22,7 +23,7 @@ import { BlacklistController } from './controllers/blacklist_controller'
 import { PairingCodeController } from './controllers/pairing_code_controller'
 import { ConnectController } from './controllers/connect_controller'
 import { Server } from 'socket.io'
-import { OnNewLogin } from './services/socket'
+import type { OnNewLogin } from './services/login_types'
 import { addToBlacklist } from './services/blacklist'
 import { Reload } from './services/reload'
 import { Logout } from './services/logout'
@@ -34,6 +35,10 @@ import { PreflightController } from './controllers/preflight_controller'
 import { EmbeddedController } from './controllers/embedded_controller'
 import { GroupsController } from './controllers/groups_controller'
 import { PasskeyBridgeController } from './controllers/passkey_bridge_controller'
+import { ZapoContactDirectory } from './services/zapo/zapo_contact_directory'
+import { QueuesController } from './controllers/queues_controller'
+import { RedisAdminController } from './controllers/redis_admin_controller'
+import { ContactBookIncoming } from './services/contacts/contact_book_incoming'
 
 
 export const router = (
@@ -58,18 +63,20 @@ export const router = (
   const mediaController = new MediaController(baseUrl, getConfig, sessionStore)
   const templatesController = new TemplatesController(getConfig)
   const registrationController = new RegistrationController(getConfig, reload, logout)
-  const phoneNumberController = new PhoneNumberController(getConfig, sessionStore)
-  const sessionController = new SessionController(getConfig, onNewLogin, socket)
+  const phoneNumberController = new PhoneNumberController(getConfig, sessionStore, incoming)
+  const sessionController = new SessionController(getConfig, reload)
   const webhookController = new WebhookController(outgoing, getConfig)
   const blacklistController = new BlacklistController(addToBlacklist)
-  const contactsController = new ContactsController(contact)
+  const contactsController = new ContactsController(contact, new ZapoContactDirectory(getConfig), new ContactBookIncoming(incoming))
   const preflightController = new PreflightController(getConfig, contact)
-  const groupsController = new GroupsController(incoming, outgoing, contact)
+  const groupsController = new GroupsController(incoming, outgoing, contact, getConfig)
   const embeddedController = new EmbeddedController()
   const passkeyBridgeController = new PasskeyBridgeController(getConfig)
-  const pairingCodeController = new PairingCodeController(getConfig, incoming)
+  const pairingCodeController = new PairingCodeController(incoming)
   const connectController = new ConnectController(reload)
   const timerController = new TimerController()
+  const queuesController = new QueuesController()
+  const redisAdminController = new RedisAdminController()
 
 
   // Webhook (Cloud API) roteado por phone_number_id
@@ -94,6 +101,7 @@ export const router = (
   // Specific JSON endpoints first, then wildcard for markdown/static files
   router.get('/docs/swagger.json', indexController.docsOpenApiJson)
   router.get('/docs/openapi.json', indexController.docsOpenApiJson)
+  router.get('/app/*', indexController.appFile)
   router.get('/docs/*', indexController.docsFile)
   router.get('/logos/*', indexController.logos)
   // Embedded Signup helpers (precisa ficar antes das rotas parametrizadas)
@@ -112,6 +120,17 @@ export const router = (
   router.post('/passkey-bridge/:bridgeId/confirm', passkeyBridgeController.confirm.bind(passkeyBridgeController))
   router.delete('/passkey-bridge/:bridgeId', passkeyBridgeController.cancel.bind(passkeyBridgeController))
   router.get('/ping', indexController.ping)
+  router.get('/version', middleware, indexController.versionStatus.bind(indexController))
+  router.get('/admin/rabbitmq/queues', middleware, queuesController.list.bind(queuesController))
+  router.get('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.preview.bind(queuesController))
+  router.delete('/admin/rabbitmq/queues/:queue/messages', middleware, queuesController.purge.bind(queuesController))
+  router.get('/admin/redis/keys', middleware, redisAdminController.list.bind(redisAdminController))
+  router.get('/admin/redis/tree', middleware, redisAdminController.tree.bind(redisAdminController))
+  router.delete('/admin/redis/tree', middleware, redisAdminController.removeTree.bind(redisAdminController))
+  router.get('/admin/redis/keys/:key', middleware, redisAdminController.get.bind(redisAdminController))
+  router.put('/admin/redis/keys/:key', middleware, redisAdminController.save.bind(redisAdminController))
+  router.delete('/admin/redis/keys/:key', middleware, redisAdminController.remove.bind(redisAdminController))
+  router.post('/admin/redis/query', middleware, redisAdminController.query.bind(redisAdminController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))
   // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)
@@ -122,7 +141,9 @@ export const router = (
   // Administrative helper: resolved Meta IDs per session (auth required)
   router.get('/sessions/meta/mappings', middleware, phoneNumberController.metaMappings.bind(phoneNumberController))
   router.get('/sessions/:phone', sessionController.index.bind(sessionController))
+  router.get('/:phone/contacts', middleware, contactsController.get.bind(contactsController))
   router.post('/:phone/contacts', middleware, contactsController.post.bind(contactsController))
+  router.post('/:phone/contacts/import', middleware, contactsController.save.bind(contactsController))
   router.post('/:version/:phone/register', middleware, registrationController.register.bind(registrationController))
   router.post('/:version/:phone/deregister', middleware, registrationController.deregister.bind(registrationController))
   router.patch('/:version/:phone/webhooks/:webhook_id', middleware, registrationController.updateWebhook.bind(registrationController))
@@ -144,12 +165,9 @@ export const router = (
   router.delete('/:version/:business_account_id/message_templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
   router.get('/:version/:phone/message_templates', middleware, templatesController.index.bind(templatesController))
   // JIDMAP endpoints (must come before '/:version/:phone/:media_id')
-  try {
-    const { JidMapController } = require('./controllers/jidmap_controller')
-    const jidmap = new JidMapController()
-    router.get('/:version/:phone/jidmap', middleware, jidmap.list.bind(jidmap))
-    router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
-  } catch {}
+  const jidmap = new JidMapController()
+  router.get('/:version/:phone/jidmap', middleware, jidmap.list.bind(jidmap))
+  router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.delete('/:version/:phone/templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
   router.post('/:version/:phone_number_id/messages/:messageId/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))
@@ -163,6 +181,7 @@ export const router = (
   router.post('/:version/:phone/groups', middleware, groupsController.create.bind(groupsController))
   router.get('/:version/:phone/groups/:groupId/participants', middleware, groupsController.participants.bind(groupsController))
   router.post('/:version/:phone/groups/:groupId/participants', middleware, groupsController.addParticipants.bind(groupsController))
+  router.patch('/:version/:phone/groups/:groupId/participants', middleware, groupsController.updateParticipantRoles.bind(groupsController))
   router.delete('/:version/:phone/groups/:groupId/participants', middleware, groupsController.removeParticipants.bind(groupsController))
   router.get('/:version/:phone/groups/:groupId/invite_link', middleware, groupsController.inviteLink.bind(groupsController))
   router.get('/:version/:phone/groups/:groupId/invite-link', middleware, groupsController.inviteLink.bind(groupsController))

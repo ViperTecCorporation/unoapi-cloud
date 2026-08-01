@@ -1,0 +1,5697 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ViperConnect API",
+    "version": "2.5.2",
+    "description": "API compatível com WhatsApp Cloud (formato de payload), utilizando Baileys como transporte.\n- Endpoints espelham em grande parte a estrutura do Cloud API (ex.: `v15.0/{phone}/messages`).\n- Suporta envios de texto, mídia (imagem/áudio/documento/vídeo), contatos e mensagens interativas (botões/listas).\n"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "summary": "Healthcheck",
+        "responses": {
+          "200": {
+            "description": "pong",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "summary": "Consultar versão instalada e última tag publicada",
+        "description": "A consulta ao GitHub é feita no servidor e armazenada em cache por 15 minutos.",
+        "responses": {
+          "200": {
+            "description": "Estado de atualização do ViperConnect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/rabbitmq/queues": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Listar filas RabbitMQ da UnoAPI",
+        "description": "Requer o token administrativo global (`UNOAPI_AUTH_TOKEN`). As credenciais são\nobtidas internamente de `AMQP_URL`; nenhuma credencial do RabbitMQ é recebida\nou devolvida por esta rota.\n",
+        "responses": {
+          "200": {
+            "description": "Filas cujo nome pertence ao namespace configurado da UnoAPI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "queues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "messages": {
+                            "type": "integer"
+                          },
+                          "messages_ready": {
+                            "type": "integer"
+                          },
+                          "messages_unacknowledged": {
+                            "type": "integer"
+                          },
+                          "consumers": {
+                            "type": "integer"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório."
+          }
+        }
+      }
+    },
+    "/admin/rabbitmq/queues/{queue}/messages": {
+      "parameters": [
+        {
+          "name": "queue",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Inspecionar uma amostra de mensagens da fila",
+        "description": "Lê até 50 mensagens e as recoloca na fila. A inspeção pode alterar a ordem\nrelativa das mensagens e nunca remove itens.\n",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "Filtra a amostra por telefone da sessão no routing key ou payload.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Amostra com campos sensíveis mascarados."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou fila fora do namespace permitido."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Remover uma ou várias mensagens prontas",
+        "description": "Remove as próximas 1 a 50 mensagens prontas ou todas quando `count` for `all`.\nMensagens já entregues a consumidores (unacked) não são removidas. Exige confirmação\nliteral do nome da fila.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "count",
+                  "confirm"
+                ],
+                "properties": {
+                  "count": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all"
+                        ]
+                      }
+                    ]
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "description": "Nome exato da fila."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da remoção."
+          },
+          "400": {
+            "description": "Confirmação inválida."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou fila fora do namespace permitido."
+          }
+        }
+      }
+    },
+    "/admin/redis/keys": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Listar chaves Redis da UnoAPI",
+        "description": "Usa SCAN e limita o resultado a 1000 chaves. Somente os namespaces `unoapi-`\ne `unoapi:` são visíveis. Requer o token administrativo global.\n",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chaves encontradas."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório."
+          }
+        }
+      }
+    },
+    "/admin/redis/keys/{key}": {
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Consultar tipo, TTL e conteúdo de uma chave",
+        "description": "Limita coleções grandes e mascara campos sensíveis.",
+        "responses": {
+          "200": {
+            "description": "Conteúdo tipado da chave."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Criar ou substituir uma chave",
+        "description": "Aceita string, hash, list, set e zset. Exige confirmação literal da chave.\nConteúdo mascarado não pode ser salvo, evitando substituir segredos por `[REDACTED]`.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "value",
+                  "confirm"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "string",
+                      "hash",
+                      "list",
+                      "set",
+                      "zset"
+                    ]
+                  },
+                  "value": {},
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "description": "Use -1 para não expirar."
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "description": "Nome exato da chave."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chave salva."
+          },
+          "400": {
+            "description": "Confirmação, tipo ou conteúdo inválido."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Excluir uma chave",
+        "description": "Exige confirmação literal do nome da chave.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirm"
+                ],
+                "properties": {
+                  "confirm": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quantidade de chaves removidas."
+          },
+          "400": {
+            "description": "Confirmação inválida."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      }
+    },
+    "/admin/redis/query": {
+      "post": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Executar consulta Redis segura",
+        "description": "Aceita apenas SCAN, TYPE, TTL, GET, HGETALL, LRANGE, SMEMBERS e ZRANGE.\nComandos administrativos, escrita, scripts e chaves fora do namespace UnoAPI são bloqueados.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "command"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "enum": [
+                      "SCAN",
+                      "TYPE",
+                      "TTL",
+                      "GET",
+                      "HGETALL",
+                      "LRANGE",
+                      "SMEMBERS",
+                      "ZRANGE"
+                    ]
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da consulta."
+          },
+          "400": {
+            "description": "Comando não permitido."
+          },
+          "403": {
+            "description": "Token administrativo global obrigatório ou chave fora do namespace permitido."
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "summary": "Listar sessões/configurações visíveis",
+        "responses": {
+          "200": {
+            "description": "Lista de conexões/sessões",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{phone}": {
+      "get": {
+        "summary": "UI de sessão (QR/Config)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML com QR/Config da sessão",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}": {
+      "get": {
+        "summary": "Status e configuração da sessão",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informações da sessão e templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/phone_numbers": {
+      "get": {
+        "summary": "Listar conexões/telefones gerenciados",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de configurações",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/message_templates": {
+      "get": {
+        "summary": "Listar templates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Templates disponíveis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/templates": {
+      "post": {
+        "summary": "(Compat) Listar templates",
+        "description": "Compatível com o Cloud API; neste projeto retorna a lista local/forward.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Templates disponíveis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/messages": {
+      "post": {
+        "summary": "Enviar mensagem (WhatsApp Cloud shape)",
+        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              },
+              "examples": {
+                "text": {
+                  "summary": "Texto",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "text",
+                    "text": {
+                      "body": "Olá do Unoapi Cloud!"
+                    }
+                  }
+                },
+                "expiringText": {
+                  "summary": "Texto temporário",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "text",
+                    "ttl": 86400,
+                    "text": {
+                      "body": "Esta mensagem expira em 24 horas."
+                    }
+                  }
+                },
+                "textGroupMentionAll": {
+                  "summary": "Texto em grupo com @all/@todos",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "120363012345678@g.us",
+                    "type": "text",
+                    "text": {
+                      "body": "Aviso @todos"
+                    }
+                  }
+                },
+                "textGroupMentions": {
+                  "summary": "Texto em grupo com @telefone",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "120363012345678@g.us",
+                    "type": "text",
+                    "text": {
+                      "body": "Oi @5511999999999 e @5511888888888"
+                    }
+                  }
+                },
+                "messageEdit": {
+                  "summary": "Editar mensagem enviada",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "message_edit",
+                    "context": {
+                      "message_id": "uno-message-id-original"
+                    },
+                    "text": {
+                      "body": "Texto editado"
+                    }
+                  }
+                },
+                "image": {
+                  "summary": "Imagem por link",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "image",
+                    "image": {
+                      "link": "https://exemplo.com/imagem.jpg",
+                      "caption": "Legenda opcional"
+                    }
+                  }
+                },
+                "document": {
+                  "summary": "Documento",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "document",
+                    "document": {
+                      "link": "https://exemplo.com/arquivo.pdf",
+                      "filename": "contrato.pdf",
+                      "caption": "Contrato para conferência",
+                      "mime_type": "application/pdf"
+                    }
+                  }
+                },
+                "audio": {
+                  "summary": "Mensagem de voz",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "audio",
+                    "audio": {
+                      "link": "https://exemplo.com/audio.ogg",
+                      "mime_type": "audio/ogg",
+                      "ptt": true
+                    }
+                  }
+                },
+                "video": {
+                  "summary": "Vídeo",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "video",
+                    "video": {
+                      "link": "https://exemplo.com/video.mp4",
+                      "caption": "Vídeo curto"
+                    }
+                  }
+                },
+                "statusImage": {
+                  "summary": "Status/Story com imagem",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "status@broadcast",
+                    "type": "image",
+                    "image": {
+                      "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg",
+                      "caption": "Novidade"
+                    },
+                    "statusJidList": [
+                      "5511999999999",
+                      "5500000000002"
+                    ]
+                  }
+                },
+                "contacts": {
+                  "summary": "Contatos (vCard simplificado)",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "contacts",
+                    "contacts": [
+                      {
+                        "name": {
+                          "formatted_name": "Contato Exemplo"
+                        },
+                        "phones": [
+                          {
+                            "wa_id": "5500000000002",
+                            "phone": "+55 00 00000-0002"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "reaction": {
+                  "summary": "Reação",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "reaction",
+                    "reaction": {
+                      "message_id": "MESSAGE_ID",
+                      "emoji": "👍"
+                    }
+                  }
+                },
+                "poll": {
+                  "summary": "Enquete",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "poll",
+                    "poll": {
+                      "name": "Qual plano você prefere?",
+                      "options": [
+                        "Básico",
+                        "Profissional"
+                      ],
+                      "selectable_count": 1,
+                      "allow_add_option": false
+                    }
+                  }
+                },
+                "pollVote": {
+                  "summary": "Votar em uma enquete",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "poll_vote",
+                    "poll_vote": {
+                      "message_id": "MESSAGE_ID_DA_ENQUETE",
+                      "selected_options": [
+                        "Profissional"
+                      ]
+                    }
+                  }
+                },
+                "sticker": {
+                  "summary": "Figurinha",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "sticker",
+                    "sticker": {
+                      "link": "https://example.com/sticker.png"
+                    }
+                  }
+                },
+                "interactiveButtons": {
+                  "summary": "Interativo - Botões",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "body": {
+                        "text": "Escolha uma opção"
+                      },
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "reply",
+                            "reply": {
+                              "id": "btn_1",
+                              "title": "Opção 1"
+                            }
+                          },
+                          {
+                            "type": "reply",
+                            "reply": {
+                              "id": "btn_2",
+                              "title": "Opção 2"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "interactiveCtaButtons": {
+                  "summary": "Interativo - Botões CTA (URL, ligação e copiar)",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5500000000001",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "body": {
+                        "text": "Acesse ou fale com a equipe"
+                      },
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "cta_url",
+                            "url": {
+                              "title": "Abrir site",
+                              "link": "https://facebook.com.br"
+                            }
+                          },
+                          {
+                            "type": "cta_call",
+                            "call": {
+                              "title": "Ligar",
+                              "phone_number": "+5511999999999"
+                            }
+                          },
+                          {
+                            "type": "cta_copy",
+                            "copy_code": {
+                              "title": "ChavePix",
+                              "code": "0000000055442"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "interactiveList": {
+                  "summary": "Interativo - Lista",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "list",
+                      "header": {
+                        "type": "text",
+                        "text": "Menu"
+                      },
+                      "body": {
+                        "text": "Escolha uma opção"
+                      },
+                      "footer": {
+                        "text": "Unoapi"
+                      },
+                      "action": {
+                        "button": "Ver opções",
+                        "sections": [
+                          {
+                            "title": "Planos",
+                            "rows": [
+                              {
+                                "id": "plan_basic",
+                                "title": "Básico",
+                                "description": "R$ 10"
+                              },
+                              {
+                                "id": "plan_pro",
+                                "title": "Pro",
+                                "description": "R$ 20"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "interactiveCarousel": {
+                  "summary": "Interativo - Carrossel com imagens e botões",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "carousel",
+                      "body": {
+                        "text": "Conheça nossos planos"
+                      },
+                      "action": {
+                        "carousel": {
+                          "cards": [
+                            {
+                              "header": {
+                                "type": "image",
+                                "image": {
+                                  "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                                }
+                              },
+                              "body": {
+                                "text": "Plano Básico"
+                              },
+                              "footer": {
+                                "text": "Para começar"
+                              },
+                              "action": {
+                                "buttons": [
+                                  {
+                                    "type": "reply",
+                                    "reply": {
+                                      "id": "plan_basic",
+                                      "title": "Escolher"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "header": {
+                                "type": "image",
+                                "image": {
+                                  "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                                }
+                              },
+                              "body": {
+                                "text": "Plano Profissional"
+                              },
+                              "footer": {
+                                "text": "Mais recursos"
+                              },
+                              "action": {
+                                "buttons": [
+                                  {
+                                    "type": "cta_url",
+                                    "url": {
+                                      "title": "Ver detalhes",
+                                      "link": "https://vipertec.com.br"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "paymentPixStatic": {
+                  "summary": "Pagamento - PIX estático",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "payment_request",
+                            "payment_setting": {
+                              "type": "pix_static_code",
+                              "pix_static_code": {
+                                "merchant_name": "Minha Empresa",
+                                "key": "financeiro@minhaempresa.com.br",
+                                "key_type": "EMAIL"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "paymentPixDynamicStandalone": {
+                  "summary": "Pagamento avulso - PIX dinâmico",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "button",
+                      "body": {
+                        "text": "Pague R$ 149,90 via PIX"
+                      },
+                      "action": {
+                        "buttons": [
+                          {
+                            "type": "payment_request",
+                            "payment_request": {
+                              "type": "digital-goods",
+                              "payment_type": "br",
+                              "payment_settings": [
+                                {
+                                  "type": "pix_dynamic_code",
+                                  "pix_dynamic_code": {
+                                    "code": "000201010212...",
+                                    "merchant_name": "Minha Empresa",
+                                    "key": "12345678000199",
+                                    "key_type": "CNPJ"
+                                  }
+                                }
+                              ],
+                              "currency": "BRL",
+                              "total_amount": {
+                                "value": 14990,
+                                "offset": 100
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "orderPixDynamic": {
+                  "summary": "Pedido com imagem e PIX dinâmico",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "header": {
+                        "type": "image",
+                        "image": {
+                          "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                        }
+                      },
+                      "body": {
+                        "text": "Revise e pague seu pedido"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "pedido-123",
+                          "type": "physical-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "pix_dynamic_code",
+                              "pix_dynamic_code": {
+                                "code": "000201010212...",
+                                "merchant_name": "Minha Empresa",
+                                "key": "12345678000199",
+                                "key_type": "CNPJ"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 50000,
+                            "offset": 100
+                          },
+                          "order": {
+                            "status": "pending",
+                            "tax": {
+                              "value": 0,
+                              "offset": 100,
+                              "description": "Sem impostos adicionais"
+                            },
+                            "items": [
+                              {
+                                "retailer_id": "produto-1",
+                                "name": "Produto",
+                                "amount": {
+                                  "value": 50000,
+                                  "offset": 100
+                                },
+                                "quantity": 1
+                              }
+                            ],
+                            "subtotal": {
+                              "value": 50000,
+                              "offset": 100
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderPaymentLink": {
+                  "summary": "Pedido simplificado com link de pagamento",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "body": {
+                        "text": "Finalize seu pagamento"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "pedido-124",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "payment_link",
+                              "payment_link": {
+                                "uri": "https://pagamentos.example.com/pedido-124"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 1500,
+                            "offset": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "subscriptionBoletoPix": {
+                  "summary": "Pedido real com boleto, PIX dinâmico e imagem",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "header": {
+                        "type": "image",
+                        "image": {
+                          "link": "https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg"
+                        }
+                      },
+                      "body": {
+                        "text": "Boleto nº 1033239253 referente à assinatura de Câmera Comodato Mensal — 1 unidade. Vencimento: 10/07/2026. Valor: R$ 60,00."
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "boleto-1033239253",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "boleto",
+                              "boleto": {
+                                "digitable_line": "36490000920005525230800000010918900000000006000"
+                              }
+                            },
+                            {
+                              "type": "pix_dynamic_code",
+                              "pix_dynamic_code": {
+                                "code": "00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595",
+                                "merchant_name": "EFISA",
+                                "key": "663b44b6c993415e9e09f92c106d4886",
+                                "key_type": "EVP"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 6000,
+                            "offset": 100
+                          },
+                          "order": {
+                            "status": "pending",
+                            "tax": {
+                              "value": 0,
+                              "offset": 100,
+                              "description": "Sem impostos adicionais"
+                            },
+                            "items": [
+                              {
+                                "retailer_id": "camera-comodato-mensal",
+                                "name": "Câmera Comodato Mensal",
+                                "amount": {
+                                  "value": 6000,
+                                  "offset": 100
+                                },
+                                "quantity": 1
+                              }
+                            ],
+                            "subtotal": {
+                              "value": 6000,
+                              "offset": 100
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderStatus": {
+                  "summary": "Confirmação do pagamento do pedido",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_status",
+                      "body": {
+                        "text": "Pagamento confirmado para o boleto nº 1033239253."
+                      },
+                      "footer": {
+                        "text": "Assinatura confirmada"
+                      },
+                      "action": {
+                        "name": "review_order",
+                        "parameters": {
+                          "reference_id": "boleto-1033239253",
+                          "order": {
+                            "status": "completed",
+                            "description": "Pagamento confirmado. Assinatura de Câmera Comodato Mensal paga."
+                          },
+                          "payment": {
+                            "status": "captured",
+                            "timestamp": 1785125734
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "markAsRead": {
+                  "summary": "Marcar mensagem como lida",
+                  "value": {
+                    "status": "read",
+                    "message_id": "MESSAGE_ID"
+                  }
+                },
+                "deleteMessage": {
+                  "summary": "Apagar mensagem enviada",
+                  "value": {
+                    "status": "deleted",
+                    "message_id": "MESSAGE_ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro de validação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/marketing_messages": {
+      "post": {
+        "summary": "Enviar Marketing Messages (compatível)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/preflight/status": {
+      "post": {
+        "summary": "Checagem pré-envio (Status/Broadcast)",
+        "description": "Verifica sessão online e se destinatários existem no WhatsApp.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreflightStatusRequest"
+              },
+              "example": {
+                "statusJidList": [
+                  "5511999999999",
+                  "5500000000002"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da verificação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro na verificação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/groups": {
+      "get": {
+        "summary": "Listar grupos em cache da sessão",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Deslocamento devolvido em paging.cursors.after pela página anterior"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Pesquisa por nome ou JID do grupo"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de grupos em cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupsListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/groups/{groupId}": {
+      "get": {
+        "summary": "Consultar detalhes e configurações atuais do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata normalizado do grupo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Grupo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Alterar configurações do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configurações aplicadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Sair do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "$ref": "#/components/parameters/GroupIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessão removida do grupo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/groups/{groupId}/participants": {
+      "get": {
+        "summary": "Listar participantes de um grupo em cache",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "groupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aceita 1203... ou 1203...@g.us"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Participantes do grupo em cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupParticipantsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Grupo não encontrado em cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Promover ou rebaixar administradores do grupo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "groupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aceita 1203... ou 1203...@g.us"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action",
+                  "participants"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "promote",
+                      "demote"
+                    ]
+                  },
+                  "participants": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "description": "Número, PN JID ou LID"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "wa_id": {
+                              "type": "string"
+                            },
+                            "user_id": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Participantes promovidos ou rebaixados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "group_id",
+                    "failed"
+                  ],
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "promoted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "demoted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "failed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ação ou participantes inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error400"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/{media_id}": {
+      "get": {
+        "summary": "Obter metadados e URL temporária de mídia",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dados da mídia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não encontrado"
+          }
+        }
+      }
+    },
+    "/v15.0/download/{phone}/{file}": {
+      "get": {
+        "summary": "Download do arquivo de mídia",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "file",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Arquivo binário",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não encontrado"
+          }
+        }
+      }
+    },
+    "/{phone}/contacts": {
+      "get": {
+        "summary": "Listar contatos armazenados da sessão Zapo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "default": "0"
+            },
+            "description": "Cursor Redis devolvido em next_cursor pela página anterior"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Pesquisa por nome, telefone, username ou LID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página do diretório de contatos sincronizado pela Zapo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDirectoryResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A sessão não utiliza o provider Zapo"
+          }
+        }
+      },
+      "post": {
+        "summary": "Verificar contatos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactsRequest"
+              },
+              "example": {
+                "blocking": "no_wait",
+                "force_check": true,
+                "contacts": [
+                  "5500000000002"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de validação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{phone}/contacts/import": {
+      "post": {
+        "summary": "Adicionar ou atualizar contato na agenda do WhatsApp",
+        "description": "Salva o contato na agenda sincronizada da sessão por meio da mutação\noficial de app-state `Contact` da Zapo. A operação é idempotente para\no mesmo número.\n\nQuando `user_id` é informado, ele deve ser um LID e tem prioridade para\nlocalizar no store da Zapo o PN exato usado no envelope do WhatsApp.\nSem `user_id`, a própria Zapo resolve o número para LID antes de salvar.\nA normalização brasileira de apresentação não é aplicada ao PN enviado\nao provider.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactImportRequest"
+              },
+              "examples": {
+                "phoneOnly": {
+                  "summary": "Resolver o LID e adicionar o contato",
+                  "value": {
+                    "phone_number": "5500000000002",
+                    "full_name": "Contato Exemplo",
+                    "first_name": "Contato"
+                  }
+                },
+                "lidFirst": {
+                  "summary": "Usar a identidade LID já conhecida pela aplicação",
+                  "value": {
+                    "phone_number": "5500000000002",
+                    "user_id": "000000000000002@lid",
+                    "full_name": "Contato Exemplo",
+                    "first_name": "Contato",
+                    "username": "contato_exemplo"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contato salvo; retorna a identidade canônica usada pela Zapo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Número, nome, LID ou username inválido"
+          },
+          "404": {
+            "description": "Não foi possível resolver o LID ou o PN exato no store Zapo"
+          },
+          "409": {
+            "description": "Sessão indisponível, desconectada ou pertencente a outro worker"
+          }
+        }
+      }
+    },
+    "/{phone}/blacklist/{webhook_id}": {
+      "post": {
+        "summary": "Adicionar número ao blacklist de um webhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string"
+                  },
+                  "ttl": {
+                    "type": "integer",
+                    "description": "Tempo de bloqueio em milissegundos"
+                  }
+                }
+              },
+              "example": {
+                "to": "5511999999999",
+                "ttl": 86400000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "example": {
+                    "success": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos"
+          }
+        }
+      }
+    },
+    "/{phone}/request_code": {
+      "post": {
+        "summary": "Solicitar código de pareamento",
+        "description": "Solicita um pairing code ao motor da sessão. No motor Zapo, a resposta HTTP contém o código puro e o Socket.IO também publica uma imagem com o código legível pelo contrato compatível `broadcast`, usando `type: qrcode`. A aplicação pode continuar exibindo `content` em uma tag `img`, sem criar um evento específico para pairing code.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código temporário que deve ser digitado no WhatsApp."
+                    }
+                  },
+                  "example": {
+                    "success": true,
+                    "code": "1234-5678"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/timer/{phone}/{to}": {
+      "post": {
+        "summary": "Iniciar timer de mensagem automática",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message",
+                  "timeout"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "description": "Tempo de espera em ms"
+                  }
+                }
+              },
+              "example": {
+                "message": "Ainda precisamos da sua resposta",
+                "timeout": 300000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Parâmetros ausentes"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancelar timer ativo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "path",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/register": {
+      "post": {
+        "summary": "Registrar/atualizar configuração da sessão",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuração aplicada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro ao aplicar configuração"
+          }
+        }
+      }
+    },
+    "/v15.0/{phone}/deregister": {
+      "post": {
+        "summary": "Encerrar sessão (logout) e remover registro",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sem conteúdo"
+          }
+        }
+      }
+    },
+    "/webhooks/whatsapp/{phone}": {
+      "get": {
+        "summary": "Verificação do Webhook (Facebook/Meta)",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          },
+          {
+            "in": "query",
+            "name": "hub.mode",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hub.verify_token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hub.challenge",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retorna o challenge",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token inválido"
+          }
+        }
+      },
+      "post": {
+        "summary": "Receber eventos do WhatsApp (Forward mode)",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WebhookInbound"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WebhookAck"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WebhookStatusFailed"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "example": {
+                    "success": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/fake/{phone}": {
+      "post": {
+        "summary": "Webhook de teste (Fake)",
+        "description": "Recebe qualquer payload e responde `{ \"success\": true }`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PhonePath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WebhookStatusFailed"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WebhookInbound"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WebhookAck"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "example": {
+                    "success": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "API token. Ex.: 1 ou Bearer <token>"
+      }
+    },
+    "parameters": {
+      "PhonePath": {
+        "name": "phone",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Número (ID) da sessão, ex.: 5511999999999"
+      },
+      "GroupIdPath": {
+        "name": "groupId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "JID do grupo, ex.: 120363040468224422@g.us"
+      }
+    },
+    "schemas": {
+      "VersionStatus": {
+        "type": "object",
+        "required": [
+          "installed_version",
+          "update_available",
+          "status",
+          "checked_at"
+        ],
+        "properties": {
+          "installed_version": {
+            "type": "string",
+            "example": "4.0.1"
+          },
+          "latest_version": {
+            "type": "string",
+            "example": "4.0.1"
+          },
+          "update_available": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "current",
+              "update_available",
+              "unknown"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "release_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "Error400": {
+        "type": "object",
+        "required": [
+          "error",
+          "status",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "message",
+              "type",
+              "code"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "example": "GraphMethodException"
+              },
+              "code": {
+                "type": "integer",
+                "example": 131000
+              },
+              "error_subcode": {
+                "type": "integer"
+              },
+              "fbtrace_id": {
+                "type": "string"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "example": "error"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisterConfig": {
+        "description": "Configuração da sessão. Campos variam por provedor.",
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "authToken": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "baileys",
+              "zapo"
+            ],
+            "default": "zapo",
+            "description": "Motor WhatsApp da sessão. Zapo é o padrão para novas sessões. Baileys permanece aceito somente para sessões legadas; ao migrar para Zapo, um novo pareamento é obrigatório e credenciais Baileys não são importadas."
+          },
+          "connectionType": {
+            "type": "string",
+            "enum": [
+              "qrcode",
+              "pairing_code"
+            ],
+            "description": "Forma de pareamento. Em uma sessão Zapo já registrada, este valor permanece bloqueado no modo atual mesmo quando a sessão está offline. Para trocar o modo, execute deregister e registre a sessão novamente."
+          }
+        }
+      },
+      "SessionsList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "display_phone_number": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PhoneInfo": {
+        "type": "object",
+        "properties": {
+          "display_phone_number": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "message_templates": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MessageCommon": {
+        "type": "object",
+        "required": [
+          "messaging_product",
+          "to",
+          "type"
+        ],
+        "properties": {
+          "messaging_product": {
+            "type": "string",
+            "example": "whatsapp"
+          },
+          "to": {
+            "type": "string",
+            "description": "Número destino (ou status@broadcast)"
+          },
+          "type": {
+            "type": "string"
+          },
+          "context": {
+            "type": "object",
+            "description": "Responde ou cita uma mensagem anterior.",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "message_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "ID retornado pela UnoAPI para a mensagem citada."
+              }
+            }
+          }
+        }
+      },
+      "MessageStatusBroadcast": {
+        "description": "Publica imagem ou vídeo no Status/Stories. `statusJidList` limita os destinatários; quando omitido, a UnoAPI usa os contatos disponíveis para a sessão.",
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageImage"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "const": "status@broadcast"
+                  },
+                  "statusJidList": {
+                    "type": "array",
+                    "nullable": true,
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 8
+                    }
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "statusJidList": {
+                        "type": "array",
+                        "nullable": true,
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 8
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageVideo"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "const": "status@broadcast"
+                  },
+                  "statusJidList": {
+                    "type": "array",
+                    "nullable": true,
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 8
+                    }
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "statusJidList": {
+                        "type": "array",
+                        "nullable": true,
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 8
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "MessageText": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "mentionAll": {
+                    "type": "boolean",
+                    "description": "Opcional. Se true, menciona todos os participantes. Em grupos, `@all`/`@todos` no body também ativa automaticamente."
+                  },
+                  "mentions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Opcional. Lista de números ou JIDs para menção. Em grupos, `@<telefone_valido>` no body também é extraído automaticamente."
+                  }
+                }
+              },
+              "mentionAll": {
+                "type": "boolean",
+                "description": "Atalho opcional equivalente a text.mentionAll"
+              },
+              "mentions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Atalho opcional equivalente a text.mentions"
+              }
+            }
+          }
+        ]
+      },
+      "MessageEdit": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "context",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "message_edit"
+              },
+              "context": {
+                "type": "object",
+                "required": [
+                  "message_id"
+                ],
+                "properties": {
+                  "message_id": {
+                    "type": "string",
+                    "description": "ID Unoapi da mensagem original enviada pela conta conectada. A Unoapi resolve o ID para a key do provider; na Zapo usa editKey com id e participante opcional."
+                  }
+                }
+              },
+              "text": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "mentions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Opcional. Lista de números ou JIDs para menção no texto editado."
+                  }
+                }
+              },
+              "mentions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Atalho opcional equivalente a text.mentions."
+              }
+            }
+          }
+        ]
+      },
+      "MessageImage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "image"
+            ],
+            "properties": {
+              "type": {
+                "const": "image"
+              },
+              "image": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "caption": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/jpeg"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageVideo": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "video"
+            ],
+            "properties": {
+              "type": {
+                "const": "video"
+              },
+              "video": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "caption": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "video/mp4"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageSticker": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "sticker"
+            ],
+            "properties": {
+              "type": {
+                "const": "sticker"
+              },
+              "sticker": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "PNG/JPG/GIF are auto-converted to WEBP before sending"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/webp"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageAudio": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "audio"
+            ],
+            "properties": {
+              "type": {
+                "const": "audio"
+              },
+              "audio": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "audio/ogg"
+                  },
+                  "ptt": {
+                    "type": "boolean",
+                    "description": "Envia como mensagem de voz quando `true`."
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageDocument": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "document"
+            ],
+            "properties": {
+              "type": {
+                "const": "document"
+              },
+              "document": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "caption": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "application/pdf"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageContacts": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "contacts"
+            ],
+            "properties": {
+              "type": {
+                "const": "contacts"
+              },
+              "contacts": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "phones"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "object",
+                      "required": [
+                        "formatted_name"
+                      ],
+                      "properties": {
+                        "formatted_name": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "phones": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "phone"
+                        ],
+                        "properties": {
+                          "wa_id": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageReaction": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "reaction"
+            ],
+            "properties": {
+              "type": {
+                "const": "reaction"
+              },
+              "reaction": {
+                "type": "object",
+                "required": [
+                  "message_id",
+                  "emoji"
+                ],
+                "properties": {
+                  "message_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "ID UnoAPI da mensagem que receberá ou removerá a reação."
+                  },
+                  "emoji": {
+                    "type": "string",
+                    "description": "Emoji da reação. Envie string vazia para remover a reação."
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessagePoll": {
+        "description": "Cria uma enquete nativa.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "poll"
+            ],
+            "properties": {
+              "type": {
+                "const": "poll"
+              },
+              "poll": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "options"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Pergunta exibida na enquete."
+                  },
+                  "options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "name"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "selectable_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Quantidade máxima de opções selecionáveis."
+                  },
+                  "allow_add_option": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "hide_participant_name": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessagePollVote": {
+        "description": "Vota em uma enquete recebida ou enviada anteriormente.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "poll_vote"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "poll_vote",
+                  "poll-vote"
+                ]
+              },
+              "poll_vote": {
+                "type": "object",
+                "required": [
+                  "message_id",
+                  "selected_options"
+                ],
+                "properties": {
+                  "message_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "ID UnoAPI da mensagem que criou a enquete."
+                  },
+                  "selected_options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageInteractiveButtons": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "button"
+                  },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "buttons"
+                    ],
+                    "properties": {
+                      "buttons": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "reply"
+                          ],
+                          "properties": {
+                            "type": {
+                              "const": "reply"
+                            },
+                            "reply": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "title"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "InteractiveHeader": {
+        "description": "Cabeçalho textual ou de mídia. Listas aceitam somente texto.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "image"
+            ],
+            "properties": {
+              "type": {
+                "const": "image"
+              },
+              "text": {
+                "type": "string"
+              },
+              "image": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "image/jpeg"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "video"
+            ],
+            "properties": {
+              "type": {
+                "const": "video"
+              },
+              "text": {
+                "type": "string"
+              },
+              "video": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "video/mp4"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "document"
+            ],
+            "properties": {
+              "type": {
+                "const": "document"
+              },
+              "text": {
+                "type": "string"
+              },
+              "document": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "example": "application/pdf"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageInteractiveCtaButtons": {
+        "description": "Botões de ação nativos da Zapo. `cta_url` abre um endereço, `cta_call` inicia uma ligação e `cta_copy` copia um código.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "button"
+                  },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "buttons"
+                    ],
+                    "properties": {
+                      "buttons": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "url"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "cta_url"
+                                },
+                                "url": {
+                                  "type": "object",
+                                  "required": [
+                                    "title",
+                                    "link"
+                                  ],
+                                  "properties": {
+                                    "title": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "link": {
+                                      "type": "string",
+                                      "format": "uri"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "call"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "cta_call"
+                                },
+                                "call": {
+                                  "type": "object",
+                                  "required": [
+                                    "title",
+                                    "phone_number"
+                                  ],
+                                  "properties": {
+                                    "title": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "phone_number": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "copy_code"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "cta_copy"
+                                },
+                                "copy_code": {
+                                  "type": "object",
+                                  "required": [
+                                    "title",
+                                    "code"
+                                  ],
+                                  "properties": {
+                                    "title": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageInteractiveList": {
+        "description": "Lista de seleção única. Na Zapo, a UnoAPI converte este contrato para o `listMessage` raw documentado, usando `rows[].id` como `rowId`. Quando o contato seleciona uma linha, o mesmo ID retorna no webhook em `messages[].interactive.list_reply.id`.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "list"
+                  },
+                  "header": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "text"
+                    ],
+                    "description": "Cabeçalho textual opcional. Lista Zapo não aceita cabeçalho de mídia.",
+                    "properties": {
+                      "type": {
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Texto principal exibido antes do botão da lista."
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "Rodapé opcional."
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "button",
+                      "sections"
+                    ],
+                    "properties": {
+                      "button": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Texto do botão que abre a lista."
+                      },
+                      "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "rows"
+                          ],
+                          "properties": {
+                            "title": {
+                              "type": "string",
+                              "description": "Título da seção."
+                            },
+                            "rows": {
+                              "type": "array",
+                              "minItems": 1,
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "title"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Identificador estável da opção. Na Zapo vira `rowId` e retorna como `interactive.list_reply.id`."
+                                  },
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Texto principal da opção."
+                                  },
+                                  "description": {
+                                    "type": "string",
+                                    "description": "Descrição opcional da opção."
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "type": "list",
+                  "header": {
+                    "type": "text",
+                    "text": "Menu"
+                  },
+                  "body": {
+                    "text": "Escolha uma opção"
+                  },
+                  "footer": {
+                    "text": "Unoapi"
+                  },
+                  "action": {
+                    "button": "Ver opções",
+                    "sections": [
+                      {
+                        "title": "Planos",
+                        "rows": [
+                          {
+                            "id": "plan_basic",
+                            "title": "Básico",
+                            "description": "R$ 10"
+                          },
+                          {
+                            "id": "plan_pro",
+                            "title": "Pro",
+                            "description": "R$ 20"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageInteractiveCarousel": {
+        "description": "Carrossel nativo com 2 a 10 cartões. Cada cartão pode usar cabeçalho textual ou de mídia e botões de resposta, URL, ligação ou cópia.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "carousel"
+                  },
+                  "header": {
+                    "$ref": "#/components/schemas/InteractiveHeader"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "carousel"
+                    ],
+                    "properties": {
+                      "carousel": {
+                        "type": "object",
+                        "required": [
+                          "cards"
+                        ],
+                        "properties": {
+                          "cards": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 10,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "header",
+                                "body",
+                                "action"
+                              ],
+                              "properties": {
+                                "header": {
+                                  "$ref": "#/components/schemas/InteractiveHeader"
+                                },
+                                "body": {
+                                  "type": "object",
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "properties": {
+                                    "text": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                },
+                                "footer": {
+                                  "type": "object",
+                                  "properties": {
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "action": {
+                                  "type": "object",
+                                  "required": [
+                                    "buttons"
+                                  ],
+                                  "properties": {
+                                    "buttons": {
+                                      "type": "array",
+                                      "minItems": 1,
+                                      "items": {
+                                        "oneOf": [
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "reply"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "reply"
+                                              },
+                                              "reply": {
+                                                "type": "object",
+                                                "required": [
+                                                  "id",
+                                                  "title"
+                                                ],
+                                                "properties": {
+                                                  "id": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "url"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_url"
+                                              },
+                                              "url": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "link"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "link": {
+                                                    "type": "string",
+                                                    "format": "uri"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "call"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_call"
+                                              },
+                                              "call": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "phone_number"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "phone_number": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "type",
+                                              "copy_code"
+                                            ],
+                                            "properties": {
+                                              "type": {
+                                                "const": "cta_copy"
+                                              },
+                                              "copy_code": {
+                                                "type": "object",
+                                                "required": [
+                                                  "title",
+                                                  "code"
+                                                ],
+                                                "properties": {
+                                                  "title": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "code": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PaymentAmount": {
+        "type": "object",
+        "required": [
+          "value",
+          "offset"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Valor na menor unidade definida por `offset`."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 100
+          }
+        }
+      },
+      "PaymentSetting": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "pix_static_code"
+            ],
+            "properties": {
+              "type": {
+                "const": "pix_static_code"
+              },
+              "pix_static_code": {
+                "type": "object",
+                "required": [
+                  "merchant_name",
+                  "key",
+                  "key_type"
+                ],
+                "properties": {
+                  "merchant_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "pix_dynamic_code"
+            ],
+            "properties": {
+              "type": {
+                "const": "pix_dynamic_code"
+              },
+              "pix_dynamic_code": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "merchant_name",
+                  "key",
+                  "key_type"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "Código PIX copia e cola completo."
+                  },
+                  "merchant_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "payment_link"
+            ],
+            "properties": {
+              "type": {
+                "const": "payment_link"
+              },
+              "payment_link": {
+                "type": "object",
+                "required": [
+                  "uri"
+                ],
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "boleto"
+            ],
+            "properties": {
+              "type": {
+                "const": "boleto"
+              },
+              "boleto": {
+                "type": "object",
+                "required": [
+                  "digitable_line"
+                ],
+                "properties": {
+                  "digitable_line": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Disponível somente para contas habilitadas para pagamento em um clique.",
+            "required": [
+              "type",
+              "offsite_card_pay"
+            ],
+            "properties": {
+              "type": {
+                "const": "offsite_card_pay"
+              },
+              "offsite_card_pay": {
+                "type": "object",
+                "required": [
+                  "last_four_digits",
+                  "credential_id"
+                ],
+                "properties": {
+                  "last_four_digits": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 4
+                  },
+                  "credential_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PaymentOrder": {
+        "type": "object",
+        "required": [
+          "status",
+          "items",
+          "subtotal"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "partially_shipped",
+              "shipped",
+              "completed",
+              "canceled"
+            ]
+          },
+          "tax": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "shipping": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "discount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAmount"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "amount",
+                "quantity"
+              ],
+              "properties": {
+                "retailer_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "amount": {
+                  "$ref": "#/components/schemas/PaymentAmount"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "subtotal": {
+            "$ref": "#/components/schemas/PaymentAmount"
+          }
+        }
+      },
+      "MessagePaymentRequest": {
+        "description": "Solicitação curta de pagamento PIX estático pelo fluxo Zapo `payment_info`.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "button"
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "buttons"
+                    ],
+                    "properties": {
+                      "buttons": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "payment_setting"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "payment_request"
+                                },
+                                "payment_setting": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "pix_static_code"
+                                  ],
+                                  "properties": {
+                                    "type": {
+                                      "const": "pix_static_code"
+                                    },
+                                    "pix_static_code": {
+                                      "type": "object",
+                                      "required": [
+                                        "merchant_name",
+                                        "key",
+                                        "key_type"
+                                      ],
+                                      "properties": {
+                                        "merchant_name": {
+                                          "type": "string"
+                                        },
+                                        "key": {
+                                          "type": "string"
+                                        },
+                                        "key_type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "CPF",
+                                            "CNPJ",
+                                            "EMAIL",
+                                            "PHONE",
+                                            "EVP"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "payment_request"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "payment_request"
+                                },
+                                "payment_request": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "payment_type",
+                                    "payment_settings",
+                                    "currency",
+                                    "total_amount"
+                                  ],
+                                  "properties": {
+                                    "reference_id": {
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "physical-goods",
+                                        "digital-goods"
+                                      ]
+                                    },
+                                    "payment_type": {
+                                      "const": "br"
+                                    },
+                                    "payment_settings": {
+                                      "type": "array",
+                                      "minItems": 1,
+                                      "maxItems": 1,
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "type",
+                                          "pix_dynamic_code"
+                                        ],
+                                        "properties": {
+                                          "type": {
+                                            "const": "pix_dynamic_code"
+                                          },
+                                          "pix_dynamic_code": {
+                                            "type": "object",
+                                            "required": [
+                                              "code",
+                                              "merchant_name",
+                                              "key",
+                                              "key_type"
+                                            ],
+                                            "properties": {
+                                              "code": {
+                                                "type": "string"
+                                              },
+                                              "merchant_name": {
+                                                "type": "string"
+                                              },
+                                              "key": {
+                                                "type": "string"
+                                              },
+                                              "key_type": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "CPF",
+                                                  "CNPJ",
+                                                  "EMAIL",
+                                                  "PHONE",
+                                                  "EVP"
+                                                ]
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "currency": {
+                                      "const": "BRL"
+                                    },
+                                    "total_amount": {
+                                      "$ref": "#/components/schemas/PaymentAmount"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageOrderDetails": {
+        "description": "Pedido com PIX dinâmico, link, boleto ou cartão habilitado. `order` é opcional; o cabeçalho de imagem só pode ser usado quando `order` estiver presente.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "order_details"
+                  },
+                  "header": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "image"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "image"
+                      },
+                      "image": {
+                        "type": "object",
+                        "required": [
+                          "link"
+                        ],
+                        "properties": {
+                          "link": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "parameters"
+                    ],
+                    "properties": {
+                      "name": {
+                        "const": "review_and_pay"
+                      },
+                      "parameters": {
+                        "type": "object",
+                        "required": [
+                          "reference_id",
+                          "type",
+                          "payment_type",
+                          "payment_settings",
+                          "currency",
+                          "total_amount"
+                        ],
+                        "properties": {
+                          "reference_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "physical-goods",
+                              "digital-goods"
+                            ]
+                          },
+                          "payment_type": {
+                            "const": "br"
+                          },
+                          "payment_settings": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "$ref": "#/components/schemas/PaymentSetting"
+                            }
+                          },
+                          "currency": {
+                            "const": "BRL"
+                          },
+                          "total_amount": {
+                            "$ref": "#/components/schemas/PaymentAmount"
+                          },
+                          "order": {
+                            "$ref": "#/components/schemas/PaymentOrder"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageOrderStatus": {
+        "description": "Atualização do estado do pagamento e, opcionalmente, do pedido. Use a mesma `reference_id` de um `order_details` já processado para que a Uno cite o pedido original e o aplicativo atualize seu estado.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageCommon"
+          },
+          {
+            "type": "object",
+            "required": [
+              "interactive"
+            ],
+            "properties": {
+              "type": {
+                "const": "interactive"
+              },
+              "interactive": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "body",
+                  "action"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "order_status"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "footer": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "action": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "parameters"
+                    ],
+                    "properties": {
+                      "name": {
+                        "const": "review_order"
+                      },
+                      "parameters": {
+                        "type": "object",
+                        "required": [
+                          "reference_id",
+                          "payment"
+                        ],
+                        "properties": {
+                          "reference_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "order": {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "processing",
+                                  "partially_shipped",
+                                  "shipped",
+                                  "completed",
+                                  "canceled"
+                                ]
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "payment": {
+                            "type": "object",
+                            "required": [
+                              "status"
+                            ],
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending",
+                                  "captured",
+                                  "failed"
+                                ]
+                              },
+                              "timestamp": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MessageStatusUpdate": {
+        "type": "object",
+        "required": [
+          "status",
+          "message_id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "read",
+              "deleted"
+            ],
+            "description": "Marca a mensagem como lida ou apaga a mensagem enviada."
+          },
+          "message_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID UnoAPI da mensagem alvo."
+          }
+        }
+      },
+      "MessageRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MessageStatusBroadcast"
+          },
+          {
+            "$ref": "#/components/schemas/MessageText"
+          },
+          {
+            "$ref": "#/components/schemas/MessageEdit"
+          },
+          {
+            "$ref": "#/components/schemas/MessageImage"
+          },
+          {
+            "$ref": "#/components/schemas/MessageVideo"
+          },
+          {
+            "$ref": "#/components/schemas/MessageSticker"
+          },
+          {
+            "$ref": "#/components/schemas/MessageAudio"
+          },
+          {
+            "$ref": "#/components/schemas/MessageDocument"
+          },
+          {
+            "$ref": "#/components/schemas/MessageContacts"
+          },
+          {
+            "$ref": "#/components/schemas/MessageReaction"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePoll"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePollVote"
+          },
+          {
+            "$ref": "#/components/schemas/MessageInteractiveButtons"
+          },
+          {
+            "$ref": "#/components/schemas/MessageInteractiveCtaButtons"
+          },
+          {
+            "$ref": "#/components/schemas/MessageInteractiveList"
+          },
+          {
+            "$ref": "#/components/schemas/MessageInteractiveCarousel"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePaymentRequest"
+          },
+          {
+            "$ref": "#/components/schemas/MessageOrderDetails"
+          },
+          {
+            "$ref": "#/components/schemas/MessageOrderStatus"
+          },
+          {
+            "$ref": "#/components/schemas/MessageStatusUpdate"
+          }
+        ]
+      },
+      "MessageResponse": {
+        "type": "object",
+        "required": [
+          "messaging_product",
+          "contacts",
+          "messages"
+        ],
+        "properties": {
+          "messaging_product": {
+            "type": "string",
+            "const": "whatsapp"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "input",
+                "wa_id"
+              ],
+              "properties": {
+                "input": {
+                  "type": "string",
+                  "description": "Destinatário informado na requisição."
+                },
+                "wa_id": {
+                  "type": "string"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "Identificador interno do contato quando já resolvido."
+                }
+              }
+            }
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "ID UnoAPI usado em edição, reação, voto, citação e acompanhamento."
+                }
+              }
+            }
+          },
+          "status_skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status_recipients": {
+            "type": "integer"
+          }
+        }
+      },
+      "ContactsRequest": {
+        "type": "object",
+        "properties": {
+          "blocking": {
+            "type": "string",
+            "example": "no_wait"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "force_check": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ContactsResponse": {
+        "type": "object",
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "wa_id": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ContactDirectoryResponse": {
+        "type": "object",
+        "required": [
+          "contacts",
+          "next_cursor",
+          "has_more",
+          "total_count"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "user_id",
+                "last_updated_ms"
+              ],
+              "properties": {
+                "user_id": {
+                  "type": "string",
+                  "description": "LID canônico do contato"
+                },
+                "phone_number": {
+                  "type": "string",
+                  "description": "Telefone somente em dígitos; celulares brasileiros normalizados com o nono dígito"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "push_name": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string",
+                  "description": "Username opcional sincronizado pela Zapo"
+                },
+                "picture": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "last_updated_ms": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "total_count": {
+            "type": "integer",
+            "description": "Quantidade total de contatos armazenados no cache da sessão"
+          }
+        }
+      },
+      "ContactImportRequest": {
+        "type": "object",
+        "required": [
+          "phone_number",
+          "full_name"
+        ],
+        "properties": {
+          "phone_number": {
+            "type": "string",
+            "pattern": "^\\+?[0-9 ()-]{7,24}$",
+            "description": "Número do contato. Não inclua sufixo JID.",
+            "example": "5500000000002"
+          },
+          "full_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "example": "Contato Exemplo"
+          },
+          "first_name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Opcional; quando omitido, usa a primeira palavra de full_name.",
+            "example": "Contato"
+          },
+          "user_id": {
+            "type": "string",
+            "pattern": "^[0-9]+@lid$",
+            "description": "LID canônico opcional. Quando informado, prevalece para recuperar o PN exato no store Zapo.",
+            "example": "123456789@lid"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Username opcional, com ou sem @.",
+            "example": "contato_exemplo"
+          }
+        }
+      },
+      "ContactImportResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "contact"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "contact": {
+            "type": "object",
+            "required": [
+              "phone_number",
+              "full_name",
+              "first_name",
+              "user_id"
+            ],
+            "properties": {
+              "phone_number": {
+                "type": "string",
+                "description": "PN exato armazenado e usado pela Zapo, somente em dígitos."
+              },
+              "full_name": {
+                "type": "string"
+              },
+              "first_name": {
+                "type": "string"
+              },
+              "user_id": {
+                "type": "string",
+                "description": "LID canônico resolvido."
+              },
+              "username": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "MediaResponse": {
+        "type": "object",
+        "properties": {
+          "messaging_product": {
+            "type": "string",
+            "example": "whatsapp"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "PreflightStatusRequest": {
+        "type": "object",
+        "properties": {
+          "statusJidList": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PreflightStatusResponse": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string"
+          },
+          "session": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "online": {
+                "type": "boolean"
+              }
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "requested": {
+                "type": "integer"
+              },
+              "normalized": {
+                "type": "integer"
+              },
+              "valid": {
+                "type": "integer"
+              }
+            }
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                },
+                "normalized": {
+                  "type": "string"
+                },
+                "valid": {
+                  "type": "boolean"
+                },
+                "wa_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "GroupsListResponse": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jid": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "picture": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "participantsCount": {
+                  "type": "integer"
+                },
+                "participants_count": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "paging": {
+            "type": "object",
+            "properties": {
+              "cursors": {
+                "type": "object",
+                "properties": {
+                  "before": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "after": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "GroupDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "jid": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "picture": {
+            "type": "string"
+          },
+          "participants_count": {
+            "type": "integer"
+          },
+          "total_participant_count": {
+            "type": "integer"
+          },
+          "announcement": {
+            "type": "boolean",
+            "description": "true quando somente administradores podem enviar mensagens"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "true quando somente administradores podem editar as informações do grupo"
+          },
+          "join_approval_mode": {
+            "type": "string",
+            "enum": [
+              "approval_required",
+              "open"
+            ]
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "creation_timestamp": {
+            "type": "string"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "GroupSettingsRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "announcement": {
+            "type": "boolean",
+            "description": "Define se somente administradores podem enviar mensagens"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Define se somente administradores podem editar as informações do grupo"
+          },
+          "join_approval_mode": {
+            "type": "string",
+            "enum": [
+              "approval_required",
+              "open"
+            ]
+          }
+        }
+      },
+      "GroupSettingsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GroupSettingsRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "GroupParticipantsResponse": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string"
+          },
+          "group": {
+            "type": "object",
+            "properties": {
+              "jid": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            }
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jid": {
+                  "type": "string",
+                  "description": "Identificador do participante: PN em dígitos (sem @s.whatsapp.net) ou @lid"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Nome no cache de contatos quando disponível"
+                }
+              }
+            }
+          }
+        }
+      },
+      "WebhookStatusFailed": {
+        "description": "Payload de falha enviado ao webhook (fora da resposta HTTP)",
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "example": "whatsapp_business_account"
+          },
+          "entry": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "field": {
+                        "type": "string",
+                        "example": "messages"
+                      },
+                      "value": {
+                        "type": "object",
+                        "properties": {
+                          "messaging_product": {
+                            "type": "string",
+                            "example": "whatsapp"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "statuses": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "recipient_id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "example": "failed"
+                                },
+                                "timestamp": {
+                                  "type": "integer"
+                                },
+                                "errors": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "type": "integer"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      },
+                                      "error_data": {
+                                        "type": "object",
+                                        "description": "Diagnóstico normalizado do provider, sem stack trace"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CatalogImage": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL servida pelo storage configurado na UnoAPI; não é a URL criptografada temporária do WhatsApp."
+          },
+          "mime_type": {
+            "type": "string",
+            "example": "image/jpeg"
+          }
+        }
+      },
+      "CatalogVariant": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Cor"
+          },
+          "value": {
+            "type": "string",
+            "example": "Preto"
+          }
+        }
+      },
+      "CatalogProduct": {
+        "type": "object",
+        "required": [
+          "product_id",
+          "title"
+        ],
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "example": "product_123"
+          },
+          "retailer_id": {
+            "type": "string",
+            "example": "sku_001"
+          },
+          "title": {
+            "type": "string",
+            "example": "Produto de demonstração"
+          },
+          "description": {
+            "type": "string",
+            "example": "Descrição fictícia do produto"
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "price_amount_1000": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Preço multiplicado por 1000; 129900 representa BRL 129,90."
+          },
+          "sale_price_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_price": {
+            "type": "string",
+            "example": "R$ 129,90"
+          },
+          "formatted_sale_price": {
+            "type": "string",
+            "example": "R$ 119,90"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogVariant"
+            }
+          },
+          "business_owner_id": {
+            "type": "string",
+            "description": "JID/LID do proprietário comercial informado pelo WhatsApp."
+          },
+          "body": {
+            "type": "string"
+          },
+          "footer": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogOrderItem": {
+        "type": "object",
+        "required": [
+          "product_id",
+          "title",
+          "quantity"
+        ],
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "example": "product_123"
+          },
+          "retailer_id": {
+            "type": "string",
+            "example": "sku_001"
+          },
+          "title": {
+            "type": "string",
+            "example": "Produto de demonstração"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "unit_price_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "subtotal_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_unit_price": {
+            "type": "string",
+            "example": "R$ 129,90"
+          },
+          "formatted_subtotal": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogVariant"
+            }
+          }
+        }
+      },
+      "CatalogOrder": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "status",
+          "resolution_status",
+          "item_count",
+          "items"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "example": "order_123"
+          },
+          "title": {
+            "type": "string",
+            "example": "Pedido de demonstração"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inquiry",
+              "accepted",
+              "declined",
+              "unknown"
+            ]
+          },
+          "catalog_type": {
+            "type": "string",
+            "example": "NATIVE"
+          },
+          "resolution_status": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "summary",
+              "failed"
+            ],
+            "description": "resolved contém os itens consultados; summary preserva somente o resumo recebido; failed indica falha na consulta sem perder a mensagem."
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          },
+          "item_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_amount_1000": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "formatted_subtotal": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "formatted_total": {
+            "type": "string",
+            "example": "R$ 259,80"
+          },
+          "message": {
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CatalogImage"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogOrderItem"
+            }
+          }
+        }
+      },
+      "WebhookInbound": {
+        "description": "Mensagens recebidas (compatível com WhatsApp Cloud API)",
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "field": {
+                        "type": "string",
+                        "example": "messages"
+                      },
+                      "value": {
+                        "type": "object",
+                        "properties": {
+                          "messaging_product": {
+                            "type": "string",
+                            "example": "whatsapp"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "contacts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "messages": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "from": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "timestamp": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "description": "Inclui os tipos estruturados `product` e `order` para eventos de catálogo."
+                                },
+                                "fallback_text": {
+                                  "type": "string",
+                                  "description": "Texto seguro para clientes que ainda não renderizam o componente estruturado."
+                                },
+                                "product": {
+                                  "$ref": "#/components/schemas/CatalogProduct"
+                                },
+                                "order": {
+                                  "$ref": "#/components/schemas/CatalogOrder"
+                                },
+                                "interactive": {
+                                  "type": "object",
+                                  "description": "Resposta de botão ou lista interativa.",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "button_reply",
+                                        "list_reply"
+                                      ]
+                                    },
+                                    "list_reply": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "description": "Mesmo valor enviado originalmente em `rows[].id`."
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "description": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "button_reply": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "object": "whatsapp_business_account",
+          "entry": [
+            {
+              "id": "5511999999999",
+              "changes": [
+                {
+                  "field": "messages",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "messages": [
+                      {
+                        "from": "5566999999999",
+                        "id": "MESSAGE_ID",
+                        "timestamp": "1784900000",
+                        "type": "interactive",
+                        "interactive": {
+                          "type": "list_reply",
+                          "list_reply": {
+                            "id": "plan_basic",
+                            "title": "Básico",
+                            "description": "R$ 10"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "WebhookAck": {
+        "description": "Acks/Status de mensagens enviadas (delivered/read/deleted)",
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "field": {
+                        "type": "string",
+                        "example": "messages"
+                      },
+                      "value": {
+                        "type": "object",
+                        "properties": {
+                          "messaging_product": {
+                            "type": "string"
+                          },
+                          "statuses": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "recipient_id": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "example": "delivered"
+                                },
+                                "timestamp": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

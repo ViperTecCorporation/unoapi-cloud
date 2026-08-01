@@ -9,11 +9,11 @@ const DATA = new NodeCache()
 let searchData = true
 
 export interface addToBlacklist {
-  (from: string, webhookId: string, to: string, ttl: number): Promise<Boolean>
+  (from: string, webhookId: string, to: string, ttl: number): Promise<boolean>
 }
 
 export interface isInBlacklist {
-  (from: string, webhookId: string, payload: object): Promise<String>
+  (from: string, webhookId: string, payload: object): Promise<string>
 }
 
 export const blacklistInMemory = (from: string, webhookId: string, to: string) => {

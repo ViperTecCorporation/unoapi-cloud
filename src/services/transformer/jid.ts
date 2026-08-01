@@ -1,4 +1,4 @@
-import { isLidUser, isPnUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import { isLidUser, isPnUser, jidNormalizedUser } from '../whatsapp_jid'
 import { parsePhoneNumber } from 'awesome-phonenumber'
 import logger from '../logger'
 
@@ -151,6 +151,21 @@ export const normalizeParticipantId = (jid: string): string => {
     return value
   }
   return value.replace(/\D/g, '') || value
+}
+
+// Identificador visivel de mencao. O protocolo usa JID completo internamente,
+// mas o texto deve expor apenas os digitos, sem "+", device ou sufixo @lid.
+export const jidToMentionDigits = (value?: string): string => {
+  const raw = `${value || ''}`.trim().replace(/^@/, '')
+  const match = raw.match(/^\+?(\d+)(?::\d+)?(?:@(lid|hosted\.lid|s\.whatsapp\.net))?$/i)
+  return match?.[1] || ''
+}
+
+export const normalizeMentionText = (value?: string): string => {
+  return `${value || ''}`.replace(
+    /@\+?(\d{6,})(?::\d+)?(?:@(?:lid|hosted\.lid|s\.whatsapp\.net))?\b/gi,
+    '@$1',
+  )
 }
 
 // Converte PN/JID para PN JID de transporte sem heuristica extra (ex.: sem inserir 9o digito BR).

@@ -1,8 +1,8 @@
-import { Contact, proto, WAMessage } from '@whiskeysockets/baileys'
 import { Response } from 'express'
 import { getDataStore } from './data_store'
 import { Config } from './config'
 import { Readable } from 'stream'
+import type { WhatsAppContact, WhatsAppMessage } from './whatsapp_types'
 
 export const mediaStores: Map<string, MediaStore> = new Map()
 
@@ -13,7 +13,8 @@ export interface getMediaStore {
 export type MediaStore = {
   type: string
   getMedia: (baseUrl: string, mediaId: string) => Promise<object | void>
-  saveMedia: (waMessage: WAMessage) => Promise<WAMessage>
+  saveMedia: (waMessage: WhatsAppMessage) => Promise<WhatsAppMessage>
+  saveDownloadedMedia?: (waMessage: WhatsAppMessage, buffer: Buffer) => Promise<WhatsAppMessage>
   saveMediaForwarder: <T>(message: T) => Promise<T>
   saveMediaBuffer: (fileName: string, buffer: Buffer, contentType?: string, scheduleRemoval?: boolean) => Promise<boolean>
   removeMedia: (fileName: string) => Promise<void>
@@ -27,5 +28,5 @@ export type MediaStore = {
     baseUrl: string,
     jid: string
   ) => Promise<{ url: string; metadata?: Record<string, string> } | undefined>
-  saveProfilePicture: (contact: Partial<Contact>) => Promise<void>
+  saveProfilePicture: (contact: Partial<WhatsAppContact>) => Promise<void>
 }

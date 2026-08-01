@@ -1,30 +1,25 @@
 import { Response } from './response'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import { getConfig } from './config'
 import { Listener } from './listener'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 export const clients: Map<string, Client> = new Map()
 
-export type ContactStatus = 'valid' | 'processing' | 'invalid'| 'failed'
+export type ContactStatus = 'valid' | 'processing' | 'invalid' | 'failed'
 
 export interface Contact {
-  wa_id: String | undefined
-  input: String
+  wa_id: string | undefined
+  user_id?: string | undefined
+  username?: string | undefined
+  display_name?: string | undefined
+  push_name?: string | undefined
+  input: string
   status: ContactStatus
 }
 
 export interface getClient {
-  ({
-    phone,
-    listener,
-    getConfig,
-    onNewLogin,
-  }: {
-    phone: string
-    listener: Listener
-    getConfig: getConfig
-    onNewLogin: OnNewLogin
-  }): Promise<Client>
+  ({ phone, listener, getConfig, onNewLogin }: { phone: string; listener: Listener; getConfig: getConfig; onNewLogin: OnNewLogin }): Promise<Client>
 }
 
 export class ConnectionInProgress extends Error {
@@ -36,8 +31,8 @@ export class ConnectionInProgress extends Error {
 export interface Client {
   connect(time: number): Promise<void>
 
-  disconnect(): Promise<void>
-  
+  disconnect(options?: { preserveStatus?: boolean }): Promise<void>
+
   logout(): Promise<void>
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,18 +54,24 @@ export interface Client {
     from_me?: boolean
     fromMe?: boolean
     timestamp?: number | string
-  }): Promise<{ request_id: string }>
+    replay_stored?: boolean
+    replayStored?: boolean
+    force_replay?: boolean
+    forceReplay?: boolean
+    days?: number
+  }): Promise<{ request_id?: string; forwarded?: number }>
 
-  sendPasskeyResponse?(payload: {
-    credentialId: Buffer
-    assertionJson: Buffer | string
-  }): Promise<Response>
+  sendPasskeyResponse?(payload: { credentialId: Buffer; assertionJson: Buffer | string }): Promise<Response>
 
   sendPasskeyConfirmation?(): Promise<Response>
 
   getMessageMetadata<T>(message: T): Promise<T>
 
   contacts(numbers: string[]): Promise<Contact[]>
+
+  saveContact?(input: SaveContactInput): Promise<SaveContactResponse>
+
+  requestPairingCode?(): Promise<string>
 
   groupCreate?(subject: string, participants: string[]): Promise<any>
 
@@ -97,4 +98,15 @@ export interface Client {
   groupJoinApprovalMode?(jid: string, mode: 'on' | 'off'): Promise<void>
 
   groupMetadata?(jid: string): Promise<any>
+
+  groupProfilePicture?(
+    jid: string,
+    forceRefresh?: boolean,
+  ): Promise<
+    | {
+        url: string
+        metadata?: Record<string, string>
+      }
+    | undefined
+  >
 }

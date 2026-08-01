@@ -1,10 +1,13 @@
 import { Request, Response } from 'express'
-import { Webhook, getConfig } from '../services/config'
-import { setConfig } from '../services/redis'
+import { Webhook, getConfig, type connectionType } from '../services/config'
+import { getConfig as getStoredConfig, setConfig } from '../services/redis'
 import logger from '../services/logger'
 import { Logout } from '../services/logout'
 import { Reload } from '../services/reload'
 import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
+import { resolveSessionProvider, resolveWhatsAppEngine } from '../services/providers/provider_resolver'
+import { resolveRegistrationConnectionType } from '../services/providers/connection_type_policy'
+import { isProviderRuntimeEnabled } from '../services/providers/provider_runtime_policy'
 
 export class RegistrationController {
   private static readonly REGISTER_DEBOUNCE_MS = 15000
@@ -29,20 +32,60 @@ export class RegistrationController {
     logger.debug('register query %s', JSON.stringify(req.query))
     const phone = await resolveSessionPhoneByMetaId(req.params.phone)
     try {
-      await setConfig(phone, req.body)
+      const previousConfig = await this.getConfig(phone)
+      const storedConfig = await getStoredConfig(phone)
+      if (storedConfig && !isProviderRuntimeEnabled(previousConfig.provider)) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'baileys_provider_disabled_deregister_required',
+        })
+      }
+      const connectionType = resolveRegistrationConnectionType({
+        hasStoredConfig: !!storedConfig,
+        previousProvider: resolveWhatsAppEngine(previousConfig.provider),
+        previousConnectionType: previousConfig.connectionType,
+        requestedConnectionType: req.body.connectionType as connectionType | undefined,
+      })
+      const requestedProvider = req.body.provider ?? previousConfig.provider
+      const provider = !storedConfig && !isProviderRuntimeEnabled(requestedProvider)
+        ? resolveSessionProvider(undefined)
+        : requestedProvider
+      if (provider !== requestedProvider) {
+        logger.warn(
+          'Replaced disabled provider %s with %s for new session %s',
+          requestedProvider,
+          provider,
+          phone,
+        )
+      }
+      const requestedConfig = {
+        ...req.body,
+        provider,
+        ...(connectionType.value ? { connectionType: connectionType.value } : {}),
+      }
+      if (connectionType.locked) {
+        logger.warn(
+          'Ignored connectionType change for existing Zapo session %s (%s -> %s); deregister is required',
+          phone,
+          previousConfig.connectionType,
+          req.body.connectionType,
+        )
+      }
+      await setConfig(phone, requestedConfig)
+      const config = await this.getConfig(phone)
+      const providerChanged = resolveWhatsAppEngine(previousConfig.provider) !== resolveWhatsAppEngine(config.provider)
       const now = Date.now()
       const last = RegistrationController.lastRegisterAtByPhone.get(phone) || 0
       const inFlight = RegistrationController.inFlightByPhone.has(phone)
       const inDebounceWindow = (now - last) < RegistrationController.REGISTER_DEBOUNCE_MS
 
-      if (inFlight || inDebounceWindow) {
+      if (!providerChanged && (inFlight || inDebounceWindow)) {
         logger.warn(
           'register suppressed for %s (inFlight=%s debounceMs=%s)',
           phone,
           inFlight,
           Math.max(0, RegistrationController.REGISTER_DEBOUNCE_MS - (now - last))
         )
-        const config = await this.getConfig(phone)
         return res.status(202).json({ ...config, registerSuppressed: true })
       }
 
@@ -54,7 +97,6 @@ export class RegistrationController {
           RegistrationController.inFlightByPhone.delete(phone)
         })
 
-      const config = await this.getConfig(phone)
       return res.status(200).json(config)
     } catch (e) {
       return res.status(400).json({ status: 'error', message: `${phone} could not create, error: ${e.message}` })
@@ -97,7 +139,7 @@ export class RegistrationController {
 
     const updatedWebhooks = webhooks.map((webhook, currentIndex) => {
       if (currentIndex !== index) return webhook
-      const rest = { ...(webhook as any) }
+      const rest = { ...webhook }
       delete rest.disabled
       return { ...rest, enabled }
     })
@@ -112,9 +154,10 @@ export class RegistrationController {
     })
   }
 
-  private resolveWebhookEnabled(body: any): boolean | undefined {
-    if (typeof body?.enabled === 'boolean') return body.enabled
-    if (typeof body?.disabled === 'boolean') return !body.disabled
+  private resolveWebhookEnabled(body: unknown): boolean | undefined {
+    const value = body as { enabled?: unknown, disabled?: unknown } | undefined
+    if (typeof value?.enabled === 'boolean') return value.enabled
+    if (typeof value?.disabled === 'boolean') return !value.disabled
     return undefined
   }
 }

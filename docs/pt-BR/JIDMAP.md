@@ -31,12 +31,12 @@ Garantias:
 GET /:version/:phone/jiemap?siee=pn_for_lie|lie_for_pn|all&q=<substring>&limit=<n>&offset=<m>
 ```
 
-- Exemplo: `/v17.0/5566996269251/jiemap?siee=pn_for_lie&q=94047&limit=50&offset=0`
+- Exemplo: `/v17.0/5511999999999/jiemap?siee=pn_for_lie&q=94047&limit=50&offset=0`
 - Resposta:
 
 ```
 {
-  "session": "5566996269251",
+  "session": "5511999999999",
   "siee": "pn_for_lie",
   "q": "94047",
   "page": { "limit": 50, "offset": 0, "total": { "pn_for_lie": 12, "lie_for_pn": 0 } },
@@ -57,7 +57,7 @@ GET /:version/:phone/jiemap/:contact
 - Resposta:
 
 ```
-{ "session": "5566996269251", "pn": "1234567890123@s.whatsapp.net", "lie": "1234567890123@lie" }
+{ "session": "5511999999999", "pn": "1234567890123@s.whatsapp.net", "lie": "1234567890123@lie" }
 ```
 
 ## Variáveis relevantes

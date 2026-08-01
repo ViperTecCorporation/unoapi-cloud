@@ -196,7 +196,7 @@ export class BulkParserJob {
         const response = await axios.get(url, { responseType: 'arraybuffer' })
         const headers = response.headers
         const contentType = headers['content-type']
-        type = mime.extension(contentType)
+        type = mime.extension(typeof contentType === 'string' ? contentType : '')
         logger.debug(`Downloaded url!`)
         buffer = Buffer.from(response.data)
       }

@@ -2,7 +2,8 @@ jest.mock('../../src/services/redis')
 import { getConfig } from '../../src/services/redis'
 import { getConfigRedis } from '../../src/services/config_redis'
 import { configs } from '../../src/services/config'
-import { WEBHOOK_HEADER } from '../../src/defaults'
+import { WEBHOOK_HEADER, WHATSAPP_ENGINE } from '../../src/defaults'
+import { resolveSessionProvider } from '../../src/services/providers/provider_resolver'
 const mockGetConfig = getConfig as jest.MockedFunction<typeof getConfig>
 
 describe('service config redis', () => {
@@ -18,10 +19,17 @@ describe('service config redis', () => {
   })
 
   test('use default', async () => {
-    mockGetConfig.mockResolvedValue({})
+    mockGetConfig.mockResolvedValue(undefined)
     const config = await getConfigRedis(`${new Date().getTime()}`)
     expect(config.ignoreGroupMessages).toBe(true)
     expect(config.ignoreBroadcastMessages).toBe(false)
+    expect(config.provider).toBe(resolveSessionProvider(WHATSAPP_ENGINE))
+  })
+
+  test('keeps a persisted legacy session on Baileys when provider is absent', async () => {
+    mockGetConfig.mockResolvedValue({ autoConnect: true })
+    const config = await getConfigRedis(`${new Date().getTime()}`)
+    expect(config.provider).toBe('baileys')
   })
 
   // test('use env', async () => {
@@ -58,10 +66,52 @@ describe('service config redis', () => {
     expect(config.webhooks[0].header).toBe(WEBHOOK_HEADER)
   })
 
+  test('keeps forward transport defaults while credentials remain session-scoped', async () => {
+    mockGetConfig.mockResolvedValue({
+      webhookForward: {
+        phoneNumberId: 'phone-id',
+        token: 'session-token',
+      },
+    })
+
+    const config = await getConfigRedis(`${new Date().getTime()}`)
+
+    expect(config.webhookForward).toMatchObject({
+      url: 'https://graph.facebook.com',
+      version: 'v17.0',
+      timeoutMs: 6000,
+      phoneNumberId: 'phone-id',
+      token: 'session-token',
+    })
+    expect(config.webhookForward.businessAccountId).toMatch(/^\d+$/)
+  })
+
   test('uses webhook enabled flag from redis', async () => {
     mockGetConfig.mockResolvedValue({ webhooks: [{ enabled: false }] })
     const config = await getConfigRedis(`${new Date().getTime()}`)
     expect(config.webhooks[0].enabled).toBe(false)
+  })
+
+  test('normalizes an invalid history window stored in redis', async () => {
+    mockGetConfig.mockResolvedValue({ historyMaxAgeDays: 0 })
+    const config = await getConfigRedis(`${new Date().getTime()}`)
+    expect(config.historyMaxAgeDays).toBe(30)
+  })
+
+  test('ignores the removed direct-chat addressing setting from Redis', async () => {
+    mockGetConfig.mockResolvedValue({ oneToOneAddressingMode: 'pn' })
+    const config = await getConfigRedis(`${new Date().getTime()}`)
+    expect(config).not.toHaveProperty('oneToOneAddressingMode')
+  })
+
+  test('removes the legacy fake base URL when an absolute webhook exists', async () => {
+    mockGetConfig.mockResolvedValue({ webhooks: [{
+      url: 'http://localhost:9876/webhooks/fake',
+      urlAbsolute: 'https://chatwoot.local/webhook',
+    }] })
+    const config = await getConfigRedis(`${new Date().getTime()}`)
+    expect(config.webhooks[0].url).toBe('')
+    expect(config.webhooks[0].urlAbsolute).toBe('https://chatwoot.local/webhook')
   })
 
   test('get media store', async () => {

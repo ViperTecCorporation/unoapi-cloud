@@ -1,7 +1,14 @@
 import { Response } from './response'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 export interface Incoming {
   send(phone: string, payload: object, options: object): Promise<Response>
+  contacts?(phone: string, numbers: string[]): Promise<any[]>
+  saveContact?(phone: string, input: SaveContactInput): Promise<SaveContactResponse>
+  requestPairingCode?(phone: string): Promise<string>
+  resyncAppState?(phone: string, forceSnapshot?: boolean): Promise<void>
+  fetchPrivacyTokens?(phone: string, jids: string[], timeoutMs?: number): Promise<any>
+  fetchMessageHistory?(phone: string, payload?: object): Promise<any>
   recoverDelivery?(phone: string, payload: object, options: object): Promise<Response>
   groupCreate?(phone: string, subject: string, participants: string[]): Promise<any>
   groupUpdateSubject?(phone: string, jid: string, subject: string): Promise<void>
@@ -16,4 +23,15 @@ export interface Incoming {
   groupSettingUpdate?(phone: string, jid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<void>
   groupJoinApprovalMode?(phone: string, jid: string, mode: 'on' | 'off'): Promise<void>
   groupMetadata?(phone: string, jid: string): Promise<any>
+  groupProfilePicture?(
+    phone: string,
+    jid: string,
+    forceRefresh?: boolean,
+  ): Promise<
+    | {
+        url: string
+        metadata?: Record<string, string>
+      }
+    | undefined
+  >
 }

@@ -1,4 +1,4 @@
-import { BufferJSON } from '@whiskeysockets/baileys'
+import { bufferJson } from './buffer_json'
 import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs'
 import { session, writeData, readData, removeData, getKey } from './session'
 import logger from './logger'
@@ -51,7 +51,7 @@ export const sessionFile: session = async (phone: string) => {
     logger.debug('write data', file)
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return setAuth(file, data, (value: any) => JSON.stringify(value, BufferJSON.replacer))
+      return setAuth(file, data, (value: any) => JSON.stringify(value, bufferJson.replacer))
     } catch (error) {
       logger.error(error, 'Error on write auth')
       throw error
@@ -64,7 +64,7 @@ export const sessionFile: session = async (phone: string) => {
     try {
       return getAuth(file, (value: string) => {
         try {
-          return value ? JSON.parse(value, BufferJSON.reviver) : undefined
+          return value ? JSON.parse(value, bufferJson.reviver) : undefined
         } catch (error) {
           logger.error(error, `Error on parsing auth: ${value}`)
           throw error

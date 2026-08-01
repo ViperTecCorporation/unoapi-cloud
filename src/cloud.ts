@@ -2,9 +2,21 @@ import * as dotenv from 'dotenv'
 dotenv.config()
 
 import logger from './services/logger'
+import { resolveCloudProcessRole } from './services/providers/cloud_process_role'
+import { ensureRequiredRedis } from './services/redis_runtime'
 logger.info('Starting...')
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import './web'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import './worker'
+const role = resolveCloudProcessRole(process.env.UNOAPI_PROCESS_ROLE)
+
+const start = async () => {
+  await ensureRequiredRedis()
+  if (role === 'web') return import('./web.js')
+  if (role === 'broker') return Promise.all([import('./broker.js'), import('./bulker.js')])
+  if (role === 'worker') return import('./worker.js')
+  await Promise.all([import('./web.js'), import('./worker.js'), import('./broker.js'), import('./bulker.js')])
+}
+
+start().catch((error) => {
+  logger.error(error, 'Failed to start cloud process role %s', role)
+  process.exit(1)
+})

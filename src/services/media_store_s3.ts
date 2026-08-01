@@ -1,4 +1,4 @@
-import { Contact } from '@whiskeysockets/baileys'
+import type { WhatsAppContact } from './whatsapp_types'
 import { jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { UNOAPI_QUEUE_MEDIA, DATA_TTL, FETCH_TIMEOUT_MS, DATA_URL_TTL, UNOAPI_EXCHANGE_BROKER_NAME, DOWNLOAD_AUDIO_CONVERT_TO_MP3 } from '../defaults'
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
@@ -204,7 +204,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     return response.Body as Readable
   }
  
-  const profilePictureIdsFor = async (jid?: string, contact?: Partial<Contact>): Promise<string[]> => {
+  const profilePictureIdsFor = async (jid?: string, contact?: Partial<WhatsAppContact>): Promise<string[]> => {
     const ids = new Set<string>()
     const add = (value?: string) => {
       const id = sanitizeProfileId(value)
@@ -283,7 +283,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     return (await mediaStore.getProfilePictureInfo?.(baseUrl, jid))?.url || ''
   }
 
-  mediaStore.saveProfilePicture = async (contact: Partial<Contact>) => {
+  mediaStore.saveProfilePicture = async (contact: Partial<WhatsAppContact>) => {
     const originalId = contact.id as string
     const targetIds = await profilePictureIdsFor(originalId, contact)
 
@@ -297,6 +297,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     if (contact.imgUrl) {
       logger.info('PROFILE_PICTURE saving (S3) targets: %s (from %s)', targetIds.join(','), sanitizeProfileId(originalId))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
+      if (!response.ok) throw new Error(`Could not download profile picture: HTTP ${response.status}`)
       const responseContentType = `${response.headers.get('content-type') || ''}`.split(';')[0].trim().toLowerCase()
       const profilePictureContentType = responseContentType.startsWith('image/') ? responseContentType : 'image/jpeg'
       const buffer = toBuffer(await response.arrayBuffer())

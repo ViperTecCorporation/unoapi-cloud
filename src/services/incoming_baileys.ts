@@ -1,11 +1,12 @@
 import { Incoming } from './incoming'
 import { Client, getClient, clients } from './client'
 import { getConfig } from './config'
-import { OnNewLogin } from './socket'
+import type { OnNewLogin } from './login_types'
 import logger from './logger'
 import { Listener } from './listener'
+import type { SaveContactInput } from './contacts/contact_book_types'
 
-export class IncomingBaileys implements Incoming {
+export class IncomingProvider implements Incoming {
   private service: Listener
   private getClient: getClient
   private getConfig: getConfig
@@ -44,6 +45,44 @@ export class IncomingBaileys implements Incoming {
       throw new Error(`Client ${phone} does not support delivery recovery`)
     }
     return client.recoverDelivery(payload, options)
+  }
+
+  public async contacts(phone: string, numbers: string[]) {
+    return (await this.client(phone)).contacts(numbers)
+  }
+
+  public async saveContact(phone: string, input: SaveContactInput) {
+    const client = await this.client(phone)
+    if (typeof client.saveContact !== 'function') {
+      throw new Error(`Client ${phone} does not support address-book contacts`)
+    }
+    return client.saveContact(input)
+  }
+
+  public async requestPairingCode(phone: string) {
+    const client = await this.client(phone)
+    if (typeof client.requestPairingCode !== 'function') {
+      throw new Error(`Client ${phone} does not support direct pairing-code requests`)
+    }
+    return client.requestPairingCode()
+  }
+
+  public async resyncAppState(phone: string, forceSnapshot = true) {
+    const client = await this.client(phone)
+    if (typeof client.resyncAppState !== 'function') throw new Error(`Client ${phone} does not support app-state resync`)
+    return client.resyncAppState(forceSnapshot)
+  }
+
+  public async fetchPrivacyTokens(phone: string, jids: string[], timeoutMs?: number) {
+    const client = await this.client(phone)
+    if (typeof client.fetchPrivacyTokens !== 'function') throw new Error(`Client ${phone} does not support privacy token fetch`)
+    return client.fetchPrivacyTokens(jids, timeoutMs)
+  }
+
+  public async fetchMessageHistory(phone: string, payload: object = {}) {
+    const client = await this.client(phone)
+    if (typeof client.fetchMessageHistory !== 'function') throw new Error(`Client ${phone} does not support history sync`)
+    return client.fetchMessageHistory(payload)
   }
 
   public async groupCreate(phone: string, subject: string, participants: string[]) {
@@ -101,4 +140,15 @@ export class IncomingBaileys implements Incoming {
     }
     return client.groupMetadata(jid)
   }
+
+  public async groupProfilePicture(phone: string, jid: string, forceRefresh = false) {
+    const client = clients.get(phone)
+    if (!client || typeof client.groupProfilePicture !== 'function') {
+      throw new Error(`Client ${phone} is not ready to fetch group profile pictures`)
+    }
+    return client.groupProfilePicture(jid, forceRefresh)
+  }
 }
+
+/** @deprecated Use IncomingProvider. Kept for public import compatibility. */
+export class IncomingBaileys extends IncomingProvider {}

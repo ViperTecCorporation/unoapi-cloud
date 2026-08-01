@@ -5,15 +5,22 @@ import { Broadcast } from './broadcast'
 import { getConfig } from './config'
 import { fromBaileysMessageContent, getMessageType, BindTemplateError, isSaveMedia, jidToPhoneNumber, jidToRawPhoneNumber, DecryptError, isValidPhoneNumber, normalizeMessageContent, getBinMessage, normalizeLidJid, phoneNumberToJid } from './transformer'
 import * as Baileys from '@whiskeysockets/baileys'
-import { WAMessage, delay, jidNormalizedUser, isPnUser, isLidUser, proto } from '@whiskeysockets/baileys'
+import { WAMessage, delay, jidNormalizedUser, isLidUser, proto } from '@whiskeysockets/baileys'
 import { Template } from './template'
-import { UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS, UNOAPI_DELAY_BETWEEN_MESSAGES_MS, INBOUND_DEDUP_WINDOW_MS, BASE_URL } from '../defaults'
+import { BASE_URL } from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { createDecipheriv, createHash, createHmac, hkdfSync } from 'crypto'
 import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 import { buildRestrictionNoticeWebhooks } from './restriction_notice'
+import { BAILEYS_LISTENER_POLICY } from './baileys_listener_policy'
 
-const  delays: Map<String, number> = new Map()
+const {
+  delayAfterFirstMessageMs: UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS,
+  delayBetweenMessagesMs: UNOAPI_DELAY_BETWEEN_MESSAGES_MS,
+  inboundDedupWindowMs: INBOUND_DEDUP_WINDOW_MS,
+} = BAILEYS_LISTENER_POLICY
+
+const  delays: Map<string, number> = new Map()
 const GCM_TAG_LENGTH = 128 >> 3
 const POLL_CREATION_TYPES = new Set([
   'pollCreationMessage',

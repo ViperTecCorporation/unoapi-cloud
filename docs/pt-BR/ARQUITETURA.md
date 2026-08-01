@@ -76,11 +76,11 @@ Este documento explica como o Unoapi integra o Baileys para expor uma API no for
 - O socket realiza um fallback automático:
   1. Consulta os participantes do grupo (inclui variantes PN/LID e a própria identidade).
   2. Executa `assertSessions` para todos (massa → chunks → divisão PN/LID quando ajuda), respeitando limites para evitar sobrecarga.
-  3. Aplica um atraso adaptativo para propagação do sender-key e tenta enviar novamente uma vez; se ainda falhar, alterna o addressingMode (PN↔LID) para uma última tentativa.
+  3. Aplica atraso adaptativo e a politica interna limitada da Baileys, mantendo enderecamento LID.
 - Esse comportamento reduz falhas intermitentes sem alterar a API de chamada.
 
 Heurísticas para grupos grandes
-- Quando o grupo é “grande” (ver `GROUP_LARGE_THRESHOLD`), o cliente prefere endereçamento PN e evita asserts pesados, usando atraso adaptativo.
+- Em grupos grandes, a politica interna evita asserts pesados e mantem enderecamento LID.
 - Asserts disparados por recibos (`message-receipt.update` com retry) são limitados por grupo e quantidade de alvos para evitar loops e alta CPU.
 
 ## LID/PN e Webhooks
@@ -89,11 +89,9 @@ Heurísticas para grupos grandes
 - Internamente (envio e asserts), usamos LID sempre que possível: 1:1 tenta aprender PN→LID em tempo de execução; em grupos, asserts são feitos com LID prioritariamente.
 - Imagens de perfil: salvas e consultadas por um identificador canônico PN quando possível (inclusive em S3), evitando duplicidade entre PN/LID.
 
-### Variáveis de Ambiente relevantes
+### Configuracao relevante
 
-- `GROUP_SEND_ADDRESSING_MODE` (''|lid|pn): vazio implica LID por padrão.
-- `GROUP_SEND_PREASSERT_SESSIONS` (true): habilita assert prévio de sessões em grupos (LID primeiro).
-- `GROUP_LARGE_THRESHOLD` (800): acima disso, evita asserts pesados e usa atrasos adaptativos.
+- As protecoes de grupo da Baileys sao internas em `src/services/baileys_group_policy.ts`.
 - `JIDMAP_CACHE_ENABLED` (true) e `JIDMAP_TTL_SECONDS` (604800): cache PN�?"LID.
 - `STATUS_BROADCAST_ENABLED` (true): habilita/desabilita o envio para `status@broadcast`.
 
@@ -121,7 +119,7 @@ Para ver logs de aprendizado PN→LID e asserts, ajuste `LOG_LEVEL`/`UNO_LOG_LEV
 - Sessão/Conexão: `CONNECTION_TYPE`, `QR_TIMEOUT_MS`, `VALIDATE_SESSION_NUMBER`, `CLEAN_CONFIG_ON_DISCONNECT`.
 - Logs: `LOG_LEVEL`, `UNO_LOG_LEVEL`.
 - Status: `STATUS_ALLOW_LID` (manter LID ou normalizar para PN).
-- Grupos: `GROUP_SEND_MEMBERSHIP_CHECK`, `GROUP_SEND_PREASSERT_SESSIONS`, `GROUP_SEND_ADDRESSING_MODE`.
+- Grupos: protecoes internas da Baileys com enderecamento LID.
 - Mídia: S3/MinIO `STORAGE_*`, `FETCH_TIMEOUT_MS`, conversão opcional de áudio para PTT.
 
 ## Arquivos Principais

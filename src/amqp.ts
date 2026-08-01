@@ -1,4 +1,4 @@
-import { connect, Connection, Channel, Replies, ChannelModel, Options, ConsumeMessage } from 'amqplib'
+import { connect, Channel, Replies, ChannelModel, Options, ConsumeMessage } from 'amqplib'
 import {
   AMQP_URL,
   UNOAPI_X_COUNT_RETRIES,
@@ -22,6 +22,8 @@ import { version } from '../package.json'
 import { extractDestinyPhone } from './services/transformer'
 import { isTransientInfraError } from './services/error_utils'
 import { v1 as uuid } from 'uuid'
+import { providerFromQueueName, providerQueueName } from './services/providers/provider_queue'
+import { isWebhookCircuitOpenError, webhookRetryCount } from './services/webhook_circuit_breaker'
 
 const withTimeout = (millis, error, promise) => {
   let timeoutPid
@@ -44,7 +46,8 @@ export const queueDelayedName = (queue: string) => `${queue}.delayed`
 
 let amqpChannelModel: ChannelModel | undefined
 let amqpChannel: Channel | undefined
-let amqpConnection: Connection | undefined
+let amqpConnectionPromise: Promise<ChannelModel> | undefined
+const handledAmqpConnections = new WeakSet<ChannelModel>()
 const AMQP_CONNECT_MAX_RETRIES = parseInt(process.env.AMQP_CONNECT_MAX_RETRIES || '30')
 const AMQP_CONNECT_RETRY_DELAY_MS = parseInt(process.env.AMQP_CONNECT_RETRY_DELAY_MS || '2000')
 
@@ -130,46 +133,56 @@ const consumerId = (exchange: string, queue: string, routingKey: string) => `${e
 
 export const amqpConnect = async (amqpUrl = AMQP_URL) => {
   if (!amqpChannelModel) {
-    let attempt = 0
-    let lastError: unknown
-    while (!amqpChannelModel && attempt < AMQP_CONNECT_MAX_RETRIES) {
-      attempt += 1
-      try {
-        logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
-        amqpChannelModel = await connect(amqpUrl)
-        amqpConnection = amqpChannelModel.connection
-      } catch (error) {
-        lastError = error
-        if (!isTransientInfraError(error) || attempt >= AMQP_CONNECT_MAX_RETRIES) {
-          throw error
+    if (!amqpConnectionPromise) {
+      amqpConnectionPromise = (async () => {
+        let attempt = 0
+        let lastError: unknown
+        while (attempt < AMQP_CONNECT_MAX_RETRIES) {
+          attempt += 1
+          try {
+            logger.info(`Connecting RabbitMQ at ${amqpUrl}...`)
+            return await connect(amqpUrl)
+          } catch (error) {
+            lastError = error
+            if (!isTransientInfraError(error) || attempt >= AMQP_CONNECT_MAX_RETRIES) {
+              throw error
+            }
+            logger.warn(
+              error as any,
+              'Transient RabbitMQ connection failure on attempt %d/%d, retrying in %d ms',
+              attempt,
+              AMQP_CONNECT_MAX_RETRIES,
+              AMQP_CONNECT_RETRY_DELAY_MS
+            )
+            await new Promise((resolve) => setTimeout(resolve, AMQP_CONNECT_RETRY_DELAY_MS))
+          }
         }
-        logger.warn(
-          error as any,
-          'Transient RabbitMQ connection failure on attempt %d/%d, retrying in %d ms',
-          attempt,
-          AMQP_CONNECT_MAX_RETRIES,
-          AMQP_CONNECT_RETRY_DELAY_MS
-        )
-        await new Promise((resolve) => setTimeout(resolve, AMQP_CONNECT_RETRY_DELAY_MS))
-      }
+        throw lastError || new Error('RabbitMQ connection unavailable')
+      })()
     }
-    if (!amqpChannelModel && lastError) {
-      throw lastError
+    try {
+      amqpChannelModel = await amqpConnectionPromise
+    } finally {
+      amqpConnectionPromise = undefined
     }
   } else {
     logger.info(`Already connected RabbitMQ!`)
   }
 
-  amqpChannelModel.on('error', (err) => {
-    logger.error(err, 'Connection Error')
-    resetAmqpState(err)
-  })
-  amqpChannelModel.on('close', (err) => {
-    logger.error(err, 'Connection Closed')
-    resetAmqpState(err)
-  })
+  const connection = amqpChannelModel
+  if (!handledAmqpConnections.has(connection)) {
+    handledAmqpConnections.add(connection)
+    connection.on('error', (err) => {
+      logger.error(err, 'Connection Error')
+      if (amqpChannelModel === connection) resetAmqpState(err)
+    })
+    connection.on('close', (err) => {
+      logger.error(err, 'Connection Closed')
+      if (amqpChannelModel === connection) resetAmqpState(err)
+    })
+  }
 
-  return amqpChannelModel
+  return connection
 }
 
 export const amqpDisconnect = async (amqpChannelModel: ChannelModel) => {
@@ -214,6 +227,24 @@ const bindingKey = (queueName, routingKey) => {
   return `${queueName}${routingKey ? `.${routingKey}` : ''}`
 }
 
+export const bindPublishRoute = async (
+  channel: Pick<Channel, 'bindQueue'>,
+  exchangeName: string,
+  queueName: string,
+  routingKey: string,
+) => {
+  const destiny = bindingKey(queueName, routingKey)
+  await channel.bindQueue(queueName, exchangeName, destiny)
+  return destiny
+}
+
+export const sessionBindQueueName = (queue: string) => {
+  const provider = providerFromQueueName(queue)
+  return provider
+    ? providerQueueName(UNOAPI_QUEUE_BIND, UNOAPI_SERVER_NAME, provider)
+    : undefined
+}
+
 const bindQueue = async (channel, exchangeName, queueName, routingKey, delayed = false) => {
   const queueNameToBind = delayed ? queueDelayedName(queueName) : queueName
   const destiny = bindingKey(queueNameToBind, routingKey)
@@ -237,21 +268,22 @@ export const amqpGetQueue = async (
   if (!queues.get(queue)) {
     await amqpGetExchange(exchange, options.type!, options.prefetch!)
     const channel = await amqpGetChannel()
+    if (!channel) throw new Error(`AMQP channel unavailable while creating queue ${queue}`)
     logger.info('Creating queue %s...', queue)
-    const queueMain = await channel?.assertQueue(queue, { durable: true })!
-    let deadLetterExchange = exchange
+    const queueMain = await channel.assertQueue(queue, { durable: true })
+    const deadLetterExchange = exchange
 
     const queueDeadId = queueDeadName(queue)
     const exchangeDeadId = queueDeadName(exchange)
-    const queueDead = await channel?.assertQueue(queueDeadId, { durable: true })!
-    await amqpChannel?.bindQueue(queueDeadId, exchangeDeadId, `${queueDeadId}.*`)
+    const queueDead = await channel.assertQueue(queueDeadId, { durable: true })
+    await channel.bindQueue(queueDeadId, exchangeDeadId, `${queueDeadId}.*`)
 
     const exchangeDelayedId = queueDelayedName(exchange)
     const queueDelayedId = queueDelayedName(queue)
-    const queueDelayed = await amqpChannel?.assertQueue(queueDelayedId, { durable: true, arguments: {
+    const queueDelayed = await channel.assertQueue(queueDelayedId, { durable: true, arguments: {
       'x-dead-letter-exchange': deadLetterExchange
-    }})!
-    await amqpChannel?.bindQueue(queueDelayedId, exchangeDelayedId, `${queueDelayedId}.*`)
+    }})
+    await channel.bindQueue(queueDelayedId, exchangeDelayedId, `${queueDelayedId}.*`)
 
     queues.set(queue, { queueMain, queueDead, queueDelayed })
     logger.info('Created queue %s!', queue)
@@ -259,9 +291,11 @@ export const amqpGetQueue = async (
 
 
   validateRoutingKey(routingKey)
-  if (/^\d+$/.test(routingKey) && !routes.get(routingKey)) {
-    await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, `${UNOAPI_QUEUE_BIND}.${UNOAPI_SERVER_NAME}`, '', { routingKey }, { type: 'direct' })
-    routes.set(routingKey, true)
+  const bindQueueName = sessionBindQueueName(queue)
+  const routeId = `${routingKey}:${bindQueueName}`
+  if (bindQueueName && /^\d+$/.test(routingKey) && !routes.get(routeId)) {
+    await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, bindQueueName, '', { routingKey }, { type: 'direct' })
+    routes.set(routeId, true)
     if (routes.size > ROUTES_CACHE_LIMIT) {
       const first = routes.keys().next().value
       routes.delete(first)
@@ -325,8 +359,11 @@ export const amqpPublish = async (
     queueUsed = queueDead
     exchangeUsed = queueDeadName(exchange)
   }
-  const destiny = bindingKey(queueUsed.queue, routingKey)
-  await channel?.publish(exchangeUsed, destiny, Buffer.from(JSON.stringify(payload)), properties)
+  if (!channel) throw new Error('AMQP channel is not available')
+  // Bind before publishing so the first provider message is durable even when
+  // the worker has not registered its consumer for this session yet.
+  const destiny = await bindPublishRoute(channel, exchangeUsed, queueUsed.queue, routingKey)
+  await channel.publish(exchangeUsed, destiny, Buffer.from(JSON.stringify(payload)), properties)
   logger.debug(
     'Published at exchange %s, with binding key: %s, payload: %s, properties: %s',
     exchangeUsed,
@@ -501,8 +538,9 @@ export const amqpConsume = async (
             await channel?.ack(payload)
             return
           }
-          if (countRetries >= maxRetries) {
-            logger.info('Reject %s retries', countRetries)
+          const retryCount = webhookRetryCount(countRetries, error)
+          if (retryCount >= maxRetries) {
+            logger.info('Reject %s retries', retryCount)
             if (normalizedOptions.notifyFailedMessages) {
               logger.info('Sending error to whatsapp...')
               const errObj: any = error as any
@@ -535,16 +573,26 @@ export const amqpConsume = async (
             }
             await amqpPublish(exchange, queue, routingKeyLocal, data, { dead: true, type: normalizedOptions.type })
           } else {
-            logger.info('Publish retry %s of %s', countRetries, maxRetries)
+            logger.info('Publish retry %s of %s', retryCount, maxRetries)
             let delay = 60000
             try {
-              const err: any = error as any
-              if (err && (err.code === 'WEBHOOK_CB_OPEN' || err.name === 'WebhookCircuitOpenError')) {
+              const err = error as any
+              if (isWebhookCircuitOpenError(err)) {
                 delay = err.delayMs || WEBHOOK_CB_REQUEUE_DELAY_MS || delay
-                logger.info('WEBHOOK_CB requeue delay %s ms (queue=%s)', delay, queue)
+                logger.info(
+                  'WEBHOOK_CB requeue delay %s ms without consuming retry=%s (queue=%s)',
+                  delay,
+                  err.consumesRetry === false,
+                  queue,
+                )
               }
             } catch {}
-            await amqpPublish(exchange, queue, routingKeyLocal, data, { delay, maxRetries, countRetries, type: normalizedOptions.type })
+            await amqpPublish(exchange, queue, routingKeyLocal, data, {
+              delay,
+              maxRetries,
+              countRetries: retryCount,
+              type: normalizedOptions.type,
+            })
           }
           await channel?.ack(payload)
         }

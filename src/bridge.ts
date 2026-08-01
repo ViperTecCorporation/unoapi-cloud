@@ -12,12 +12,13 @@ import {
   UNOAPI_QUEUE_LOGOUT,
   UNOAPI_SERVER_NAME,
   UNOAPI_EXCHANGE_BRIDGE_NAME,
+  UNOAPI_WORKER_ENGINE,
 } from './defaults'
 import { amqpConsume } from './amqp'
-import { startRedis } from './services/redis'
+import { ensureRequiredRedis } from './services/redis_runtime'
 import { getConfig } from './services/config'
 import { getConfigRedis } from './services/config_redis'
-import { getClientBaileys } from './services/client_baileys'
+import { getClientProvider } from './services/providers/client_factory'
 import { onNewLoginGenerateToken } from './services/on_new_login_generate_token'
 import logger from './services/logger'
 import { Listener } from './services/listener'
@@ -29,15 +30,19 @@ import { ReloadBaileys } from './services/reload_baileys'
 import { LogoutBaileys } from './services/logout_baileys'
 import { ReloadJob } from './jobs/reload'
 import { LogoutJob } from './jobs/logout'
+import { providerQueueName } from './services/providers/provider_queue'
+import { resolveWhatsAppEngine } from './services/providers/provider_resolver'
+import { isProviderRuntimeEnabled } from './services/providers/provider_runtime_policy'
 
 const getConfigLocal: getConfig = getConfigRedis
 const outgoingAmqp: Outgoing = new OutgoingAmqp(getConfigLocal)
-const listenerAmqp: Listener = new ListenerAmqp()
+const workerEngine = resolveWhatsAppEngine(UNOAPI_WORKER_ENGINE)
+const listenerAmqp: Listener = new ListenerAmqp(workerEngine)
 const onNewLogin = onNewLoginGenerateToken(outgoingAmqp)
-const bindJob = new BindBridgeJob()
-const reload = new ReloadBaileys(getClientBaileys, getConfigLocal, listenerAmqp, onNewLogin)
+const bindJob = new BindBridgeJob(workerEngine)
+const reload = new ReloadBaileys(getClientProvider, getConfigLocal, listenerAmqp, onNewLogin, workerEngine)
 const reloadJob = new ReloadJob(reload)
-const logout = new LogoutBaileys(getClientBaileys, getConfigLocal, listenerAmqp, onNewLogin)
+const logout = new LogoutBaileys(getClientProvider, getConfigLocal, listenerAmqp, onNewLogin)
 const logoutJob = new LogoutJob(logout)
 
 import * as Sentry from '@sentry/node'
@@ -50,14 +55,17 @@ if (process.env.SENTRY_DSN) {
 }
 
 const startBrigde = async () => {
-  await startRedis()
+  await ensureRequiredRedis()
+  if (!isProviderRuntimeEnabled(workerEngine)) {
+    throw new Error('baileys_worker_disabled')
+  }
 
   logger.info('Unoapi Cloud version %s starting bridge...', version)
 
   logger.info('Starting bind consumer')
   await amqpConsume(
     UNOAPI_EXCHANGE_BRIDGE_NAME, 
-    `${UNOAPI_QUEUE_BIND}.${UNOAPI_SERVER_NAME}`, 
+    providerQueueName(UNOAPI_QUEUE_BIND, UNOAPI_SERVER_NAME, workerEngine),
     '',
     bindJob.consume.bind(bindJob),
     {
@@ -69,7 +77,7 @@ const startBrigde = async () => {
   logger.info('Starting reload consumer')
   await amqpConsume(
     UNOAPI_EXCHANGE_BRIDGE_NAME, 
-    `${UNOAPI_QUEUE_RELOAD}.${UNOAPI_SERVER_NAME}`, 
+    providerQueueName(UNOAPI_QUEUE_RELOAD, UNOAPI_SERVER_NAME, workerEngine),
     '', 
     reloadJob.consume.bind(reloadJob),
     {
@@ -81,7 +89,7 @@ const startBrigde = async () => {
   logger.info('Starting logout consumer')
   await amqpConsume(
     UNOAPI_EXCHANGE_BRIDGE_NAME,
-    `${UNOAPI_QUEUE_LOGOUT}.${UNOAPI_SERVER_NAME}`,
+    providerQueueName(UNOAPI_QUEUE_LOGOUT, UNOAPI_SERVER_NAME, workerEngine),
     '', 
     logoutJob.consume.bind(logoutJob),
     {
@@ -94,9 +102,12 @@ const startBrigde = async () => {
 
   logger.info('Unoapi Cloud version %s started brige!', version)
 
-  await autoConnect(sessionStore, listenerAmqp, getConfigRedis, getClientBaileys, onNewLogin)
+  await autoConnect(sessionStore, listenerAmqp, getConfigRedis, getClientProvider, onNewLogin, workerEngine)
 }
-startBrigde()
+startBrigde().catch((error) => {
+  logger.error(error, 'Failed to start bridge: Redis is required')
+  process.exit(1)
+})
 
 process.on('uncaughtException', (reason: any) => {
   if (process.env.SENTRY_DSN) {

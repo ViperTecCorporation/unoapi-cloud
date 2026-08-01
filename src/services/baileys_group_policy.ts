@@ -1,0 +1,15 @@
+export const BAILEYS_GROUP_POLICY = Object.freeze({
+  membershipCheck: true,
+  addressingMode: 'lid' as const,
+  preassertSessions: false,
+  fallbackOrder: Object.freeze([] as ('pn' | 'lid')[]),
+  largeGroupThreshold: 800,
+  assertChunkSize: 100,
+  assertFloodWindowMs: 5_000,
+  metadataRefreshEnabled: true,
+  metadataRefreshDebounceMs: 1_500,
+  metadataRefreshMinIntervalMs: 60_000,
+  noSessionRetryBaseDelayMs: 150,
+  noSessionRetryPer200DelayMs: 300,
+  noSessionRetryMaxDelayMs: 2_000,
+})

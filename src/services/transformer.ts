@@ -1,4 +1,10 @@
-import { AnyMessageContent, isJidNewsletter, isPnUser, isLidUser, jidNormalizedUser } from '@whiskeysockets/baileys'
+import type { WhatsAppMessageContent } from './whatsapp_types'
+import {
+  isJidNewsletter,
+  isLidUser,
+  isPnUser,
+  jidNormalizedUser,
+} from './whatsapp_jid'
 import mime from 'mime-types'
 import vCard from 'vcf'
 import logger from './logger'
@@ -7,18 +13,12 @@ import { SendError } from './send_error'
 import { BindTemplateError, DecryptError } from './transformer/errors'
 import {
   MESSAGE_STUB_TYPE_ERRORS,
-  TYPE_MESSAGES_MEDIA,
   TYPE_MESSAGES_TO_PROCESS_FILE,
   TYPE_MESSAGES_TO_READ,
 } from './transformer/message_constants'
 import {
-  extractTypeMessage,
   getBinMessage,
   getMessageType,
-  getNormalizedMessage,
-  isAudioMessage,
-  isSaveMedia,
-  normalizeMessageContent,
 } from './transformer/message_type'
 import {
   ensurePn,
@@ -27,26 +27,24 @@ import {
   isValidPhoneNumber,
   jidToPhoneNumber,
   jidToPhoneNumberIfUser,
-  jidToRawPhoneNumber,
+  normalizeMentionText,
   normalizeLidJid,
   normalizeGroupId,
-  normalizeParticipantId,
-  normalizeTransportJid,
   normalizeUserOrGroupIdForWebhook,
   phoneNumberToJid,
-  toRawPnJid,
 } from './transformer/jid'
 import {
   BASE_URL,
   MESSAGE_CHECK_WAAPP,
   SEND_AUDIO_MESSAGE_AS_PTT,
-  UNOAPI_DEBUG_BAILEYS_LIST_DUMP,
-  UNOAPI_NATIVE_FLOW_BUTTONS,
-  WEBHOOK_FORWARD_VERSION,
   WEBHOOK_PREFER_PN_OVER_LID,
   WEBHOOK_INCLUDE_MEDIA_DATA,
 } from '../defaults'
 import { t } from '../i18n'
+import { mapOrderMessage, mapProductMessage } from './catalog/catalog_mapper'
+
+const BAILEYS_NATIVE_FLOW_ENABLED = true
+const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
 
 export { BindTemplateError, DecryptError } from './transformer/errors'
 export {
@@ -70,6 +68,8 @@ export {
   isValidPhoneNumber,
   jidToPhoneNumber,
   jidToPhoneNumberIfUser,
+  jidToMentionDigits,
+  normalizeMentionText,
   jidToRawPhoneNumber,
   normalizeLidJid,
   normalizeGroupId,
@@ -88,6 +88,14 @@ const isViewOnceUnavailableStub = (payload: any): boolean => {
   return stubParams.some((p: string) => p === 'view_once_unavailable' || p === 'view_once')
 }
 
+const isHostedMessageUnavailableStub = (payload: any): boolean => {
+  const source = payload?.update || payload || {}
+  const stubParams = Array.isArray(source?.messageStubParameters)
+    ? source.messageStubParameters.map((p: any) => `${p}`)
+    : []
+  return stubParams.includes('hosted_message_unavailable')
+}
+
 const extractFailedStatusError = (payload: any): any => {
   const update = payload?.update || {}
   const params = Array.isArray(update?.messageStubParameters)
@@ -98,8 +106,8 @@ const extractFailedStatusError = (payload: any): any => {
   const updateErrorData = update?.error_data && typeof update.error_data === 'object' ? update.error_data : undefined
   const sourceError = update?.error || updateErrorData
 
-  let code = sourceError?.code || update?.code || 1
-  let title = sourceError?.title || update?.title || 'The Unoapi Cloud has a error, verify the logs'
+  const code = sourceError?.code || update?.code || 1
+  const title = sourceError?.title || update?.title || 'The Unoapi Cloud has a error, verify the logs'
   const error: any = { code, title }
 
   if (sourceError?.message) error.message = sourceError.message
@@ -309,7 +317,7 @@ const parseInteractiveResponse = (binMessage: any) => {
   const name = `${native?.name || ''}`.toLowerCase()
   const isList = name.includes('list') || name.includes('single_select') || !!params?.row_id || !!params?.selected_row_id
   const isButton = name.includes('quick_reply') || name.includes('button') || !!params?.button_id || !!params?.id
-  return { id, title, description, isList, isButton, bodyText }
+  return { id, title, description, isList, isButton, bodyText, name, params }
 }
 
 const parseNativeFlowSingleSelect = (buttons: any[]) => {
@@ -482,7 +490,7 @@ export const completeCloudApiWebHook = (phone, to: string, message: object) => {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const toBaileysMessageContent = (payload: any, customMessageCharactersFunction = (m) => m): AnyMessageContent => {
+export const toBaileysMessageContent = (payload: any, customMessageCharactersFunction = (m) => m): WhatsAppMessageContent => {
   const { type } = payload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response: any = {}
@@ -541,7 +549,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       const header = interactive.header || {}
       const body = interactive.body || {}
       const footer = interactive.footer || {}
-      const useNativeFlow = UNOAPI_NATIVE_FLOW_BUTTONS
+      const useNativeFlow = BAILEYS_NATIVE_FLOW_ENABLED
       const mapButtonsToNativeFlow = (buttons: any[]) =>
         (buttons || [])
           .map((button: any) => {
@@ -734,40 +742,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
               if (button.type === 'copy') return !!button.copyText
               return !!button.id
             })
-        const cards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
-          const cardHeader = card.header || {}
-          const cardBody = card.body || {}
-          const cardFooter = card.footer || {}
-          const cardButtons = card.buttons || card.action?.buttons || mapCardActionToButtons(card.action, card.type)
-          const mapCardHeaderToProto = (h: any) => {
-            const headerType = `${h?.type || ''}`.toLowerCase()
-            const image = h?.image || {}
-            const video = h?.video || {}
-            const document = h?.document || {}
-            const imageLink = image.link || image.url
-            const videoLink = video.link || video.url
-            const documentLink = document.link || document.url
-            if (headerType === 'image' && imageLink) return { imageMessage: { url: imageLink } }
-            if (headerType === 'video' && videoLink) return { videoMessage: { url: videoLink } }
-            if (headerType === 'document' && documentLink) {
-              return { documentMessage: { url: documentLink, fileName: document.filename || document.fileName } }
-            }
-            if (h?.text) {
-              return { type: 4, title: h.text, hasMediaAttachment: false }
-            }
-            return undefined
-          }
-          const mappedHeader = mapCardHeaderToProto(cardHeader)
-          const mappedButtons = mapButtonsToNativeFlow(cardButtons)
-          return {
-            ...(mappedHeader ? { header: mappedHeader } : {}),
-            body: { text: cardBody?.text || '' },
-            ...(cardFooter?.text ? { footer: { text: cardFooter.text } } : {}),
-            nativeFlowMessage: {
-              buttons: mappedButtons,
-            },
-          }
-        })
         const nativeCards = (carousel.cards || interactive.cards || action.cards || interactive?.action?.cards || []).map((card: any) => {
           const cardHeader = card.header || {}
           const cardBody = card.body || {}
@@ -790,16 +764,6 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
           footer: footer.text || undefined,
           title: header.text || undefined,
           cards: nativeCards,
-        }
-        if (UNOAPI_DEBUG_BAILEYS_LIST_DUMP) {
-          logger.debug(
-            'toBaileys carousel->interactive dump input=%s output=%s',
-            JSON.stringify({ interactive, action, header, body, footer }),
-            JSON.stringify({
-              nativeCarousel: response.nativeCarousel,
-              legacyInteractiveCards: cards,
-            }),
-          )
         }
         break
       }
@@ -866,7 +830,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
       if (!link || !link.trim()) {
         throw new SendError(11, `invalid_${type}_payload: missing link`)
       }
-      let mimetype: string = getMimetype(payload)
+      const mimetype: string = getMimetype(payload)
       if (mimetype) {
         response.mimetype = mimetype
       }
@@ -885,7 +849,7 @@ export const toBaileysMessageContent = (payload: any, customMessageCharactersFun
         // converta em status failed ao invés de lançar e reencaminhar a fila
         throw new SendError(11, `invalid_${type}_payload: missing link`)
       }
-      let mimetype: string = getMimetype(payload)
+      const mimetype: string = getMimetype(payload)
       if (type == 'audio' && SEND_AUDIO_MESSAGE_AS_PTT) {
         response.ptt = true
       }
@@ -1000,8 +964,9 @@ export const getNumberAndId = (payload: any): [string, string] => {
   const id = split.length >= 2 ? `${split[0].split(':')[0]}@${split[1]}` : `${lid}`
 
   // Prefer a PN JID if any is available (explicit PN fields or alt PN fields)
-  const pnCandidate = participantPn || senderPn || participantPn2 || participant || participant2 || remoteJidAlt || participantAlt || participantAlt2
-  const pnIsValid = pnCandidate && isPnUser(pnCandidate)
+  const pnCandidate = [participantPn, senderPn, participantPn2, remoteJidAlt, participantAlt, participantAlt2, participant, participant2]
+    .find((candidate) => typeof candidate === 'string' && isPnUser(candidate))
+  const pnIsValid = !!pnCandidate
   let phone: string | undefined
   if (pnIsValid) {
     phone = jidToPhoneNumber(pnCandidate, '')
@@ -1467,6 +1432,22 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       change.value.messages.push(message)
       return [data, senderPhone, senderId] as [any, string, string]
     }
+    const emitHostedMessageUnavailableMessage = () => {
+      const k: any = (payload as any)?.key || {}
+      message.type = 'text'
+      message.text = {
+        body: 'Mensagem indisponível nesta integração. Confira o aparelho.',
+      }
+      logger.info(
+        'hosted_message_unavailable detected msgId=%s remoteJid=%s fromMe=%s reason=%s',
+        k?.id || whatsappMessageId || '<none>',
+        k?.remoteJid || '<none>',
+        !!k?.fromMe,
+        'server_delivered_hosted_placeholder',
+      )
+      change.value.messages.push(message)
+      return [data, senderPhone, senderId] as [any, string, string]
+    }
     if (senderStableUserId && !fromMe) {
       message.from_user_id = senderStableUserId
     }
@@ -1481,6 +1462,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const fpn = (
           ensurePn((payload as any)?.key?.senderPn) ||
           ensurePn((payload as any)?.key?.participantPn) ||
+          ensurePn((payload as any)?.key?.participantAlt) ||
+          ensurePn((payload as any)?.participantAlt) ||
           ensurePn(senderPhone) ||
           ensurePn(senderId)
         )
@@ -1513,7 +1496,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const filename = (binMessage && (binMessage as any).fileName) || `${whatsappMessageId}.${extension}`
         const encodedFilename = encodeURIComponent(filename)
         const cleanBaseUrl = `${BASE_URL || ''}`.replace(/\/+$/, '')
-        const cleanVersion = `${WEBHOOK_FORWARD_VERSION || ''}`.replace(/^\/+|\/+$/g, '')
+        const cleanVersion = UNOAPI_MEDIA_ROUTE_VERSION
         const mediaUrlRaw: string | undefined = (binMessage && (binMessage as any).url) || undefined
         const mediaUrl = (() => {
           const u = `${mediaUrlRaw || ''}`
@@ -1681,6 +1664,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         if (isViewOnceUnavailableStub(payload)) {
           return emitViewOnceUnavailableMessage()
         }
+        if (isHostedMessageUnavailableStub(payload)) {
+          return emitHostedMessageUnavailableMessage()
+        }
         const isDecryptStub =
           (payload as any)?.messageStubType === 2 &&
           (payload as any)?.messageStubParameters &&
@@ -1699,102 +1685,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       case 'conversation':
       case 'extendedTextMessage':
         {
-          // Build text body and normalize @mentions to preferred alias
+          // Keep protocol JIDs in contextInfo and expose only numeric mention text.
           const raw = (binMessage?.text || binMessage) as string
-          const ctx: any = (binMessage as any)?.contextInfo || {}
-          const nameMap: Record<string, string> = ((payload as any)?.groupMetadata?.names || (payload as any)?.contactNames || {}) as any
-          const participants: any[] = Array.isArray((payload as any)?.groupMetadata?.participants)
-            ? ((payload as any)?.groupMetadata?.participants as any[])
-            : []
-          const mentioned: string[] = Array.isArray(ctx?.mentionedJid) ? ctx.mentionedJid : []
-          const toPn = (jid: string) => {
-            try {
-              if (isLidUser(jid)) {
-                return jidToPhoneNumber(jidNormalizedUser(jid), '').replace('+', '')
-              } else {
-                return jidToPhoneNumber(jid, '').replace('+', '')
-              }
-            } catch {
-              return ''
-            }
-          }
-          let body = `${raw || ''}`
-          try {
-            if (mentioned.length && body) {
-              for (const mj of mentioned) {
-                const lidDigits = `${mj}`.split('@')[0]
-                let pnDigits = toPn(mj)
-                // Fallback: derive PN from group participants when mention is a LID and mapping isn't obvious
-                if ((!pnDigits || pnDigits === lidDigits) && isLidUser(mj) && participants.length) {
-                  try {
-                    const found = participants.find((p: any) => `${p?.lid || ''}` === `${mj}`)
-                    const pnJid: string | undefined = found?.id || found?.jid
-                    if (pnJid) pnDigits = jidToPhoneNumber(pnJid, '').replace('+', '')
-                  } catch {}
-                }
-                // Prefer contactName > PN > LID digits
-                let alias = pnDigits || lidDigits
-                try {
-                  const normalizedPnJid = (isLidUser(mj) ? jidNormalizedUser(mj) : mj) as any
-                  const contactName = (
-                    nameMap && (
-                      nameMap[mj] ||
-                      nameMap[normalizedPnJid] ||
-                      // direct PN JID when known via participants
-                      (participants.length ? (() => {
-                        try {
-                          const found = participants.find((p: any) => `${p?.lid || ''}` === `${mj}`)
-                          const pnJ = found?.id || found?.jid
-                          return pnJ ? (nameMap[pnJ] || undefined) : undefined
-                        } catch { return undefined }
-                      })() : undefined) ||
-                      (pnDigits ? (nameMap[`${pnDigits}@s.whatsapp.net`] || nameMap[pnDigits]) : undefined) ||
-                      (lidDigits ? nameMap[lidDigits] : undefined)
-                    )
-                  ) as string | undefined
-                  if (contactName && contactName.trim()) alias = contactName.trim()
-                } catch {}
-                if (alias) {
-                  const patterns = new Set<string>()
-                  if (lidDigits) patterns.add(lidDigits)
-                  if (pnDigits) patterns.add(pnDigits)
-                  for (const d of patterns) {
-                    if (!d) continue
-                    // replace all occurrences of @<digits>
-                    const re = new RegExp(`@${d}\b`, 'g')
-                    body = body.replace(re, `@${alias}`)
-                  }
-                }
-              }
-            }
-            // Fallback: se não houver mentionedJid ou houver @<digits> soltos no texto,
-            // tentar substituir por alias usando o nameMap conhecido (participantes do grupo/contatos)
-            try {
-              if (body && typeof body === 'string' && /@\d{6,}/.test(body)) {
-                // Coletar todos @<digits> e @<digits>@lid
-                const seen = new Set<string>()
-                const reAll = /@(\d{6,})(?:@lid)?\b/g
-                let m: RegExpExecArray | null
-                while ((m = reAll.exec(body)) !== null) {
-                  const digits = m[1]
-                  if (!digits || seen.has(digits)) continue
-                  seen.add(digits)
-                  // Procurar nome no nameMap via várias chaves
-                  let alias: string | undefined = undefined
-                  try { alias = alias || (nameMap && (nameMap[`${digits}@s.whatsapp.net`] || nameMap[digits])) } catch {}
-                  try { alias = alias || (nameMap && nameMap[`${digits}@lid`]) } catch {}
-                  if (alias && alias.trim()) {
-                    const safe = alias.trim()
-                    // Substituir todas aparições dessa menção solta
-                    const re1 = new RegExp(`@${digits}\\b`, 'g')
-                    const re2 = new RegExp(`@${digits}@lid\\b`, 'g')
-                    body = body.replace(re1, `@${safe}`)
-                    body = body.replace(re2, `@${safe}`)
-                  }
-                }
-              }
-            } catch {}
-          } catch {}
+          const body = normalizeMentionText(`${raw || ''}`)
           try { logger.debug('MENTION normalized: "%s" -> "%s"', raw || '', body || '') } catch {}
           message.text = { body }
         }
@@ -1861,7 +1754,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       case 'interactiveResponseMessage': {
         const replyMessageId = binMessage?.contextInfo?.stanzaId
         const parsed = parseInteractiveResponse(binMessage)
-        if (parsed?.isList && parsed?.id) {
+        if (
+          (parsed?.name.includes('payment_method') || parsed?.name.includes('offsite_card_pay'))
+          && parsed?.params?.credential_id
+        ) {
+          message.interactive = {
+            type: 'payment_method',
+            payment_method: parsed.params,
+          }
+          message.type = 'interactive'
+        } else if (parsed?.isList && parsed?.id) {
           message.interactive = {
             type: 'list_reply',
             list_reply: {
@@ -1939,6 +1841,9 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const u: any = (payload && (payload as any).update) || {}
         if (isViewOnceUnavailableStub(payload)) {
           return emitViewOnceUnavailableMessage()
+        }
+        if (isHostedMessageUnavailableStub(payload)) {
+          return emitHostedMessageUnavailableMessage()
         }
         const baileysStatus = (payload as any)?.status ?? u?.status
         if (
@@ -2129,6 +2034,24 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
         const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
         for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
+          if (button?.name !== 'review_order') continue
+          let parameters: any = {}
+          try {
+            parameters = JSON.parse(button?.buttonParamsJson || '{}')
+          } catch {}
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'order_status',
+            body: { text: interactiveMessage?.body?.text || '' },
+            footer: interactiveMessage?.footer?.text
+              ? { text: interactiveMessage.footer.text }
+              : undefined,
+            action: { name: 'review_order', parameters },
+          }
+          break
+        }
+        if (message.interactive?.type === 'order_status') break
+        for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
           let params: any = {}
           try {
             params = JSON.parse(button?.buttonParamsJson || '{}')
@@ -2155,6 +2078,16 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                 try {
                   params = JSON.parse(button?.buttonParamsJson || '{}')
                 } catch {}
+                if (button?.name === 'payment_info') {
+                  const { display_text: displayText, ...paymentParams } = params
+                  return {
+                    type: 'payment_request',
+                    payment_request: {
+                      ...paymentParams,
+                      title: displayText || '',
+                    },
+                  }
+                }
                 if (button?.name === 'cta_url') {
                   return {
                     type: 'cta_url',
@@ -2255,17 +2188,26 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'orderMessage': {
         const order: any = binMessage || payload?.message?.orderMessage || {}
-        const itemCount = Number(order?.itemCount || 0)
-        const currency = `${order?.currencyCode || ''}`.trim()
-        const amount1000 = Number(order?.totalAmount1000 || 0)
-        const amount = Number.isFinite(amount1000) ? (amount1000 / 1000).toFixed(2) : ''
-        const summary = [
-          '*Pedido recebido*',
-          itemCount > 0 ? `Itens: ${itemCount}` : '',
-          currency && amount ? `Total: ${currency} ${amount}` : '',
-        ].filter(Boolean).join('\n')
-        message.type = 'text'
-        message.text = { body: summary || 'Pedido recebido' }
+        const catalog = mapOrderMessage(
+          order,
+          payload?.__unoapiCatalog?.orderResolution,
+          { imageUrl: payload?.__unoapiCatalog?.orderImageUrl },
+        )
+        Object.assign(message, catalog)
+        const requestMessageId = `${order?.orderRequestMessageId?.id || ''}`.trim()
+        if (requestMessageId) {
+          message.context = { message_id: requestMessageId, id: requestMessageId }
+        }
+        break
+      }
+
+      case 'productMessage': {
+        const product: any = binMessage || payload?.message?.productMessage || {}
+        const catalog = mapProductMessage(
+          product,
+          { imageUrl: payload?.__unoapiCatalog?.productImageUrl },
+        )
+        Object.assign(message, catalog)
         break
       }
 
@@ -2284,8 +2226,18 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       }
 
       case 'pollUpdateMessage': {
+        const pollUpdate: any = binMessage || payload?.message?.pollUpdateMessage || {}
+        const pollMessageId = `${pollUpdate?.pollCreationMessageKey?.id || ''}`.trim()
+        const selectedOptionNames = Array.isArray(pollUpdate?.vote?.selectedOptionNames)
+          ? pollUpdate.vote.selectedOptionNames.map((name: unknown) => `${name || ''}`.trim()).filter(Boolean)
+          : []
         message.type = 'text'
-        message.text = { body: '*Atualização de enquete*' }
+        message.text = {
+          body: selectedOptionNames.length
+            ? `*Voto em enquete*: ${selectedOptionNames.join(' | ')}`
+            : '*Atualização de enquete*',
+        }
+        if (pollMessageId) message.context = { message_id: pollMessageId, id: pollMessageId }
         break
       }
 
@@ -2426,7 +2378,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
     if (cloudApiStatus) {
       const messageId = cloudApiStatusMessageId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let recipientPn = (
+      const recipientPn = (
         // 1) outro lado (preferência absoluta)
         ensurePn(senderPhone) ||
         // 2) alternativas explícitas

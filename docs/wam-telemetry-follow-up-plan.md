@@ -17,7 +17,7 @@ Baileys:
 - envia o buffer WAM para `w:stats` usando `sendNode` fire-and-forget;
 - reagenda flush se novos eventos chegam durante um flush em andamento;
 - ignora `ack` generico para evitar `UnknownStanza` falso;
-- controla log de evento individual por `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS`.
+- mantém o log de evento individual desativado pela política interna.
 
 Uno:
 
@@ -25,16 +25,11 @@ Uno:
 - repassa as configuracoes para o socket Baileys;
 - mantem log resumido em producao.
 
-## Envs
+## Politica interna
 
-```env
-BAILEYS_WAM_TELEMETRY=true
-BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=false
-BAILEYS_WAM_TELEMETRY_FLUSH_MS=5000
-BAILEYS_WAM_TELEMETRY_MAX_EVENTS=50
-```
-
-Use `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=true` apenas para janela curta de diagnostico, porque gera `WAM_TELEMETRY_COMMIT` para cada evento.
+Telemetria habilitada, debug por evento desabilitado, flush de 5 segundos e
+limite de 50 eventos ficam em `src/services/baileys_connection_policy.ts`.
+Não existem mais ENVs públicas para WAM.
 
 ## Validacao rapida em VPS
 
@@ -68,7 +63,8 @@ printf 'UNKNOWN_STANZA='; grep -c UnknownStanza "$tmp" || true
 
 Status: implementado.
 
-Manter `WAM_TELEMETRY_COMMIT` condicionado a `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=true`. Em producao, observar apenas `ENABLED`, `FLUSH`, `SEND_OK` e `SEND_ERROR`.
+Manter `WAM_TELEMETRY_COMMIT` desativado. Em producao, observar apenas
+`ENABLED`, `FLUSH`, `SEND_OK` e `SEND_ERROR`.
 
 ### 2. Metrica resumida por sessao na Uno
 
@@ -102,10 +98,10 @@ Objetivo: gerar evidencia comparavel entre Baileys, Zapo e whatsmeow sem mudar o
 
 Implementado na Uno como protecao por sessao:
 
-- `UNOAPI_MISSING_TC_TOKEN_GUARD_ENABLED=true`
-- `UNOAPI_MISSING_TC_TOKEN_BLOCK_ENABLED=false`
-- `UNOAPI_MISSING_TC_TOKEN_LIMIT=40`
-- `UNOAPI_MISSING_TC_TOKEN_WINDOW_HOURS=24`
+- política interna exclusiva da Baileys em `src/services/privacy_token_quota.ts`;
+- monitoramento ativo e bloqueio desativado;
+- limite de 40 ocorrências em uma janela móvel de 24 horas;
+- sem configuração por ENV.
 
 Fluxo:
 
@@ -123,5 +119,5 @@ Observacao: envio com `cstoken` ainda conta como "sem tc token", porque a politi
 ## Cuidados
 
 - Nao reativar `query()` para WAM. O envio deve continuar fire-and-forget com `sendNode`, pois o servidor nao respondeu de forma confiavel e causava timeouts `408`.
-- Nao deixar `BAILEYS_WAM_TELEMETRY_DEBUG_EVENTS=true` como default em imagem de producao.
+- Nao reativar o debug WAM por evento na politica da imagem de producao.
 - Ao publicar Baileys, garantir que a Uno atualize a referencia do branch compilado `Main` e rode `yarn install` para atualizar o lock.

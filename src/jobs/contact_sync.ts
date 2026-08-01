@@ -314,6 +314,8 @@ export const startContactSyncScheduler = (outgoing: Outgoing) => {
   }
   void runSafe()
   void runPendingSafe()
-  setInterval(() => void runSafe(), CONTACT_SYNC_INTERVAL_MS)
-  setInterval(() => void runPendingSafe(), CONTACT_SYNC_PENDING_POLL_MS)
+  const syncTimer = setInterval(() => void runSafe(), CONTACT_SYNC_INTERVAL_MS)
+  const pendingTimer = setInterval(() => void runPendingSafe(), CONTACT_SYNC_PENDING_POLL_MS)
+  syncTimer.unref?.()
+  pendingTimer.unref?.()
 }

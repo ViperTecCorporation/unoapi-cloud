@@ -1,30 +1,19 @@
 import { Outgoing } from './outgoing'
 import fetch, { Response, RequestInit } from 'node-fetch'
 import { Webhook, getConfig, isWebhookEnabled } from './config'
+import { isChatwootWebhook, resolveWebhookUrl } from './webhook_config'
 import logger from './logger'
 import { completeCloudApiWebHook, isGroupMessage, isOutgoingMessage, isNewsletterMessage, isUpdateMessage, extractDestinyPhone, normalizeWebhookValueIds, jidToPhoneNumber, jidToRawPhoneNumber, formatJid, isValidPhoneNumber, normalizeLidJid } from './transformer'
-import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS } from '../defaults'
-import { jidNormalizedUser, isPnUser } from '@whiskeysockets/baileys'
+import { WEBHOOK_ASYNC, WEBHOOK_PREFER_PN_OVER_LID, WEBHOOK_CB_ENABLED, WEBHOOK_CB_FAILURE_THRESHOLD, WEBHOOK_CB_OPEN_MS, WEBHOOK_CB_FAILURE_TTL_MS, WEBHOOK_CB_REQUEUE_DELAY_MS, WEBHOOK_CB_HALF_OPEN_PROBE_MS } from '../defaults'
+import { jidNormalizedUser, isPnUser } from './whatsapp_jid'
 import { addToBlacklist, isInBlacklist } from './blacklist'
-import { PublishOption } from '../amqp'
-import { isWebhookCircuitOpen, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
+import type { PublishOption } from '../amqp'
+import { acquireWebhookCircuitProbe, isWebhookCircuitOpen, isWebhookCircuitRecovering, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
+import { WebhookCircuitOpenError } from './webhook_circuit_breaker'
 
-class WebhookCircuitOpenError extends Error {
-  public code = 'WEBHOOK_CB_OPEN'
-  public delayMs: number
-  constructor(message: string, delayMs: number) {
-    super(message)
-    this.delayMs = delayMs
-  }
-}
-
-const isChatwootWebhook = (webhook: Webhook) => {
-  const u1 = `${webhook?.url || ''}`.toLowerCase()
-  const u2 = `${webhook?.urlAbsolute || ''}`.toLowerCase()
-  const hasChatwoot = u1.includes('chatwoot') || u2.includes('chatwoot')
-  const hasWhatsWebhook = u1.includes('/webhooks/whatsapp') || u2.includes('/webhooks/whatsapp')
-  return hasChatwoot || hasWhatsWebhook
-}
+export const isWebhookCircuitFailureStatus = (status: number) => (
+  status === 408 || status === 425 || status === 429 || status >= 500
+)
 
 const mapStatusMediaTypeToCloud = (rawType?: string, mimeType?: string) => {
   const t = `${rawType || ''}`
@@ -231,6 +220,8 @@ export class OutgoingCloudApi implements Outgoing {
     const cbId = (webhook && (webhook.id || webhook.url || webhook.urlAbsolute)) ? `${webhook.id || webhook.url || webhook.urlAbsolute}` : 'default'
     const cbKey = `${phone}:${cbId}`
     const now = Date.now()
+    const probeMs = Math.max(WEBHOOK_CB_HALF_OPEN_PROBE_MS || 30000, webhook.timeoutMs || 0)
+    let halfOpenProbe = false
     if (cbEnabled) {
       let open = false
       try {
@@ -324,7 +315,7 @@ export class OutgoingCloudApi implements Outgoing {
         const ds: any = store?.dataStore
         const v: any = (message as any)?.entry?.[0]?.changes?.[0]?.value || {}
         const toPnIfMapped = async (x?: string): Promise<string> => {
-          let val = `${x || ''}`
+          const val = `${x || ''}`
           if (!val) return val
           if (val.includes('@g.us')) return val
           // If LID and we have a PN mapping, prefer PN digits; otherwise keep the phone field empty.
@@ -446,7 +437,11 @@ export class OutgoingCloudApi implements Outgoing {
       headers[webhook.header] = webhook.token
     }
     // Garantir que o endpoint do Chatwoot use o mesmo phone da sessÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o (metadata.phone_number_id)
-    let url = webhook.urlAbsolute || `${webhook.url}/${phone}`
+    let url = resolveWebhookUrl(webhook, phone)
+    if (!url) {
+      logger.warn('Skip webhook without target phone=%s id=%s', phone, webhook.id || '<none>')
+      return
+    }
     try {
       const m = url.match(/\/webhooks\/whatsapp\/(\d+)$/)
       if (m && m[1] !== `${phone}`) {
@@ -467,6 +462,22 @@ export class OutgoingCloudApi implements Outgoing {
         )
       }
     } catch {}
+    if (cbEnabled) {
+      const probeNow = Date.now()
+      const recovering = process.env.REDIS_URL
+        ? await isWebhookCircuitRecovering(phone, cbId)
+        : isCircuitRecoveringLocal(cbKey, probeNow)
+      if (recovering) {
+        halfOpenProbe = process.env.REDIS_URL
+          ? await acquireWebhookCircuitProbe(phone, cbId, probeMs)
+          : acquireCircuitProbeLocal(cbKey, probeNow, probeMs)
+        if (!halfOpenProbe) {
+          logger.warn('WEBHOOK_CB half-open: probe already running (phone=%s webhook=%s)', phone, cbId)
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB half-open for ${cbId}`, this.cbRequeueDelayMs())
+        }
+        logger.info('WEBHOOK_CB half-open: probing endpoint (phone=%s webhook=%s)', phone, cbId)
+      }
+    }
     logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
     let response: Response
     try {
@@ -479,9 +490,9 @@ export class OutgoingCloudApi implements Outgoing {
       logger.error('Error on send to url %s with headers %s and body %s', url, JSON.stringify(headers), body)
       logger.error(error)
       if (cbEnabled) {
-        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any)
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any, probeMs)
         if (opened) {
-          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs(), true)
         }
       }
       throw error
@@ -490,22 +501,18 @@ export class OutgoingCloudApi implements Outgoing {
     if (!response?.ok) {
       const errText = await response?.text()
       const err = new Error(`Webhook response ${response?.status} ${response?.statusText}: ${errText}`)
-      if (cbEnabled) {
-        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err)
+      if (cbEnabled && isWebhookCircuitFailureStatus(Number(response?.status || 0))) {
+        const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err, probeMs)
         if (opened) {
-          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs())
+          throw new WebhookCircuitOpenError(`WEBHOOK_CB opened for ${cbId}`, this.cbRequeueDelayMs(), true)
         }
+      } else if (cbEnabled) {
+        await this.closeCircuit(phone, cbId, cbKey)
       }
       throw err
     }
     if (cbEnabled) {
-      try {
-        if (process.env.REDIS_URL) {
-          await closeWebhookCircuit(phone, cbId)
-        } else {
-          resetCircuitLocal(cbKey)
-        }
-      } catch {}
+      await this.closeCircuit(phone, cbId, cbKey)
     }
   }
 
@@ -513,7 +520,14 @@ export class OutgoingCloudApi implements Outgoing {
     return WEBHOOK_CB_REQUEUE_DELAY_MS || WEBHOOK_CB_OPEN_MS || 120000
   }
 
-  private async handleCircuitFailure(phone: string, cbId: string, cbKey: string, error: any): Promise<boolean> {
+  private async closeCircuit(phone: string, cbId: string, cbKey: string) {
+    try {
+      if (process.env.REDIS_URL) await closeWebhookCircuit(phone, cbId)
+      else resetCircuitLocal(cbKey)
+    } catch {}
+  }
+
+  private async handleCircuitFailure(phone: string, cbId: string, cbKey: string, error: any, probeMs: number): Promise<boolean> {
     try {
       const threshold = WEBHOOK_CB_FAILURE_THRESHOLD || 1
       const openMs = WEBHOOK_CB_OPEN_MS || 120000
@@ -523,9 +537,9 @@ export class OutgoingCloudApi implements Outgoing {
         : bumpCircuitFailureLocal(cbKey, ttlMs)
       if (count >= threshold) {
         if (process.env.REDIS_URL) {
-          await openWebhookCircuit(phone, cbId, openMs)
+          await openWebhookCircuit(phone, cbId, openMs, probeMs)
         } else {
-          openCircuitLocal(cbKey, openMs)
+          openCircuitLocal(cbKey, openMs, probeMs)
         }
         logger.warn('WEBHOOK_CB opened (phone=%s webhook=%s count=%s openMs=%s)', phone, cbId, count, openMs)
         return true
@@ -544,9 +558,11 @@ export class OutgoingCloudApi implements Outgoing {
 }
 
 const cbOpenUntil: Map<string, number> = new Map()
+const cbRecoveryUntil: Map<string, number> = new Map()
+const cbProbeUntil: Map<string, number> = new Map()
 const cbFailState: Map<string, { count: number; exp: number }> = new Map()
 let cbLastCleanup = 0
-const CB_CLEANUP_INTERVAL_MS = WEBHOOK_CB_LOCAL_CLEANUP_INTERVAL_MS || 60 * 60 * 1000
+const CB_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 
 const isCircuitOpenLocal = (key: string, now: number) => {
   maybeCleanupLocalCircuit(now)
@@ -559,14 +575,31 @@ const isCircuitOpenLocal = (key: string, now: number) => {
   return true
 }
 
-const openCircuitLocal = (key: string, openMs: number) => {
-  maybeCleanupLocalCircuit(Date.now())
-  cbOpenUntil.set(key, Date.now() + Math.max(1, openMs || 0))
+const isCircuitRecoveringLocal = (key: string, now: number) => {
+  maybeCleanupLocalCircuit(now)
+  return (cbRecoveryUntil.get(key) || 0) > now
+}
+
+const acquireCircuitProbeLocal = (key: string, now: number, probeMs: number) => {
+  maybeCleanupLocalCircuit(now)
+  if ((cbProbeUntil.get(key) || 0) > now) return false
+  cbProbeUntil.set(key, now + Math.max(1, probeMs || 0))
+  return true
+}
+
+const openCircuitLocal = (key: string, openMs: number, probeMs: number) => {
+  const now = Date.now()
+  maybeCleanupLocalCircuit(now)
+  cbOpenUntil.set(key, now + Math.max(1, openMs || 0))
+  cbRecoveryUntil.set(key, now + Math.max(1, (openMs || 0) + (probeMs || 0)))
+  cbProbeUntil.delete(key)
 }
 
 const resetCircuitLocal = (key: string) => {
   maybeCleanupLocalCircuit(Date.now())
   cbOpenUntil.delete(key)
+  cbRecoveryUntil.delete(key)
+  cbProbeUntil.delete(key)
   cbFailState.delete(key)
 }
 
@@ -588,6 +621,12 @@ const maybeCleanupLocalCircuit = (now: number) => {
   cbLastCleanup = now
   for (const [key, until] of cbOpenUntil) {
     if (now >= until) cbOpenUntil.delete(key)
+  }
+  for (const [key, until] of cbRecoveryUntil) {
+    if (now >= until) cbRecoveryUntil.delete(key)
+  }
+  for (const [key, until] of cbProbeUntil) {
+    if (now >= until) cbProbeUntil.delete(key)
   }
   for (const [key, st] of cbFailState) {
     if (now >= st.exp) cbFailState.delete(key)

@@ -1,12 +1,18 @@
 import { getStore } from './store'
-import { getStoreFile } from './store_file'
-import { WAMessageKey, WAVersion } from '@whiskeysockets/baileys'
 import { Level } from 'pino'
+import type { WhatsAppMessageKey, WhatsAppVersion } from './whatsapp_types'
+import { SessionProvider } from './providers/provider_types'
+import { webhookHasTarget } from './webhook_config'
 
 export const configs: Map<string, Config> = new Map()
+const LEGACY_FILE_STORE_MODULE = './store_file.js'
+
+const getLegacyFileStore: getStore = async (phone, config) => {
+  const legacyModule = module.require(LEGACY_FILE_STORE_MODULE)
+  return legacyModule.getStoreFile(phone, config)
+}
 
 export type connectionType = 'qrcode' | 'pairing_code' | 'forward'
-export type OneToOneAddressingMode = 'pn' | 'lid'
 
 export interface GetMessageMetadata {
   <T>(message: T): Promise<T>
@@ -38,7 +44,7 @@ export const isWebhookEnabled = (webhook: Partial<Webhook> | undefined): boolean
   if (!webhook) return false
   if (webhook.enabled === false) return false
   if (webhook.disabled === true) return false
-  return true
+  return webhookHasTarget(webhook)
 }
 
 export type WebhookForward = {
@@ -64,6 +70,7 @@ export type Config = {
   readOnReply: boolean
   markOnlineOnConnect: boolean
   ignoreHistoryMessages: boolean
+  historyMaxAgeDays: number
   clearAppStateSyncOnConnect: boolean
   allowFullHistorySync: boolean
   ignoreYourselfMessages: boolean
@@ -81,7 +88,7 @@ export type Config = {
   proxyUrl: string | undefined
   sessionWebhook: string
   shouldIgnoreJid: (jid: string) => boolean | undefined
-  shouldIgnoreKey: (key: WAMessageKey, messageType: string | undefined) => boolean | undefined
+  shouldIgnoreKey: (key: WhatsAppMessageKey, messageType: string | undefined) => boolean | undefined
   getStore: getStore
   baseStore: string
   webhooks: Webhook[]
@@ -93,7 +100,7 @@ export type Config = {
   sendProfilePicture: boolean
   authToken: string | undefined
   authHeader: string | undefined
-  provider: 'baileys' | 'forwarder' | undefined
+  provider: SessionProvider | undefined
   server:  string | undefined
   connectionType: connectionType
   baileysCountryCode: string
@@ -107,7 +114,7 @@ export type Config = {
   overrideWebhooks: boolean
   customMessageCharacters: string[]
   customMessageCharactersFunction: (message: string) => string,
-  whatsappVersion: WAVersion | undefined,
+  whatsappVersion: WhatsAppVersion | undefined,
   openaiApiKey: string | undefined
   openaiApiTranscribeModel: string | undefined
   openaiAssistantId: string | undefined
@@ -120,7 +127,6 @@ export type Config = {
   rateLimitBlockSeconds?: number
   // Guardar reenvio indevido em caso de retry do job
   outgoingIdempotency: boolean
-  oneToOneAddressingMode?: OneToOneAddressingMode
 }
 
 export const defaultConfig: Config = {
@@ -132,8 +138,9 @@ export const defaultConfig: Config = {
   groupOnlyDeliveredStatus: true,
   readOnReceipt: false,
   readOnReply: false,
-  markOnlineOnConnect: true,
+  markOnlineOnConnect: false,
   ignoreHistoryMessages: true,
+  historyMaxAgeDays: 30,
   clearAppStateSyncOnConnect: false,
   allowFullHistorySync: false,
   ignoreOwnMessages: true,
@@ -152,8 +159,8 @@ export const defaultConfig: Config = {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   shouldIgnoreJid: (_jid: string) => false,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  shouldIgnoreKey: (_key: WAMessageKey, _messageType: string | undefined) => false,
-  getStore: getStoreFile,
+  shouldIgnoreKey: (_key: WhatsAppMessageKey, _messageType: string | undefined) => false,
+  getStore: getLegacyFileStore,
   throwWebhookError: false,
   baseStore: './data',
   webhooks: [
@@ -176,7 +183,13 @@ export const defaultConfig: Config = {
       typebot: false,
     },
   ],
-  webhookForward: {},
+  // Forwarder/Meta credentials are session-scoped. Only transport defaults are
+  // internal so container environment variables cannot leak across sessions.
+  webhookForward: {
+    url: 'https://graph.facebook.com',
+    version: 'v17.0',
+    timeoutMs: 6_000,
+  },
   getMessageMetadata: getMessageMetadataDefault,
   ignoreDataStore: false,
   sendReactionAsReply: false,
@@ -208,7 +221,6 @@ export const defaultConfig: Config = {
   rateLimitPerToPerMinute: 0,
   rateLimitBlockSeconds: 60,
   outgoingIdempotency: true,
-  oneToOneAddressingMode: undefined
 }
 
 export interface getConfig {

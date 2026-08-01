@@ -6,34 +6,40 @@ import {
   DATA_URL_TTL,
   JIDMAP_TTL_SECONDS,
   JIDMAP_STORED_LOOKUP_ENABLED,
-  SIGNAL_PURGE_DEVICE_LIST_ENABLED,
-  SIGNAL_PURGE_SESSION_ENABLED,
-  SIGNAL_PURGE_SENDER_KEY_ENABLED,
-  JIDMAP_ENRICH_PER_SWEEP,
-  WATCHDOG_PURGE_SCAN_COUNT,
-  WATCHDOG_TASK_MIN_INTERVAL_MS,
-  JIDMAP_ENRICH_MIN_INTERVAL_MS,
-  AUTH_CACHE_TTL_MS,
-  AUTH_INDEX_FALLBACK_SCAN_LIMIT,
-  AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
-  AUTH_SIGNAL_PRUNE_MAX_DELETE,
-  AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
-  AUTH_SIGNAL_PRUNE_SCAN_COUNT,
-  AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED,
-  AUTH_SIGNAL_PRUNE_DAILY_ENABLED,
-  AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS,
-  AUTH_SIGNAL_PRUNE_SESSION_INTERVAL_MS,
-  AUTH_SIGNAL_PRUNE_SESSION_LIMIT,
   SESSION_STATUS_CACHE_TTL_MS,
   CONNECT_COUNT_CACHE_TTL_MS,
+  CONTACT_INFO_TTL_SEC,
 } from '../defaults'
+import { BAILEYS_AUTH_POLICY } from './baileys_auth_policy'
 import logger from './logger'
-import { GroupMetadata, proto } from '@whiskeysockets/baileys'
+import { proto } from 'zapo-js/proto'
+import type { WhatsAppGroupMetadata } from './whatsapp_types'
 import { Webhook, configs } from './config' 
 import { isTransientInfraError } from './error_utils'
 import { version as appVersion } from '../../package.json'
 import { mergeGroupMetadataForCache } from './groups/group_metadata_cache'
 import { normalizeLidJid } from './transformer/jid'
+
+const {
+  signalPurgeDeviceListEnabled: SIGNAL_PURGE_DEVICE_LIST_ENABLED,
+  signalPurgeSessionEnabled: SIGNAL_PURGE_SESSION_ENABLED,
+  signalPurgeSenderKeyEnabled: SIGNAL_PURGE_SENDER_KEY_ENABLED,
+  jidMapEnrichPerSweep: JIDMAP_ENRICH_PER_SWEEP,
+  watchdogPurgeScanCount: WATCHDOG_PURGE_SCAN_COUNT,
+  watchdogTaskMinIntervalMs: WATCHDOG_TASK_MIN_INTERVAL_MS,
+  jidMapEnrichMinIntervalMs: JIDMAP_ENRICH_MIN_INTERVAL_MS,
+  authCacheTtlMs: AUTH_CACHE_TTL_MS,
+  authIndexFallbackScanLimit: AUTH_INDEX_FALLBACK_SCAN_LIMIT,
+  signalPruneDefaultTypes: AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
+  signalPruneMaxDelete: AUTH_SIGNAL_PRUNE_MAX_DELETE,
+  signalPrunePreKeyKeepRecent: AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
+  signalPruneScanCount: AUTH_SIGNAL_PRUNE_SCAN_COUNT,
+  signalPruneBootstrapEnabled: AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED,
+  signalPruneDailyEnabled: AUTH_SIGNAL_PRUNE_DAILY_ENABLED,
+  signalPruneDailyIntervalMs: AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS,
+  signalPruneSessionIntervalMs: AUTH_SIGNAL_PRUNE_SESSION_INTERVAL_MS,
+  signalPruneSessionLimit: AUTH_SIGNAL_PRUNE_SESSION_LIMIT,
+} = BAILEYS_AUTH_POLICY
 
 export const BASE_KEY = 'unoapi-'
 
@@ -106,7 +112,7 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
     if (!redisHealthStarted) {
       redisHealthStarted = true
       try {
-        setInterval(async () => {
+        const healthTimer = setInterval(async () => {
           const start = Date.now()
           try {
             await client.ping()
@@ -118,6 +124,7 @@ export const startRedis = async (redisUrl = REDIS_URL, retried = false) => {
             logger.warn(e as any, 'Redis ping falhou')
           }
         }, REDIS_HEALTH_INTERVAL_MS)
+        healthTimer.unref?.()
       } catch {}
     }
   }
@@ -356,7 +363,7 @@ const runAuthSignalPruneForAllSessions = async (source: string): Promise<void> =
           continue
         }
         const result = await pruneAuthSignalCache(phone, {
-          types: AUTH_SIGNAL_PRUNE_DEFAULT_TYPES,
+          types: [...AUTH_SIGNAL_PRUNE_DEFAULT_TYPES],
           dryRun: false,
           maxDelete: AUTH_SIGNAL_PRUNE_MAX_DELETE,
           preKeyKeepRecent: AUTH_SIGNAL_PRUNE_PREKEY_KEEP_RECENT,
@@ -378,15 +385,17 @@ const runAuthSignalPruneForAllSessions = async (source: string): Promise<void> =
 
 const startAuthSignalPruneMaintenance = (): void => {
   if (AUTH_SIGNAL_PRUNE_BOOTSTRAP_ENABLED) {
-    setTimeout(() => {
+    const bootstrapTimer = setTimeout(() => {
       runAuthSignalPruneForAllSessions('bootstrap').catch((e) => logger.warn(e as any, 'Auth signal prune bootstrap failed'))
     }, 1_000)
+    bootstrapTimer.unref?.()
   }
   if (!AUTH_SIGNAL_PRUNE_DAILY_ENABLED || authSignalPruneDailyStarted) return
   authSignalPruneDailyStarted = true
-  setInterval(() => {
+  const dailyTimer = setInterval(() => {
     runAuthSignalPruneForAllSessions('daily').catch((e) => logger.warn(e as any, 'Auth signal prune daily failed'))
   }, Math.max(60_000, AUTH_SIGNAL_PRUNE_DAILY_INTERVAL_MS || 24 * 60 * 60 * 1000))
+  dailyTimer.unref?.()
 }
 
 export const redisConnect = async (redisUrl = REDIS_URL) => {
@@ -747,6 +756,10 @@ export const webhookCircuitOpenKey = (session: string, webhookId: string) =>
   `${BASE_KEY}webhook-cb:${session}:${webhookId}:open`
 export const webhookCircuitFailKey = (session: string, webhookId: string) =>
   `${BASE_KEY}webhook-cb:${session}:${webhookId}:fail`
+export const webhookCircuitRecoveryKey = (session: string, webhookId: string) =>
+  `${BASE_KEY}webhook-cb:${session}:${webhookId}:recovery`
+export const webhookCircuitProbeKey = (session: string, webhookId: string) =>
+  `${BASE_KEY}webhook-cb:${session}:${webhookId}:probe`
 
 export const isWebhookCircuitOpen = async (session: string, webhookId: string): Promise<boolean> => {
   if (!process.env.REDIS_URL) return false
@@ -759,11 +772,36 @@ export const isWebhookCircuitOpen = async (session: string, webhookId: string): 
   }
 }
 
-export const openWebhookCircuit = async (session: string, webhookId: string, openMs: number): Promise<void> => {
+export const isWebhookCircuitRecovering = async (session: string, webhookId: string): Promise<boolean> => {
+  if (!process.env.REDIS_URL) return false
+  try { return !!(await redisGet(webhookCircuitRecoveryKey(session, webhookId))) } catch { return false }
+}
+
+export const acquireWebhookCircuitProbe = async (session: string, webhookId: string, probeMs: number): Promise<boolean> => {
+  if (!process.env.REDIS_URL) return false
+  return redisSetIfNotExists(
+    webhookCircuitProbeKey(session, webhookId),
+    `${Date.now()}`,
+    Math.max(1, Math.ceil((probeMs || 0) / 1000)),
+  )
+}
+
+export const openWebhookCircuit = async (
+  session: string,
+  webhookId: string,
+  openMs: number,
+  probeMs = 30000,
+): Promise<void> => {
   if (!process.env.REDIS_URL) return
   const ttlSec = Math.max(1, Math.ceil((openMs || 0) / 1000))
   try {
     await redisSetAndExpire(webhookCircuitOpenKey(session, webhookId), '1', ttlSec)
+    await redisSetAndExpire(
+      webhookCircuitRecoveryKey(session, webhookId),
+      '1',
+      Math.max(1, Math.ceil(((openMs || 0) + (probeMs || 0)) / 1000)),
+    )
+    await redisDel(webhookCircuitProbeKey(session, webhookId))
   } catch {}
 }
 
@@ -771,6 +809,8 @@ export const closeWebhookCircuit = async (session: string, webhookId: string): P
   if (!process.env.REDIS_URL) return
   try { await redisDel(webhookCircuitOpenKey(session, webhookId)) } catch {}
   try { await redisDel(webhookCircuitFailKey(session, webhookId)) } catch {}
+  try { await redisDel(webhookCircuitRecoveryKey(session, webhookId)) } catch {}
+  try { await redisDel(webhookCircuitProbeKey(session, webhookId)) } catch {}
 }
 
 export const bumpWebhookCircuitFailure = async (session: string, webhookId: string, ttlMs: number): Promise<number> => {
@@ -1139,6 +1179,10 @@ export const delSessionTransientKeys = async (phone: string) => {
   logger.info('Deleted %s transient redis keys for %s', totalDeleted, phone)
 }
 
+export const delZapoSessionRuntimeLease = async (phone: string) => {
+  await redisDel(`${BASE_KEY}lease:zapo-session:${phone}`)
+}
+
 export const getMessageStatus = async (phone: string, id: string) => {
   const key = messageStatusKey(phone, id)
   return redisGet(key)
@@ -1222,11 +1266,7 @@ export const setConfig = async (phone: string, value: any) => {
   })
   value.webhooks = updatedWebooks
   const config = { ...currentConfig, ...value }
-  try {
-    const mode = `${(config as any).oneToOneAddressingMode || ''}`.trim().toLowerCase()
-    if (mode === 'pn' || mode === 'lid') (config as any).oneToOneAddressingMode = mode
-    else delete (config as any).oneToOneAddressingMode
-  } catch {}
+  delete (config as any).oneToOneAddressingMode
   // Enforce per-session storage flags to avoid false overrides via templates/UI
   // Since this setter persists to Redis, sessions using Redis must have useRedis/useS3 true
   try { (config as any).useRedis = true } catch {}
@@ -1637,7 +1677,7 @@ export const getContactInfo = async (phone: string, jid: string) => {
 }
 export const setContactInfo = async (phone: string, jid: string, info: any) => {
   const key = contactInfoKey(phone, jid)
-  return redisSetAndExpire(key, JSON.stringify(info || {}), SESSION_TTL)
+  return redisSetAndExpire(key, JSON.stringify(info || {}), CONTACT_INFO_TTL_SEC)
 }
 
 export const setContactSyncPending = async (phone: string, ttlSec: number) => {
@@ -1862,11 +1902,11 @@ export const getGroup = async (phone: string, jid: string) => {
   const key = groupKey(phone, jid)
   const group = await redisGet(key)
   if (group) {
-    return JSON.parse(group) as GroupMetadata
+    return JSON.parse(group) as WhatsAppGroupMetadata
   }
 }
 
-export const setGroup = async (phone: string, jid: string, data: GroupMetadata) => {
+export const setGroup = async (phone: string, jid: string, data: WhatsAppGroupMetadata) => {
   const key = groupKey(phone, jid)
   const previous = await getGroup(phone, jid)
   return redisSetAndExpire(key, JSON.stringify(mergeGroupMetadataForCache(previous, data)), DATA_TTL)
@@ -1933,15 +1973,38 @@ export const setUnoId = async (phone: string, idBaileys: string, idUno: string) 
   const created = await setIfAbsent(key, idUno, ttlSec)
   if (!created) {
     // Another worker created it; reuse the existing uno id.
-    const existing = await redisGet(key)
+    let existing = await redisGet(key)
+    if (existing === idBaileys && idUno !== idBaileys) {
+      try {
+        const c: any = await getRedis()
+        existing = await c.eval(
+          `
+            local current = redis.call('GET', KEYS[1])
+            if current == ARGV[1] then
+              if tonumber(ARGV[3]) > 0 then
+                redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+              else
+                redis.call('SET', KEYS[1], ARGV[2])
+              end
+              return ARGV[2]
+            end
+            return current
+          `,
+          { keys: [key], arguments: [idBaileys, idUno, `${ttlSec}`] },
+        )
+      } catch {
+        existing = await redisGet(key)
+      }
+    }
     const chosen = existing || idUno
     const reverseKey = providerIdKey(phone, chosen)
     await redisSetAndExpire(reverseKey, idBaileys, ttlSec)
-    return
+    return chosen
   }
 
   const reverseKey = providerIdKey(phone, idUno)
   await redisSetAndExpire(reverseKey, idBaileys, ttlSec)
+  return idUno
 }
 
 // Embedded/Meta Cloud mapping: phone_number_id -> phone session

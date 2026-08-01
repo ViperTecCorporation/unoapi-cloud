@@ -5,6 +5,7 @@ import { getMediaStoreFile } from '../../src/services/media_store_file'
 import { MediaStore, mediaStores } from '../../src/services/media_store'
 import { defaultConfig } from '../../src/services/config'
 import fetch from 'node-fetch'
+import type { WAMessage } from '@whiskeysockets/baileys'
 jest.mock('node-fetch', () => jest.fn())
 const phone = `${new Date().getTime()}`
 const messageId = `wa.${new Date().getTime()}`
@@ -33,7 +34,11 @@ describe('media routes', () => {
     dataStore.getLidForPn.mockReset()
     dataStore.getPnForLid.mockReset()
     fetchMock.mockReset()
-    fetchMock.mockResolvedValue({ arrayBuffer: async () => Buffer.from('profile-picture') })
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => Buffer.from('profile-picture'),
+    })
     mediaStore = getMediaStoreFile(phone, defaultConfig, getTestDataStore)
   })
 
@@ -52,12 +57,78 @@ describe('media routes', () => {
     dataStore.getLidForPn.mockResolvedValue(lid)
     dataStore.getPnForLid.mockResolvedValue(pnJid)
 
-    await mediaStore.saveProfilePicture({ id: pnJid, lid, imgUrl: 'https://example.test/profile.jpg' } as any)
+    await mediaStore.saveProfilePicture({ id: pnJid, lid, imgUrl: 'https://example.test/profile.jpg' })
 
     const pnUrl = await mediaStore.getProfilePictureUrl(url, pnJid)
     const lidUrl = await mediaStore.getProfilePictureUrl(url, lid)
 
     expect(pnUrl).toContain('5566999999999.jpg')
     expect(lidUrl).toContain(`${lid}.jpg`)
+  })
+
+  test('persists an already downloaded provider buffer without Baileys decryption', async () => {
+    mediaStore.saveMediaBuffer = jest.fn().mockResolvedValue(true)
+    const waMessage: WAMessage = {
+      key: { id: 'zapo-media-1', remoteJid: '123@lid', fromMe: false },
+      message: {
+        imageMessage: {
+          mimetype: 'image/jpeg',
+          fileName: 'foto.jpg',
+          fileLength: 3,
+        },
+      },
+    }
+
+    await mediaStore.saveDownloadedMedia!(waMessage, Buffer.from('img'))
+
+    expect(mediaStore.saveMediaBuffer).toHaveBeenCalledWith(
+      expect.stringContaining('zapo-media-1.jpeg'),
+      Buffer.from('img'),
+    )
+    expect(dataStore.setMediaPayload).toHaveBeenCalledWith(
+      'zapo-media-1',
+      expect.objectContaining({ id: `${phone}/zapo-media-1` }),
+    )
+    expect(waMessage.message?.imageMessage?.url).toContain('zapo-media-1.jpeg')
+  })
+
+  test('replaces the nested PDF URL after storing documentWithCaptionMessage', async () => {
+    mediaStore.saveMediaBuffer = jest.fn().mockResolvedValue(true)
+    const waMessage: WAMessage = {
+      key: { id: 'zapo-pdf-1', remoteJid: '123@lid', fromMe: false },
+      message: {
+        documentWithCaptionMessage: {
+          message: {
+            documentMessage: {
+              mimetype: 'application/pdf',
+              fileName: 'ofertas.pdf',
+              fileLength: 3,
+              url: 'https://mmg.whatsapp.net/encrypted',
+            },
+          },
+        },
+      },
+    }
+
+    await mediaStore.saveDownloadedMedia!(waMessage, Buffer.from('pdf'))
+
+    expect(waMessage.message?.documentWithCaptionMessage?.message?.documentMessage?.url)
+      .toContain('zapo-pdf-1.pdf')
+    expect(dataStore.setMediaPayload).toHaveBeenCalledWith(
+      'zapo-pdf-1',
+      expect.objectContaining({
+        filename: 'ofertas.pdf',
+        id: `${phone}/zapo-pdf-1`,
+      }),
+    )
+  })
+
+  test('does not persist a profile picture when the download fails', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 404 })
+
+    await expect(mediaStore.saveProfilePicture({
+      id: '111@lid',
+      imgUrl: 'https://example.test/missing.jpg',
+    })).rejects.toThrow('HTTP 404')
   })
 })

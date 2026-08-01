@@ -1,12 +1,24 @@
 import { getConfig, Config, configs } from './config'
 import { getConfig as getConfigCache, setBusinessAccountIdMapping, subscribeConfigUpdates } from './redis'
 import { getStoreRedis } from './store_redis'
-import { getStoreFile } from './store_file'
 import logger from './logger'
 import { getConfigByEnv } from './config_by_env'
 import { MessageFilter } from './message_filter'
 import { CONFIG_CACHE_TTL_MS } from '../defaults'
 import { generateBusinessAccountId } from './meta_ids'
+import { resolveSessionProvider } from './providers/provider_resolver'
+import { normalizeWebhookConfig } from './webhook_config'
+import { normalizeHistoryMaxAgeDays } from '../utils/history'
+
+const SECRET_CONFIG_KEY = /(token|password|secret|api.?key)/i
+const configForLog = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(configForLog)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+    key,
+    SECRET_CONFIG_KEY.test(key) && item ? '[REDACTED]' : configForLog(item),
+  ]))
+}
 
 const configCacheTs: Map<string, number> = new Map()
 let configSubReady = false
@@ -44,7 +56,12 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
   }
   if (!configs.has(phone)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const configRedis: any = { ...((await getConfigCache(phone)) || {}) }
+    const storedConfig = await getConfigCache(phone)
+    const hasStoredConfig = storedConfig !== null && storedConfig !== undefined
+    const hasStoredProvider = hasStoredConfig
+      && Object.prototype.hasOwnProperty.call(storedConfig, 'provider')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const configRedis: any = { ...(storedConfig || {}) }
     logger.info('Retrieve config default for %s', phone)
     const config: Config = { ...(await getConfigByEnv(phone)) }
 
@@ -64,33 +81,30 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
             logger.debug('Ignore invalid webhooks redis config in %s: expected array', phone)
             return
           }
-          const webhooks: any[] = []
-          value.forEach((webhook: any) => {
-            Object.keys(config.webhooks[0]).forEach((keyWebhook) => {
-              if (!(keyWebhook in webhook)) {
-                // override by env, if not present in redis
-                webhook[keyWebhook] = config.webhooks[0][keyWebhook]
-              }
-            })
-            webhooks.push(webhook)
-          })
+          const webhooks = value.map((webhook: any) => normalizeWebhookConfig(webhook, config.webhooks[0]))
           configRedis[key] = webhooks
-        } else if (key === 'webhookForward'){
-          const webhookForward = value
-          Object.keys(value).forEach((k) => {
-            if (!webhookForward[k]) {
-              webhookForward[k] = (config as any)[key][k]
-            }
-          })
-          configRedis[key] = webhookForward
+        } else if (key === 'webhookForward') {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            logger.debug('Ignore invalid webhookForward redis config in %s: expected object', phone)
+            return
+          }
+          configRedis[key] = {
+            ...config.webhookForward,
+            ...value,
+          }
         }
-        logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configRedis[key]))
+        logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configForLog(configRedis[key])))
         ;(config as any)[key] = configRedis[key]
       });
     }
 
     config.server = config.server || 'server_1'
-    config.provider = config.provider || 'baileys'
+    config.historyMaxAgeDays = normalizeHistoryMaxAgeDays(config.historyMaxAgeDays)
+    // Configs persisted before multi-provider support belong to Baileys. The
+    // environment default is reserved for sessions that do not exist yet.
+    config.provider = hasStoredConfig && !hasStoredProvider
+      ? 'baileys'
+      : resolveSessionProvider(config.provider)
     try {
       const fwd: any = (config as any).webhookForward || {}
       if (!`${fwd?.businessAccountId || ''}`.trim()) {
@@ -110,15 +124,11 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
     const filter: MessageFilter = new MessageFilter(phone, config)
     config.shouldIgnoreJid = filter.isIgnoreJid.bind(filter)
     config.shouldIgnoreKey = filter.isIgnoreKey.bind(filter)
-    if (config.useRedis) {
-      config.getStore = getStoreRedis
-    } else {
-      config.getStore = getStoreFile
-    }
+    config.getStore = getStoreRedis
     if (previousGetMessageMetadata) {
       config.getMessageMetadata = previousGetMessageMetadata
     }
-    logger.info('Config redis: %s -> %s', phone, JSON.stringify(config))
+    logger.info('Config redis: %s -> %s', phone, JSON.stringify(configForLog(config)))
     configs.set(phone, config)
     configCacheTs.set(phone, Date.now())
   }

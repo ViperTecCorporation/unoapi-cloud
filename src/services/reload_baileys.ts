@@ -1,10 +1,13 @@
-import { RELOAD_BAILEYS_DEBOUNCE_MS, UNOAPI_SERVER_NAME } from '../defaults'
-import { getClient } from '../services/client'
+import { UNOAPI_SERVER_NAME } from '../defaults'
+import { clients, getClient } from '../services/client'
 import { getConfig } from '../services/config'
 import { Listener } from '../services/listener'
-import { OnNewLogin } from '../services/socket'
+import type { OnNewLogin } from '../services/login_types'
 import logger from './logger'
 import { Reload } from './reload'
+import { resolveWhatsAppEngine } from './providers/provider_resolver'
+import { WhatsAppEngine } from './providers/provider_types'
+import { BAILEYS_CONNECTION_POLICY } from './baileys_connection_policy'
 
 export class ReloadBaileys extends Reload {
   private static readonly inFlightByPhone: Set<string> = new Set()
@@ -13,19 +16,21 @@ export class ReloadBaileys extends Reload {
   private getConfig: getConfig
   private listener: Listener
   private onNewLogin: OnNewLogin
+  private workerEngine?: WhatsAppEngine
 
-  constructor(getClient: getClient, getConfig: getConfig, listener: Listener, onNewLogin: OnNewLogin) {
+  constructor(getClient: getClient, getConfig: getConfig, listener: Listener, onNewLogin: OnNewLogin, workerEngine?: WhatsAppEngine) {
     super()
     this.getClient = getClient
     this.getConfig = getConfig
     this.listener = listener
     this.onNewLogin = onNewLogin
+    this.workerEngine = workerEngine
   }
 
   async run(phone: string) {
     const now = Date.now()
     const lastRunAt = ReloadBaileys.lastRunAtByPhone.get(phone) || 0
-    const debounceRemaining = Math.max(0, RELOAD_BAILEYS_DEBOUNCE_MS - (now - lastRunAt))
+    const debounceRemaining = Math.max(0, BAILEYS_CONNECTION_POLICY.reloadDebounceMs - (now - lastRunAt))
     if (ReloadBaileys.inFlightByPhone.has(phone) || debounceRemaining > 0) {
       logger.warn('Skip duplicated reload for %s (inFlight=%s debounceRemainingMs=%s)', phone, ReloadBaileys.inFlightByPhone.has(phone), debounceRemaining)
       return
@@ -33,40 +38,49 @@ export class ReloadBaileys extends Reload {
     ReloadBaileys.inFlightByPhone.add(phone)
     ReloadBaileys.lastRunAtByPhone.set(phone, now)
     try {
-    logger.debug('Reload baileys run for phone %s', phone)
-    const config = await this.getConfig(phone)
-    if (config.server != UNOAPI_SERVER_NAME) {
-      logger.debug('Reload broker for phone %s', phone)
-      return super.run(phone)
-    }
-    const currentClient = await this.getClient({
-      phone,
-      listener: this.listener,
-      getConfig: this.getConfig,
-      onNewLogin: this.onNewLogin,
-    })
-    const store = await config.getStore(phone, config)
-    const { sessionStore } = store
-    const isConnecting = await sessionStore.isStatusConnecting(phone)
-    const isRestartRequired = await sessionStore.isStatusRestartRequired(phone)
-    if (isConnecting || isRestartRequired) {
-      logger.warn('Skip destructive reload for %s while status is transitional (connecting=%s restartRequired=%s)', phone, isConnecting, isRestartRequired)
-      return
-    }
-    const isOnline = await sessionStore.isStatusOnline(phone)
-    const isStandBy = await sessionStore.isStatusStandBy(phone)
-    if (isOnline || isStandBy) {
-      logger.warn('Reload disconnect session %s!', phone)
-      await currentClient.disconnect()
-    }
-    await super.run(phone)
-    await this.getClient({
-      phone,
-      listener: this.listener,
-      getConfig: this.getConfig,
-      onNewLogin: this.onNewLogin,
-    })
-    logger.info('Reloaded session %s!', phone)
+      logger.debug('Reload baileys run for phone %s', phone)
+      const config = await this.getConfig(phone)
+      if (this.workerEngine && resolveWhatsAppEngine(config.provider) !== this.workerEngine) {
+        const currentClient = clients.get(phone)
+        if (currentClient) {
+          logger.info('Disconnect session %s from previous %s worker', phone, this.workerEngine)
+          await currentClient.disconnect({ preserveStatus: true })
+          clients.delete(phone)
+        }
+        return
+      }
+      if (config.server != UNOAPI_SERVER_NAME) {
+        logger.debug('Reload broker for phone %s', phone)
+        return super.run(phone)
+      }
+      const currentClient = await this.getClient({
+        phone,
+        listener: this.listener,
+        getConfig: this.getConfig,
+        onNewLogin: this.onNewLogin,
+      })
+      const store = await config.getStore(phone, config)
+      const { sessionStore } = store
+      const isConnecting = await sessionStore.isStatusConnecting(phone)
+      const isRestartRequired = await sessionStore.isStatusRestartRequired(phone)
+      if (isConnecting || isRestartRequired) {
+        logger.warn('Skip destructive reload for %s while status is transitional (connecting=%s restartRequired=%s)', phone, isConnecting, isRestartRequired)
+        return
+      }
+      const isOnline = await sessionStore.isStatusOnline(phone)
+      const isStandBy = await sessionStore.isStatusStandBy(phone)
+      if (isOnline || isStandBy) {
+        logger.warn('Reload disconnect session %s!', phone)
+        await currentClient.disconnect()
+      }
+      await super.run(phone)
+      await this.getClient({
+        phone,
+        listener: this.listener,
+        getConfig: this.getConfig,
+        onNewLogin: this.onNewLogin,
+      })
+      logger.info('Reloaded session %s!', phone)
     } finally {
       ReloadBaileys.inFlightByPhone.delete(phone)
     }

@@ -4,6 +4,10 @@ import { UNOAPI_EXCHANGE_BRIDGE_NAME, UNOAPI_QUEUE_INCOMING } from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { jidToPhoneNumber, normalizeGroupId } from './transformer'
 import { getConfig } from './config'
+import { providerQueueName } from './providers/provider_queue'
+import { isProviderRuntimeEnabled } from './providers/provider_runtime_policy'
+import { SendError } from './send_error'
+import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 
 type GroupManagementAction =
   | 'groupCreate'
@@ -19,6 +23,7 @@ type GroupManagementAction =
   | 'groupSettingUpdate'
   | 'groupJoinApprovalMode'
   | 'groupMetadata'
+  | 'groupProfilePicture'
 
 export class IncomingAmqp implements Incoming {
   private getConfig: getConfig
@@ -27,11 +32,18 @@ export class IncomingAmqp implements Incoming {
     this.getConfig = getConfig
   }
 
+  private queue(config: Awaited<ReturnType<getConfig>>) {
+    if (!isProviderRuntimeEnabled(config.provider)) {
+      throw new SendError(409, 'baileys_provider_disabled_deregister_required')
+    }
+    return providerQueueName(UNOAPI_QUEUE_INCOMING, config.server || 'server_1', config.provider)
+  }
+
   private async groupManagementRpc<T>(phone: string, action: GroupManagementAction, args: unknown[] = []): Promise<T> {
     const config = await this.getConfig(phone)
     return amqpRpc<T>(
       UNOAPI_EXCHANGE_BRIDGE_NAME,
-      `${UNOAPI_QUEUE_INCOMING}.${config.server!}`,
+      this.queue(config),
       phone,
       {
         type: 'group_management',
@@ -42,25 +54,80 @@ export class IncomingAmqp implements Incoming {
         type: 'direct',
         priority: 5,
         maxRetries: 0,
-      }
+      },
     )
+  }
+
+  public async contacts(phone: string, numbers: string[]) {
+    const config = await this.getConfig(phone)
+    return amqpRpc<any[]>(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      this.queue(config),
+      phone,
+      {
+        type: 'provider_operation',
+        action: 'contacts',
+        args: [numbers],
+      },
+      { type: 'direct', priority: 5, maxRetries: 0 },
+    )
+  }
+
+  public saveContact(phone: string, input: SaveContactInput) {
+    return this.providerOperation<SaveContactResponse>(phone, 'saveContact', [input])
+  }
+
+  public async requestPairingCode(phone: string) {
+    const config = await this.getConfig(phone)
+    return amqpRpc<string>(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      this.queue(config),
+      phone,
+      {
+        type: 'provider_operation',
+        action: 'requestPairingCode',
+        args: [],
+      },
+      { type: 'direct', priority: 5, maxRetries: 0 },
+    )
+  }
+
+  private async providerOperation<T>(phone: string, action: string, args: unknown[] = []): Promise<T> {
+    const config = await this.getConfig(phone)
+    return amqpRpc<T>(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      this.queue(config),
+      phone,
+      {
+        type: 'provider_operation',
+        action,
+        args,
+      },
+      { type: 'direct', priority: 5, maxRetries: 0 },
+    )
+  }
+
+  public resyncAppState(phone: string, forceSnapshot = true) {
+    return this.providerOperation<void>(phone, 'resyncAppState', [forceSnapshot])
+  }
+
+  public fetchPrivacyTokens(phone: string, jids: string[], timeoutMs?: number) {
+    return this.providerOperation<any>(phone, 'fetchPrivacyTokens', [jids, timeoutMs])
+  }
+
+  public fetchMessageHistory(phone: string, payload: object = {}) {
+    return this.providerOperation<any>(phone, 'fetchMessageHistory', [payload])
   }
 
   public async send(phone: string, payload: object, options: object = {}) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = payload as any
     const { status, type, to } = body
-    const config = await this.getConfig(phone);
+    const config = await this.getConfig(phone)
     if (status) {
       options['type'] = 'direct'
       options['priority'] = 3 // update status is always middle important
-      await amqpPublish(
-        UNOAPI_EXCHANGE_BRIDGE_NAME,
-        `${UNOAPI_QUEUE_INCOMING}.${config.server!}`, 
-        phone,
-        { payload, options },
-        options
-      )
+      await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, options }, options)
       return { ok: { success: true } }
     } else if (type) {
       const id = uuid()
@@ -68,13 +135,7 @@ export class IncomingAmqp implements Incoming {
         options['priority'] = 5 // send message without bulk is very important
       }
       options['type'] = 'direct'
-      await amqpPublish(
-        UNOAPI_EXCHANGE_BRIDGE_NAME,
-        `${UNOAPI_QUEUE_INCOMING}.${config.server!}`,
-        phone,
-        { payload, id, options }, 
-        options
-      )
+      await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, id, options }, options)
       const isGroup = body?.recipient_type === 'group' || `${to || ''}`.trim().endsWith('@g.us')
       const target = isGroup ? normalizeGroupId(to) : `${to || ''}`
       const ok = {
@@ -105,13 +166,7 @@ export class IncomingAmqp implements Incoming {
     options['priority'] = 5
     options['forceSessionRefresh'] = true
     options['forceDeliveryRecovery'] = true
-    await amqpPublish(
-      UNOAPI_EXCHANGE_BRIDGE_NAME,
-      `${UNOAPI_QUEUE_INCOMING}.${config.server!}`,
-      phone,
-      { payload, id, options, action: 'recover_delivery' },
-      options
-    )
+    await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, id, options, action: 'recover_delivery' }, options)
     return {
       ok: {
         messaging_product: 'whatsapp',
@@ -183,5 +238,9 @@ export class IncomingAmqp implements Incoming {
 
   public async groupMetadata(phone: string, jid: string) {
     return this.groupManagementRpc<any>(phone, 'groupMetadata', [jid])
+  }
+
+  public async groupProfilePicture(phone: string, jid: string, forceRefresh = false) {
+    return this.groupManagementRpc<{ url: string; metadata?: Record<string, string> } | undefined>(phone, 'groupProfilePicture', [jid, forceRefresh])
   }
 }
