@@ -72,9 +72,13 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
     const data = JSON.parse(JSON.stringify(payload))
     const value = data?.entry?.[0]?.changes?.[0]?.value
     if (value?.metadata) {
-      const phoneWithPlus = phone.startsWith('+') ? phone : `+${phone}`
+      const phoneWithoutPlus = `${phone}`.replace(/^\+/, '')
+      const phoneWithPlus = `+${phoneWithoutPlus}`
       value.metadata.display_phone_number = phoneWithPlus
-      value.metadata.phone_number_id = phoneWithPlus
+      // Typebot compares this identifier literally with the value stored in
+      // its WhatsApp credentials. UNO's Graph-compatible setup route exposes
+      // the canonical identifier without the display-only leading plus sign.
+      value.metadata.phone_number_id = phoneWithoutPlus
     }
     if (value?.messages && Array.isArray(value.messages)) {
       const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'document', 'sticker', 'ptv'])

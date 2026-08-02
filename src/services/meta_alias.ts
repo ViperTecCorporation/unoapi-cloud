@@ -8,8 +8,6 @@ export const resolveSessionPhoneByMetaId = async (value: string): Promise<string
 
   if (!process.env.REDIS_URL) return id.replace('+', '')
 
-  if (/^\+?\d{8,15}$/.test(id)) return id.replace('+', '')
-
   try {
     const byPhoneNumberId = await getPhoneByPhoneNumberId(id)
     if (byPhoneNumberId) return `${byPhoneNumberId}`.replace('+', '')
@@ -20,5 +18,8 @@ export const resolveSessionPhoneByMetaId = async (value: string): Promise<string
     if (byBusinessAccountId) return `${byBusinessAccountId}`.replace('+', '')
   } catch {}
 
-  return id
+  // Meta phone-number and business-account IDs are also numeric. Only treat
+  // an unmapped numeric value as a direct session phone after both aliases
+  // have been checked.
+  return id.replace('+', '')
 }

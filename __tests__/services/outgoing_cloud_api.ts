@@ -257,7 +257,7 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(msgs[1].image?.caption).toBe('resposta ao status')
   })
 
-  test('normalizes typebot metadata phone id with plus sign', async () => {
+  test('normalizes typebot metadata with canonical phone id and display plus sign', async () => {
     const response = { ok: true, status: 200, text: async () => 'ok' } as any
     mockFetch.mockReset()
     mockFetch.mockResolvedValue(response)
@@ -303,7 +303,7 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const body = JSON.parse((mockFetch.mock.calls[0] as any)[1].body)
     const value = body.entry[0].changes[0].value
-    expect(value.metadata.phone_number_id).toBe(`+${phone}`)
+    expect(value.metadata.phone_number_id).toBe(phone)
     expect(value.metadata.display_phone_number).toBe(`+${phone}`)
     expect(value.contacts[0].profile.picture).toBeUndefined()
   })
