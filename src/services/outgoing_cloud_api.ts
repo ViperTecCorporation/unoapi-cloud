@@ -159,7 +159,16 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
               if (typeof e?.title !== 'undefined') out.title = e.title
               if (typeof e?.message !== 'undefined') out.message = e.message
               if (e?.error_data && typeof e.error_data === 'object') {
-                out.error_data = e.error_data
+                const details =
+                  e.error_data.details ||
+                  e?.details ||
+                  e?.message ||
+                  e?.title ||
+                  'WhatsApp delivery failed'
+                out.error_data = {
+                  ...e.error_data,
+                  details: `${details}`,
+                }
               } else {
                 const details =
                   e?.error_data ||
