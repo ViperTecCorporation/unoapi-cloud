@@ -1005,6 +1005,22 @@ export const setJidMapping = async (session: string, pnJid: string, lidJid: stri
   try { await setMapping(jidMapLidKeyGlob(pnJid), lidJid) } catch {}
 }
 
+export const removeJidMapping = async (session: string, pnJid: string, lidJid: string) => {
+  if (!pnJid || !lidJid) return
+  lidJid = normalizeLidJid(lidJid) || lidJid
+  try {
+    const storedPn = await redisGet(jidMapPnKeyGlob(lidJid))
+    if (storedPn === pnJid) await redisDel(jidMapPnKeyGlob(lidJid))
+    const legacyPn = await redisGet(jidMapPnKeyNew(session, lidJid))
+    if (legacyPn === pnJid) await redisDel(jidMapPnKeyNew(session, lidJid))
+
+    const storedLid = normalizeLidJid(await redisGet(jidMapLidKeyGlob(pnJid)))
+    if (storedLid === lidJid) await redisDel(jidMapLidKeyGlob(pnJid))
+    const legacyLid = normalizeLidJid(await redisGet(jidMapLidKeyNew(session, pnJid)))
+    if (legacyLid === lidJid) await redisDel(jidMapLidKeyNew(session, pnJid))
+  } catch {}
+}
+
 // Remove selective Signal sessions for a session phone & target JIDs (PN/LID variants)
 // This forces Baileys to fetch sessions again on next assert.
 export const delSignalSessionsForJids = async (session: string, jids: string[], opts?: { forceDeviceList?: boolean }) =>

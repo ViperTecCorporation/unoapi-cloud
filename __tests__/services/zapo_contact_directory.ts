@@ -1,6 +1,7 @@
 import { defaultConfig, getConfig } from '../../src/services/config'
 import {
   countContactKeys,
+  countContactKeyKinds,
   findCachedContactPicture,
   mapStoredZapoContact,
   normalizeContactPhoneNumber,
@@ -152,6 +153,8 @@ describe('ZapoContactDirectory', () => {
       next_cursor: '42',
       has_more: true,
       total_count: 2,
+      raw_total_count: 2,
+      ignored_count: 0,
     })
     expect(redis.scan).toHaveBeenCalledWith('7', {
       MATCH: 'unoapi:zapo:contact:session:*',
@@ -194,6 +197,8 @@ describe('ZapoContactDirectory', () => {
       next_cursor: '0',
       has_more: false,
       total_count: 1,
+      raw_total_count: 1,
+      ignored_count: 0,
     })
     expect(redis.scan).toHaveBeenNthCalledWith(
       2,
@@ -346,6 +351,29 @@ describe('ZapoContactDirectory', () => {
     expect(redis.scan).toHaveBeenNthCalledWith(2, '42', {
       MATCH: 'unoapi:zapo:contact:session:*',
       COUNT: 1000,
+    })
+  })
+
+  test('separates canonical LID keys from raw and ignored contact keys', async () => {
+    const redis = {
+      scan: jest
+        .fn()
+        .mockResolvedValueOnce({
+          cursor: '42',
+          keys: ['unoapi:zapo:contact:session:1@lid', 'unoapi:zapo:contact:session:5511@s.whatsapp.net'],
+        })
+        .mockResolvedValueOnce({
+          cursor: '0',
+          keys: ['unoapi:zapo:contact:session:2@lid'],
+        }),
+    }
+
+    await expect(
+      countContactKeyKinds(redis as never, 'unoapi:zapo:contact:session:*'),
+    ).resolves.toEqual({
+      total_count: 2,
+      raw_total_count: 3,
+      ignored_count: 1,
     })
   })
 })

@@ -351,6 +351,31 @@ O contrato operacional, as configurações por sessão e os exemplos da rota de 
 - Quando a aplicacao nao conhecer LID nem username, a UnoAPI usa o PN recebido para consultar o store/API da Zapo e recuperar o LID; depois da resolucao, o envio usa o LID.
 - Nunca escolher um contato Zapo por heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs distintos.
 
+### Verificacao e importacao de contatos
+
+As rotas `POST /{phone}/contacts` e `POST /{phone}/contacts/import` usam um
+resolver isolado do enderecamento de mensagens e grupos. Um mapeamento recente
+do store Zapo (janela de cinco minutos) evita consultas repetidas; os demais
+telefones sao enviados em uma unica consulta em lote por requisicao. A resposta
+e correlacionada por `queriedJid`, nunca pela posicao do array.
+
+Falha de transporte usa um registro antigo do store somente como fallback. Sem
+resultado confiavel, a rota retorna `503 zapo_contact_lookup_unavailable`, para
+retry externo espacado, e nao executa varias consultas imediatas que possam
+aumentar o risco de restricao da sessao. Uma resposta de rede explicita com
+`exists=false` e tratada como contato invalido.
+
+A normalizacao brasileira de apresentacao e aplicada na entrada e na resposta
+publica. O `phoneJid` canonico devolvido pela Zapo continua armazenado sem
+alteracao para o enderecamento interno. Na importacao, um `user_id` fornecido
+pela aplicacao nao substitui o LID canonico: aliases antigos pertencentes ao
+mesmo telefone sao removidos, e a mutacao `Contact` e ignorada quando telefone,
+LID e nome ja forem iguais.
+
+`GET /{phone}/contacts` devolve `total_count` apenas para chaves canonicas
+`@lid`, alem de `raw_total_count` e `ignored_count`, preservando a paginacao por
+cursor e tornando divergencias do cache observaveis.
+
 ## Username
 
 A identidade canonica Zapo e o LID. `senderUsername`, participantes de grupo e eventos

@@ -39,6 +39,8 @@ describe('frontend core', () => {
           next_cursor: '0',
           has_more: false,
           total_count: 0,
+          raw_total_count: 0,
+          ignored_count: 0,
         }))
       }
       if (`${url}`.endsWith('/groups')) return new Response(JSON.stringify({ phone: '5566', groups: [] }))

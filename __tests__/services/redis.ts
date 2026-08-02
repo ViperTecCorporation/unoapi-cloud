@@ -51,6 +51,7 @@ import {
   setJidMapping,
   getLidForPn,
   getPnForLid,
+  removeJidMapping,
 } from '../../src/services/redis'
 
 describe('redis.setUnoId', () => {
@@ -122,6 +123,21 @@ describe('redis.setJidMapping', () => {
     expect(await getPnForLid(phone, '190280070385782@lid')).toBe(pn)
     expect(await getPnForLid(phone, '190280070385782:35@lid')).toBe(pn)
     expect(await getLidForPn(phone, pn)).toBe('190280070385782@lid')
+  })
+
+  it('removes only the stale reverse alias after a PN is remapped to a new LID', async () => {
+    const phone = '5566996269251'
+    const pn = '5517997666260@s.whatsapp.net'
+    const oldLid = '111@lid'
+    const newLid = '222@lid'
+
+    await setJidMapping(phone, pn, oldLid)
+    await setJidMapping(phone, pn, newLid)
+    await removeJidMapping(phone, pn, oldLid)
+
+    expect(await getPnForLid(phone, oldLid)).toBeUndefined()
+    expect(await getLidForPn(phone, pn)).toBe(newLid)
+    expect(await getPnForLid(phone, newLid)).toBe(pn)
   })
 })
 

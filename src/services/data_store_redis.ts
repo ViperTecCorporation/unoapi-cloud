@@ -43,7 +43,7 @@ import logger from './logger'
 import { createProviderDataStoreBase } from './data_store_base'
 import { defaultConfig } from './config'
 import { CLEAN_CONFIG_ON_DISCONNECT, JIDMAP_CACHE_ENABLED } from '../defaults'
-import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey, getContactName as redisGetContactName, setContactName as redisSetContactName, getContactInfo as redisGetContactInfo, setContactInfo as redisSetContactInfo, getPnForLidFromAuthCache as redisGetPnForLidFromAuthCache, getLidForPnFromAuthCache as redisGetLidForPnFromAuthCache } from './redis'
+import { getPnForLid as redisGetPnForLid, getLidForPn as redisGetLidForPn, setJidMapping as redisSetJidMapping, removeJidMapping as redisRemoveJidMapping, getLastIncomingKey as redisGetLastIncomingKey, setLastIncomingKey as redisSetLastIncomingKey, getContactName as redisGetContactName, setContactName as redisSetContactName, getContactInfo as redisGetContactInfo, setContactInfo as redisSetContactInfo, getPnForLidFromAuthCache as redisGetPnForLidFromAuthCache, getLidForPnFromAuthCache as redisGetLidForPnFromAuthCache } from './redis'
 import { profilePictureCacheIds } from './profile_picture_cache'
 import { resolveSessionProvider } from './providers/provider_resolver'
 
@@ -465,6 +465,9 @@ const dataStoreRedis = async (phone: string, config: Config): Promise<DataStore>
   }
   store.setJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
     await redisSetJidMapping(sessionPhone, pnJid, lidJid)
+  }
+  store.removeJidMapping = async (sessionPhone: string, pnJid: string, lidJid: string) => {
+    await redisRemoveJidMapping(sessionPhone, pnJid, lidJid)
   }
   return store
 }

@@ -74,4 +74,5 @@ export type DataStore  = {
   getPnForLid?: (sessionPhone: string, lidJid: string) => Promise<string | undefined>
   getLidForPn?: (sessionPhone: string, pnJid: string) => Promise<string | undefined>
   setJidMapping?: (sessionPhone: string, pnJid: string, lidJid: string) => Promise<void>
+  removeJidMapping?: (sessionPhone: string, pnJid: string, lidJid: string) => Promise<void>
 }

@@ -20,6 +20,8 @@ describe('contacts directory route', () => {
       next_cursor: '0',
       has_more: false,
       total_count: 1,
+      raw_total_count: 1,
+      ignored_count: 0,
     }
     const directory: ContactDirectory = {
       list: jest.fn().mockResolvedValue(page),
