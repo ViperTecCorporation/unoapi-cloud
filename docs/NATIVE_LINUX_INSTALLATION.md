@@ -14,7 +14,7 @@ Em servidores menores, configure swap antes da instalação.
 Baixe a tag imutável e prepare o ambiente:
 
 ```sh
-git clone --depth 1 --branch v4.0.1 \
+git clone --depth 1 --branch v4.0.2 \
   https://github.com/ViperTecCorporation/ViperConnect.git
 cd ViperConnect
 cp deploy/native/viperconnect.env.example /root/viperconnect.env
@@ -25,7 +25,7 @@ Execute a partir de um checkout do projeto:
 
 ```sh
 sudo bash scripts/install-native-linux.sh \
-  --tag v4.0.1 \
+  --tag v4.0.2 \
   --env-file /root/viperconnect.env
 ```
 
@@ -36,9 +36,9 @@ Sem `--role`, a unit `viperconnect.service` inicia web, broker e worker Zapo.
 Execute uma vez para cada papel:
 
 ```sh
-sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role web --env-file /root/viperconnect.env
-sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role broker
-sudo bash scripts/install-native-linux.sh --tag v4.0.1 --role worker
+sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role web --env-file /root/viperconnect.env
+sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role broker
+sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role worker
 ```
 
 As units criadas são:
@@ -54,9 +54,9 @@ Todas compartilham `/opt/viperconnect/current`, `/var/lib/viperconnect/data` e
 
 ```text
 /opt/viperconnect/
-  current -> releases/v4.0.1
+  current -> releases/v4.0.2
   releases/
-    v4.0.1/
+    v4.0.2/
 /var/lib/viperconnect/
   data/
 /etc/viperconnect/
@@ -94,5 +94,5 @@ curl http://127.0.0.1:9876/ping
 Antes de alterar o host, valide o plano:
 
 ```sh
-bash scripts/install-native-linux.sh --dry-run --tag v4.0.1
+bash scripts/install-native-linux.sh --dry-run --tag v4.0.2
 ```

@@ -1,8 +1,8 @@
-import { icon } from '../components/icons.js?v=4.0.1-1cf00d03';
-import { renderModal } from '../components/modal.js?v=4.0.1-1cf00d03';
-import { escapeHtml } from '../core/html.js?v=4.0.1-1cf00d03';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.1-1cf00d03';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.1-1cf00d03';
+import { icon } from '../components/icons.js?v=4.0.2-1cf00d03';
+import { renderModal } from '../components/modal.js?v=4.0.2-1cf00d03';
+import { escapeHtml } from '../core/html.js?v=4.0.2-1cf00d03';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.2-1cf00d03';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.2-1cf00d03';
 export const redisTreeFromKeys = (keys) => {
     const tree = { '': [] };
     keys.forEach((key) => {
