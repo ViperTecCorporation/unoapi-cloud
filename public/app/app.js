@@ -1,19 +1,20 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.1-6cbd5fc8';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.1-6cbd5fc8';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.1-6cbd5fc8';
-import { SocketBridge } from './core/socket.js?v=4.0.1-6cbd5fc8';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.1-6cbd5fc8';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.1-6cbd5fc8';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.1-6cbd5fc8';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.1-6cbd5fc8';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.1-6cbd5fc8';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.1-6cbd5fc8';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.1-6cbd5fc8';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.1-6cbd5fc8';
-import { renderSessionPage } from './pages/session.js?v=4.0.1-6cbd5fc8';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.1-6cbd5fc8';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.1-6cbd5fc8';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.1-6cbd5fc8';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.1-1cf00d03';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.1-1cf00d03';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.1-1cf00d03';
+import { SocketBridge } from './core/socket.js?v=4.0.1-1cf00d03';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.1-1cf00d03';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.1-1cf00d03';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.1-1cf00d03';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.1-1cf00d03';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.1-1cf00d03';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.1-1cf00d03';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.1-1cf00d03';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.1-1cf00d03';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.1-1cf00d03';
+import { renderSessionPage } from './pages/session.js?v=4.0.1-1cf00d03';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.1-1cf00d03';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.1-1cf00d03';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.1-1cf00d03';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -489,7 +490,8 @@ export class ViperConnectApp {
         }
         finally {
             this.loading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     tickRefresh() {
@@ -550,8 +552,22 @@ export class ViperConnectApp {
         this.groupsQuery = '';
         this.sectionError = '';
         this.render();
-        if (!isLegacySession(session))
-            await this.loadContacts(true);
+        if (isLegacySession(session))
+            return;
+        try {
+            const detail = await this.api.session(phone);
+            this.replaceSession(phone, {
+                ...session,
+                ...detail,
+                id: session.id || phone,
+                phone,
+                phone_number_id: detail.phone_number_id || detail.id || phone,
+            });
+        }
+        catch (error) {
+            this.showToast(this.messageFor(error));
+        }
+        await this.loadContacts(true);
     }
     async openSessionTab(tab) {
         this.tab = tab;
@@ -588,7 +604,8 @@ export class ViperConnectApp {
         }
         finally {
             this.loadingSection = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async loadGroups(reset) {
@@ -615,7 +632,8 @@ export class ViperConnectApp {
         }
         finally {
             this.loadingSection = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async createSession(data) {
@@ -755,7 +773,8 @@ export class ViperConnectApp {
         }
         finally {
             this.queuesLoading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async inspectQueue(queue, resetLimit = true) {
@@ -778,7 +797,8 @@ export class ViperConnectApp {
         }
         finally {
             this.queueMessagesLoading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async purgeQueue(data) {
@@ -834,7 +854,8 @@ export class ViperConnectApp {
         }
         finally {
             this.redisLoading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async toggleRedisNode(prefix) {
@@ -866,7 +887,8 @@ export class ViperConnectApp {
         }
         finally {
             this.redisLoading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async loadRedisKey(key) {
@@ -883,7 +905,8 @@ export class ViperConnectApp {
         }
         finally {
             this.redisLoading = false;
-            this.render();
+            if (shouldRenderBackgroundUpdate(!!this.modal))
+                this.render();
         }
     }
     async saveRedisKey(data) {
@@ -1143,7 +1166,8 @@ export class ViperConnectApp {
         window.setTimeout(() => {
             if (this.toast === message) {
                 this.toast = '';
-                this.render();
+                if (shouldRenderBackgroundUpdate(!!this.modal))
+                    this.render();
             }
         }, 4000);
     }
@@ -1231,7 +1255,8 @@ export class ViperConnectApp {
                 update_available: false,
             };
         }
-        this.render();
+        if (shouldRenderBackgroundUpdate(!!this.modal))
+            this.render();
     }
     messageFor(error) {
         if (error instanceof ApiError) {

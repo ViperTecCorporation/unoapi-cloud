@@ -24,6 +24,8 @@ export interface WebhookConfig {
 
 export interface SessionConfig {
   id?: string
+  phone_number_id?: string
+  business_account_id?: string
   phone?: string
   session_phone?: string
   display_phone_number?: string
