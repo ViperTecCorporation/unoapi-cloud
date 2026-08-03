@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js?v=4.0.4-9c6b8a68';
-import { renderModal } from '../components/modal.js?v=4.0.4-9c6b8a68';
-import { renderStatus } from '../components/status.js?v=4.0.4-9c6b8a68';
-import { escapeHtml } from '../core/html.js?v=4.0.4-9c6b8a68';
+import { icon } from '../components/icons.js?v=4.0.5-9c6b8a68';
+import { renderModal } from '../components/modal.js?v=4.0.5-9c6b8a68';
+import { renderStatus } from '../components/status.js?v=4.0.5-9c6b8a68';
+import { escapeHtml } from '../core/html.js?v=4.0.5-9c6b8a68';
 const labels = {
     companies: 'Empresas',
     accounts: 'Linhas',
