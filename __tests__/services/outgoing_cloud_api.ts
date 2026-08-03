@@ -257,7 +257,7 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(msgs[1].image?.caption).toBe('resposta ao status')
   })
 
-  test('normalizes typebot metadata phone id with plus sign', async () => {
+  test('normalizes typebot metadata with canonical phone id and display plus sign', async () => {
     const response = { ok: true, status: 200, text: async () => 'ok' } as any
     mockFetch.mockReset()
     mockFetch.mockResolvedValue(response)
@@ -303,7 +303,7 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const body = JSON.parse((mockFetch.mock.calls[0] as any)[1].body)
     const value = body.entry[0].changes[0].value
-    expect(value.metadata.phone_number_id).toBe(`+${phone}`)
+    expect(value.metadata.phone_number_id).toBe(phone)
     expect(value.metadata.display_phone_number).toBe(`+${phone}`)
     expect(value.contacts[0].profile.picture).toBeUndefined()
   })
@@ -449,6 +449,63 @@ describe('service outgoing whatsapp cloud api', () => {
 
     const body = JSON.parse((mockFetch.mock.calls[0] as any)[1].body)
     expect(body.entry[0].changes[0].value.statuses[0].recipient_id).toBe('5566996269251')
+  })
+
+  test('sendHttp adds Typebot-compatible details to status error_data', async () => {
+    mockFetch.mockReset()
+    mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'ok' } as any)
+
+    const typebotWebhook = {
+      id: 'typebot',
+      urlAbsolute: 'https://example.com/typebot',
+      sendIncomingMessages: true,
+      sendOutgoingMessages: true,
+      sendGroupMessages: false,
+      sendUpdateMessages: true,
+      sendNewsletterMessages: false,
+      typebot: true,
+    } as Webhook
+    const payload: any = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: `+${phone}`, phone_number_id: phone },
+                statuses: [
+                  {
+                    id: 'MSG1',
+                    recipient_id: '5566999272154',
+                    status: 'failed',
+                    timestamp: '1785677772',
+                    errors: [
+                      {
+                        code: 500,
+                        title: 'negative publish ack error=479',
+                        message: 'negative publish ack error=479',
+                        error_data: { provider: 'zapo', message_type: 'status_deleted' },
+                      },
+                    ],
+                  },
+                ],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
+    }
+
+    await service.sendHttp(phone!, typebotWebhook, payload, {})
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as any)[1].body)
+    expect(body.entry[0].changes[0].value.statuses[0].errors[0].error_data).toEqual({
+      provider: 'zapo',
+      message_type: 'status_deleted',
+      details: 'negative publish ack error=479',
+    })
   })
 
   test('classifies only transient HTTP responses as circuit breaker failures', () => {

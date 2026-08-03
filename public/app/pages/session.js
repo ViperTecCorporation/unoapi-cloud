@@ -1,11 +1,11 @@
-import { icon } from '../components/icons.js?v=4.0.1-6cbd5fc8';
-import { renderStatus } from '../components/status.js?v=4.0.1-6cbd5fc8';
-import { escapeHtml } from '../core/html.js?v=4.0.1-6cbd5fc8';
-import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.1-6cbd5fc8';
-import { renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.1-6cbd5fc8';
-import { renderSessionConfig } from '../features/session_config.js?v=4.0.1-6cbd5fc8';
-import { renderWebhooks } from '../features/webhooks.js?v=4.0.1-6cbd5fc8';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.1-6cbd5fc8';
+import { icon } from '../components/icons.js?v=4.0.2-1cf00d03';
+import { renderStatus } from '../components/status.js?v=4.0.2-1cf00d03';
+import { escapeHtml } from '../core/html.js?v=4.0.2-1cf00d03';
+import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.2-1cf00d03';
+import { renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.2-1cf00d03';
+import { renderSessionConfig } from '../features/session_config.js?v=4.0.2-1cf00d03';
+import { renderWebhooks } from '../features/webhooks.js?v=4.0.2-1cf00d03';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.2-1cf00d03';
 const tabs = [
     ['overview', 'Visão geral'],
     ['config', 'Configuração'],
@@ -13,12 +13,44 @@ const tabs = [
     ['contacts', 'Contatos'],
     ['groups', 'Grupos'],
 ];
+const renderIntegrationIdentifier = ({ label, value }) => `
+  <div class="integration-identifier">
+    <div>
+      <span>${t(label)}</span>
+      <strong title="${escapeHtml(value)}">${escapeHtml(value || '—')}</strong>
+    </div>
+    ${value ? `<button class="btn btn--icon btn--ghost" type="button" data-action="copy-value" data-value="${escapeHtml(value)}" data-copy-label="${escapeHtml(t(label))}" aria-label="${escapeHtml(t('Copiar {label}', { label: t(label) }))}">${icon('copy')}</button>` : ''}
+  </div>
+`;
+const renderWhatsAppIntegration = (session) => {
+    const phone = `${session.display_phone_number || session.phone || session.session_phone || sessionPhone(session)}`.replace(/\D/g, '');
+    const identifiers = [
+        { label: 'WhatsApp Account ID', value: `${session.business_account_id || ''}`.trim() },
+        { label: 'Phone Number ID', value: `${session.phone_number_id || ''}`.trim() },
+        { label: 'Número da sessão', value: phone },
+        { label: 'URL base', value: globalThis.location?.origin || '' },
+    ];
+    if (!session.business_account_id && !session.phone_number_id)
+        return '';
+    return `
+    <section class="section integration-card">
+      <div class="section__heading">
+        <div><h2>${t('Integração WhatsApp')}</h2><p class="muted">${t('Identificadores usados para conectar esta sessão a outras aplicações.')}</p></div>
+      </div>
+      <div class="integration-identifiers">
+        ${identifiers.map(renderIntegrationIdentifier).join('')}
+      </div>
+      <p class="integration-note">${icon('info')}<span>${t('Na ViperConnect, estes são identificadores estáveis de compatibilidade com a WhatsApp Cloud API. Não são IDs reais fornecidos pela Meta.')}</span></p>
+    </section>
+  `;
+};
 const renderOverview = (session, contactCount) => `
   <section class="stats" aria-label="${t('Resumo da sessão')}">
     <article class="stat-card"><span>Status</span><strong class="stat-card__status">${renderStatus(session.status)}</strong><small>${escapeHtml(session.server || 'server_1')}</small></article>
     <article class="stat-card"><span>${t('Contatos')}</span><strong>${formatNumber(contactCount)}</strong><small>${t('armazenados no cache Zapo')}</small></article>
     <article class="stat-card"><span>${t('Webhooks')}</span><strong>${session.webhooks?.filter((item) => item.enabled !== false && item.disabled !== true).length || 0}</strong><small>${t('destinos ativos')}</small></article>
   </section>
+  ${renderWhatsAppIntegration(session)}
   <section class="section">
     <div class="section__heading"><div><h2>${t('Ações da sessão')}</h2><p class="muted">${escapeHtml(t('Toda operação abaixo usa o telefone {phone}.', { phone: sessionPhone(session) }))}</p></div></div>
     <div class="action-grid">

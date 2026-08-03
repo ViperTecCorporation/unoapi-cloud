@@ -5,6 +5,7 @@ import { SocketBridge } from './core/socket.js'
 import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
 import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js'
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js'
 import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
@@ -457,7 +458,7 @@ export class ViperConnectApp {
       throw error
     } finally {
       this.loading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -512,7 +513,20 @@ export class ViperConnectApp {
     this.groupsQuery = ''
     this.sectionError = ''
     this.render()
-    if (!isLegacySession(session)) await this.loadContacts(true)
+    if (isLegacySession(session)) return
+    try {
+      const detail = await this.api.session(phone)
+      this.replaceSession(phone, {
+        ...session,
+        ...detail,
+        id: session.id || phone,
+        phone,
+        phone_number_id: detail.phone_number_id || detail.id || phone,
+      })
+    } catch (error) {
+      this.showToast(this.messageFor(error))
+    }
+    await this.loadContacts(true)
   }
 
   private async openSessionTab(tab: SessionTab): Promise<void> {
@@ -546,7 +560,7 @@ export class ViperConnectApp {
       this.sectionError = this.messageFor(error)
     } finally {
       this.loadingSection = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -571,7 +585,7 @@ export class ViperConnectApp {
       this.sectionError = this.messageFor(error)
     } finally {
       this.loadingSection = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -702,7 +716,7 @@ export class ViperConnectApp {
       this.queueError = this.messageFor(error)
     } finally {
       this.queuesLoading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -723,7 +737,7 @@ export class ViperConnectApp {
       this.queueMessages = []
     } finally {
       this.queueMessagesLoading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -781,7 +795,7 @@ export class ViperConnectApp {
       this.redisError = this.messageFor(error)
     } finally {
       this.redisLoading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -811,7 +825,7 @@ export class ViperConnectApp {
       this.redisError = this.messageFor(error)
     } finally {
       this.redisLoading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -826,7 +840,7 @@ export class ViperConnectApp {
       this.redisError = this.messageFor(error)
     } finally {
       this.redisLoading = false
-      this.render()
+      if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
     }
   }
 
@@ -1085,7 +1099,7 @@ export class ViperConnectApp {
     window.setTimeout(() => {
       if (this.toast === message) {
         this.toast = ''
-        this.render()
+        if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
       }
     }, 4_000)
   }
@@ -1173,7 +1187,7 @@ export class ViperConnectApp {
         update_available: false,
       }
     }
-    this.render()
+    if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
   }
 
   private messageFor(error: unknown): string {

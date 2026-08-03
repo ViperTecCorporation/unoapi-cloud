@@ -19,7 +19,6 @@ import { ZapoMessages } from './zapo/zapo_messages'
 import { isEncryptedZapoAddonMessage, toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from './zapo/zapo_events'
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
-import { phoneNumberToJid } from './transformer/jid'
 import { normalizeMessageContent } from './transformer/message_type'
 import { Template } from './template'
 import {
@@ -40,6 +39,7 @@ import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconne
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
 import { zapoMediaOptions } from './zapo/zapo_media_processor'
 import { ZapoContactBook } from './zapo/zapo_contact_book'
+import { ZapoContactIdentityResolver } from './zapo/zapo_contact_identity'
 import type { SaveContactInput } from './contacts/contact_book_types'
 import { ZapoCatalog } from './zapo/zapo_catalog'
 import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
@@ -955,32 +955,20 @@ export class ClientZapo implements Client {
         status: lid ? 'valid' : 'failed',
       }
     }
-    const inputs = numeric.map(({ value }) => phoneNumberToJid(value))
-    const results = inputs.length ? await this.socket.profile.getLidsByPhoneNumbers(inputs) : []
-    const contacts = results.flatMap((result, index) =>
-      result.exists && result.lidJid
-        ? [
-            {
-              jid: result.lidJid,
-              lid: result.lidJid,
-              phoneNumber: `${result.phoneJid || inputs[index]}`.split('@')[0],
-              lastUpdatedMs: Date.now(),
-            },
-          ]
-        : [],
-    )
-    if (contacts.length) await this.zapoSession.contacts.upsertBatch(contacts)
-    for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
-      const result = results[resultIndex]
+    const resolutions = numeric.length
+      ? await new ZapoContactIdentityResolver(this.socket, this.zapoSession.contacts).resolveMany(numeric.map(({ value }) => value))
+      : []
+    for (let resultIndex = 0; resultIndex < resolutions.length; resultIndex += 1) {
+      const result = resolutions[resultIndex]
       const index = numeric[resultIndex].index
-      const stored = result.lidJid ? await this.zapoSession.contacts.getByJid(result.lidJid) : undefined
+      const stored = result.stored || (result.lid_jid ? await this.zapoSession.contacts.getByJid(result.lid_jid) : undefined)
       output[index] = {
         input: numbers[index],
-        wa_id: result.exists ? `${result.phoneJid || inputs[resultIndex]}`.split('@')[0] : undefined,
-        user_id: result.exists ? result.lidJid || undefined : undefined,
+        wa_id: result.status === 'valid' ? result.public_phone_number : undefined,
+        user_id: result.status === 'valid' ? result.lid_jid : undefined,
         display_name: stored?.displayName,
         push_name: stored?.pushName,
-        status: result.exists ? 'valid' : result.invalid ? 'invalid' : 'failed',
+        status: result.status,
       }
     }
     return output
@@ -988,7 +976,17 @@ export class ClientZapo implements Client {
 
   async saveContact(input: SaveContactInput) {
     if (!this.socket || !this.zapoSession) throw new SendError(409, 'zapo_client_not_connected')
-    return new ZapoContactBook(this.socket, this.zapoSession, this.phone).save(input)
+    return new ZapoContactBook(
+      this.socket,
+      this.zapoSession,
+      this.phone,
+      async (phoneJid, lidJid) => {
+        await this.unoStore?.dataStore.setJidMapping?.(this.phone, phoneJid, lidJid)
+      },
+      async (phoneJid, lidJid) => {
+        await this.unoStore?.dataStore.removeJidMapping?.(this.phone, phoneJid, lidJid)
+      },
+    ).save(input)
   }
 
   async requestPairingCode() {

@@ -66,8 +66,46 @@ describe('ContactsController directory', () => {
     expect(res.send).toHaveBeenCalledWith({ error: 'zapo_session_owned_by_another_worker' })
   })
 
+  test('returns 503 when contact verification has no reliable network or store result', async () => {
+    const verify = jest.fn().mockRejectedValue(new SendError(503, 'zapo_contact_lookup_unavailable'))
+    const controller = new ContactsController({ verify } as unknown as Contact)
+    const res = response()
+
+    await controller.post(
+      {
+        params: { phone: '5566996269251' },
+        body: { contacts: ['5566996890270'] },
+        method: 'POST',
+        headers: {},
+      } as never,
+      res as never,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.send).toHaveBeenCalledWith({ error: 'zapo_contact_lookup_unavailable' })
+  })
+
+  test('returns 503 when contact import cannot resolve a canonical LID', async () => {
+    const contactBook = {
+      save: jest.fn().mockRejectedValue(new SendError(503, 'zapo_contact_lookup_unavailable')),
+    } as unknown as ContactBook
+    const controller = new ContactsController(verifier, undefined, contactBook)
+    const res = response()
+
+    await controller.save(
+      {
+        params: { phone: '5566996269251' },
+        body: { phone_number: '5566996890270', full_name: 'Maria' },
+      } as never,
+      res as never,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.send).toHaveBeenCalledWith({ error: 'zapo_contact_lookup_unavailable' })
+  })
+
   test('returns the requested directory page', async () => {
-    const page = { contacts: [], next_cursor: '0', has_more: false, total_count: 0 }
+    const page = { contacts: [], next_cursor: '0', has_more: false, total_count: 0, raw_total_count: 0, ignored_count: 0 }
     const directory = { list: jest.fn().mockResolvedValue(page) } as unknown as ContactDirectory
     const controller = new ContactsController(verifier, directory)
     const res = response()
@@ -90,6 +128,8 @@ describe('ContactsController directory', () => {
         next_cursor: '0',
         has_more: false,
         total_count: 0,
+        raw_total_count: 0,
+        ignored_count: 0,
       }),
     } as unknown as ContactDirectory
     const controller = new ContactsController(verifier, directory)

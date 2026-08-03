@@ -5,25 +5,23 @@ import { SendError } from '../send_error'
 import type { ContactDirectory, ContactDirectoryItem, ContactDirectoryPage, ContactDirectoryQuery } from '../contacts/contact_directory_types'
 import { profilePictureCacheIds } from '../profile_picture_cache'
 import { resolveZapoRedisKeyPrefix } from './zapo_store'
+import { normalizeContactPhoneNumber } from './zapo_contact_phone'
+
+export { normalizeContactPhoneNumber } from './zapo_contact_phone'
 
 type RedisClient = Awaited<ReturnType<typeof getRedis>>
 type RedisFactory = () => Promise<RedisClient>
 type PictureLookup = (phone: string, cacheId: string) => Promise<string | null | undefined>
 type StoredContact = Record<string, string>
-type ContactCounter = (redis: RedisClient, pattern: string) => Promise<number>
+type ContactCounts = {
+  total_count: number
+  raw_total_count: number
+  ignored_count: number
+}
+type ContactCounter = (redis: RedisClient, pattern: string) => Promise<ContactCounts | number>
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 200
-
-export const normalizeContactPhoneNumber = (value?: string): string | undefined => {
-  const digits = `${value || ''}`.split('@')[0].split(':')[0].replace(/\D/g, '')
-  if (!digits) return undefined
-  if (!digits.startsWith('55') || digits.length !== 12) return digits
-
-  const localNumber = digits.slice(4)
-  const isMobile = /^[6-9]/.test(localNumber)
-  return isMobile ? `${digits.slice(0, 4)}9${localNumber}` : digits
-}
 
 export const mapStoredZapoContact = (contact: StoredContact): ContactDirectoryItem | undefined => {
   const userId = `${contact.lid || contact.jid || ''}`.trim()
@@ -58,6 +56,30 @@ export const countContactKeys = async (
   return count
 }
 
+export const countContactKeyKinds = async (
+  redis: RedisClient,
+  pattern: string,
+): Promise<ContactCounts> => {
+  let cursor = '0'
+  let rawTotalCount = 0
+  let totalCount = 0
+  const visited = new Set<string>()
+  do {
+    if (visited.has(cursor)) break
+    visited.add(cursor)
+    const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 1000 })
+    const keys = result.keys || []
+    rawTotalCount += keys.length
+    totalCount += keys.filter((key) => key.endsWith('@lid')).length
+    cursor = `${result.cursor}`
+  } while (cursor !== '0')
+  return {
+    total_count: totalCount,
+    raw_total_count: rawTotalCount,
+    ignored_count: rawTotalCount - totalCount,
+  }
+}
+
 export const findCachedContactPicture = async (
   phone: string,
   contact: ContactDirectoryItem,
@@ -80,7 +102,7 @@ export class ZapoContactDirectory implements ContactDirectory {
     private readonly redisFactory: RedisFactory = getRedis,
     prefix = ZAPO_REDIS_KEY_PREFIX,
     private readonly pictureLookup: PictureLookup = getProfilePicture,
-    private readonly counter: ContactCounter = countContactKeys,
+    private readonly counter: ContactCounter = countContactKeyKinds,
   ) {
     this.prefix = resolveZapoRedisKeyPrefix(prefix)
   }
@@ -93,7 +115,7 @@ export class ZapoContactDirectory implements ContactDirectory {
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(query.limit || DEFAULT_LIMIT)))
     const redis = await this.redisFactory()
     const pattern = `${this.prefix}contact:${escapeRedisGlob(phone)}:*`
-    const totalCount = this.counter(redis, pattern)
+    const contactCounts = this.counter(redis, pattern)
     let storePromise: ReturnType<typeof config.getStore> | undefined
     const pictureLookup: PictureLookup = async (sessionPhone, cacheId) => {
       const cached = await this.pictureLookup(sessionPhone, cacheId)
@@ -140,11 +162,15 @@ export class ZapoContactDirectory implements ContactDirectory {
       })),
     )
     contacts.sort((left, right) => right.last_updated_ms - left.last_updated_ms)
+    const counted = await contactCounts
+    const counts = typeof counted === 'number'
+      ? { total_count: counted, raw_total_count: counted, ignored_count: 0 }
+      : counted
     return {
       contacts,
       next_cursor: nextCursor,
       has_more: nextCursor !== '0',
-      total_count: await totalCount,
+      ...counts,
     }
   }
 }

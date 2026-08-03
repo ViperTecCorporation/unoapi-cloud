@@ -682,6 +682,16 @@ const dataStoreFile = async (phone: string, config: Config): Promise<DataStore> 
       try { jids.set(pnJid, pnJid); jids.set(lidJid, pnJid) } catch {}
     } catch {}
   }
+  dataStore.removeJidMapping = async (_sessionPhone: string, pnJid: string, lidJid: string) => {
+    if (!JMAP_ENABLED) return
+    try {
+      lidJid = normalizeLidJid(lidJid) || lidJid
+      const pnKey = `PN_FOR:${_sessionPhone}:${lidJid}`
+      const lidKey = `LID_FOR:${_sessionPhone}:${pnJid}`
+      if (jidMapGet(pnKey) === pnJid) jidMap.del(pnKey)
+      if ((normalizeLidJid(jidMapGet(lidKey)) || jidMapGet(lidKey)) === lidJid) jidMap.del(lidKey)
+    } catch {}
+  }
   dataStore.cleanSession = async (_removeConfig = false) => {
     const sessionDir = `${SESSION_DIR}/${phone}`
     if (existsSync(sessionDir)) {

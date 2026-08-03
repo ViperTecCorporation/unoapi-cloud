@@ -13,6 +13,15 @@ O formato segue o Keep a Changelog e adota SemVer quando aplicável.
 - Recurso: imagens de perfil usam PN canônico para nomes/chaves (FS e S3); gets/sets consideram as variantes PN e LID e registram logs de fallback.
 - Docs: README e documentos de ambiente/arquitetura (PT-BR e EN) atualizados com o comportamento LID/PN, endereçamento em grupos, política PN-first nos webhooks e canonicidade das imagens.
 
+## [4.0.2] - 2026-08-02
+
+- Correção(Typebot): normaliza IDs de telefone e aliases numéricos sem adicionar `+` ao `phone_number_id`, preservando a compatibilidade com credenciais Meta-like.
+- Correção(Typebot): normaliza erros e status de webhook para impedir respostas inválidas e repetição excessiva de falhas.
+- Correção(contatos Zapo): resolve telefone para LID por `queriedJid`, usa cache local recente e limita a consulta à rede a um único lote por requisição.
+- Correção(contatos Zapo): importação idempotente, substituição segura de LID obsoleto e retorno `503` em indisponibilidade transitória, sem marcar o contato como inválido.
+- Correção(contatos Zapo): normalização brasileira centralizada e contagens separadas entre contatos canônicos, chaves brutas e chaves ignoradas.
+- Interface: preserva modais durante atualizações automáticas e expõe os identificadores necessários às integrações.
+
 ## 3.0.0-beta-57
 
 - Recurso(grupos): redução do fan-out de recibos/status no webhook/socket

@@ -72,9 +72,13 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
     const data = JSON.parse(JSON.stringify(payload))
     const value = data?.entry?.[0]?.changes?.[0]?.value
     if (value?.metadata) {
-      const phoneWithPlus = phone.startsWith('+') ? phone : `+${phone}`
+      const phoneWithoutPlus = `${phone}`.replace(/^\+/, '')
+      const phoneWithPlus = `+${phoneWithoutPlus}`
       value.metadata.display_phone_number = phoneWithPlus
-      value.metadata.phone_number_id = phoneWithPlus
+      // Typebot compares this identifier literally with the value stored in
+      // its WhatsApp credentials. UNO's Graph-compatible setup route exposes
+      // the canonical identifier without the display-only leading plus sign.
+      value.metadata.phone_number_id = phoneWithoutPlus
     }
     if (value?.messages && Array.isArray(value.messages)) {
       const allowedTypes = new Set(['text', 'image', 'video', 'audio', 'document', 'sticker', 'ptv'])
@@ -155,7 +159,16 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
               if (typeof e?.title !== 'undefined') out.title = e.title
               if (typeof e?.message !== 'undefined') out.message = e.message
               if (e?.error_data && typeof e.error_data === 'object') {
-                out.error_data = e.error_data
+                const details =
+                  e.error_data.details ||
+                  e?.details ||
+                  e?.message ||
+                  e?.title ||
+                  'WhatsApp delivery failed'
+                out.error_data = {
+                  ...e.error_data,
+                  details: `${details}`,
+                }
               } else {
                 const details =
                   e?.error_data ||

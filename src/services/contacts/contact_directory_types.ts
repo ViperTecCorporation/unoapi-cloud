@@ -19,6 +19,8 @@ export type ContactDirectoryPage = {
   next_cursor: string
   has_more: boolean
   total_count: number
+  raw_total_count: number
+  ignored_count: number
 }
 
 export interface ContactDirectory {

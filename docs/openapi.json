@@ -2292,11 +2292,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.1"
+            "example": "4.0.2"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.1"
+            "example": "4.0.2"
           },
           "update_available": {
             "type": "boolean"

@@ -92,6 +92,59 @@ describe('frontend pages', () => {
     expect(html).toContain('armazenados no cache Zapo')
   })
 
+  test('renders session WhatsApp integration identifiers with copy actions', () => {
+    const html = renderSessionPage({
+      session: {
+        phone: '5566996269251',
+        display_phone_number: '5566996269251',
+        phone_number_id: '109876543210987',
+        business_account_id: '123456789012345',
+        status: 'online',
+        webhooks: [],
+      },
+      tab: 'overview',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: '',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(html).toContain('Integração WhatsApp')
+    expect(html).toContain('123456789012345')
+    expect(html).toContain('109876543210987')
+    expect(html).toContain('data-action="copy-value"')
+    expect(html).toContain('Não são IDs reais fornecidos pela Meta.')
+  })
+
+  test('translates the WhatsApp integration compatibility notice', () => {
+    setLocale('en')
+    const html = renderSessionPage({
+      session: {
+        phone: '5566996269251',
+        phone_number_id: '109876543210987',
+        business_account_id: '123456789012345',
+      },
+      tab: 'overview',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: '',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(html).toContain('WhatsApp integration')
+    expect(html).toContain('They are not real IDs provided by Meta.')
+  })
+
   test('limits the session list to twenty items and offers load more', () => {
     const html = renderDashboard({
       sessions: Array.from({ length: 21 }, (_, index) => ({

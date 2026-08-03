@@ -33,6 +33,8 @@ describe('frontend API client', () => {
             next_cursor: '0',
             has_more: false,
             total_count: 0,
+            raw_total_count: 0,
+            ignored_count: 0,
           }),
           { status: 200 },
         ),

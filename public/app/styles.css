@@ -537,6 +537,70 @@ textarea:focus-visible,
   margin-top: 3px;
 }
 
+.integration-card {
+  margin-bottom: 16px;
+}
+
+.integration-identifiers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integration-identifier {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.integration-identifier > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.integration-identifier span {
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.integration-identifier strong {
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .88rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integration-identifier .btn {
+  flex: 0 0 auto;
+}
+
+.integration-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: .84rem;
+  line-height: 1.45;
+}
+
+.integration-note .icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--brand);
+}
+
 .filters {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) 190px;
@@ -1554,6 +1618,7 @@ tbody tr:last-child td {
 
   .stats,
   .filters,
+  .integration-identifiers,
   .form-grid,
   .form-grid--three,
   .switch-grid,

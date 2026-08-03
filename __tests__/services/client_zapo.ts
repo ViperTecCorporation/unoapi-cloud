@@ -55,8 +55,13 @@ describe('ClientZapo', () => {
     client.connect.mockResolvedValue(undefined)
     client.message.send.mockResolvedValue({ id: 'zapo-message-1' } as never)
     client.profile.getLidsByPhoneNumbers.mockResolvedValue([
-      { exists: true, phoneJid: '5566111@s.whatsapp.net', lidJid: '111@lid' },
-      { exists: false, invalid: true },
+      {
+        queriedJid: '5566111@s.whatsapp.net',
+        exists: true,
+        phoneJid: '5566111@s.whatsapp.net',
+        lidJid: '111@lid',
+        invalid: false,
+      },
     ] as never)
     client.message.requestHistorySync.mockResolvedValue({ messageId: 'history-1' } as never)
     client.auth.requestPairingCode.mockResolvedValue('1234-5678')

@@ -7,6 +7,7 @@ import {
   sessionLabel,
   sessionPhone,
 } from '../../frontend/domain/session'
+import { shouldRenderBackgroundUpdate } from '../../frontend/domain/render_policy'
 
 describe('frontend session domain', () => {
   const sessions = [
@@ -42,5 +43,10 @@ describe('frontend session domain', () => {
       { phone: '1', status: 'disconnected' },
       { phone: '2', status: 'online' },
     ], '', 'offline')).toHaveLength(1)
+  })
+
+  test('does not redraw background updates while a modal is open', () => {
+    expect(shouldRenderBackgroundUpdate(false)).toBe(true)
+    expect(shouldRenderBackgroundUpdate(true)).toBe(false)
   })
 })

@@ -39,7 +39,7 @@ e todo build publicado recebe `sha-<commit>`.
 Para fixar uma versão em vez de acompanhar `latest`:
 
 ```bash
-DOCS_TAG=4.0.1 docker compose -f docs-site/compose.yml up -d
+DOCS_TAG=4.0.2 docker compose -f docs-site/compose.yml up -d
 ```
 
 Validação contra uma API:
