@@ -162,4 +162,40 @@ export interface RedisKeyDetails {
   value: unknown
 }
 
+export interface VoipBridgeStatus {
+  session: string
+  connected: boolean
+  generation?: number
+  workerId?: string
+  lastSeenAt?: string
+  maxConcurrentCalls?: number
+}
+
+export interface VoipCallStatus {
+  session: string
+  callId: string
+  direction: 'incoming' | 'outgoing'
+  peerJid?: string
+  callerPn?: string
+  streamId?: number
+}
+
+export interface VoipBootstrap {
+  bridges: VoipBridgeStatus[]
+  calls: VoipCallStatus[]
+  extensions?: Array<{ id: string; username?: string; displayName?: string; enabled?: boolean }>
+  sessions?: Array<{ id: string; label?: string; enabled?: boolean }>
+  companies?: Array<Record<string, any>>
+  accounts?: Array<Record<string, any>>
+  lineGroups?: Array<Record<string, any>>
+  extensionGroups?: Array<Record<string, any>>
+  users?: Array<Record<string, any>>
+  history?: { items?: Array<Record<string, any>>; total?: number }
+  recordingSummary?: Record<string, any>
+  recording?: Record<string, any>
+  license?: Record<string, any>
+  autoUpdate?: Record<string, any>
+  [key: string]: unknown
+}
+
 export type SessionTab = 'overview' | 'config' | 'contacts' | 'webhooks' | 'groups'

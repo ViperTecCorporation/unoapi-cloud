@@ -16,23 +16,21 @@ export const UNO_LOG_LEVEL = process.env.UNO_LOG_LEVEL || LOG_LEVEL
 
 export const DEFAULT_LOCALE = process.env.DEFAULT_LOCALE || 'pt_BR'
 
-export const SEND_AUDIO_MESSAGE_AS_PTT =
-  process.env.SEND_AUDIO_MESSAGE_AS_PTT == _undefined ? true : process.env.SEND_AUDIO_MESSAGE_AS_PTT == 'true'
+export const SEND_AUDIO_MESSAGE_AS_PTT = process.env.SEND_AUDIO_MESSAGE_AS_PTT == _undefined ? true : process.env.SEND_AUDIO_MESSAGE_AS_PTT == 'true'
 // Align with original behavior: gate conversion explicitly and allow ffmpeg params + waveform
 export const CONVERT_AUDIO_MESSAGE_TO_OGG =
   process.env.CONVERT_AUDIO_MESSAGE_TO_OGG == _undefined ? true : process.env.CONVERT_AUDIO_MESSAGE_TO_OGG == 'true'
 export const CONVERT_AUDIO_FFMPEG_PARAMS = JSON.parse(
   process.env.CONVERT_AUDIO_FFMPEG_PARAMS ||
-    '["-vn","-ar","48000","-ac","1","-c:a","libopus","-b:a","64k","-application","voip","-avoid_negative_ts","make_zero","-map_metadata","-1","-f","ogg"]'
+    '["-vn","-ar","48000","-ac","1","-c:a","libopus","-b:a","64k","-application","voip","-avoid_negative_ts","make_zero","-map_metadata","-1","-f","ogg"]',
 )
-export const SEND_AUDIO_WAVEFORM =
-  process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
+export const SEND_AUDIO_WAVEFORM = process.env.SEND_AUDIO_WAVEFORM == _undefined ? true : process.env.SEND_AUDIO_WAVEFORM == 'true'
 export const AUDIO_WAVEFORM_SAMPLES = parseInt(process.env.AUDIO_WAVEFORM_SAMPLES || '97')
 // Convert downloaded audio (e.g., OGG/OGA/OPUS) to MP3 before storing/sending (iOS Safari compatibility)
-export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 = process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? false : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'
+export const DOWNLOAD_AUDIO_CONVERT_TO_MP3 =
+  process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == _undefined ? false : process.env.DOWNLOAD_AUDIO_CONVERT_TO_MP3 == 'true'
 export const DOWNLOAD_AUDIO_FFMPEG_MP3_PARAMS = JSON.parse(
-  process.env.DOWNLOAD_AUDIO_FFMPEG_MP3_PARAMS ||
-    '["-vn","-ar","48000","-ac","1","-c:a","libmp3lame","-b:a","128k","-map_metadata","-1","-f","mp3"]'
+  process.env.DOWNLOAD_AUDIO_FFMPEG_MP3_PARAMS || '["-vn","-ar","48000","-ac","1","-c:a","libmp3lame","-b:a","128k","-map_metadata","-1","-f","mp3"]',
 )
 
 // comunication
@@ -49,8 +47,10 @@ export const PASSKEY_BRIDGE_TTL_SECONDS = parseInt(process.env.PASSKEY_BRIDGE_TT
 
 export const CONSUMER_TIMEOUT_MS = parseInt(process.env.CONSUMER_TIMEOUT_MS || '450000')
 export const WEBHOOK_SEND_NEW_MESSAGES = process.env.WEBHOOK_SEND_NEW_MESSAGES == _undefined ? false : process.env.WEBHOOK_SEND_NEW_MESSAGES == 'true'
-export const WEBHOOK_SEND_INCOMING_MESSAGES = process.env.WEBHOOK_SEND_INCOMING_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_INCOMING_MESSAGES == 'true'
-export const WEBHOOK_SEND_GROUP_MESSAGES = process.env.WEBHOOK_SEND_GROUP_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_GROUP_MESSAGES == 'true'
+export const WEBHOOK_SEND_INCOMING_MESSAGES =
+  process.env.WEBHOOK_SEND_INCOMING_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_INCOMING_MESSAGES == 'true'
+export const WEBHOOK_SEND_GROUP_MESSAGES =
+  process.env.WEBHOOK_SEND_GROUP_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_GROUP_MESSAGES == 'true'
 export const WEBHOOK_SEND_OUTGOING_MESSAGES =
   process.env.WEBHOOK_SEND_OUTGOING_MESSAGES == _undefined ? true : process.env.WEBHOOK_SEND_OUTGOING_MESSAGES == 'true'
 export const WEBHOOK_SEND_TRANSCRIBE_AUDIO =
@@ -62,24 +62,23 @@ export const WEBHOOK_SEND_NEWSLETTER_MESSAGES =
 export const UNOAPI_META_GROUPS_ENABLED =
   process.env.UNOAPI_META_GROUPS_ENABLED === _undefined ? true : process.env.UNOAPI_META_GROUPS_ENABLED == 'true'
 export const WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL =
-  process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined ? undefined : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
+  process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL == _undefined
+    ? undefined
+    : parseInt(process.env.WEBHOOK_ADD_TO_BLACKLIST_ON_OUTGOING_MESSAGE_WITH_TTL!)
 export const WEBHOOK_INCLUDE_MEDIA_DATA =
   process.env.WEBHOOK_INCLUDE_MEDIA_DATA == _undefined ? false : process.env.WEBHOOK_INCLUDE_MEDIA_DATA == 'true'
-export const WEBHOOK_ASYNC =
-  process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
+export const WEBHOOK_ASYNC = process.env.WEBHOOK_ASYNC == _undefined ? true : process.env.WEBHOOK_ASYNC == 'true'
 export const WEBHOOK_ASYNC_MODE = process.env.WEBHOOK_ASYNC_MODE || 'amqp'
 export const WEBHOOK_SESSION = process.env.WEBHOOK_SESSION || ''
 export const UNOAPI_RESTRICTION_TIME_ZONE = process.env.UNOAPI_RESTRICTION_TIME_ZONE || 'America/Sao_Paulo'
 // Webhook circuit breaker (fail fast when endpoints are offline)
-export const WEBHOOK_CB_ENABLED =
-  process.env.WEBHOOK_CB_ENABLED == _undefined ? true : process.env.WEBHOOK_CB_ENABLED == 'true'
+export const WEBHOOK_CB_ENABLED = process.env.WEBHOOK_CB_ENABLED == _undefined ? true : process.env.WEBHOOK_CB_ENABLED == 'true'
 export const WEBHOOK_CB_FAILURE_THRESHOLD = parseInt(process.env.WEBHOOK_CB_FAILURE_THRESHOLD || '3')
 export const WEBHOOK_CB_OPEN_MS = parseInt(process.env.WEBHOOK_CB_OPEN_MS || '120000')
 export const WEBHOOK_CB_FAILURE_TTL_MS = parseInt(process.env.WEBHOOK_CB_FAILURE_TTL_MS || '300000')
 export const WEBHOOK_CB_REQUEUE_DELAY_MS = parseInt(process.env.WEBHOOK_CB_REQUEUE_DELAY_MS || '120000')
 export const WEBHOOK_CB_HALF_OPEN_PROBE_MS = parseInt(process.env.WEBHOOK_CB_HALF_OPEN_PROBE_MS || '30000')
-export const CONTACT_SYNC_ENABLED =
-  process.env.CONTACT_SYNC_ENABLED == _undefined ? false : process.env.CONTACT_SYNC_ENABLED == 'true'
+export const CONTACT_SYNC_ENABLED = process.env.CONTACT_SYNC_ENABLED == _undefined ? false : process.env.CONTACT_SYNC_ENABLED == 'true'
 export const CONTACT_SYNC_INTERVAL_MS = parseInt(process.env.CONTACT_SYNC_INTERVAL_MS || `${8 * 60 * 60 * 1000}`)
 export const CONTACT_SYNC_SCAN_COUNT = parseInt(process.env.CONTACT_SYNC_SCAN_COUNT || '500')
 export const CONTACT_SYNC_PENDING_TTL_SEC = parseInt(process.env.CONTACT_SYNC_PENDING_TTL_SEC || '900')
@@ -108,6 +107,10 @@ export const PROXY_URL = process.env.PROXY_URL
 
 // behavior of unoapi
 export const UNOAPI_SERVER_NAME = process.env.UNOAPI_SERVER_NAME || 'server_1'
+export const VOIP_SERVICE_URL = process.env.VOIP_SERVICE_URL || ''
+export const VOIP_SERVICE_TOKEN = process.env.VOIP_SERVICE_TOKEN || process.env.VOIP_BRIDGE_TOKEN || ''
+export const VOIP_BRIDGE_URL = process.env.VOIP_BRIDGE_URL || ''
+export const VOIP_MAX_CONCURRENT_CALLS = Math.max(1, Math.min(32, parseInt(process.env.VOIP_MAX_CONCURRENT_CALLS || '2')))
 export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_REQUEST_DELAY || process.env.UNOAPI_RETRY_REQUEST_DELAY_MS || '5000')
 // export const QR_TIMEOUT = parseInt(process.env.QR_TIMEOUT || '30000')
 // export const SLEEP_TIME = parseInt(process.env.SLEEP_TIME || '5000')
@@ -118,7 +121,7 @@ export const SESSION_TTL: number = parseInt(process.env.SESSION_TTL || '-1')
 export const UNOAPI_X_COUNT_RETRIES: string = process.env.UNOAPI_X_COUNT_RETRIES || 'x-unoapi-count-retries'
 export const UNOAPI_X_MAX_RETRIES: string = process.env.UNOAPI_X_MAX_RETRIES || 'x-unoapi-max-retries'
 export const UNOAPI_EXCHANGE_NAME = process.env.UNOAPI_EXCHANGE_NAME || 'unoapi'
-export const UNOAPI_EXCHANGE_BROKER_NAME =`${UNOAPI_EXCHANGE_NAME}.broker`
+export const UNOAPI_EXCHANGE_BROKER_NAME = `${UNOAPI_EXCHANGE_NAME}.broker`
 export const UNOAPI_EXCHANGE_BRIDGE_NAME = `${UNOAPI_EXCHANGE_NAME}.brigde`
 export const UNOAPI_QUEUE_NAME = process.env.UNOAPI_QUEUE_NAME || 'unoapi'
 export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '4')
@@ -162,7 +165,8 @@ export const AUTO_CONNECT: boolean = process.env.AUTO_CONNECT === _undefined ? t
 export const AUTO_CONNECT_CONCURRENCY = Math.max(1, parseInt(process.env.AUTO_CONNECT_CONCURRENCY || '5'))
 export const COMPOSING_MESSAGE: boolean = process.env.COMPOSING_MESSAGE === _undefined ? false : process.env.COMPOSING_MESSAGE == 'true'
 export const IGNORE_GROUP_MESSAGES: boolean = process.env.IGNORE_GROUP_MESSAGES == _undefined ? true : process.env.IGNORE_GROUP_MESSAGES == 'true'
-export const IGNORE_NEWSLETTER_MESSAGES: boolean = process.env.IGNORE_NEWSLETTER_MESSAGES == _undefined ? true : process.env.IGNORE_NEWSLETTER_MESSAGES == 'true'
+export const IGNORE_NEWSLETTER_MESSAGES: boolean =
+  process.env.IGNORE_NEWSLETTER_MESSAGES == _undefined ? true : process.env.IGNORE_NEWSLETTER_MESSAGES == 'true'
 export const IGNORE_BROADCAST_STATUSES: boolean =
   process.env.IGNORE_BROADCAST_STATUSES === _undefined ? true : process.env.IGNORE_BROADCAST_STATUSES == 'true'
 export const READ_ON_RECEIPT: boolean = process.env.READ_ON_RECEIPT === _undefined ? false : process.env.READ_ON_RECEIPT == 'true'
@@ -281,7 +285,7 @@ export const STORAGE_OPTIONS = (storage: any) => {
     bucket: storage?.bucket || STORAGE_BUCKET_NAME,
     signatureVersion: 's3v4',
     timeoutMs: STORAGE_TIMEOUT_MS,
-    maxAttempts: parseInt(storage?.maxAttempts || STORAGE_MAX_ATTEMPTS as any),
+    maxAttempts: parseInt(storage?.maxAttempts || (STORAGE_MAX_ATTEMPTS as any)),
   }
   if (forcePathStyle) {
     options.forcePathStyle = forcePathStyle

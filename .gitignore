@@ -11,3 +11,4 @@ data/logs/*
 .yarn/*
 .yarnrc.yml
 .tools/*
+_build/

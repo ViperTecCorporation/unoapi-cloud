@@ -129,12 +129,16 @@ for (const composeFile of composeFiles) {
   if (workerEnvironment?.UNOAPI_PROCESS_ROLE !== 'worker' || workerEnvironment?.UNOAPI_WORKER_ENGINE !== 'zapo') {
     throw new Error(`Worker Zapo inválido: ${path.basename(composeFile)}`)
   }
-  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq']) {
+  const telephony = compose.services?.['viperconnect-telefonia']
+  if (telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' || telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' || telephony?.network_mode !== 'host') {
+    throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
+  }
+  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']) {
     if (!compose.services?.[service]) {
       throw new Error(`${path.basename(composeFile)} sem serviço ${service}`)
     }
   }
-  for (const volume of ['redis', 'rabbitmq']) {
+  for (const volume of ['redis', 'rabbitmq', 'telefonia']) {
     if (!Object.hasOwn(compose.volumes || {}, volume)) {
       throw new Error(`${path.basename(composeFile)} sem volume ${volume}`)
     }
@@ -144,7 +148,7 @@ for (const file of composeFiles) {
   const content = await readFile(file, 'utf8')
   if (/baileys/i.test(content)) throw new Error(`Termo interno exposto em ${path.relative(root, file)}`)
   if (/\bmeta(?:\s+cloud)?\b/i.test(content)) throw new Error(`Integração fora do escopo exposta em ${path.relative(root, file)}`)
-  if (/\b(?:voip|coturn)\b|worker-baileys|redis-commander|valkey-fix/i.test(content)) {
+  if (/\bcoturn\b|worker-baileys|redis-commander|valkey-fix/i.test(content)) {
     throw new Error(`Serviço fora do escopo exposto em ${path.relative(root, file)}`)
   }
 }

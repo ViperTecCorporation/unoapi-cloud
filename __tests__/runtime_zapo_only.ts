@@ -32,7 +32,8 @@ describe('Zapo-only runtime artifacts', () => {
     const dockerfile = fs.readFileSync(path.resolve('Dockerfile'), 'utf8')
     const compose = YAML.parse(fs.readFileSync(path.resolve('docker-compose.yml'), 'utf8'))
 
-    expect(dockerfile).toContain('ENTRYPOINT ["node", "dist/src/cloud.js"]')
+    expect(dockerfile).toContain('ENTRYPOINT ["./container-entrypoint.sh"]')
+    expect(dockerfile).toContain('COPY --from=voip-builder /app/dist ./voip/dist')
     expect(dockerfile).toContain('FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS builder')
     expect(dockerfile).toContain('AS production-dependencies')
     expect(dockerfile).toContain('yarn install --production --frozen-lockfile')
@@ -40,6 +41,8 @@ describe('Zapo-only runtime artifacts', () => {
     expect(dockerfile).toContain('FROM runtime-base AS runtime')
     expect(dockerfile).toContain('COPY --from=production-dependencies /app/node_modules ./node_modules')
     expect(compose.services['worker-zapo'].environment.UNOAPI_WORKER_ENGINE).toBe('zapo')
+    expect(compose.services.voip.environment.UNOAPI_PROCESS_ROLE).toBe('voip')
+    expect(compose.services.voip.image).toBe('ghcr.io/viperteccorporation/viperconnect:latest')
     expect(compose.services['worker-baileys']).toBeUndefined()
   })
 

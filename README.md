@@ -3,7 +3,7 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0.2-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.2)
+[![Version](https://img.shields.io/badge/version-4.0.3-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.3)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
 [![Documentação](https://img.shields.io/badge/docs-viperconnect.vipertec.net-9d3836)](https://viperconnect.vipertec.net/)
 
@@ -170,7 +170,7 @@ ghcr.io/viperteccorporation/viperconnect
 Exemplo:
 
 ```bash
-docker pull ghcr.io/viperteccorporation/viperconnect:4.0.2
+docker pull ghcr.io/viperteccorporation/viperconnect:4.0.3
 ```
 
 A tag `latest` acompanha a versão estável mais recente:

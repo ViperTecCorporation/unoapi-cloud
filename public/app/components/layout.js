@@ -1,6 +1,6 @@
-import { icon } from './icons.js?v=4.0.2-1cf00d03';
-import { escapeHtml } from '../core/html.js?v=4.0.2-1cf00d03';
-import { getLocale, t } from '../core/i18n.js?v=4.0.2-1cf00d03';
+import { icon } from './icons.js?v=4.0.3-e718d8da';
+import { escapeHtml } from '../core/html.js?v=4.0.3-e718d8da';
+import { getLocale, t } from '../core/i18n.js?v=4.0.3-e718d8da';
 const renderVersionStatus = (status) => {
     const installed = status.installed_version ? `v${status.installed_version.replace(/^v/i, '')}` : t('Versão');
     if (status.status === 'update_available') {
@@ -31,6 +31,9 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus, ac
         </button>
         <button class="nav-item ${activeView === 'redis' ? 'nav-item--active' : ''}" type="button" data-action="open-redis" title="Redis">
           ${icon('database')}<span>Redis</span>
+        </button>
+        <button class="nav-item ${activeView === 'voip' ? 'nav-item--active' : ''}" type="button" data-action="open-voip" title="${t('Telefonia')}">
+          ${icon('phone')}<span>${t('Telefonia')}</span>
         </button>
         <button class="nav-item ${activeView === 'documentation' ? 'nav-item--active' : ''}" type="button" data-action="open-documentation" title="${t('Documentação')}">
           ${icon('docs')}<span>${t('Documentação')}</span>

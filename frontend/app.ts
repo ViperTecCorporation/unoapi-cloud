@@ -6,7 +6,21 @@ import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
 import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js'
 import { shouldRenderBackgroundUpdate } from './domain/render_policy.js'
-import type { ContactDirectoryItem, GroupSummary, QrBroadcast, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, SessionTab, VersionStatus, WebhookConfig } from './domain/types.js'
+import type {
+  ContactDirectoryItem,
+  GroupSummary,
+  QrBroadcast,
+  RabbitQueueInfo,
+  RabbitQueueMessage,
+  RedisKeyDetails,
+  RedisKeyType,
+  RedisTreeNode,
+  SessionConfig,
+  SessionTab,
+  VersionStatus,
+  VoipBootstrap,
+  WebhookConfig,
+} from './domain/types.js'
 import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
@@ -16,6 +30,7 @@ import { renderSessionPage } from './pages/session.js'
 import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
 import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
 import { filterContacts, filterGroups } from './features/entities.js'
+import { renderVoipPage } from './pages/voip.js'
 
 const TOKEN_KEY = 'whatsappApiToken'
 const THEME_KEY = 'viperconnect_theme'
@@ -69,7 +84,10 @@ export class ViperConnectApp {
   private groupsHasMore = false
   private groupsQuery = ''
   private sessionVisibleLimit = PAGE_SIZE
-  private view: 'dashboard' | 'queues' | 'redis' | 'documentation' = 'dashboard'
+  private view: 'dashboard' | 'queues' | 'redis' | 'voip' | 'documentation' = 'dashboard'
+  private voip: VoipBootstrap = { bridges: [], calls: [] }
+  private voipLoading = false
+  private voipError = ''
   private queues: RabbitQueueInfo[] = []
   private queueMessages: RabbitQueueMessage[] = []
   private selectedQueue = ''
@@ -203,6 +221,23 @@ export class ViperConnectApp {
       this.view = 'documentation'
       this.mobileOpen = false
       this.render()
+    } else if (action === 'open-voip') {
+      this.selectedPhone = ''
+      this.view = 'voip'
+      this.mobileOpen = false
+      this.render()
+      await this.loadVoip()
+    } else if (action === 'refresh-voip') {
+      await this.loadVoip()
+    } else if (action === 'end-voip-call') {
+      const session = actionElement.dataset.session || ''
+      const callId = actionElement.dataset.callId || ''
+      try {
+        await this.api.voipCommand(session, callId, 'end')
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (action === 'refresh-queues') {
       await this.loadQueues()
     } else if (action === 'load-more-queues') {
@@ -282,17 +317,11 @@ export class ViperConnectApp {
       await this.loadContacts(true)
     } else if (action === 'load-more-contacts') {
       const target = this.contactsVisibleLimit + PAGE_SIZE
-      while (
-        filterContacts(this.contacts.items, this.contactsQuery).length < target
-        && this.contacts.hasMore
-      ) {
+      while (filterContacts(this.contacts.items, this.contactsQuery).length < target && this.contacts.hasMore) {
         const previousCursor = this.contacts.cursor
         const previousCount = this.contacts.items.length
         await this.loadContacts(false)
-        if (
-          this.contacts.cursor === previousCursor
-          && this.contacts.items.length === previousCount
-        ) break
+        if (this.contacts.cursor === previousCursor && this.contacts.items.length === previousCount) break
       }
       this.contactsVisibleLimit = target
       this.render()
@@ -349,6 +378,56 @@ export class ViperConnectApp {
       await this.deleteRedisPrefix(data)
     } else if (form.dataset.form === 'redis-query') {
       await this.runRedisQuery(data)
+    } else if (form.dataset.form === 'voip-call') {
+      try {
+        await this.api.voipStartCall(
+          `${data.get('session') || ''}`,
+          `${data.get('peerJid') || ''}`,
+          `${data.get('extensionId') || ''}`,
+        )
+        this.showToast(t('Chamada iniciada.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
+    } else if (form.dataset.form === 'voip-transfer') {
+      try {
+        await this.api.voipTransfer(`${data.get('callId') || ''}`, `${data.get('targetExtensionId') || ''}`)
+        this.showToast(t('Transferência iniciada.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
+    } else if (form.dataset.form === 'voip-resource') {
+      try {
+        const resource = `${data.get('resource') || ''}`
+        const id = `${data.get('id') || ''}`.trim()
+        const payload = JSON.parse(`${data.get('payload') || '{}'}`)
+        if (!resource || !id) throw new Error('resource_and_id_required')
+        await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', payload)
+        this.showToast(t('Configuração salva.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
+    } else if (form.dataset.form === 'voip-resource-delete') {
+      try {
+        const resource = `${data.get('resource') || ''}`
+        const id = `${data.get('id') || ''}`
+        await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'DELETE')
+        this.showToast(t('Configuração removida.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
+    } else if (form.dataset.form === 'voip-console-json') {
+      try {
+        await this.api.voipConsole(`${data.get('path') || ''}`, 'PUT', JSON.parse(`${data.get('payload') || '{}'}`))
+        this.showToast(t('Configuração salva.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     }
   }
 
@@ -720,6 +799,21 @@ export class ViperConnectApp {
     }
   }
 
+  private async loadVoip(): Promise<void> {
+    if (this.voipLoading) return
+    this.voipLoading = true
+    this.voipError = ''
+    this.render()
+    try {
+      this.voip = await this.api.voipBootstrap()
+    } catch (error) {
+      this.voipError = this.messageFor(error)
+    } finally {
+      this.voipLoading = false
+      this.render()
+    }
+  }
+
   private async inspectQueue(queue: string, resetLimit = true): Promise<void> {
     if (!queue || this.queueMessagesLoading) return
     if (resetLimit && queue !== this.selectedQueue) {
@@ -752,9 +846,11 @@ export class ViperConnectApp {
     try {
       const result = await this.api.purgeQueue(queue, count)
       this.modal = undefined
-      this.showToast(t('Mensagens removidas: {count}.', {
-        count: result.removed === 'all' ? t('Todas as mensagens prontas') : result.removed,
-      }))
+      this.showToast(
+        t('Mensagens removidas: {count}.', {
+          count: result.removed === 'all' ? t('Todas as mensagens prontas') : result.removed,
+        }),
+      )
       await this.loadQueues()
       if (this.selectedQueue === queue) await this.inspectQueue(queue)
     } catch (error) {
@@ -774,16 +870,10 @@ export class ViperConnectApp {
         this.redisKeys = await this.api.redisKeys(search)
       } else {
         const prefixes = ['', ...this.redisExpandedPrefixes]
-        const entries = await Promise.all(
-          prefixes.map(async (prefix) => [prefix, await this.api.redisTree(prefix)] as const),
-        )
+        const entries = await Promise.all(prefixes.map(async (prefix) => [prefix, await this.api.redisTree(prefix)] as const))
         const loadedPrefixes = new Set(Object.keys(this.redisTree))
         entries.forEach(([prefix, nodes]) => {
-          this.redisTree[prefix] = mergeRedisTreeLevel(
-            this.redisTree[prefix] || [],
-            nodes,
-            loadedPrefixes,
-          )
+          this.redisTree[prefix] = mergeRedisTreeLevel(this.redisTree[prefix] || [], nodes, loadedPrefixes)
         })
         this.redisKeys = []
       }
@@ -856,12 +946,7 @@ export class ViperConnectApp {
       value = JSON.parse(raw)
     } catch {}
     try {
-      await this.api.saveRedisKey(
-        key,
-        `${data.get('type') || 'string'}` as RedisKeyType,
-        value,
-        Number(data.get('ttlSeconds') ?? -1),
-      )
+      await this.api.saveRedisKey(key, `${data.get('type') || 'string'}` as RedisKeyType, value, Number(data.get('ttlSeconds') ?? -1))
       this.modal = undefined
       this.showToast(t('Chave salva.'))
       await this.loadRedisKeys()
@@ -909,8 +994,7 @@ export class ViperConnectApp {
         }
       })
       const parentPrefix = redisParentPrefix(prefix)
-      this.redisTree[parentPrefix] = (this.redisTree[parentPrefix] || [])
-        .filter((node) => node.path !== prefix)
+      this.redisTree[parentPrefix] = (this.redisTree[parentPrefix] || []).filter((node) => node.path !== prefix)
       this.redisKeys = this.redisKeys.filter((key) => !key.startsWith(prefix))
       this.showToast(t('Subitens excluídos: {count}.', { count: result.removed }))
       this.render()
@@ -922,10 +1006,7 @@ export class ViperConnectApp {
 
   private async runRedisQuery(data: FormData): Promise<void> {
     try {
-      this.redisQueryResult = await this.api.redisQuery(
-        `${data.get('command') || ''}`,
-        [`${data.get('argument') || ''}`],
-      )
+      this.redisQueryResult = await this.api.redisQuery(`${data.get('command') || ''}`, [`${data.get('argument') || ''}`])
     } catch (error) {
       this.showToast(this.messageFor(error))
     }
@@ -994,61 +1075,65 @@ export class ViperConnectApp {
       return
     }
     const selected = this.findSession(this.selectedPhone)
-    const content = this.view === 'documentation'
-      ? renderDocumentationPage()
-      : this.view === 'redis'
-      ? renderRedisPage({
-          keys: this.redisKeys,
-          tree: this.redisTree,
-          expandedPrefixes: [...this.redisExpandedPrefixes],
-          sessions: this.sessions,
-          sessionFilter: this.redisSession,
-          query: this.redisQuery,
-          selected: this.selectedRedisKey,
-          queryResult: this.redisQueryResult,
-          loading: this.redisLoading,
-          refreshIn: this.redisRefreshIn,
-          error: this.redisError,
-        })
-      : this.view === 'queues'
-      ? renderQueuesPage({
-          queues: this.queues,
-          sessions: this.sessions,
-          sessionPhoneFilter: this.queueSession,
-          query: this.queueQuery,
-          loading: this.queuesLoading,
-          refreshIn: this.queueRefreshIn,
-          visibleLimit: this.queueVisibleLimit,
-          selectedQueue: this.selectedQueue,
-          messages: this.queueMessages,
-          messagesLoading: this.queueMessagesLoading,
-          messageLimit: this.queueMessageLimit,
-          messageOrder: this.queueMessageOrder,
-          metricFilter: this.queueMetricFilter,
-          error: this.queueError,
-        })
-      : selected
-      ? renderSessionPage({
-          session: selected,
-          tab: this.tab,
-          contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
-          contactsHasMore: this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
-          contactCount: this.contacts.totalCount,
-          contactsQuery: this.contactsQuery,
-          groups: filterGroups(this.groups, this.groupsQuery),
-          groupsHasMore: this.groupsHasMore,
-          groupsQuery: this.groupsQuery,
-          loadingSection: this.loadingSection,
-          sectionError: this.sectionError,
-        })
-      : renderDashboard({
-          sessions: this.sessions,
-          query: this.query,
-          status: this.statusFilter,
-          loading: this.loading,
-          refreshIn: this.refreshIn,
-          visibleLimit: this.sessionVisibleLimit,
-        })
+    const content =
+      this.view === 'documentation'
+        ? renderDocumentationPage()
+        : this.view === 'voip'
+          ? renderVoipPage(this.voip, this.voipLoading, this.voipError)
+          : this.view === 'redis'
+            ? renderRedisPage({
+                keys: this.redisKeys,
+                tree: this.redisTree,
+                expandedPrefixes: [...this.redisExpandedPrefixes],
+                sessions: this.sessions,
+                sessionFilter: this.redisSession,
+                query: this.redisQuery,
+                selected: this.selectedRedisKey,
+                queryResult: this.redisQueryResult,
+                loading: this.redisLoading,
+                refreshIn: this.redisRefreshIn,
+                error: this.redisError,
+              })
+            : this.view === 'queues'
+              ? renderQueuesPage({
+                  queues: this.queues,
+                  sessions: this.sessions,
+                  sessionPhoneFilter: this.queueSession,
+                  query: this.queueQuery,
+                  loading: this.queuesLoading,
+                  refreshIn: this.queueRefreshIn,
+                  visibleLimit: this.queueVisibleLimit,
+                  selectedQueue: this.selectedQueue,
+                  messages: this.queueMessages,
+                  messagesLoading: this.queueMessagesLoading,
+                  messageLimit: this.queueMessageLimit,
+                  messageOrder: this.queueMessageOrder,
+                  metricFilter: this.queueMetricFilter,
+                  error: this.queueError,
+                })
+              : selected
+                ? renderSessionPage({
+                    session: selected,
+                    tab: this.tab,
+                    contacts: filterContacts(this.contacts.items, this.contactsQuery).slice(0, this.contactsVisibleLimit),
+                    contactsHasMore:
+                      this.contacts.hasMore || filterContacts(this.contacts.items, this.contactsQuery).length > this.contactsVisibleLimit,
+                    contactCount: this.contacts.totalCount,
+                    contactsQuery: this.contactsQuery,
+                    groups: filterGroups(this.groups, this.groupsQuery),
+                    groupsHasMore: this.groupsHasMore,
+                    groupsQuery: this.groupsQuery,
+                    loadingSection: this.loadingSection,
+                    sectionError: this.sectionError,
+                  })
+                : renderDashboard({
+                    sessions: this.sessions,
+                    query: this.query,
+                    status: this.statusFilter,
+                    loading: this.loading,
+                    refreshIn: this.refreshIn,
+                    visibleLimit: this.sessionVisibleLimit,
+                  })
 
     this.root.innerHTML =
       renderLayout({

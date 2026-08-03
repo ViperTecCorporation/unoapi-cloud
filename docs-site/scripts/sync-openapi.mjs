@@ -33,6 +33,7 @@ const publicRoute = (route) => route.replace(/^\/v\d+(?:\.\d+)?(?=\/|$)/, '/{ver
 
 const tagFor = (route) => {
   if (/^\/(?:ping|version)$/.test(route)) return 'Sistema'
+  if (route.startsWith('/admin/voip/')) return 'Telefonia'
   if (route.startsWith('/passkey-bridge/') || route.startsWith('/connect/') || route.endsWith('/request_code')) return 'Pareamento'
   if (route.includes('/debug/')) return 'Diagnóstico'
   if (route.includes('/groups')) return 'Grupos'
@@ -129,6 +130,7 @@ spec.tags = [
   ['Modelos de mensagem', 'Consulta e gerenciamento de modelos de mensagem.'],
   ['Webhooks', 'Recebimento, validação e configuração de webhooks.'],
   ['Diagnóstico', 'Ressincronização e inspeção operacional da sessão.'],
+  ['Telefonia', 'Bridge Zapo, chamadas, ramais e operação SIP/WebRTC/RTP.'],
 ].map(([name, description]) => ({ name, description }))
 
 const normalizedPaths = {}

@@ -3,8 +3,8 @@ info:
   title: ViperConnect API
   version: 2.5.2
   description: |
-    API compatível com WhatsApp Cloud (formato de payload), utilizando Baileys como transporte.
-    - Endpoints espelham em grande parte a estrutura do Cloud API (ex.: `v15.0/{phone}/messages`).
+    API ViperConnect para sessões Zapo, com rotas de compatibilidade de payload.
+    - Endpoints versionados aceitam prefixos como `v15`, `v22` ou `v25` (ex.: `v25/{phone}/messages`).
     - Suporta envios de texto, mídia (imagem/áudio/documento/vídeo), contatos e mensagens interativas (botões/listas).
 servers:
   - url: /
@@ -1264,7 +1264,7 @@ paths:
 
   /webhooks/whatsapp/{phone}:
     get:
-      summary: Verificação do Webhook (Facebook/Meta)
+      summary: Verificar assinatura do webhook
       security: [] # não requer token local
       parameters:
         - $ref: '#/components/parameters/PhonePath'
@@ -1340,6 +1340,166 @@ paths:
                 example:
                   success: true
 
+  /admin/voip/bootstrap:
+    get:
+      tags: [Telefonia]
+      summary: Estado agregado da telefonia
+      description: Retorna linhas Zapo conectadas ao bridge, chamadas ativas, ramais e configuração administrativa sem expor a URL ou o token interno do serviço VoIP.
+      responses:
+        '200':
+          description: Estado usado pela página Telefonia do Manager.
+        '503':
+          description: Serviço VoIP não configurado.
+
+  /admin/voip/calls:
+    get:
+      tags: [Telefonia]
+      summary: Listar chamadas ativas
+      responses:
+        '200': { description: Chamadas isoladas por sessão e callId. }
+    post:
+      tags: [Telefonia]
+      summary: Iniciar chamada pela sessão Zapo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session, peerJid, extensionId]
+              properties:
+                session: { type: string, example: '5566999554300' }
+                peerJid: { type: string, example: '5566996269251@s.whatsapp.net' }
+                extensionId: { type: string, example: '1001', description: Ramal registrado que receberá a perna SIP da chamada. }
+      responses:
+        '201': { description: Chamada iniciada; retorna session e callId. }
+        '503': { description: Bridge da sessão indisponível. }
+
+  /admin/voip/calls/{callId}/{command}:
+    post:
+      tags: [Telefonia]
+      summary: Controlar uma chamada Zapo
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: command
+          in: path
+          required: true
+          schema: { type: string, enum: [accept, reject, end, mute] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session]
+              properties:
+                session: { type: string }
+                muted: { type: boolean, description: Obrigatório para o comando mute. }
+                reason: { type: string }
+      responses:
+        '200': { description: Resultado correlacionado do worker dono da sessão. }
+
+  /admin/voip/console/calls/{callId}/transfer:
+    post:
+      tags: [Telefonia]
+      summary: Transferir chamada para outro ramal
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetExtensionId]
+              properties:
+                targetExtensionId: { type: string, example: '1002' }
+      responses:
+        '200': { description: Transferência iniciada para o ramal de destino. }
+        '404': { description: Chamada ou ramal não encontrado. }
+
+  /admin/voip/console/{resource}/{id}:
+    put:
+      tags: [Telefonia]
+      summary: Criar ou atualizar recurso avançado de telefonia
+      parameters:
+        - name: resource
+          in: path
+          required: true
+          schema: { type: string, enum: [companies, accounts, lineGroups, extensionGroups, sessions, extensions, users] }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Configuração validada e persistida. }
+    delete:
+      tags: [Telefonia]
+      summary: Excluir recurso avançado de telefonia
+      parameters:
+        - name: resource
+          in: path
+          required: true
+          schema: { type: string, enum: [companies, accounts, lineGroups, extensionGroups, sessions, extensions, users] }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Recurso removido e configuração persistida. }
+
+  /admin/voip/console/history:
+    get:
+      tags: [Telefonia]
+      summary: Consultar histórico de chamadas e gravações
+      responses:
+        '200': { description: Histórico filtrado conforme a autenticação administrativa. }
+
+  /admin/voip/console/recording/settings:
+    get:
+      tags: [Telefonia]
+      summary: Consultar configuração de gravações
+      responses:
+        '200': { description: Configuração com segredos omitidos. }
+    put:
+      tags: [Telefonia]
+      summary: Atualizar configuração de gravações
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Configuração de gravação atualizada. }
+
+  /admin/voip/console/license:
+    get:
+      tags: [Telefonia]
+      summary: Consultar licença da telefonia
+      responses:
+        '200': { description: Estado atual da licença. }
+    put:
+      tags: [Telefonia]
+      summary: Atualizar licença da telefonia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Licença persistida e validada. }
+
 components:
   securitySchemes:
     ApiToken:
@@ -1370,10 +1530,10 @@ components:
       properties:
         installed_version:
           type: string
-          example: 4.0.2
+          example: 4.0.3
         latest_version:
           type: string
-          example: 4.0.2
+          example: 4.0.3
         update_available:
           type: boolean
         status:
@@ -1414,9 +1574,9 @@ components:
           type: string
         provider:
           type: string
-          enum: [baileys, zapo]
+          enum: [zapo]
           default: zapo
-          description: Motor WhatsApp da sessão. Zapo é o padrão para novas sessões. Baileys permanece aceito somente para sessões legadas; ao migrar para Zapo, um novo pareamento é obrigatório e credenciais Baileys não são importadas.
+          description: Motor WhatsApp da sessão. O caminho documentado e suportado é Zapo.
         connectionType:
           type: string
           enum: [qrcode, pairing_code]

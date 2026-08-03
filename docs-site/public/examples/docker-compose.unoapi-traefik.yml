@@ -5,6 +5,8 @@ x-base: &base
   restart: always
   networks:
     - unoapi
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   depends_on:
     unoapi-redis:
       condition: service_healthy
@@ -21,6 +23,9 @@ x-base-environment: &base-environment
 
   AMQP_URL: "amqp://viperconnect:TROQUE_A_SENHA@unoapi-rabbitmq:5672"
   REDIS_URL: "redis://:TROQUE_A_SENHA@unoapi-redis:6379"
+  VOIP_SERVICE_URL: "http://host.docker.internal:3097"
+  VOIP_SERVICE_TOKEN: "GERE_UM_TOKEN_LONGO_E_ALEATORIO"
+  VOIP_MAX_CONCURRENT_CALLS: "2"
 
   WEBHOOK_URL: "https://chatwoot.seudominio.com.br/webhooks/whatsapp"
   WEBHOOK_TOKEN: "TROQUE_O_TOKEN"
@@ -165,9 +170,32 @@ services:
           cpus: "4"
           memory: 8048M
 
+  viperconnect-telefonia:
+    image: ghcr.io/viperteccorporation/viperconnect:latest
+    container_name: viperconnect-telefonia
+    restart: always
+    network_mode: host
+    environment:
+      PORT: "3097"
+      UNOAPI_PROCESS_ROLE: "voip"
+      VOIP_SERVICE_TOKEN: "GERE_UM_TOKEN_LONGO_E_ALEATORIO"
+      VOIP_BRIDGE_TOKEN: "GERE_UM_TOKEN_LONGO_E_ALEATORIO"
+      VOIP_ZAPO_ONLY: "true"
+      VOIP_STANDALONE_AUTO_START: "false"
+      VOIP_AUTO_UPDATE_ENABLED: "false"
+      VOIP_AUTO_UPDATE_APPLY_ENABLED: "false"
+    volumes:
+      - telefonia:/home/u/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3097/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   rabbitmq:
   redis:
+  telefonia:
 
 networks:
   unoapi:

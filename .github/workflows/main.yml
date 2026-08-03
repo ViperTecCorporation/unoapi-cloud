@@ -1,6 +1,12 @@
 name: ci
 
 on:
+  workflow_dispatch:
+    inputs:
+      voip_ref:
+        description: Ref do código de telefonia incorporado na imagem única
+        required: false
+        default: codex/zapo-uno-voice-bridge
   push:
     branches:  [ main develop ]
     tags:
@@ -21,7 +27,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -40,6 +46,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Checkout telephony source for the unified image
+        uses: actions/checkout@v5
+        with:
+          repository: ViperTecCorporation/viperconnect-voip-service
+          ref: ${{ inputs.voip_ref || vars.VOIP_SOURCE_REF || 'codex/zapo-uno-voice-bridge' }}
+          token: ${{ secrets.VOIP_REPOSITORY_TOKEN || github.token }}
+          path: _build/voip-service
 
       - name: Docker meta
         id: meta

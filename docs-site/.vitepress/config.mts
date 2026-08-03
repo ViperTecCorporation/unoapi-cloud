@@ -15,6 +15,7 @@ export default defineConfig({
     siteTitle: 'ViperConnect Developers',
     nav: [
       { text: 'Guias', link: '/guide/installation' },
+      { text: 'Telefonia', link: '/guide/telephony' },
       { text: 'API', link: '/api-reference' },
       { text: 'GitHub', link: 'https://github.com/ViperTecCorporation/ViperConnect' },
     ],
@@ -28,6 +29,7 @@ export default defineConfig({
           { text: 'Docker Compose', link: '/guide/docker-compose' },
           { text: 'Conectar uma sessão', link: '/guide/connection' },
           { text: 'Arquitetura e cobertura', link: '/guide/architecture' },
+          { text: 'Telefonia Zapo', link: '/guide/telephony' },
         ],
       },
       {

@@ -1,4 +1,16 @@
-import type { ContactDirectoryPage, GroupPage, RabbitQueueInfo, RabbitQueueMessage, RedisKeyDetails, RedisKeyType, RedisTreeNode, SessionConfig, VersionStatus, WebhookConfig } from '../domain/types.js'
+import type {
+  ContactDirectoryPage,
+  GroupPage,
+  RabbitQueueInfo,
+  RabbitQueueMessage,
+  RedisKeyDetails,
+  RedisKeyType,
+  RedisTreeNode,
+  SessionConfig,
+  VersionStatus,
+  VoipBootstrap,
+  WebhookConfig,
+} from '../domain/types.js'
 import { t } from './i18n.js'
 
 export class ApiError extends Error {
@@ -128,20 +140,15 @@ export class ApiClient {
   async queueMessages(queue: string, session = '', limit = 20): Promise<RabbitQueueMessage[]> {
     const query = new URLSearchParams({ limit: `${limit}` })
     if (session) query.set('session', session)
-    const response = await this.request<{ messages?: RabbitQueueMessage[] }>(
-      `/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages?${query}`,
-    )
+    const response = await this.request<{ messages?: RabbitQueueMessage[] }>(`/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages?${query}`)
     return Array.isArray(response?.messages) ? response.messages : []
   }
 
   purgeQueue(queue: string, count: number | 'all'): Promise<{ removed: number | 'all' }> {
-    return this.request<{ removed: number | 'all' }>(
-      `/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages`,
-      {
-        method: 'DELETE',
-        body: JSON.stringify({ confirm: queue, count }),
-      },
-    )
+    return this.request<{ removed: number | 'all' }>(`/admin/rabbitmq/queues/${encodeURIComponent(queue)}/messages`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm: queue, count }),
+    })
   }
 
   async redisKeys(search = '', limit = 500): Promise<string[]> {
@@ -190,5 +197,36 @@ export class ApiClient {
       body: JSON.stringify({ command, args }),
     })
     return response?.result
+  }
+
+  voipBootstrap(): Promise<VoipBootstrap> {
+    return this.request<VoipBootstrap>('/admin/voip/bootstrap')
+  }
+
+  voipStartCall(session: string, peerJid: string, extensionId: string): Promise<{ session: string; callId: string }> {
+    return this.request('/admin/voip/calls', { method: 'POST', body: JSON.stringify({ session, peerJid, extensionId }) })
+  }
+
+  voipCommand(
+    session: string,
+    callId: string,
+    command: 'accept' | 'reject' | 'end' | 'mute',
+    payload: Record<string, unknown> = {},
+  ): Promise<unknown> {
+    return this.request(`/admin/voip/calls/${encodeURIComponent(callId)}/${command}`, {
+      method: 'POST',
+      body: JSON.stringify({ session, ...payload }),
+    })
+  }
+
+  voipConsole(path: string, method = 'GET', payload?: unknown): Promise<any> {
+    return this.request(`/admin/voip/console/${path.replace(/^\/+/, '')}`, {
+      method,
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    })
+  }
+
+  voipTransfer(callId: string, targetExtensionId: string): Promise<any> {
+    return this.voipConsole(`calls/${encodeURIComponent(callId)}/transfer`, 'POST', { targetExtensionId })
   }
 }

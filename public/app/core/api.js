@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.2-1cf00d03';
+import { t } from './i18n.js?v=4.0.3-e718d8da';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -160,5 +160,26 @@ export class ApiClient {
             body: JSON.stringify({ command, args }),
         });
         return response?.result;
+    }
+    voipBootstrap() {
+        return this.request('/admin/voip/bootstrap');
+    }
+    voipStartCall(session, peerJid, extensionId) {
+        return this.request('/admin/voip/calls', { method: 'POST', body: JSON.stringify({ session, peerJid, extensionId }) });
+    }
+    voipCommand(session, callId, command, payload = {}) {
+        return this.request(`/admin/voip/calls/${encodeURIComponent(callId)}/${command}`, {
+            method: 'POST',
+            body: JSON.stringify({ session, ...payload }),
+        });
+    }
+    voipConsole(path, method = 'GET', payload) {
+        return this.request(`/admin/voip/console/${path.replace(/^\/+/, '')}`, {
+            method,
+            body: payload === undefined ? undefined : JSON.stringify(payload),
+        });
+    }
+    voipTransfer(callId, targetExtensionId) {
+        return this.voipConsole(`calls/${encodeURIComponent(callId)}/transfer`, 'POST', { targetExtensionId });
     }
 }
