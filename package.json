@@ -1,6 +1,6 @@
 {
   "name": "viperconnect",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "description": "ViperConnect by ViperTec Corporation, based on the original Unoapi Cloud project",
   "repository": {
     "type": "git",
@@ -87,8 +87,8 @@
     "@redis/client": "^1.5.14",
     "@roamhq/wrtc": "0.10.0",
     "@sentry/node": "^10.68.0",
-    "@zapo-js/store-redis": "1.1.0",
-    "@zapo-js/store-sqlite": "1.0.2",
+    "@zapo-js/store-redis": "1.2.0",
+    "@zapo-js/store-sqlite": "1.1.0",
     "@zapo-js/voip": "1.0.0",
     "@zapo-js/media-utils": "1.0.0",
     "amqplib": "^0.10.8",
@@ -119,7 +119,7 @@
     "vcf": "^2.1.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "^2.8.3",
-    "zapo-js": "1.6.1"
+    "zapo-js": "1.7.0"
   },
   "engines": {
     "node": ">= 24.x"

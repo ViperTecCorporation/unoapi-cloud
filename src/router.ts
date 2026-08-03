@@ -135,6 +135,7 @@ export const router = (
   router.get('/admin/voip/calls', middleware, voipController.calls.bind(voipController))
   router.post('/admin/voip/calls', middleware, voipController.calls.bind(voipController))
   router.post('/admin/voip/calls/:callId/:command', middleware, voipController.command.bind(voipController))
+  router.get('/admin/voip/recordings/:recordId', middleware, voipController.recording.bind(voipController))
   router.all('/admin/voip/console/*', middleware, voipController.console.bind(voipController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))

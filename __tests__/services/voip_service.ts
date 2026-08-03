@@ -29,4 +29,15 @@ describe('VoipService', () => {
       expect.objectContaining<Partial<VoipServiceError>>({ status: 503, message: 'voip_service_not_configured' }),
     )
   })
+
+  test('opens an authenticated recording stream without converting audio to JSON', async () => {
+    const fetcher = jest.fn(async (_url: string, init: RequestInit) => {
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer internal-secret')
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
+    })
+    const service = new VoipService('http://voip.local:3097', 'internal-secret', 1_000, fetcher as any)
+    const response = await service.stream('/v1/console/history-records/record-1/recording')
+    expect(response.headers.get('content-type')).toBe('audio/mpeg')
+    await expect(response.arrayBuffer()).resolves.toHaveProperty('byteLength', 3)
+  })
 })

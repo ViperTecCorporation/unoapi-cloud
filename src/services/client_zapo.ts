@@ -486,8 +486,17 @@ export class ClientZapo implements Client {
       await this.listener.process(this.phone, [message], 'notify')
     })
     onCurrent('message_unavailable', async (event) => {
-      logger.warn('Zapo unavailable message phone=%s id=%s kind=%s', this.phone, event.key.id, event.kind)
-      if (!['view_once', 'hosted'].includes(event.kind)) return
+      logger.warn(
+        'Zapo unavailable message phone=%s id=%s kind=%s resend_requested=%s',
+        this.phone,
+        event.key.id,
+        event.kind,
+        `${event.resendRequested === true}`,
+      )
+      // Zapo 1.7 can recover a plain placeholder from the primary device. In
+      // that case the real message arrives later with the same key, so emitting
+      // a fallback now would create duplicate content in the integration.
+      if (event.resendRequested === true) return
 
       const message = createZapoUnavailableMessage(event)
       if (event.key.remoteJid && event.key.id) {

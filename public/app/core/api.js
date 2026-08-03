@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.3-e718d8da';
+import { t } from './i18n.js?v=4.0.4-9c6b8a68';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -181,5 +181,21 @@ export class ApiClient {
     }
     voipTransfer(callId, targetExtensionId) {
         return this.voipConsole(`calls/${encodeURIComponent(callId)}/transfer`, 'POST', { targetExtensionId });
+    }
+    async voipRecording(recordId) {
+        const headers = new Headers();
+        if (this.token)
+            headers.set('Authorization', `Bearer ${this.token}`);
+        const response = await this.fetcher.call(globalThis, `${this.baseUrl}/admin/voip/recordings/${encodeURIComponent(recordId)}`, { headers });
+        if (!response.ok) {
+            const text = await response.text();
+            let payload = text;
+            try {
+                payload = text ? JSON.parse(text) : undefined;
+            }
+            catch { }
+            throw new ApiError(response.status, errorMessage(payload, response.status), payload);
+        }
+        return response.blob();
     }
 }

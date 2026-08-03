@@ -173,6 +173,13 @@ com o aviso `Mensagem indisponível nesta integração. Confira o aparelho.` par
 evitar uma conversa sem conteúdo no sistema integrado. Isso não altera o estado
 `sem capability`: o conteúdo original continua irrecuperável.
 
+Desde `zapo-js` 1.7.0, placeholders comuns podem informar
+`resendRequested=true`: nesse caso a UnoAPI aguarda o reenvio do aparelho e não
+publica um aviso intermediário, pois a mensagem recuperada chega depois com a
+mesma chave. Quando `resendRequested=false`, inclusive para `kind=bot` ou
+`kind=other` fora da janela de recuperação, a UnoAPI encaminha o mesmo fallback
+explícito ao webhook.
+
 ### Falhas de envio
 
 Todas as ações que passam pelo envio comum de mensagens — texto, mídias,

@@ -110,4 +110,17 @@ describe('frontend API client', () => {
       confirm: 'unoapi:zapo:test:',
     })
   })
+
+  test('loads a VoIP recording as an authenticated blob', async () => {
+    const fetcher = jest.fn().mockResolvedValue(new Response(new Uint8Array([1, 2]), { headers: { 'Content-Type': 'audio/mpeg' } })) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+    api.setToken('admin-token')
+    const blob = await api.voipRecording('record-1')
+    expect(blob.type).toBe('audio/mpeg')
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://unoapi.example/admin/voip/recordings/record-1',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    )
+    expect(new Headers((fetcher as jest.Mock).mock.calls[0][1].headers).get('Authorization')).toBe('Bearer admin-token')
+  })
 })

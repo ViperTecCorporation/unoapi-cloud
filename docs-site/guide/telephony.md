@@ -41,6 +41,9 @@ environment:
   VOIP_SERVICE_URL: http://host.docker.internal:3097
 ```
 
+Para executar a telefonia fora de container com pacote `.deb` e `systemd`, veja
+[Telefonia em Linux nativo](/guide/install-voip-native-linux).
+
 Os Composes para download já incluem essa topologia e o volume persistente do
 serviço VoIP. Todos os containers ViperConnect usam a mesma imagem e tag;
 `UNOAPI_PROCESS_ROLE=voip` seleciona o processo de telefonia, portanto não há
@@ -83,11 +86,34 @@ saída continua sendo a dona da ponte de áudio, como numa chamada externa.
 - `PUT|DELETE /admin/voip/console/{resource}/{id}`: mantém empresas, linhas,
   grupos, sessões, ramais e usuários;
 - `GET /admin/voip/console/history`: consulta histórico e gravações;
+- `GET /admin/voip/recordings/{recordId}`: reproduz ou baixa uma gravação pelo
+  proxy autenticado da Uno;
 - `GET|PUT /admin/voip/console/recording/settings`: configura gravações;
+- `GET /admin/voip/console/zapo-lines`: inventário de linhas descobertas pela bridge;
+- `POST /admin/voip/console/zapo-lines/{session}/assign`: atribui a linha a uma
+  empresa e pode criar conta, sessão, slot, grupos, rota e ramal básicos;
+- `GET /admin/voip/console/extensions/{extensionId}/credentials`: recupera para
+  administrador o usuário, senha, URI SIP e URLs WebRTC do ramal;
 - `GET|PUT /admin/voip/console/license`: consulta ou atualiza a licença.
 
-A página **Telefonia** do Manager consome somente essas rotas da Uno. O modo
-avançado fica na mesma página e permite editar o contrato integral em JSON,
-sem expor o endereço ou o token interno do serviço no navegador. Segredos já
-configurados aparecem apenas como indicadores e são preservados quando o campo
-secreto não é reenviado.
+A página **Telefonia** do Manager usa abas, grids e modais para empresas,
+linhas, ramais, grupos, sessões, chamadas, gravações e usuários. O JSON interno
+não é exposto como editor de configuração. Segredos já configurados aparecem
+apenas como indicadores e são preservados quando o campo secreto não é reenviado.
+
+Uma sessão Zapo recém-conectada aparece primeiro como **Aguardando empresa**.
+Ela não entra no roteamento até a ativação administrativa. Se existir uma única
+empresa ativa, ela é usada; se não existir nenhuma, a ativação cria uma empresa
+básica; com várias empresas, a escolha continua obrigatória. A operação é
+idempotente. A rota básica cria os recursos mínimos, usa o número da sessão como
+usuário do ramal e mostra a senha. Depois, o administrador pode usar o botão
+**Credenciais** no grid de ramais para recuperar SIP e WebRTC.
+
+O mesmo ramal pode ser registrado em vários telefones SIP e navegadores WebRTC.
+Todos tocam na chamada recebida; o primeiro que atende fica com a chamada e as
+outras pernas são canceladas como atendidas em outro lugar.
+
+No histórico, gravações com estado `available` possuem os botões **Reproduzir**
+e **Baixar**. A reprodução acontece em um player de áudio dentro do próprio
+grid; o navegador recebe o áudio pela fachada autenticada da Uno e nunca conhece
+o token interno do serviço VoIP.

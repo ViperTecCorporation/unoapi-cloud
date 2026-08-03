@@ -2010,15 +2010,15 @@
   resolved "https://registry.yarnpkg.com/@zapo-js/media-utils/-/media-utils-1.0.0.tgz#2c33c342cce61630ac1f414d1b463750da3d582c"
   integrity sha512-u8IcoLloaP1kKSCgKsmaeEbOLVWHKYsdKOelIn8n9Xa+bFCCVC5XefeZUcksFr3eiB2optUzewlZYjZxNXHmHg==
 
-"@zapo-js/store-redis@1.1.0":
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.1.0.tgz#b4e59f3e0656b911de8012f259b3887ef082569e"
-  integrity sha512-vK1+QXx8zfSwA9yJ29RdOJ5A9GGKf+JGZBE+77NUP0i4X2XxSeDvLCbo/Pk+jmWXnY0BbxDkoK/yZqKzff9E9g==
+"@zapo-js/store-redis@1.2.0":
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.2.0.tgz#cbbf0108c25a002acd7ce7145ae43335fd4194cc"
+  integrity sha512-bBoflDaoCRreF8lP/plpEPJyMGjQmOpPXsWRll1nw2HRMHmiiCU1+olycBWI33gHd6ri8cGVf14nYoEVP/N08A==
 
-"@zapo-js/store-sqlite@1.0.2":
-  version "1.0.2"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.0.2.tgz#20632a3b9cf16503c2be03d943c36735a3492b04"
-  integrity sha512-mGx8WNa4nG7pV1f3BlmHxS9yFcdS7bIDIbGnW2qms5iGA1V/mnd3vk8Tq7YYhqaeFW8zxNBKm7gUlDA1JBBiwg==
+"@zapo-js/store-sqlite@1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.1.0.tgz#0685bf76939e256e142c6f171ab2a1311809ab39"
+  integrity sha512-leoHja38lB7kBxVlcbktIMZjbocropExyjL2LPun6Ofd8gnr0+mcx9xyYpsj4htLM95OFMfd2jd5zbU6IqjgDQ==
 
 "@zapo-js/voip@1.0.0":
   version "1.0.0"
@@ -6554,7 +6554,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zapo-js@1.6.1:
-  version "1.6.1"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.6.1.tgz#e55a8b539585fa5efda618bd0f02d4d6a1610333"
-  integrity sha512-7Nbc8PzrvaForP7hlF+1IsTMdv4Oucyw53afX5zCRECTAujEj1PQjOD8b21a5eLX3+/x8GJeBk4KX30I4dDebw==
+zapo-js@1.7.0:
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.7.0.tgz#bc1a48f590b6bd95f2e09a441cad3e4781d4c837"
+  integrity sha512-OSWpH0x93qlVvg85PScxxDzRKKa/AHi1Gh3HXFtc9KzOeqNrIsPPQbEx4y+o99QIghv/8STSr6N11CzljAtwsQ==

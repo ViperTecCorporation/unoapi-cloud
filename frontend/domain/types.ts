@@ -166,9 +166,13 @@ export interface VoipBridgeStatus {
   session: string
   connected: boolean
   generation?: number
+  serverId?: string
   workerId?: string
+  connectionId?: string
+  connectedAt?: string
   lastSeenAt?: string
   maxConcurrentCalls?: number
+  capabilities?: string[]
 }
 
 export interface VoipCallStatus {
@@ -178,6 +182,19 @@ export interface VoipCallStatus {
   peerJid?: string
   callerPn?: string
   streamId?: number
+}
+
+export type VoipTab = 'overview' | 'lines' | 'extensions' | 'routing' | 'calls' | 'recordings' | 'companies' | 'users' | 'settings'
+
+export interface VoipLineInventoryItem extends VoipBridgeStatus {
+  sourceId: string
+  assignmentStatus: 'assigned' | 'pending_company'
+  companyId?: string
+  companyLabel?: string
+  accountId?: string
+  sessionId?: string
+  slotId?: string
+  routingConfigured: boolean
 }
 
 export interface VoipBootstrap {
@@ -193,8 +210,11 @@ export interface VoipBootstrap {
   history?: { items?: Array<Record<string, any>>; total?: number }
   recordingSummary?: Record<string, any>
   recording?: Record<string, any>
+  registrations?: { total?: number; webrtc?: Array<Record<string, any>>; sipRtp?: Array<Record<string, any>> }
   license?: Record<string, any>
   autoUpdate?: Record<string, any>
+  zapoLines?: VoipLineInventoryItem[]
+  auth?: { role?: 'admin' | 'user'; companyIds?: string[] }
   [key: string]: unknown
 }
 

@@ -27,6 +27,11 @@ curl http://127.0.0.1:9876/ping
 Aponte o proxy para `http://HOST_DOCKER:9876`. Se ele estiver na mesma network
 Docker, use `http://unoapi:9876`. Não há outro servidor HTTP dentro do stack.
 
+A telefonia precisa de um segundo host no proxy de borda, por exemplo
+`voip.seudominio.com -> http://HOST_DOCKER:3097`. Habilite WebSocket e preserve
+o upgrade em `/sip/ws`. Esse domínio deve ser o mesmo usado em
+`VOIP_PUBLIC_WS_URL`.
+
 ## Traefik
 
 Use quando o Traefik já está conectado à network externa `traefik-public`.
@@ -61,6 +66,48 @@ Nos dois arquivos, revise:
 - senha do Valkey em `REDIS_URL` e no comando do serviço;
 - `WEBHOOK_URL`, token e header;
 - credenciais de armazenamento S3 compatível, caso utilizado.
+
+## Ambiente completo da telefonia
+
+Os arquivos para download incluem o perfil operacional completo observado na
+implantação de produção. Antes de subir, substitua domínios, IPs e segredos.
+
+| Variável | Finalidade |
+| --- | --- |
+| `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN` | Autenticam API interna e bridge; use o mesmo token longo nos dois campos. |
+| `VOIP_DOMAIN` | Domínio SIP canônico apresentado aos ramais. |
+| `VOIP_PUBLIC_WS_URL` | URL pública `wss://` usada por SIP/WebRTC. |
+| `VOIP_LAN_DOMAIN` | IP ou domínio acessível pelos ramais da rede local. |
+| `VOIP_STUN_URL` | Descoberta de candidatos de rede WebRTC. |
+| `VOIP_TURN_URL`, `VOIP_TURN_USERNAME`, `VOIP_TURN_CREDENTIAL` | Relay autenticado para WebRTC quando a conexão direta falhar. |
+| `VOIP_CALL_ENGINE` | Deve permanecer `zapo_native`. |
+| `VOIP_NATIVE_LOG_LEVEL` | Nível do motor de chamadas; use `info` normalmente e `debug` somente para diagnóstico. |
+| `VOIP_ZAPO_ONLY` | Garante operação somente pela bridge Zapo. |
+| `VOIP_STANDALONE_AUTO_START` | Deve ficar `false`; a sessão pertence à Uno. |
+| `CALL_HISTORY_STORAGE`, `VOIP_APP_STORAGE`, `VOICE_CONFIG_STORAGE`, `VOIP_LICENSE_STORAGE` | Mantêm histórico, estado, configuração e licença no SQLite. |
+| `VOIP_SQLITE_PATH` | Banco persistido no volume da telefonia. |
+| `SIP_RTP_PUBLIC_IP` | Domínio ou IP público anunciado para SIP/RTP. |
+| `SIP_RTP_PUBLIC_ADVERTISE_IP` | IP público literal anunciado quando o servidor está atrás de NAT. |
+| `SIP_RTP_LAN_IP` | IP anunciado aos ramais da LAN. |
+| `SIP_RTP_PORT` | Porta UDP de sinalização SIP tradicional. |
+| `SIP_RTP_MEDIA_PORT_MIN/MAX` | Faixa UDP de áudio RTP tradicional. |
+| `SIP_WEBRTC_UDP_PORT_MIN/MAX` | Faixa UDP de mídia WebRTC. |
+| `SIP_RTP_CODECS` | Codecs SIP permitidos; o exemplo usa `PCMU,PCMA`. |
+| `SIP_REGISTER_EXPIRES_SECONDS` | Intervalo de renovação dos registros SIP/WebRTC. |
+
+`203.0.113.10` é um IP reservado para documentação. Troque por seu IP público
+real. Se não houver coturn disponível, deixe as três variáveis TURN vazias em
+vez de apontar para um serviço inexistente.
+
+No container, `VOIP_AUTO_UPDATE_ENABLED` e
+`VOIP_AUTO_UPDATE_APPLY_ENABLED` permanecem `false`: a atualização acontece com
+`docker compose pull` da imagem única. Essas opções ficam ativas somente no
+pacote Linux nativo, cujo atualizador troca o artefato instalado pelo `systemd`.
+
+O container usa `network_mode: host`; portanto não adicione `ports:` no serviço
+de telefonia. Abra no host `3097/tcp`, `5060/udp`, `12000-13000/udp` e
+`13001-14000/udp`. STUN/TURN possui portas próprias e só deve ser publicado se
+o serviço correspondente estiver realmente instalado.
 
 ## Arquitetura do modelo
 

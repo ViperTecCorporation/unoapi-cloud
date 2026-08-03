@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { Readable } from 'node:stream'
 import { VoipService, VoipServiceError } from '../services/voip_service'
 
 export class VoipController {
@@ -57,6 +58,20 @@ export class VoipController {
           body: ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? JSON.stringify(req.body || {}) : undefined,
         }),
       )
+    } catch (error) {
+      return this.error(res, error)
+    }
+  }
+
+  async recording(req: Request, res: Response) {
+    try {
+      const upstream = await this.service.stream(`/v1/console/history-records/${encodeURIComponent(req.params.recordId)}/recording`)
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg')
+      const length = upstream.headers.get('content-length')
+      if (length) res.setHeader('Content-Length', length)
+      res.setHeader('Content-Disposition', upstream.headers.get('content-disposition') || `inline; filename="${req.params.recordId}.mp3"`)
+      if (!upstream.body) return res.end()
+      return Readable.fromWeb(upstream.body as any).pipe(res)
     } catch (error) {
       return this.error(res, error)
     }

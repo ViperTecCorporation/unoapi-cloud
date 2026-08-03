@@ -26,6 +26,7 @@ export default defineConfig({
           { text: 'Visão geral', link: '/' },
           { text: 'Instalação', link: '/guide/installation' },
           { text: 'Instalador Linux', link: '/guide/install-native-linux' },
+          { text: 'Telefonia Linux nativa', link: '/guide/install-voip-native-linux' },
           { text: 'Docker Compose', link: '/guide/docker-compose' },
           { text: 'Conectar uma sessão', link: '/guide/connection' },
           { text: 'Arquitetura e cobertura', link: '/guide/architecture' },

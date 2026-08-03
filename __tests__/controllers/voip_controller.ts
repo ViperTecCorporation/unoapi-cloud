@@ -4,6 +4,8 @@ const response = () => {
   const res: any = {}
   res.status = jest.fn(() => res)
   res.json = jest.fn((value) => value)
+  res.setHeader = jest.fn()
+  res.end = jest.fn()
   return res
 }
 
@@ -27,5 +29,15 @@ describe('VoipController', () => {
     await controller.command({ params: { command: 'reset', callId: 'call_1' }, body: {} } as any, res)
     expect(res.status).toHaveBeenCalledWith(400)
     expect(service.request).not.toHaveBeenCalled()
+  })
+
+  test('proxies a recording with an inline audio content type', async () => {
+    const service = { stream: jest.fn().mockResolvedValue(new Response(null, { headers: { 'Content-Type': 'audio/mpeg' } })) }
+    const controller = new VoipController(service as any)
+    const res = response()
+    await controller.recording({ params: { recordId: 'record-1' } } as any, res)
+    expect(service.stream).toHaveBeenCalledWith('/v1/console/history-records/record-1/recording')
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'audio/mpeg')
+    expect(res.end).toHaveBeenCalled()
   })
 })

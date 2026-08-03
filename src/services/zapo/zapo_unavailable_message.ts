@@ -1,4 +1,4 @@
-export type ZapoUnavailableKind = 'view_once' | 'hosted'
+export type ZapoUnavailableKind = 'view_once' | 'hosted' | 'bot' | 'other'
 
 type ZapoUnavailableEvent = {
   key: object
@@ -10,6 +10,8 @@ type ZapoUnavailableEvent = {
 const STUB_PARAMETER_BY_KIND: Record<ZapoUnavailableKind, string> = {
   view_once: 'view_once_unavailable',
   hosted: 'hosted_message_unavailable',
+  bot: 'hosted_message_unavailable',
+  other: 'hosted_message_unavailable',
 }
 
 export const createZapoUnavailableMessage = (event: ZapoUnavailableEvent) => ({

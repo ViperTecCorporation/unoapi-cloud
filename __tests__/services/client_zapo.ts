@@ -394,15 +394,30 @@ describe('ClientZapo', () => {
     })], 'notify')
   })
 
-  test('does not forward uncategorized unavailable placeholders', async () => {
+  test('waits for the recovered message when Zapo requested a placeholder resend', async () => {
     await service.connect(1)
 
     await handlers.message_unavailable({
       key: { id: 'other-1', remoteJid: '111@lid', fromMe: false },
       kind: 'other',
+      resendRequested: true,
     })
 
     expect(listener.process).not.toHaveBeenCalled()
+  })
+
+  test.each(['other', 'bot'] as const)('forwards unrecoverable %s placeholders to the integration', async (kind) => {
+    await service.connect(1)
+
+    await handlers.message_unavailable({
+      key: { id: `${kind}-1`, remoteJid: '111@lid', fromMe: false },
+      kind,
+      resendRequested: false,
+    })
+
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      messageStubParameters: ['hosted_message_unavailable'],
+    })], 'notify')
   })
 
   test('seeds the exact Zapo PN and LID mappings from group metadata', async () => {

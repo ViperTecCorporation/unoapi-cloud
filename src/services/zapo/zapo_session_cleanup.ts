@@ -17,6 +17,7 @@ const persistedSessionDomains = [
 const expiringCacheDomains = [
   'retry',
   'groupMetadata',
+  'chatMetadata',
   'deviceList',
   'messageSecret',
 ] as const

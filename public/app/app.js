@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.3-e718d8da';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.3-e718d8da';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.3-e718d8da';
-import { SocketBridge } from './core/socket.js?v=4.0.3-e718d8da';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.3-e718d8da';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.3-e718d8da';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.3-e718d8da';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.3-e718d8da';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.3-e718d8da';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.3-e718d8da';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.3-e718d8da';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.3-e718d8da';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.3-e718d8da';
-import { renderSessionPage } from './pages/session.js?v=4.0.3-e718d8da';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.3-e718d8da';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.3-e718d8da';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.3-e718d8da';
-import { renderVoipPage } from './pages/voip.js?v=4.0.3-e718d8da';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.4-9c6b8a68';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.4-9c6b8a68';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.4-9c6b8a68';
+import { SocketBridge } from './core/socket.js?v=4.0.4-9c6b8a68';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.4-9c6b8a68';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.4-9c6b8a68';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.4-9c6b8a68';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.4-9c6b8a68';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.4-9c6b8a68';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.4-9c6b8a68';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.4-9c6b8a68';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.4-9c6b8a68';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.4-9c6b8a68';
+import { renderSessionPage } from './pages/session.js?v=4.0.4-9c6b8a68';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.4-9c6b8a68';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.4-9c6b8a68';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.4-9c6b8a68';
+import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.4-9c6b8a68';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -58,6 +58,8 @@ export class ViperConnectApp {
         this.voip = { bridges: [], calls: [] };
         this.voipLoading = false;
         this.voipError = '';
+        this.voipTab = 'overview';
+        this.voipRecordingUrls = {};
         this.queues = [];
         this.queueMessages = [];
         this.selectedQueue = '';
@@ -192,6 +194,79 @@ export class ViperConnectApp {
         }
         else if (action === 'refresh-voip') {
             await this.loadVoip();
+        }
+        else if (action === 'voip-tab') {
+            this.voipTab = actionElement.dataset.tab;
+            this.render();
+        }
+        else if (action === 'new-voip-resource') {
+            this.modal = { type: 'voip-resource', resource: actionElement.dataset.resource, id: '' };
+            this.render();
+        }
+        else if (action === 'edit-voip-resource') {
+            this.modal = { type: 'voip-resource', resource: actionElement.dataset.resource, id: actionElement.dataset.id || '' };
+            this.render();
+        }
+        else if (action === 'assign-voip-line') {
+            this.modal = { type: 'voip-line-assignment', session: actionElement.dataset.session || '' };
+            this.render();
+        }
+        else if (action === 'show-voip-credentials') {
+            try {
+                const value = await this.api.voipConsole(`extensions/${encodeURIComponent(actionElement.dataset.id || '')}/credentials`);
+                this.modal = { type: 'voip-credentials', value };
+                this.render();
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
+        }
+        else if (action === 'edit-voip-recording-settings') {
+            this.modal = { type: 'voip-recording-settings' };
+            this.render();
+        }
+        else if (action === 'delete-voip-resource') {
+            const resource = actionElement.dataset.resource || '';
+            const id = actionElement.dataset.id || '';
+            if (resource && id && window.confirm(`Excluir ${id}?`)) {
+                try {
+                    await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'DELETE');
+                    this.modal = undefined;
+                    this.showToast(t('Configuração removida.'));
+                    await this.loadVoip();
+                }
+                catch (error) {
+                    this.showToast(this.messageFor(error));
+                }
+            }
+        }
+        else if (action === 'play-voip-recording') {
+            const recordId = actionElement.dataset.recordId || '';
+            try {
+                const blob = await this.api.voipRecording(recordId);
+                if (this.voipRecordingUrls[recordId])
+                    URL.revokeObjectURL(this.voipRecordingUrls[recordId]);
+                this.voipRecordingUrls[recordId] = URL.createObjectURL(blob);
+                this.render();
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
+        }
+        else if (action === 'download-voip-recording') {
+            const recordId = actionElement.dataset.recordId || '';
+            try {
+                const blob = await this.api.voipRecording(recordId);
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = `${actionElement.dataset.callId || recordId}.mp3`;
+                anchor.click();
+                window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
         }
         else if (action === 'end-voip-call') {
             const session = actionElement.dataset.session || '';
@@ -445,6 +520,119 @@ export class ViperConnectApp {
                 this.showToast(this.messageFor(error));
             }
         }
+        else if (form.dataset.form === 'voip-resource-fields') {
+            try {
+                const resource = `${data.get('resource') || ''}`;
+                const id = `${data.get('id') || ''}`.trim();
+                if (!resource || !id)
+                    throw new Error('resource_and_id_required');
+                await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', this.voipResourcePayload(resource, data));
+                const slotId = `${data.get('slotId') || ''}`;
+                if (resource === 'accounts' && slotId) {
+                    await this.api.voipConsole(`accounts/${encodeURIComponent(id)}/slots/${encodeURIComponent(slotId)}`, 'PUT', {
+                        enabled: true,
+                        label: `${data.get('slotLabel') || slotId}`,
+                        maxActiveCalls: Number(data.get('maxActiveCalls') || 1),
+                        mode: 'bridge',
+                    });
+                }
+                this.modal = undefined;
+                this.showToast(t('Configuração salva.'));
+                await this.loadVoip();
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
+        }
+        else if (form.dataset.form === 'voip-line-assignment') {
+            try {
+                const session = `${data.get('session') || ''}`;
+                const result = await this.api.voipConsole(`zapo-lines/${encodeURIComponent(session)}/assign`, 'POST', {
+                    companyId: `${data.get('companyId') || ''}`,
+                    companyLabel: `${data.get('companyLabel') || ''}`,
+                    label: `${data.get('label') || ''}`,
+                    maxActiveCalls: Number(data.get('maxActiveCalls') || 1),
+                    createBasicRoute: data.has('createBasicRoute'),
+                });
+                await this.loadVoip();
+                this.modal = result?.sip
+                    ? { type: 'voip-sip-created', username: `${result.sip.username}`, password: `${result.sip.password}` }
+                    : undefined;
+                this.showToast('Linha ativada e disponível no roteamento.');
+                this.render();
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
+        }
+        else if (form.dataset.form === 'voip-recording-settings') {
+            try {
+                await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data));
+                this.modal = undefined;
+                this.showToast(t('Configuração salva.'));
+                await this.loadVoip();
+            }
+            catch (error) {
+                this.showToast(this.messageFor(error));
+            }
+        }
+    }
+    voipResourcePayload(resource, data) {
+        const value = (name) => `${data.get(name) || ''}`.trim();
+        const values = (name) => data.getAll(name).map(item => `${item}`).filter(Boolean);
+        const payload = { id: value('id'), enabled: data.has('enabled') };
+        const put = (...names) => names.forEach(name => { if (value(name))
+            payload[name] = value(name); });
+        if (resource === 'companies')
+            put('label', 'timeZone');
+        if (resource === 'accounts') {
+            put('label', 'companyId', 'phoneNumber', 'chatwootBaseUrl', 'chatwootAccountId', 'chatwootInboxId', 'chatwootApiAccessToken');
+            payload.chatwootRecordingEnabled = data.has('chatwootRecordingEnabled');
+        }
+        if (resource === 'lineGroups') {
+            put('label', 'companyId');
+            payload.inboundSessionIds = values('inboundSessionIds');
+            payload.outboundPrioritySessionIds = values('outboundPrioritySessionIds');
+            payload.targetExtensionGroupIds = values('targetExtensionGroupIds');
+        }
+        if (resource === 'extensionGroups') {
+            put('label', 'companyId');
+            payload.extensionIds = values('extensionIds');
+        }
+        if (resource === 'sessions') {
+            put('label', 'unoSession', 'companyId', 'accountId');
+            payload.lineGroupIds = values('lineGroupIds');
+            payload.inboundLineGroupIds = values('inboundLineGroupIds');
+            payload.outboundLineGroupIds = values('outboundLineGroupIds');
+            payload.extensions = values('extensions');
+            payload.ringTimeoutSeconds = Number(value('ringTimeoutSeconds') || 20);
+        }
+        if (resource === 'extensions') {
+            put('displayName', 'username', 'password', 'companyId', 'type');
+            payload.extensionGroupIds = values('extensionGroupIds');
+        }
+        if (resource === 'users') {
+            put('displayName', 'username', 'password', 'role');
+            payload.companyIds = values('companyIds');
+        }
+        return payload;
+    }
+    voipRecordingSettingsPayload(data) {
+        const value = (name) => `${data.get(name) || ''}`.trim();
+        return {
+            enabled: data.has('enabled'),
+            provider: value('provider'),
+            format: value('format'),
+            localDir: value('localDir'),
+            retentionDays: Number(value('retentionDays') || 0),
+            stereo: data.has('stereo'),
+            s3Endpoint: value('s3Endpoint'),
+            s3Region: value('s3Region'),
+            s3Bucket: value('s3Bucket'),
+            s3AccessKeyId: value('s3AccessKeyId'),
+            s3SecretAccessKey: value('s3SecretAccessKey'),
+            s3PublicBaseUrl: value('s3PublicBaseUrl'),
+        };
     }
     handleFilter(event) {
         const input = event.target;
@@ -1155,7 +1343,7 @@ export class ViperConnectApp {
         const content = this.view === 'documentation'
             ? renderDocumentationPage()
             : this.view === 'voip'
-                ? renderVoipPage(this.voip, this.voipLoading, this.voipError)
+                ? renderVoipPage(this.voip, this.voipLoading, this.voipError, { tab: this.voipTab, recordingUrls: this.voipRecordingUrls })
                 : this.view === 'redis'
                     ? renderRedisPage({
                         keys: this.redisKeys,
@@ -1233,6 +1421,16 @@ export class ViperConnectApp {
             return renderRedisDeleteModal(this.modal.key);
         if (this.modal.type === 'redis-delete-prefix')
             return renderRedisDeleteModal(this.modal.prefix, true);
+        if (this.modal.type === 'voip-resource')
+            return renderVoipResourceModal(this.voip, this.modal.resource, this.modal.id);
+        if (this.modal.type === 'voip-line-assignment')
+            return renderVoipAssignLineModal(this.voip, this.modal.session);
+        if (this.modal.type === 'voip-recording-settings')
+            return renderVoipRecordingSettingsModal(this.voip);
+        if (this.modal.type === 'voip-sip-created')
+            return renderVoipSipCreatedModal(this.modal.username, this.modal.password);
+        if (this.modal.type === 'voip-credentials')
+            return renderVoipCredentialsModal(this.modal.value);
         const session = this.findSession(this.modal.phone);
         if (!session)
             return '';

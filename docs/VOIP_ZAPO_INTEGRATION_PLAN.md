@@ -152,7 +152,13 @@ isolamento de SIP/RTP sem criar uma segunda imagem ou tag de produção.
 ## Manager avançado
 
 A página Telefonia agrega o bootstrap do console, bridges, chamadas, histórico
-e resumo de gravações. O modo avançado mantém empresas, linhas, grupos de
-linhas, grupos de ramais, sessões, ramais, usuários, gravação e licença pela
-fachada autenticada da Uno. Chamadas ativas também podem ser transferidas sem o
-navegador conhecer o token ou a URL interna do processo VoIP.
+e resumo de gravações em abas e modais alinhados ao frontend principal. Empresas,
+linhas, grupos de linhas, grupos de ramais, sessões, ramais, usuários e gravação
+possuem formulários de CRUD, sem editor JSON como interface principal. Linhas
+descobertas pela bridge ficam pendentes até a ativação administrativa. Uma
+empresa única é selecionada automaticamente, nenhuma empresa gera um cadastro
+básico e várias empresas exigem escolha explícita. A ativação provisiona rota e
+ramal idempotentes; as credenciais SIP/WebRTC ficam recuperáveis por administrador.
+Gravações disponíveis podem ser reproduzidas no grid ou baixadas pela fachada
+autenticada da Uno. Chamadas ativas também podem ser transferidas sem o navegador
+conhecer o token ou a URL interna do processo VoIP.

@@ -13,6 +13,8 @@ O script usa `exec node`: inicia `voip/dist/app.js` quando
 permanece como PID 1, recebe `SIGTERM` e consegue liberar as leases das sessões
 antes do container sair. Não sobrescreva o entrypoint da imagem com `yarn
 cloud`, `yarn web`, `yarn start` ou comandos semelhantes.
+Para os papéis da Uno, o comando equivalente no diretório da aplicação é
+`node dist/src/cloud.js`.
 
 Nos arquivos Compose de produção, omita tanto `entrypoint` quanto `command`.
 
