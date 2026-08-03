@@ -115,6 +115,34 @@ const patchMediaSession = (source) => {
   }
 
   const cjs = patched.includes('protocol_1.toUserJid')
+  const toUserJid = cjs ? '(0, protocol_1.toUserJid)' : 'toUserJid'
+  const callDirection = cjs ? 'types_js_1.CallDirection' : 'CallDirection'
+  const endCallReason = cjs ? 'types_js_1.EndCallReason' : 'EndCallReason'
+  if (!patched.includes('stopping mirrored local call leg')) {
+    const anchor = '        this.acceptedByJid = acceptingDeviceJid;'
+    if (!patched.includes(anchor)) throw new Error('@zapo-js/voip accepted device anchor not found')
+    patched = patched.replace(anchor, `        const acceptingBase = ${toUserJid}(acceptingDeviceJid);
+        if (this.info.direction === ${callDirection}.Incoming && acceptingBase === ourBase) {
+            this.logger.info('incoming call accepted by another local device; stopping mirrored local call leg', {
+                callId,
+                acceptingDeviceJid
+            });
+            try {
+                this.info.applyTransition({
+                    type: 'terminated',
+                    reason: ${endCallReason}.UserEnded
+                });
+            }
+            catch (err) {
+                this.logger.trace('call transition skipped', { message: ${cjs ? '(0, util_1.toError)' : 'toError'}(err).message });
+            }
+            this.delegate.emitEnded(this.info);
+            this.delegate.emitState(this.info);
+            this.cleanup();
+            return;
+        }
+${anchor}`)
+  }
   const mapBlock = incomingMediaMapping(cjs)
       .replaceAll('generateSecureSsrc', cjs ? '(0, ssrc_js_1.generateSecureSsrc)' : 'generateSecureSsrc')
       .replaceAll('RtpSession.whatsappOpus', cjs ? 'rtp_js_1.RtpSession.whatsappOpus' : 'RtpSession.whatsappOpus')
