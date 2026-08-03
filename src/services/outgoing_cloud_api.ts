@@ -229,6 +229,11 @@ export class OutgoingCloudApi implements Outgoing {
       logger.info(`Session phone %s webhook %s configured as disabled`, phone, webhook?.id || '<none>')
       return
     }
+    const skipTypebot = message?.__unoapiSkipTypebot === true
+    if (skipTypebot && webhook.typebot) {
+      logger.info('Skip synthetic call webhook for Typebot phone=%s webhook=%s', phone, webhook?.id || '<none>')
+      return
+    }
     const cbEnabled = !!WEBHOOK_CB_ENABLED && WEBHOOK_CB_FAILURE_THRESHOLD > 0 && WEBHOOK_CB_OPEN_MS > 0
     const cbId = (webhook && (webhook.id || webhook.url || webhook.urlAbsolute)) ? `${webhook.id || webhook.url || webhook.urlAbsolute}` : 'default'
     const cbKey = `${phone}:${cbId}`
@@ -249,6 +254,7 @@ export class OutgoingCloudApi implements Outgoing {
     }
     // Clone to avoid cross-webhook mutations
     try { message = JSON.parse(JSON.stringify(message)) } catch {}
+    if (skipTypebot && message && typeof message === 'object') delete message.__unoapiSkipTypebot
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)

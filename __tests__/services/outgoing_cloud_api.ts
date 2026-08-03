@@ -308,6 +308,43 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(value.contacts[0].profile.picture).toBeUndefined()
   })
 
+  test('omits synthetic call webhooks only for Typebot', async () => {
+    mockFetch.mockReset()
+    mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'ok' } as any)
+    const payload: any = {
+      __unoapiSkipTypebot: true,
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        messaging_product: 'whatsapp',
+        metadata: { display_phone_number: phone, phone_number_id: phone },
+        contacts: [{ profile: { name: 'Contato' }, wa_id }],
+        messages: [{ from: wa_id, id: 'CALL1', type: 'text', text: { body: 'Tentou ligar' } }],
+      }, field: 'messages' }] }],
+    }
+    const typebotWebhook = {
+      ...defaultConfig.webhooks[0],
+      id: 'typebot',
+      urlAbsolute: 'https://bot.local/webhook',
+      enabled: true,
+      typebot: true,
+    } as Webhook
+    const regularWebhook = {
+      ...defaultConfig.webhooks[0],
+      id: 'chatwoot',
+      urlAbsolute: 'https://chatwoot.local/webhook',
+      enabled: true,
+    } as Webhook
+
+    await service.sendHttp(phone!, typebotWebhook, payload, {})
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    await service.sendHttp(phone!, regularWebhook, payload, {})
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse((mockFetch.mock.calls[0] as any)[1].body)
+    expect(body.__unoapiSkipTypebot).toBeUndefined()
+    expect(body.entry[0].changes[0].value.messages[0].text.body).toBe('Tentou ligar')
+  })
+
   test('does not send unsupported typebot payload without message type', async () => {
     mockFetch.mockReset()
     const typebotWebhook = {

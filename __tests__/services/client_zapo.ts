@@ -990,6 +990,30 @@ describe('ClientZapo', () => {
     })], 'notify')
   })
 
+  test('keeps configured automatic call rejection ahead of the connected VoIP bridge', async () => {
+    config.rejectCalls = 'Não atendemos chamadas por aqui.'
+    config.rejectCallsWebhook = 'Tentou ligar no WhatsApp'
+    await service.connect(1)
+    const voiceBridge = { publishIncoming: jest.fn().mockReturnValue(true) }
+    ;(service as any).voiceBridge = voiceBridge
+
+    await handlers.voip_call_incoming({
+      callId: 'call-auto-reject',
+      peerJid: '5511@s.whatsapp.net',
+      callerPn: '5522@s.whatsapp.net',
+    })
+
+    expect(client.voip.rejectCall).toHaveBeenCalledWith('call-auto-reject')
+    expect(client.message.send).toHaveBeenCalledWith('5522@s.whatsapp.net', {
+      type: 'text', text: 'Não atendemos chamadas por aqui.',
+    })
+    expect(voiceBridge.publishIncoming).not.toHaveBeenCalled()
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      key: expect.objectContaining({ __unoapiSkipTypebot: true }),
+      message: { conversation: 'Tentou ligar no WhatsApp' },
+    })], 'notify')
+  })
+
   test('resolves an incoming call LID to its phone number before forwarding the call identity', async () => {
     config.rejectCalls = 'Não atendemos chamadas por aqui.'
     session.contacts.getByJid.mockResolvedValue({

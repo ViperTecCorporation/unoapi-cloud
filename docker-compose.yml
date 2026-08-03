@@ -21,6 +21,7 @@ x-base: &base
     REDIS_URL: redis://redis:6379
     STORAGE_ENDPOINT: https://af1ce4a18c7a153046fbdc9ce50db632.r2.cloudflarestorage.com/
     VOIP_SERVICE_URL: http://host.docker.internal:3097
+    VOIP_BRIDGE_URL: ws://host.docker.internal:3097/v1/bridge/zapo
     VOIP_SERVICE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
     VOIP_MAX_CONCURRENT_CALLS: "2"
     GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}

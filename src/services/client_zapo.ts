@@ -665,10 +665,6 @@ export class ClientZapo implements Client {
 
   private async handleIncomingCall(client: ZapoClient, call: CallInfo) {
     const callerPn = await this.resolveIncomingCallPhone(call)
-    if (this.voiceBridge?.publishIncoming(call, callerPn)) {
-      await this.emitCallWebhook(call, callerPn)
-      return
-    }
     const rejectionMessage = this.config.rejectCalls.trim()
     if (rejectionMessage) {
       await client.voip.rejectCall(call.callId)
@@ -676,6 +672,13 @@ export class ClientZapo implements Client {
         type: 'text',
         text: rejectionMessage,
       })
+      logger.info('Zapo incoming call rejected phone=%s call=%s peer=%s', this.phone, call.callId, callerPn || call.peerJid)
+      await this.emitCallWebhook(call, callerPn)
+      return
+    }
+    if (this.voiceBridge?.publishIncoming(call, callerPn)) {
+      await this.emitCallWebhook(call, callerPn)
+      return
     }
     await this.emitCallWebhook(call, callerPn)
   }
@@ -705,6 +708,7 @@ export class ClientZapo implements Client {
               id: uuid(),
               remoteJid: callerPn || call.peerJid,
               senderPn: callerPn,
+              __unoapiSkipTypebot: true,
             },
             message: { conversation: webhookMessage },
           },

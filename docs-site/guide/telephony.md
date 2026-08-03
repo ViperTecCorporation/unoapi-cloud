@@ -9,11 +9,14 @@ e a telefonia aparece como indisponível.
 
 ```env
 VOIP_SERVICE_URL=http://host.docker.internal:3097
+VOIP_BRIDGE_URL=wss://voip.seudominio.com.br/v1/bridge/zapo
 VOIP_SERVICE_TOKEN=gere-um-token-longo
 VOIP_MAX_CONCURRENT_CALLS=2
 ```
 
-`VOIP_BRIDGE_URL` é opcional. Quando omitida, a Uno deriva
+No Compose público, declare `VOIP_BRIDGE_URL` explicitamente com `wss://` e
+configure o proxy para aceitar WebSocket em `/v1/bridge/zapo`. Em uma rede
+local sem TLS ela pode ser omitida; nesse caso a Uno deriva
 `ws://host.docker.internal:3097/v1/bridge/zapo` de `VOIP_SERVICE_URL`.
 
 ## Configuração do serviço VoIP
@@ -39,6 +42,8 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 environment:
   VOIP_SERVICE_URL: http://host.docker.internal:3097
+  VOIP_BRIDGE_URL: wss://voip.seudominio.com.br/v1/bridge/zapo
+  VOIP_SERVICE_TOKEN: gere-um-token-longo
 ```
 
 Para executar a telefonia fora de container com pacote `.deb` e `systemd`, veja

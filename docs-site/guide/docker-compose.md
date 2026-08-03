@@ -29,8 +29,8 @@ Docker, use `http://unoapi:9876`. Não há outro servidor HTTP dentro do stack.
 
 A telefonia precisa de um segundo host no proxy de borda, por exemplo
 `voip.seudominio.com -> http://HOST_DOCKER:3097`. Habilite WebSocket e preserve
-o upgrade em `/sip/ws`. Esse domínio deve ser o mesmo usado em
-`VOIP_PUBLIC_WS_URL`.
+o upgrade em `/sip/ws` e `/v1/bridge/zapo`. Esse domínio deve ser o mesmo usado
+em `VOIP_PUBLIC_WS_URL` e `VOIP_BRIDGE_URL`.
 
 ## Traefik
 
@@ -64,6 +64,7 @@ Nos dois arquivos, revise:
 - `UNOAPI_AUTH_TOKEN`;
 - usuário e senha do RabbitMQ em `AMQP_URL` e no serviço;
 - senha do Valkey em `REDIS_URL` e no comando do serviço;
+- domínio em `VOIP_BRIDGE_URL` e o mesmo segredo em todos os campos de token VoIP;
 - `WEBHOOK_URL`, token e header;
 - credenciais de armazenamento S3 compatível, caso utilizado.
 
@@ -74,6 +75,7 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 
 | Variável | Finalidade |
 | --- | --- |
+| `VOIP_BRIDGE_URL` | Bridge autenticado do worker Zapo; use `wss://voip.seudominio.com.br/v1/bridge/zapo`. |
 | `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN` | Autenticam API interna e bridge; use o mesmo token longo nos dois campos. |
 | `VOIP_DOMAIN` | Domínio SIP canônico apresentado aos ramais. |
 | `VOIP_PUBLIC_WS_URL` | URL pública `wss://` usada por SIP/WebRTC. |
@@ -98,6 +100,19 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 `203.0.113.10` é um IP reservado para documentação. Troque por seu IP público
 real. Se não houver coturn disponível, deixe as três variáveis TURN vazias em
 vez de apontar para um serviço inexistente.
+
+No bloco compartilhado da Uno, mantenha este trio com o mesmo host e token do
+serviço de telefonia:
+
+```yaml
+VOIP_SERVICE_URL: "http://host.docker.internal:3097"
+VOIP_BRIDGE_URL: "wss://voip.seudominio.com.br/v1/bridge/zapo"
+VOIP_SERVICE_TOKEN: "GERE_UM_TOKEN_LONGO_E_ALEATORIO"
+```
+
+No serviço `viperconnect-telefonia`, `VOIP_SERVICE_TOKEN` e
+`VOIP_BRIDGE_TOKEN` recebem exatamente esse mesmo segredo. Não coloque o token
+na URL e não o exponha em configuração do navegador.
 
 No container, `VOIP_AUTO_UPDATE_ENABLED` e
 `VOIP_AUTO_UPDATE_APPLY_ENABLED` permanecem `false`: a atualização acontece com

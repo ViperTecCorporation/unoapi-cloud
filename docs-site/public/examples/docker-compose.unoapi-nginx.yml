@@ -25,6 +25,7 @@ x-base-environment: &base-environment
   AMQP_URL: "amqp://viperconnect:TROQUE_A_SENHA@unoapi-rabbitmq:5672"
   REDIS_URL: "redis://:TROQUE_A_SENHA@unoapi-redis:6379"
   VOIP_SERVICE_URL: "http://host.docker.internal:3097"
+  VOIP_BRIDGE_URL: "wss://voip.seudominio.com.br/v1/bridge/zapo"
   VOIP_SERVICE_TOKEN: "GERE_UM_TOKEN_LONGO_E_ALEATORIO"
   VOIP_MAX_CONCURRENT_CALLS: "2"
 
