@@ -46,7 +46,7 @@
     "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json",
     "build:docs": "node ./scripts/openapi-to-json.mjs",
     "check:baileys-lock": "node ./scripts/check-baileys-lock.mjs",
-    "postinstall": "node ./scripts/patch-zapo-payment-info.cjs"
+    "postinstall": "node ./scripts/patch-zapo-payment-info.cjs && node ./scripts/patch-zapo-voip-media.cjs"
   },
   "devDependencies": {
     "@whiskeysockets/baileys": "git+https://github.com/ViperTecCorporation/Baileys.git#Main",

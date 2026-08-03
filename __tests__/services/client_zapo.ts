@@ -975,6 +975,27 @@ describe('ClientZapo', () => {
     })], 'notify')
   })
 
+  test('resolves an incoming call LID to its phone number before forwarding the call identity', async () => {
+    config.rejectCalls = 'Não atendemos chamadas por aqui.'
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '11343495192601@lid',
+      lid: '11343495192601@lid',
+      phoneNumber: '5566996269251',
+    } as never)
+    await service.connect(1)
+
+    await handlers.voip_call_incoming({
+      callId: 'call-lid',
+      peerJid: '11343495192601@lid',
+    })
+
+    expect(session.contacts.getByJid).toHaveBeenCalledWith('11343495192601@lid')
+    expect(client.voip.rejectCall).toHaveBeenCalledWith('call-lid')
+    expect(client.message.send).toHaveBeenCalledWith('5566996269251@s.whatsapp.net', {
+      type: 'text', text: 'Não atendemos chamadas por aqui.',
+    })
+  })
+
   test('downloads incoming media through the official Zapo coordinator as a raw storage buffer', async () => {
     client.message.downloadBytes.mockResolvedValue(Uint8Array.from([1, 2, 3]))
     let normalized: any

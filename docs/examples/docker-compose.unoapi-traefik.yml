@@ -2,6 +2,7 @@ name: unoapi
 
 x-base: &base
   image: ghcr.io/viperteccorporation/viperconnect:latest
+  # Preserve o ENTRYPOINT oficial da imagem; selecione o processo somente por UNOAPI_PROCESS_ROLE.
   restart: always
   networks:
     - unoapi

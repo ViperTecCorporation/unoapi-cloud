@@ -179,6 +179,10 @@ A tag `latest` acompanha a versão estável mais recente:
 docker pull ghcr.io/viperteccorporation/viperconnect:latest
 ```
 
+Nos Composes de produção, não declare `entrypoint` nem `command` para os
+containers ViperConnect. Use somente `UNOAPI_PROCESS_ROLE`; a imagem preserva o
+Node como PID 1 e executa o desligamento gracioso das sessões Zapo.
+
 ## Créditos
 
 - Mantenedora: ViperTec Corporation <suporte@vipertec.com.br>

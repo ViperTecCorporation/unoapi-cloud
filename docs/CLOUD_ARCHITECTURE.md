@@ -2,15 +2,19 @@
 
 ## Entrypoint único
 
-A imagem de produção possui um único entrypoint:
+A imagem de produção declara o entrypoint:
 
 ```text
-node dist/src/cloud.js
+/home/u/app/container-entrypoint.sh
 ```
 
-`src/cloud.ts` é o código-fonte TypeScript. `dist/src/cloud.js` é o artefato
-compilado executado pelo Node. Não sobrescreva o entrypoint da imagem com
-`yarn cloud`, `yarn web` ou comandos semelhantes.
+O script usa `exec node`: inicia `voip/dist/app.js` quando
+`UNOAPI_PROCESS_ROLE=voip` e `dist/src/cloud.js` nos demais papéis. Assim o Node
+permanece como PID 1, recebe `SIGTERM` e consegue liberar as leases das sessões
+antes do container sair. Não sobrescreva o entrypoint da imagem com `yarn
+cloud`, `yarn web`, `yarn start` ou comandos semelhantes.
+
+Nos arquivos Compose de produção, omita tanto `entrypoint` quanto `command`.
 
 Os scripts diretos de produção `web`, `worker`, `broker`, `bridge` e
 `standalone` foram removidos do `package.json`. Os módulos internos continuam
@@ -33,7 +37,7 @@ papéis. Portanto, um container único não precisa declarar essa variável.
 ```yaml
 services:
   viperconnect:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.2
+    image: ghcr.io/viperteccorporation/viperconnect:latest
     environment:
       REDIS_URL: redis://redis:6379
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
@@ -51,7 +55,7 @@ Use a mesma imagem e preserve seu entrypoint:
 ```yaml
 services:
   web:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.2
+    image: ghcr.io/viperteccorporation/viperconnect:latest
     environment:
       UNOAPI_PROCESS_ROLE: web
       REDIS_URL: redis://redis:6379
@@ -60,14 +64,14 @@ services:
       - "9876:9876"
 
   broker:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.2
+    image: ghcr.io/viperteccorporation/viperconnect:latest
     environment:
       UNOAPI_PROCESS_ROLE: broker
       REDIS_URL: redis://redis:6379
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
 
   worker-zapo:
-    image: ghcr.io/viperteccorporation/viperconnect:4.0.2
+    image: ghcr.io/viperteccorporation/viperconnect:latest
     environment:
       UNOAPI_PROCESS_ROLE: worker
       UNOAPI_WORKER_ENGINE: zapo

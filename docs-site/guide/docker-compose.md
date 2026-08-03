@@ -47,7 +47,9 @@ docker compose up -d
 ```
 
 Se a network já existir, não execute `docker network create`. Ajuste o domínio,
-entrypoint e `certresolver` nas labels para os nomes usados pelo seu Traefik.
+o entrypoint do Traefik e o `certresolver` nas labels para os nomes usados pelo
+seu Traefik. Esse `entrypoint` pertence ao roteador Traefik e não é o
+`entrypoint` do container ViperConnect.
 
 ## O que alterar antes de subir
 
@@ -65,6 +67,27 @@ Nos dois arquivos, revise:
 Os três serviços ViperConnect usam a mesma imagem e o mesmo bloco de ambiente.
 `UNOAPI_PROCESS_ROLE` seleciona `web`, `broker` ou `worker`; somente o worker
 declara o motor Zapo. Nenhum serviço substitui o entrypoint oficial da imagem.
+
+Não adicione `entrypoint`, `command`, `yarn cloud` ou `yarn start` ao `x-base`
+nem aos serviços `unoapi`, `unoapi-broker`, `unoapi-worker-zapo` e
+`viperconnect-telefonia`. A imagem inicia `/home/u/app/container-entrypoint.sh`,
+que usa `exec node` e permite ao worker receber `SIGTERM`, desconectar as sessões
+e liberar as leases antes de reiniciar.
+
+Modelo correto:
+
+```yaml
+x-base: &base
+  image: ghcr.io/viperteccorporation/viperconnect:latest
+  restart: always
+
+services:
+  unoapi-worker-zapo:
+    <<: *base
+    environment:
+      UNOAPI_PROCESS_ROLE: worker
+      UNOAPI_WORKER_ENGINE: zapo
+```
 
 Para atualizar depois, execute `docker compose pull && docker compose up -d`.
 

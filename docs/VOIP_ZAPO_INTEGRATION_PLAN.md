@@ -79,6 +79,12 @@ o limite passa para 2 e deve provar:
 - encerramento de uma chamada sem afetar a outra;
 - isolamento por `session + callId`.
 
+O roteador usa uma reserva única por chamada outbound e permite até
+`maxActiveCalls` reservas no mesmo slot. A finalização libera o lock pelo ID da
+reserva, nunca todos os locks do slot. Quando o destino também é uma sessão Zapo
+local, a perna inbound espelhada com o mesmo `callId` é observada sem criar uma
+segunda ponte SIP, gravação ou registro de histórico.
+
 Limite cheio retorna erro explícito `concurrent_call_limit`; não existe
 fallback.
 

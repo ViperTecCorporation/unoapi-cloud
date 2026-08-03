@@ -623,9 +623,27 @@ export class ClientZapo implements Client {
       })
     })
     onCurrent('voip_call_state', (call: CallInfo) => {
+      logger.info(
+        'Zapo VoIP state phone=%s call=%s direction=%s state=%s endReason=%s peer=%s',
+        this.phone,
+        call.callId,
+        call.direction,
+        `${call.stateData?.state || 'unknown'}`,
+        `${call.stateData?.endReason || '<none>'}`,
+        call.peerJid,
+      )
       this.voiceBridge?.publishState(call)
     })
     onCurrent('voip_call_ended', (call: CallInfo) => {
+      logger.info(
+        'Zapo VoIP ended phone=%s call=%s direction=%s state=%s endReason=%s peer=%s',
+        this.phone,
+        call.callId,
+        call.direction,
+        `${call.stateData?.state || 'unknown'}`,
+        `${call.stateData?.endReason || 'ended'}`,
+        call.peerJid,
+      )
       this.voiceBridge?.publishEnded(call)
     })
     onCurrent('voip_call_inbound_audio', ({ call, pcm }: { call: CallInfo; pcm: Float32Array }) => {
@@ -637,24 +655,38 @@ export class ClientZapo implements Client {
   }
 
   private async handleIncomingCall(client: ZapoClient, call: CallInfo) {
-    if (this.voiceBridge?.publishIncoming(call)) {
-      await this.emitCallWebhook(call)
+    const callerPn = await this.resolveIncomingCallPhone(call)
+    if (this.voiceBridge?.publishIncoming(call, callerPn)) {
+      await this.emitCallWebhook(call, callerPn)
       return
     }
     const rejectionMessage = this.config.rejectCalls.trim()
     if (rejectionMessage) {
       await client.voip.rejectCall(call.callId)
-      await client.message.send(call.callerPn || call.peerJid, {
+      await client.message.send(callerPn || call.peerJid, {
         type: 'text',
         text: rejectionMessage,
       })
     }
-    await this.emitCallWebhook(call)
+    await this.emitCallWebhook(call, callerPn)
   }
 
-  private async emitCallWebhook(call: CallInfo) {
+  private async resolveIncomingCallPhone(call: CallInfo): Promise<string | undefined> {
+    const explicitPn = normalizeZapoPhoneJid(`${call.callerPn || ''}`)
+    if (explicitPn) return explicitPn
+
+    const storePn = await resolveZapoPhoneJid(this.zapoSession?.contacts, call.peerJid, {
+      attempts: 4,
+      delayMs: 100,
+    }).catch(() => undefined)
+    const cachedPn = storePn || await this.unoStore?.dataStore.getPnForLid?.(this.phone, call.peerJid)
+    return normalizeZapoPhoneJid(`${cachedPn || ''}`)
+  }
+
+  private async emitCallWebhook(call: CallInfo, resolvedCallerPn?: string) {
     const webhookMessage = (this.config.rejectCallsWebhook || this.config.messageCallsWebhook).trim()
     if (webhookMessage) {
+      const callerPn = resolvedCallerPn || call.callerPn
       await this.listener.process(
         this.phone,
         [
@@ -662,8 +694,8 @@ export class ClientZapo implements Client {
             key: {
               fromMe: false,
               id: uuid(),
-              remoteJid: call.callerPn || call.peerJid,
-              senderPn: call.callerPn,
+              remoteJid: callerPn || call.peerJid,
+              senderPn: callerPn,
             },
             message: { conversation: webhookMessage },
           },

@@ -93,7 +93,10 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
             ...value,
           }
         }
-        logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(configForLog(configRedis[key])))
+        const valueForLog = SECRET_CONFIG_KEY.test(key) && configRedis[key]
+          ? '[REDACTED]'
+          : configForLog(configRedis[key])
+        logger.debug('Override env config by redis config in %s: %s => %s', phone, key, JSON.stringify(valueForLog))
         ;(config as any)[key] = configRedis[key]
       });
     }

@@ -46,6 +46,11 @@ serviço VoIP. Todos os containers ViperConnect usam a mesma imagem e tag;
 `UNOAPI_PROCESS_ROLE=voip` seleciona o processo de telefonia, portanto não há
 uma segunda imagem para baixar ou versionar.
 
+Não declare `entrypoint` ou `command` no container de telefonia ou nos demais
+serviços ViperConnect. O entrypoint oficial da imagem reconhece
+`UNOAPI_PROCESS_ROLE=voip` e inicia o processo correto; sobrescrevê-lo também
+impede o desligamento gracioso do worker Zapo.
+
 ## Fluxo de chamada
 
 1. A sessão Zapo abre o bridge autenticado após ficar online.
@@ -57,6 +62,16 @@ uma segunda imagem para baixar ou versionar.
 
 Cada chamada é isolada por `session + callId`. O limite inicial recomendado é
 2; limite cheio retorna erro explícito, sem fallback.
+
+O roteador cria uma reserva exclusiva para cada saída. Um mesmo slot aceita até
+`maxActiveCalls` chamadas e o encerramento de uma delas libera somente a própria
+reserva. Para manter os dois limites coerentes, não configure `maxActiveCalls`
+acima de `VOIP_MAX_CONCURRENT_CALLS`.
+
+Se o número chamado também estiver conectado como sessão Zapo nesta instalação,
+o WhatsApp gera uma perna recebida espelhada com o mesmo `callId`. Ela é
+observada, mas não abre outro ramal, stream, gravação ou histórico. A perna de
+saída continua sendo a dona da ponte de áudio, como numa chamada externa.
 
 ## API administrativa
 

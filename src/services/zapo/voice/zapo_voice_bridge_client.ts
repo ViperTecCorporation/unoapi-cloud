@@ -70,7 +70,7 @@ export class ZapoVoiceBridgeClient {
     return this.ready && this.ws?.readyState === WebSocket.OPEN
   }
 
-  publishIncoming(call: any) {
+  publishIncoming(call: any, resolvedCallerPn?: string) {
     if (!this.isReady()) return false
     this.send({
       type: 'call.incoming',
@@ -78,7 +78,7 @@ export class ZapoVoiceBridgeClient {
       callId: call.callId,
       direction: 'incoming',
       peerJid: call.peerJid,
-      callerPn: call.callerPn,
+      callerPn: resolvedCallerPn || call.callerPn,
       media: 'audio',
       canAccept: !!call.canAccept,
     })

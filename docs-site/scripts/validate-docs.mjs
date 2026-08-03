@@ -117,12 +117,11 @@ const composeFiles = [
 for (const composeFile of composeFiles) {
   const composeContent = await readFile(composeFile, 'utf8')
   const compose = parseYaml(composeContent)
-  const app = compose.services?.unoapi
   const base = compose['x-base']
   if (base?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest') {
     throw new Error(`Compose público usa imagem incorreta: ${path.basename(composeFile)}`)
   }
-  if (base.entrypoint || base.command || app.entrypoint || app.command) {
+  if (base.entrypoint || base.command) {
     throw new Error(`Compose público substitui o entrypoint: ${path.basename(composeFile)}`)
   }
   const workerEnvironment = compose.services?.['unoapi-worker-zapo']?.environment
@@ -133,9 +132,16 @@ for (const composeFile of composeFiles) {
   if (telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' || telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' || telephony?.network_mode !== 'host') {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
-  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']) {
+  const requiredServices = ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']
+  for (const service of requiredServices) {
     if (!compose.services?.[service]) {
       throw new Error(`${path.basename(composeFile)} sem serviço ${service}`)
+    }
+  }
+  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'viperconnect-telefonia']) {
+    const definition = compose.services?.[service]
+    if (definition?.entrypoint || definition?.command) {
+      throw new Error(`${path.basename(composeFile)} substitui entrypoint/command em ${service}`)
     }
   }
   for (const volume of ['redis', 'rabbitmq', 'telefonia']) {
