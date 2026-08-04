@@ -1,14 +1,14 @@
 import type { Logger } from 'zapo-js'
 import { toUserJid } from 'zapo-js/protocol'
 import { type BinaryNode, getFirstNodeChild, getNodeChildrenByTag } from 'zapo-js/transport'
-import { toError, uint8TimingSafeEqual } from 'zapo-js/util'
+import { toError } from 'zapo-js/util'
 
 import { concatBytes, EMPTY_BYTES, readUInt32BE, toArrayBuffer } from '../bytes.js'
 import { derivePerJidSrtpKey } from '../crypto/encryption.js'
 import { SrtpSession } from '../crypto/srtp.js'
-import { generateSecureSsrc } from '../crypto/ssrc.js'
+import { generateSecureSsrc, generateWasmRelayStreamSsrcs } from '../crypto/ssrc.js'
 import { MLowCodec } from '../media/mlow-codec.js'
-import { RtpSession } from '../media/rtp.js'
+import { isOpusDtxPayload, RtpSession } from '../media/rtp.js'
 import { WaAudioEngine } from '../media/WaAudioEngine.js'
 import { parseRelayFromAck } from '../relay/relay-ack.js'
 import { normalizeRelayEndpoints } from '../relay/relay-endpoints.js'
@@ -24,10 +24,8 @@ import {
     buildRelayLatencyStanza,
     buildTerminateStanza,
     buildTransportStanza,
-    decryptCallKey,
     extractNodeInfo,
-    extractRelayEndpoints,
-    needsDecryption
+    extractRelayEndpoints
 } from '../signaling/signaling.js'
 import {
     type AudioSender,
@@ -75,10 +73,14 @@ export class WaCallMediaSession implements AudioSender {
     private outgoingPreacceptSent = false
 
     private selfSsrc = 0
+    private selfStreamSsrcs: number[] = []
     private peerSsrcs: number[] = []
 
     private firstPacketSent = false
     private acceptedByJid: string | null = null
+    private acceptPending = false
+    private acceptSent = false
+    private remoteMuteObserved = false
     private readonly debeEnabled = true
 
     private audioSendCount = 0
@@ -139,9 +141,11 @@ export class WaCallMediaSession implements AudioSender {
     }
 
     async initMedia(selfLid: string, peerJid: string): Promise<void> {
-        const ssrc = generateSecureSsrc(this.info.callId, this.ensureDeviceJid(selfLid))
+        const selfDeviceJid = this.ensureDeviceJid(selfLid)
+        const ssrc = generateSecureSsrc(this.info.callId, selfDeviceJid)
         this.rtpSession = RtpSession.whatsappOpus(ssrc)
         this.selfSsrc = ssrc
+        this.selfStreamSsrcs = generateWasmRelayStreamSsrcs(this.info.callId, selfDeviceJid)
 
         const peerSsrc = generateSecureSsrc(this.info.callId, this.ensureDeviceJid(peerJid))
         this.peerSsrcs = [peerSsrc]
@@ -170,57 +174,22 @@ export class WaCallMediaSession implements AudioSender {
         this.info.applyTransition({ type: 'local_accepted' })
         this.delegate.emitState(this.info)
 
-        const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? ''
         const callId = this.info.callId
-        const callCreator = this.info.callCreator
         const peerJid = this.info.peerJid
-        const isVideo = this.info.mediaType === CallMediaType.Video
 
         this.acceptedByJid = peerJid
         this.initSrtpKeys()
-
-        try {
-            const muteNode = buildMuteV2Stanza(peerJid, callId, callCreator, 0, meId)
-            await this.deps.lowLevelCoordinator.sendNode(muteNode)
-        } catch (err: unknown) {
-            this.logger.error('error sending mute_v2', {
-                message: toError(err).message
-            })
-        }
-
-        try {
-            const transportNode = buildTransportStanza(peerJid, callId, callCreator, meId, '1', '1')
-            await this.deps.lowLevelCoordinator.sendNode(transportNode)
-        } catch (err: unknown) {
-            this.logger.error('error sending transport', {
-                message: toError(err).message
-            })
-        }
-
-        if (this.info.encryptionKey) {
-            const acceptStanza = await buildAcceptStanza(
-                this.deps,
-                this.info.callId,
-                this.info.encryptionKey,
-                this.info.peerJid,
-                this.info.callCreator,
-                isVideo
-            )
-
-            try {
-                await this.deps.lowLevelCoordinator.sendNode(acceptStanza)
-            } catch (err: unknown) {
-                this.logger.error('accept send error', {
-                    message: toError(err).message
-                })
-            }
-        }
+        this.acceptPending = true
+        if (this.remoteMuteObserved) await this.sendPendingAccept()
 
         if (this.info.relayData) {
             await this.connectRelays(this.info.relayData.endpoints)
         }
 
-        this.logger.debug('call accepted', { callId })
+        this.logger.debug('call answer committed; waiting for caller mute_v2', {
+            callId,
+            remoteMuteObserved: this.remoteMuteObserved
+        })
     }
 
     async rejectCall(reason: EndCallReason = EndCallReason.Declined): Promise<void> {
@@ -355,68 +324,6 @@ export class WaCallMediaSession implements AudioSender {
         const nodeInfo = extractNodeInfo(node)
         if (!nodeInfo) return
 
-        let srtpFromPeerKey = false
-
-        if (needsDecryption(nodeInfo.tag)) {
-            try {
-                const peerCallKey = await decryptCallKey(
-                    this.deps,
-                    nodeInfo.innerNode,
-                    peerJid,
-                    this.logger.child({ component: 'signaling' })
-                )
-                if (peerCallKey) {
-                    const ourCallKey = this.info.encryptionKey
-                    const keysMatch = ourCallKey
-                        ? uint8TimingSafeEqual(ourCallKey, peerCallKey)
-                        : false
-                    if (!keysMatch && ourCallKey) {
-                        const meLid = this.deps.authClient.getCurrentCredentials()?.meLid
-                        const meJid = this.deps.authClient.getCurrentCredentials()?.meJid
-                        const ourCredJid = meLid || meJid || ''
-                        const ourBase = ourCredJid ? toUserJid(ourCredJid) : ''
-                        const participants = this.info.relayData?.participantJids || []
-                        const ourDeviceJid =
-                            participants.find((jid) => {
-                                const jBase = toUserJid(jid)
-                                return jBase === ourBase && /:\d+@/.test(jid)
-                            }) || ourCredJid
-
-                        if (ourDeviceJid && peerJid) {
-                            try {
-                                const sendKeying = derivePerJidSrtpKey(
-                                    ourCallKey,
-                                    this.ensureDeviceJid(ourDeviceJid)
-                                )
-                                const recvKeying = derivePerJidSrtpKey(
-                                    peerCallKey,
-                                    this.ensureDeviceJid(peerJid)
-                                )
-                                this.srtpSession = new SrtpSession(
-                                    sendKeying,
-                                    recvKeying,
-                                    SRTP_SEND_AUTH_TAG_LEN,
-                                    SRTP_RECV_AUTH_TAG_LEN
-                                )
-                                srtpFromPeerKey = true
-                                this.logger.debug('srtp re-initialized with peer call_key', {
-                                    callId: this.info.callId
-                                })
-                            } catch (err: unknown) {
-                                this.logger.error('per-jid srtp re-derivation failed', {
-                                    message: toError(err).message
-                                })
-                            }
-                        }
-                    }
-                }
-            } catch (err: unknown) {
-                this.logger.error('accept decrypt error', {
-                    message: toError(err).message
-                })
-            }
-        }
-
         try {
             this.info.applyTransition({ type: 'remote_accepted' })
             this.delegate.emitState(this.info)
@@ -458,9 +365,7 @@ export class WaCallMediaSession implements AudioSender {
         )
         this.sctpRelay.resendSubscriptions()
 
-        if (!srtpFromPeerKey) {
-            this.initSrtpKeys()
-        }
+        this.initSrtpKeys()
 
         if (this.info.relayData?.participantJids) {
             const otherDevices = this.info.relayData.participantJids.filter((jid) => {
@@ -672,6 +577,10 @@ export class WaCallMediaSession implements AudioSender {
                     this.selfSsrc = newSelfSsrc
                     this.rtpSession = RtpSession.whatsappOpus(newSelfSsrc)
                 }
+                this.selfStreamSsrcs = generateWasmRelayStreamSsrcs(
+                    this.info.callId,
+                    ourDeviceJid
+                )
 
                 if (peerJids.length > 0) {
                     this.peerSsrcs = [
@@ -782,18 +691,10 @@ export class WaCallMediaSession implements AudioSender {
     async handleCallMuteV2(node: BinaryNode, peerJid: string): Promise<void> {
         const nodeInfo = extractNodeInfo(node)
         if (!nodeInfo) return
-
-        const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? ''
-        const callId = this.info.callId
-        const callCreator = this.info.callCreator
-
-        try {
-            const muteNode = buildMuteV2Stanza(peerJid, callId, callCreator, 0, meId)
-            await this.deps.lowLevelCoordinator.sendNode(muteNode)
-        } catch (err: unknown) {
-            this.logger.error('error sending mute_v2 response', {
-                message: toError(err).message
-            })
+        this.remoteMuteObserved = true
+        if (this.info.direction === CallDirection.Incoming && this.acceptPending) {
+            this.acceptedByJid = peerJid
+            await this.sendPendingAccept()
         }
     }
 
@@ -922,6 +823,10 @@ export class WaCallMediaSession implements AudioSender {
         this.encodeBuffer = null
         this.encodeBufferPos = 0
         this.acceptedByJid = null
+        this.acceptPending = false
+        this.acceptSent = false
+        this.remoteMuteObserved = false
+        this.selfStreamSsrcs = []
     }
 
     private get encodeFrameSamples(): number {
@@ -953,7 +858,9 @@ export class WaCallMediaSession implements AudioSender {
             if (this.debeEnabled) {
                 rtpPacket.header.extension = true
                 rtpPacket.header.extensionProfile = 0xdebe
-                rtpPacket.header.extensionData = WaCallMediaSession.EMPTY_BYTES
+                rtpPacket.header.extensionData = isOpusDtxPayload(opusFrame)
+                    ? new Uint8Array([0x30, 0x01, 0x00, 0x00])
+                    : WaCallMediaSession.EMPTY_BYTES
             }
 
             if (!this.firstPacketSent) {
@@ -1043,6 +950,25 @@ export class WaCallMediaSession implements AudioSender {
         this.encodeBuffer = null
         this.encodeBufferPos = 0
         this.realAudioSendCount = 0
+    }
+
+    private async sendPendingAccept(): Promise<void> {
+        if (!this.acceptPending || this.acceptSent) return
+
+        const acceptStanza = await buildAcceptStanza(
+            this.info.callId,
+            this.acceptedByJid || this.info.peerJid,
+            this.info.callCreator,
+            this.info.mediaType === CallMediaType.Video
+        )
+        try {
+            await this.deps.lowLevelCoordinator.sendNode(acceptStanza)
+            this.acceptPending = false
+            this.acceptSent = true
+            this.logger.debug('accept sent after caller mute_v2', { callId: this.info.callId })
+        } catch (err: unknown) {
+            this.logger.error('accept send error', { message: toError(err).message })
+        }
     }
 
     private onRelayConnected(): void {
@@ -1162,7 +1088,13 @@ export class WaCallMediaSession implements AudioSender {
             return
         }
 
+        if (this.selfStreamSsrcs.length !== 9) {
+            this.logger.error('WASM relay streams not initialized', { callId: this.info.callId })
+            return
+        }
+
         this.sctpRelay.setSsrc(this.selfSsrc)
+        this.sctpRelay.setStreamSsrcs(this.selfStreamSsrcs)
         this.sctpRelay.setSubscriptionSsrcs(this.peerSsrcs)
         this.sctpRelay.setParticipantPids(
             this.info.relayData?.selfPid,

@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { WaSctpRelay } from '../WaSctpRelay.js'
+import {
+    WA_RELAY_DATA_CHANNEL_ID,
+    WA_RELAY_DATA_CHANNEL_LABEL,
+    WaSctpRelay
+} from '../WaSctpRelay.js'
+
+test('relay uses the WhatsApp pre-negotiated data channel contract', () => {
+    assert.equal(WA_RELAY_DATA_CHANNEL_ID, 0)
+    assert.equal(WA_RELAY_DATA_CHANNEL_LABEL, 'pre-negotiated')
+})
 
 test('relay keeps every unique peer SSRC for media subscription', () => {
     const relay = new WaSctpRelay()
@@ -28,4 +37,14 @@ test('relay normalizes missing or invalid participant PIDs to zero', () => {
 
     assert.equal((relay as any).selfPid, 0)
     assert.equal((relay as any).peerPid, 0)
+})
+
+test('relay stores the complete nine-stream WASM allocation plan', () => {
+    const relay = new WaSctpRelay()
+    const streams = Array.from({ length: 9 }, (_, index) => 0x20000000 + index)
+
+    relay.setStreamSsrcs(streams)
+
+    assert.deepEqual((relay as any).streamSsrcs, streams)
+    assert.throws(() => relay.setStreamSsrcs(streams.slice(0, 8)), /expected 9/)
 })

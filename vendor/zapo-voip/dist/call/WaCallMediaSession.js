@@ -25,9 +25,13 @@ class WaCallMediaSession {
         this.initialTransportSent = false;
         this.outgoingPreacceptSent = false;
         this.selfSsrc = 0;
+        this.selfStreamSsrcs = [];
         this.peerSsrcs = [];
         this.firstPacketSent = false;
         this.acceptedByJid = null;
+        this.acceptPending = false;
+        this.acceptSent = false;
+        this.remoteMuteObserved = false;
         this.debeEnabled = true;
         this.audioSendCount = 0;
         this.audioDropCount = 0;
@@ -73,9 +77,11 @@ class WaCallMediaSession {
         return this.info.callId;
     }
     async initMedia(selfLid, peerJid) {
-        const ssrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, this.ensureDeviceJid(selfLid));
+        const selfDeviceJid = this.ensureDeviceJid(selfLid);
+        const ssrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, selfDeviceJid);
         this.rtpSession = rtp_js_1.RtpSession.whatsappOpus(ssrc);
         this.selfSsrc = ssrc;
+        this.selfStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, selfDeviceJid);
         const peerSsrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, this.ensureDeviceJid(peerJid));
         this.peerSsrcs = [peerSsrc];
         this.logger.debug('call media initialized', {
@@ -95,46 +101,20 @@ class WaCallMediaSession {
         }
         this.info.applyTransition({ type: 'local_accepted' });
         this.delegate.emitState(this.info);
-        const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? '';
         const callId = this.info.callId;
-        const callCreator = this.info.callCreator;
         const peerJid = this.info.peerJid;
-        const isVideo = this.info.mediaType === types_js_1.CallMediaType.Video;
         this.acceptedByJid = peerJid;
         this.initSrtpKeys();
-        try {
-            const muteNode = (0, signaling_js_1.buildMuteV2Stanza)(peerJid, callId, callCreator, 0, meId);
-            await this.deps.lowLevelCoordinator.sendNode(muteNode);
-        }
-        catch (err) {
-            this.logger.error('error sending mute_v2', {
-                message: (0, util_1.toError)(err).message
-            });
-        }
-        try {
-            const transportNode = (0, signaling_js_1.buildTransportStanza)(peerJid, callId, callCreator, meId, '1', '1');
-            await this.deps.lowLevelCoordinator.sendNode(transportNode);
-        }
-        catch (err) {
-            this.logger.error('error sending transport', {
-                message: (0, util_1.toError)(err).message
-            });
-        }
-        if (this.info.encryptionKey) {
-            const acceptStanza = await (0, signaling_js_1.buildAcceptStanza)(this.deps, this.info.callId, this.info.encryptionKey, this.info.peerJid, this.info.callCreator, isVideo);
-            try {
-                await this.deps.lowLevelCoordinator.sendNode(acceptStanza);
-            }
-            catch (err) {
-                this.logger.error('accept send error', {
-                    message: (0, util_1.toError)(err).message
-                });
-            }
-        }
+        this.acceptPending = true;
+        if (this.remoteMuteObserved)
+            await this.sendPendingAccept();
         if (this.info.relayData) {
             await this.connectRelays(this.info.relayData.endpoints);
         }
-        this.logger.debug('call accepted', { callId });
+        this.logger.debug('call answer committed; waiting for caller mute_v2', {
+            callId,
+            remoteMuteObserved: this.remoteMuteObserved
+        });
     }
     async rejectCall(reason = types_js_1.EndCallReason.Declined) {
         this.info.applyTransition({ type: 'local_rejected', reason });
@@ -243,50 +223,6 @@ class WaCallMediaSession {
         const nodeInfo = (0, signaling_js_1.extractNodeInfo)(node);
         if (!nodeInfo)
             return;
-        let srtpFromPeerKey = false;
-        if ((0, signaling_js_1.needsDecryption)(nodeInfo.tag)) {
-            try {
-                const peerCallKey = await (0, signaling_js_1.decryptCallKey)(this.deps, nodeInfo.innerNode, peerJid, this.logger.child({ component: 'signaling' }));
-                if (peerCallKey) {
-                    const ourCallKey = this.info.encryptionKey;
-                    const keysMatch = ourCallKey
-                        ? (0, util_1.uint8TimingSafeEqual)(ourCallKey, peerCallKey)
-                        : false;
-                    if (!keysMatch && ourCallKey) {
-                        const meLid = this.deps.authClient.getCurrentCredentials()?.meLid;
-                        const meJid = this.deps.authClient.getCurrentCredentials()?.meJid;
-                        const ourCredJid = meLid || meJid || '';
-                        const ourBase = ourCredJid ? (0, protocol_1.toUserJid)(ourCredJid) : '';
-                        const participants = this.info.relayData?.participantJids || [];
-                        const ourDeviceJid = participants.find((jid) => {
-                            const jBase = (0, protocol_1.toUserJid)(jid);
-                            return jBase === ourBase && /:\d+@/.test(jid);
-                        }) || ourCredJid;
-                        if (ourDeviceJid && peerJid) {
-                            try {
-                                const sendKeying = (0, encryption_js_1.derivePerJidSrtpKey)(ourCallKey, this.ensureDeviceJid(ourDeviceJid));
-                                const recvKeying = (0, encryption_js_1.derivePerJidSrtpKey)(peerCallKey, this.ensureDeviceJid(peerJid));
-                                this.srtpSession = new srtp_js_1.SrtpSession(sendKeying, recvKeying, types_js_1.SRTP_SEND_AUTH_TAG_LEN, types_js_1.SRTP_RECV_AUTH_TAG_LEN);
-                                srtpFromPeerKey = true;
-                                this.logger.debug('srtp re-initialized with peer call_key', {
-                                    callId: this.info.callId
-                                });
-                            }
-                            catch (err) {
-                                this.logger.error('per-jid srtp re-derivation failed', {
-                                    message: (0, util_1.toError)(err).message
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            catch (err) {
-                this.logger.error('accept decrypt error', {
-                    message: (0, util_1.toError)(err).message
-                });
-            }
-        }
         try {
             this.info.applyTransition({ type: 'remote_accepted' });
             this.delegate.emitState(this.info);
@@ -323,9 +259,7 @@ class WaCallMediaSession {
         this.sctpRelay.setSubscriptionSsrcs(this.peerSsrcs);
         this.sctpRelay.setParticipantPids(this.info.relayData?.selfPid, this.info.relayData?.peerPid);
         this.sctpRelay.resendSubscriptions();
-        if (!srtpFromPeerKey) {
-            this.initSrtpKeys();
-        }
+        this.initSrtpKeys();
         if (this.info.relayData?.participantJids) {
             const otherDevices = this.info.relayData.participantJids.filter((jid) => {
                 if (jid === acceptingDeviceJid)
@@ -496,6 +430,7 @@ class WaCallMediaSession {
                     this.selfSsrc = newSelfSsrc;
                     this.rtpSession = rtp_js_1.RtpSession.whatsappOpus(newSelfSsrc);
                 }
+                this.selfStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, ourDeviceJid);
                 if (peerJids.length > 0) {
                     this.peerSsrcs = [
                         ...new Set(peerJids.map((jid) => (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, this.ensureDeviceJid(jid))))
@@ -588,17 +523,10 @@ class WaCallMediaSession {
         const nodeInfo = (0, signaling_js_1.extractNodeInfo)(node);
         if (!nodeInfo)
             return;
-        const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? '';
-        const callId = this.info.callId;
-        const callCreator = this.info.callCreator;
-        try {
-            const muteNode = (0, signaling_js_1.buildMuteV2Stanza)(peerJid, callId, callCreator, 0, meId);
-            await this.deps.lowLevelCoordinator.sendNode(muteNode);
-        }
-        catch (err) {
-            this.logger.error('error sending mute_v2 response', {
-                message: (0, util_1.toError)(err).message
-            });
+        this.remoteMuteObserved = true;
+        if (this.info.direction === types_js_1.CallDirection.Incoming && this.acceptPending) {
+            this.acceptedByJid = peerJid;
+            await this.sendPendingAccept();
         }
     }
     handleCallTerminate() {
@@ -716,6 +644,10 @@ class WaCallMediaSession {
         this.encodeBuffer = null;
         this.encodeBufferPos = 0;
         this.acceptedByJid = null;
+        this.acceptPending = false;
+        this.acceptSent = false;
+        this.remoteMuteObserved = false;
+        this.selfStreamSsrcs = [];
     }
     get encodeFrameSamples() {
         return this.opusCodec?.getFrameSize() ?? 960;
@@ -741,7 +673,9 @@ class WaCallMediaSession {
             if (this.debeEnabled) {
                 rtpPacket.header.extension = true;
                 rtpPacket.header.extensionProfile = 0xdebe;
-                rtpPacket.header.extensionData = WaCallMediaSession.EMPTY_BYTES;
+                rtpPacket.header.extensionData = (0, rtp_js_1.isOpusDtxPayload)(opusFrame)
+                    ? new Uint8Array([0x30, 0x01, 0x00, 0x00])
+                    : WaCallMediaSession.EMPTY_BYTES;
             }
             if (!this.firstPacketSent) {
                 this.firstPacketSent = true;
@@ -817,6 +751,20 @@ class WaCallMediaSession {
         this.encodeBuffer = null;
         this.encodeBufferPos = 0;
         this.realAudioSendCount = 0;
+    }
+    async sendPendingAccept() {
+        if (!this.acceptPending || this.acceptSent)
+            return;
+        const acceptStanza = await (0, signaling_js_1.buildAcceptStanza)(this.info.callId, this.acceptedByJid || this.info.peerJid, this.info.callCreator, this.info.mediaType === types_js_1.CallMediaType.Video);
+        try {
+            await this.deps.lowLevelCoordinator.sendNode(acceptStanza);
+            this.acceptPending = false;
+            this.acceptSent = true;
+            this.logger.debug('accept sent after caller mute_v2', { callId: this.info.callId });
+        }
+        catch (err) {
+            this.logger.error('accept send error', { message: (0, util_1.toError)(err).message });
+        }
     }
     onRelayConnected() {
         if (this.info.stateData.state === types_js_1.CallState.Connecting) {
@@ -924,7 +872,12 @@ class WaCallMediaSession {
             this.logger.error('no relay configs', { callId: this.info.callId });
             return;
         }
+        if (this.selfStreamSsrcs.length !== 9) {
+            this.logger.error('WASM relay streams not initialized', { callId: this.info.callId });
+            return;
+        }
         this.sctpRelay.setSsrc(this.selfSsrc);
+        this.sctpRelay.setStreamSsrcs(this.selfStreamSsrcs);
         this.sctpRelay.setSubscriptionSsrcs(this.peerSsrcs);
         this.sctpRelay.setParticipantPids(this.info.relayData?.selfPid, this.info.relayData?.peerPid);
         try {

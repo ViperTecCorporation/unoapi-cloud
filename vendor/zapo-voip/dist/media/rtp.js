@@ -1,11 +1,25 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RtpSession = exports.RtpPacket = exports.RtpHeader = void 0;
+exports.isOpusDtxPayload = isOpusDtxPayload;
 const bytes_js_1 = require("../bytes.js");
 const primitives_js_1 = require("../crypto/primitives.js");
 const types_js_1 = require("../types.js");
 const RTP_VERSION = 2;
 const MIN_HEADER_SIZE = 12;
+function isOpusDtxPayload(payload) {
+    if (payload.length === 0)
+        return false;
+    if (payload.length === 1) {
+        return payload[0] === 0x10 || payload[0] === 0x88 || payload[0] === 0x90;
+    }
+    if (payload.length > 15)
+        return false;
+    const first = payload[0];
+    if ((first & 0xf8) === 0x08 || first === 0x0a)
+        return true;
+    return (first & 0xf0) === 0x30 && payload.length <= 6;
+}
 class RtpHeader {
     get csrcCount() {
         return this.csrc.length;

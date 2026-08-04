@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildSenderSubscriptions = buildSenderSubscriptions;
 exports.buildSSRCSubscriptionList = buildSSRCSubscriptionList;
+exports.buildWasmStreamDescriptors = buildWasmStreamDescriptors;
 exports.buildAllocateForRelay = buildAllocateForRelay;
 exports.buildBindingRequest = buildBindingRequest;
 exports.buildBindingRequestWithSubs = buildBindingRequestWithSubs;
@@ -148,6 +149,42 @@ function buildSSRCSubscriptionList(selfSsrcs, peerSsrcs, selfPid, peerPid) {
     }
     return (0, bytes_js_1.concatBytes)(entries);
 }
+const WASM_STREAM_DESCRIPTOR_PLAN = [
+    { participant: 0, layer: 0 },
+    { participant: 0, layer: 1 },
+    { participant: 0, layer: 2 },
+    { participant: 1, layer: 0 },
+    { participant: 1, layer: 1 },
+    { participant: 1, layer: 2 },
+    { participant: 2, layer: 0 },
+    { participant: 2, layer: 1 },
+    { participant: 2, layer: 2 }
+];
+/**
+ * Builds the WASM/Web StreamDescriptors protobuf carried in STUN attribute 0x4024.
+ * The relay expects all nine deterministic streams, even for an audio-only 1:1 call.
+ */
+function buildWasmStreamDescriptors(streamSsrcs) {
+    if (streamSsrcs.length !== WASM_STREAM_DESCRIPTOR_PLAN.length) {
+        throw new Error(`expected 9 WASM relay stream SSRCs, got ${streamSsrcs.length}`);
+    }
+    const descriptors = streamSsrcs.map((ssrc, index) => {
+        if (!Number.isSafeInteger(ssrc) || ssrc <= 0 || ssrc > 0xffffffff) {
+            throw new Error(`invalid WASM relay stream SSRC at index ${index}`);
+        }
+        const plan = WASM_STREAM_DESCRIPTOR_PLAN[index];
+        const fields = [];
+        if (plan.participant !== 0) {
+            fields.push(encodeProtobufVarintField(1, plan.participant));
+        }
+        if (plan.layer !== 0) {
+            fields.push(encodeProtobufVarintField(2, plan.layer));
+        }
+        fields.push(encodeProtobufVarintField(3, ssrc));
+        return encodeProtobufLengthDelimited(1, (0, bytes_js_1.concatBytes)(fields));
+    });
+    return (0, bytes_js_1.concatBytes)(descriptors);
+}
 function encodeXorRelayedAddress(ip, port) {
     const data = new Uint8Array(8);
     data[0] = 0x00;
@@ -158,11 +195,11 @@ function encodeXorRelayedAddress(ip, port) {
     (0, bytes_js_1.writeUInt32BE)(data, (ipNum ^ STUN_MAGIC_COOKIE) >>> 0, 4);
     return data;
 }
-function buildAllocateForRelay(senderSubscriptions, ssrcList, hmacKey, relayIp, relayPort) {
+function buildAllocateForRelay(relayToken, streamDescriptors, hmacKey, relayIp, relayPort) {
     const transactionId = generateTransactionId();
     const parts = [];
-    parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, senderSubscriptions));
-    parts.push(encodeAttribute(ATTR_SSRC_LIST, ssrcList));
+    parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, relayToken));
+    parts.push(encodeAttribute(ATTR_SSRC_LIST, streamDescriptors));
     if (relayIp && relayPort) {
         parts.push(encodeAttribute(ATTR_XOR_RELAYED_ADDRESS, encodeXorRelayedAddress(relayIp, relayPort)));
     }

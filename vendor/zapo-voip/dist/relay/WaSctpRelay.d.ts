@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events';
 import { type Logger } from 'zapo-js';
 type PeerConnectionClass = RTCPeerConnection;
 type DataChannelClass = RTCDataChannel;
+export declare const WA_RELAY_DATA_CHANNEL_ID = 0;
+export declare const WA_RELAY_DATA_CHANNEL_LABEL = "pre-negotiated";
 declare enum ConnectionState {
     None = "None",
     Connecting = "Connecting",
@@ -60,12 +62,14 @@ export declare class WaSctpRelay extends EventEmitter {
     private audioSsrc;
     private subscriptionSsrc;
     private subscriptionSsrcs;
+    private streamSsrcs;
     private selfPid;
     private peerPid;
     constructor(options?: WaSctpRelayOptions);
     setSsrc(ssrc: number): void;
     setSubscriptionSsrc(ssrc: number): void;
     setSubscriptionSsrcs(ssrcs: readonly number[]): void;
+    setStreamSsrcs(ssrcs: readonly number[]): void;
     setParticipantPids(selfPid?: number, peerPid?: number): void;
     resendSubscriptions(): void;
     private addRelayCandidate;

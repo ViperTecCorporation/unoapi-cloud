@@ -90,6 +90,23 @@ function buildTerminateNode(callId: string, from = '2222222222:0@lid'): BinaryNo
     }
 }
 
+function buildMuteNode(callId: string, from = '2222222222:0@lid'): BinaryNode {
+    return {
+        tag: 'call',
+        attrs: { from, id: 'MUTEMSGID' },
+        content: [
+            {
+                tag: 'mute_v2',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': from,
+                    'mute-state': '0'
+                }
+            }
+        ]
+    }
+}
+
 test('WaCallManager rejects invalid maxConcurrentCalls', () => {
     const { deps, stores } = createMockDeps()
     assert.throws(
@@ -138,11 +155,9 @@ test('startCall uses explicit peerDevices instead of syncing a different device 
     assert.equal(syncCalls, 0)
     const offer = (sent[0].content as BinaryNode[])[0]
     const destination = (offer.content as BinaryNode[]).find((node) => node.tag === 'destination')
-    assert.ok(destination)
-    assert.deepEqual(
-        (destination.content as BinaryNode[]).map((node) => node.attrs.jid),
-        ['2222222222:7@lid']
-    )
+    const inlineEnc = (offer.content as BinaryNode[]).find((node) => node.tag === 'enc')
+    assert.equal(destination, undefined)
+    assert.ok(inlineEnc)
 })
 
 test('startCall prepares PN and resolved LID presence before syncing offer devices', async () => {
@@ -164,10 +179,9 @@ test('startCall prepares PN and resolved LID presence before syncing offer devic
     assert.deepEqual(subscribed, ['5511999999999@s.whatsapp.net', '2222222222@lid'])
     const offer = (sent[0].content as BinaryNode[])[0]
     const destination = (offer.content as BinaryNode[]).find((node) => node.tag === 'destination')
-    assert.deepEqual(
-        (destination?.content as BinaryNode[]).map((node) => node.attrs.jid),
-        ['2222222222:28@lid']
-    )
+    const inlineEnc = (offer.content as BinaryNode[]).find((node) => node.tag === 'enc')
+    assert.equal(destination, undefined)
+    assert.ok(inlineEnc)
 })
 
 test('startCall rejects explicit peerDevices from another account', async () => {
@@ -252,6 +266,27 @@ test('incoming offer with capacity creates a second session', async () => {
     )
 
     assert.equal(manager.getCalls().length, 2)
+})
+
+test('incoming answer defers accept until the caller mute_v2 arrives', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMINGCALL0000000000000004'
+    const peer = '2222222222:0@lid'
+
+    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    const beforeAnswer = sent.length
+    await manager.acceptCall(callId)
+
+    const answerNodes = sent.slice(beforeAnswer)
+    assert.equal(
+        answerNodes.some((node) => (node.content as BinaryNode[])?.[0]?.tag === 'accept'),
+        false
+    )
+
+    await manager.handleCallMuteV2(buildMuteNode(callId, peer), peer)
+    const accept = sent.find((node) => (node.content as BinaryNode[])?.[0]?.tag === 'accept')
+    assert.ok(accept)
 })
 
 test('handleCallTerminate only ends the matching call', async () => {

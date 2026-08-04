@@ -19,10 +19,13 @@ function normalizeRelayEndpoints(endpoints) {
         .filter((endpoint) => endpoint.key && endpoint.rawToken)
         .flatMap((endpoint) => {
         const baseName = endpoint.relayName || endpoint.ip;
+        const advertisedPort = Number.isSafeInteger(endpoint.port) && endpoint.port > 0
+            ? endpoint.port
+            : WA_RELAY_PORT;
         const variants = [
             {
                 ip: endpoint.ip,
-                port: WA_RELAY_PORT,
+                port: advertisedPort,
                 token: endpoint.token,
                 authToken: endpoint.authToken,
                 rawAuthToken: endpoint.rawAuthToken,
@@ -35,7 +38,7 @@ function normalizeRelayEndpoints(endpoints) {
             }
         ];
         const needsWebTokenFallback = endpoint.authTokenId === '0' || /^fops/i.test(endpoint.relayName || '');
-        if (needsWebTokenFallback) {
+        if (needsWebTokenFallback && advertisedPort !== WEB_RELAY_PORT) {
             variants.push({
                 ip: endpoint.ip,
                 port: WEB_RELAY_PORT,

@@ -96,8 +96,8 @@ export async function decryptCallKey(deps, node, peerJid, logger) {
     }
     return undefined;
 }
-const CAPABILITY_OFFER = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe4, 0xbb, 0x07]);
-const CAPABILITY_PREACCEPT = new Uint8Array([0x01, 0x05, 0xff, 0x09, 0xe4, 0xbb, 0x07]);
+const CAPABILITY_OFFER = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x13]);
+const CAPABILITY_PREACCEPT = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x07]);
 export async function buildCallParticipantNodes(deps, devices, callKey) {
     const resolved = await deps.sessionResolver.ensureSessionsBatch(devices);
     const plaintext = await encodeWAMessage({ call: { callKey } });
@@ -171,7 +171,12 @@ export async function buildOfferStanza(deps, stores, callId, callKey, peerJid, i
         attrs: { ver: '1' },
         content: CAPABILITY_OFFER
     });
-    offerContent.push({ tag: 'destination', attrs: {}, content: destinations });
+    if (destinations.length === 1) {
+        offerContent.push(...getNodeChildren(destinations[0]));
+    }
+    else {
+        offerContent.push({ tag: 'destination', attrs: {}, content: destinations });
+    }
     offerContent.push({
         tag: 'encopt',
         attrs: { keygen: '2' },
@@ -196,42 +201,18 @@ export async function buildOfferStanza(deps, stores, callId, callKey, peerJid, i
         ]
     };
 }
-export async function buildAcceptStanza(deps, callId, callKey, peerJid, callCreator, isVideo) {
-    await deps.messageDispatch.syncSignalSession(callCreator);
-    const bytes = await encodeWAMessage({ call: { callKey } });
-    let encNode;
-    let shouldIncludeDeviceIdentity = false;
-    try {
-        const { type, ciphertext } = await deps.signalProtocol.encryptMessage(parseSignalAddressFromJid(callCreator), bytes);
-        if (type === 'pkmsg') {
-            shouldIncludeDeviceIdentity = true;
-        }
-        encNode = {
-            tag: 'enc',
-            attrs: { v: '2', type, count: '0' },
-            content: ciphertext
-        };
-    }
-    catch (err) {
-        throw new Error(`Failed to encrypt accept for ${callCreator}: ${err.message}`);
-    }
+export async function buildAcceptStanza(callId, peerJid, callCreator, isVideo) {
     const acceptContent = [
-        { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } },
-        { tag: 'net', attrs: { medium: '3' } },
-        encNode,
-        { tag: 'encopt', attrs: { keygen: '2' } }
+        { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } }
     ];
-    const acceptSignedIdentity = deps.authClient.getCurrentCredentials()?.signedIdentity;
-    if (shouldIncludeDeviceIdentity && acceptSignedIdentity) {
-        acceptContent.push({
-            tag: 'device-identity',
-            attrs: {},
-            content: encodeSignedDeviceIdentity(acceptSignedIdentity)
-        });
-    }
     if (isVideo) {
         acceptContent.push({ tag: 'video', attrs: { enc: 'vp8' } });
     }
+    acceptContent.push({ tag: 'net', attrs: { medium: '2' } }, { tag: 'encopt', attrs: { keygen: '2' } }, {
+        tag: 'metadata',
+        attrs: { peer_abtest_bucket_id_list: '125208,94276' },
+        content: undefined
+    });
     const toJidClean = toUserJid(peerJid);
     return {
         tag: 'call',
@@ -411,7 +392,7 @@ export function buildAcceptReceiptStanza(peerDeviceJid, acceptMsgId, callId, cal
         content: [{ tag: 'accept', attrs: { 'call-id': callId, 'call-creator': callCreator } }]
     });
 }
-export const ENCRYPTED_TAGS = ['preaccept', 'accept'];
+export const ENCRYPTED_TAGS = [];
 export function needsDecryption(tag) {
     return ENCRYPTED_TAGS.includes(tag);
 }

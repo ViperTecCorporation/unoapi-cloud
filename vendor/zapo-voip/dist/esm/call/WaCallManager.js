@@ -29,6 +29,7 @@ export class WaCallManager extends EventEmitter {
         const creds = this.deps.authClient.getCurrentCredentials();
         const callCreator = creds?.meLid || creds?.meJid || '';
         const peerJid = await this.resolvePeerLid(options.peerJid);
+        const peerDevices = await this.prepareOutgoingPeer(options.peerJid, peerJid, options.peerDevices);
         const info = CallInfo.newOutgoing(callId, peerJid, callCreator, mediaType);
         const callKey = generateCallKey();
         info.encryptionKey = callKey;
@@ -37,7 +38,7 @@ export class WaCallManager extends EventEmitter {
             session.resetOutgoingFlags();
             const selfLid = creds?.meLid || creds?.meJid || '';
             await session.initMedia(selfLid, peerJid);
-            const offerStanza = await buildOfferStanza(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), options.peerDevices);
+            const offerStanza = await buildOfferStanza(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), peerDevices);
             await this.deps.lowLevelCoordinator.sendNode(offerStanza);
         }
         catch (err) {
@@ -47,7 +48,7 @@ export class WaCallManager extends EventEmitter {
         }
         info.applyTransition({ type: 'offer_sent' });
         this.emitState(info);
-        this.logger.debug('outgoing offer sent', { callId, peerJid });
+        this.logger.debug('outgoing offer sent', { callId, peerJid, peerDevices });
         return callId;
     }
     async acceptCall(callId) {
@@ -342,6 +343,30 @@ export class WaCallManager extends EventEmitter {
             this.logger.trace('lid resolution failed', { message: toError(err).message });
         }
         return peerJid;
+    }
+    async prepareOutgoingPeer(requestedPeerJid, peerJid, explicitPeerDevices) {
+        const presenceTargets = [...new Set([requestedPeerJid, peerJid])];
+        for (const jid of presenceTargets) {
+            try {
+                await this.deps.presenceCoordinator.subscribe(jid);
+            }
+            catch (err) {
+                this.logger.trace('outgoing presence subscription failed', {
+                    peerJid: jid,
+                    message: toError(err).message
+                });
+            }
+        }
+        if (explicitPeerDevices?.length)
+            return explicitPeerDevices;
+        const synced = await this.deps.signalDeviceSync.syncDeviceList([peerJid]);
+        const peerDevices = [...new Set(synced.flatMap((entry) => entry.deviceJids))];
+        this.logger.debug('outgoing peer signaling prepared', {
+            requestedPeerJid,
+            peerJid,
+            peerDevices
+        });
+        return peerDevices;
     }
     async maybeUnblockWaitingCalls() {
         while (this.activeCallCount < this.maxConcurrentCalls) {

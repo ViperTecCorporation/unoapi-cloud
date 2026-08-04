@@ -175,6 +175,47 @@ export function buildSSRCSubscriptionList(
     return concatBytes(entries)
 }
 
+const WASM_STREAM_DESCRIPTOR_PLAN = [
+    { participant: 0, layer: 0 },
+    { participant: 0, layer: 1 },
+    { participant: 0, layer: 2 },
+    { participant: 1, layer: 0 },
+    { participant: 1, layer: 1 },
+    { participant: 1, layer: 2 },
+    { participant: 2, layer: 0 },
+    { participant: 2, layer: 1 },
+    { participant: 2, layer: 2 }
+] as const
+
+/**
+ * Builds the WASM/Web StreamDescriptors protobuf carried in STUN attribute 0x4024.
+ * The relay expects all nine deterministic streams, even for an audio-only 1:1 call.
+ */
+export function buildWasmStreamDescriptors(streamSsrcs: readonly number[]): Uint8Array {
+    if (streamSsrcs.length !== WASM_STREAM_DESCRIPTOR_PLAN.length) {
+        throw new Error(`expected 9 WASM relay stream SSRCs, got ${streamSsrcs.length}`)
+    }
+
+    const descriptors = streamSsrcs.map((ssrc, index) => {
+        if (!Number.isSafeInteger(ssrc) || ssrc <= 0 || ssrc > 0xffffffff) {
+            throw new Error(`invalid WASM relay stream SSRC at index ${index}`)
+        }
+
+        const plan = WASM_STREAM_DESCRIPTOR_PLAN[index]
+        const fields: Uint8Array[] = []
+        if (plan.participant !== 0) {
+            fields.push(encodeProtobufVarintField(1, plan.participant))
+        }
+        if (plan.layer !== 0) {
+            fields.push(encodeProtobufVarintField(2, plan.layer))
+        }
+        fields.push(encodeProtobufVarintField(3, ssrc))
+        return encodeProtobufLengthDelimited(1, concatBytes(fields))
+    })
+
+    return concatBytes(descriptors)
+}
+
 function encodeXorRelayedAddress(ip: string, port: number): Uint8Array {
     const data = new Uint8Array(8)
     data[0] = 0x00
@@ -187,8 +228,8 @@ function encodeXorRelayedAddress(ip: string, port: number): Uint8Array {
 }
 
 export function buildAllocateForRelay(
-    senderSubscriptions: Uint8Array,
-    ssrcList: Uint8Array,
+    relayToken: Uint8Array,
+    streamDescriptors: Uint8Array,
     hmacKey: Uint8Array,
     relayIp?: string,
     relayPort?: number
@@ -196,8 +237,8 @@ export function buildAllocateForRelay(
     const transactionId = generateTransactionId()
     const parts: Uint8Array[] = []
 
-    parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, senderSubscriptions))
-    parts.push(encodeAttribute(ATTR_SSRC_LIST, ssrcList))
+    parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, relayToken))
+    parts.push(encodeAttribute(ATTR_SSRC_LIST, streamDescriptors))
 
     if (relayIp && relayPort) {
         parts.push(

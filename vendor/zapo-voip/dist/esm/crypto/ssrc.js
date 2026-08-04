@@ -8,3 +8,10 @@ export function generateSecureSsrc(callId, selfJid, counter = 0) {
     const result = hkdf(key, salt, info, 4);
     return readUInt32LE(result, 0);
 }
+// WhatsApp Web advertises nine deterministic relay streams in this exact slot order.
+// Slot 0 is the participant audio SSRC; the remaining slots reserve the other
+// audio/video/data layers expected by the WASM relay allocation contract.
+export const WASM_RELAY_STREAM_SLOT_WORDS = [0, 1, 4, 2, 3, 5, 7, 8, 6];
+export function generateWasmRelayStreamSsrcs(callId, participantJid) {
+    return WASM_RELAY_STREAM_SLOT_WORDS.map((slotWord) => generateSecureSsrc(callId, participantJid, slotWord));
+}

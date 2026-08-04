@@ -1,6 +1,11 @@
 export declare function buildSenderSubscriptions(ssrc: number): Uint8Array;
 export declare function buildSSRCSubscriptionList(selfSsrcs: number[], peerSsrcs: number[], selfPid: number, peerPid: number): Uint8Array;
-export declare function buildAllocateForRelay(senderSubscriptions: Uint8Array, ssrcList: Uint8Array, hmacKey: Uint8Array, relayIp?: string, relayPort?: number): Uint8Array;
+/**
+ * Builds the WASM/Web StreamDescriptors protobuf carried in STUN attribute 0x4024.
+ * The relay expects all nine deterministic streams, even for an audio-only 1:1 call.
+ */
+export declare function buildWasmStreamDescriptors(streamSsrcs: readonly number[]): Uint8Array;
+export declare function buildAllocateForRelay(relayToken: Uint8Array, streamDescriptors: Uint8Array, hmacKey: Uint8Array, relayIp?: string, relayPort?: number): Uint8Array;
 export declare function buildBindingRequest(username: Uint8Array, hmacKey: Uint8Array | undefined, senderSubscriptions?: Uint8Array, includeIceControllingOrOptions?: boolean | {
     iceRole?: 'none' | 'controlling' | 'controlled';
     includePriority?: boolean;

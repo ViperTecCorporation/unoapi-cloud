@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { RtpHeader, RtpPacket } from '../rtp.js'
+import { isOpusDtxPayload, RtpHeader, RtpPacket } from '../rtp.js'
 
 test('RtpPacket round-trips header and payload bytes', () => {
     const header = new RtpHeader(120, 42, 960, 0xabcd1234)
@@ -25,4 +25,10 @@ test('RtpPacket round-trips header and payload bytes', () => {
     assert.deepEqual(decoded.header.extensionData, header.extensionData)
     assert.deepEqual(decoded.payload, payload)
     assert.deepEqual(encoded, packet.encode())
+})
+
+test('isOpusDtxPayload recognizes WhatsApp MLOW comfort-noise frames', () => {
+    assert.equal(isOpusDtxPayload(new Uint8Array([0x90])), true)
+    assert.equal(isOpusDtxPayload(new Uint8Array([0x30, 0x00])), true)
+    assert.equal(isOpusDtxPayload(new Uint8Array(20).fill(0x48)), false)
 })

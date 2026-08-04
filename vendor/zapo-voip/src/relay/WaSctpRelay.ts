@@ -10,9 +10,7 @@ import { readUInt32BE, TEXT_ENCODER, toArrayBuffer } from '../bytes.js'
 
 import {
     buildAllocateForRelay,
-    buildBindingRequestWithSubs,
-    buildSenderSubscriptions,
-    buildSSRCSubscriptionList,
+    buildWasmStreamDescriptors,
     buildWhatsAppPing,
     classifyPacket,
     formatStunResponse,
@@ -39,6 +37,9 @@ const CONFIG = {
     FIXED_FINGERPRINT:
         'sha-256 F9:CA:0C:98:A3:CC:71:D6:42:CE:5A:E2:53:D2:15:20:D3:1B:BA:D8:57:A4:F0:AF:BE:0B:FB:F3:6B:0C:A0:68'
 }
+
+export const WA_RELAY_DATA_CHANNEL_ID = 0
+export const WA_RELAY_DATA_CHANNEL_LABEL = 'pre-negotiated'
 
 enum ConnectionState {
     None = 'None',
@@ -105,6 +106,7 @@ export class WaSctpRelay extends EventEmitter {
     private audioSsrc = 0
     private subscriptionSsrc = 0
     private subscriptionSsrcs: number[] = []
+    private streamSsrcs: number[] = []
     private selfPid = 0
     private peerPid = 0
 
@@ -129,6 +131,21 @@ export class WaSctpRelay extends EventEmitter {
         this.subscriptionSsrc = this.subscriptionSsrcs[0] ?? 0
         this.logger.debug('sctp subscription ssrcs set', {
             ssrcs: this.subscriptionSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`)
+        })
+    }
+
+    setStreamSsrcs(ssrcs: readonly number[]): void {
+        if (ssrcs.length !== 9) {
+            throw new Error(`expected 9 WASM relay stream SSRCs, got ${ssrcs.length}`)
+        }
+        this.streamSsrcs = ssrcs.map((ssrc, index) => {
+            if (!Number.isSafeInteger(ssrc) || ssrc <= 0 || ssrc > 0xffffffff) {
+                throw new Error(`invalid WASM relay stream SSRC at index ${index}`)
+            }
+            return ssrc
+        })
+        this.logger.debug('sctp WASM relay streams set', {
+            ssrcs: this.streamSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`)
         })
     }
 
@@ -353,8 +370,9 @@ export class WaSctpRelay extends EventEmitter {
                 }
             }
 
-            const channel = pc.createDataChannel('wa-web-call', {
-                ordered: false
+            const channel = pc.createDataChannel(WA_RELAY_DATA_CHANNEL_LABEL, {
+                negotiated: true,
+                id: WA_RELAY_DATA_CHANNEL_ID
             })
 
             conn.channel = channel
@@ -504,82 +522,37 @@ export class WaSctpRelay extends EventEmitter {
 
     private sendStunAllocateOnOpen(conn: Connection, relayInfo: RelayInfo): void {
         const connectionId = `${relayInfo.ip}:${relayInfo.port}`
-
-        const remoteUfrag = relayInfo.authToken || relayInfo.token
-        if (!remoteUfrag) {
-            this.logger.debug('stun registration skipped, no ufrag', { connectionId })
+        if (!this.isConnOpen(conn)) return
+        if (!relayInfo.rawToken?.length) {
+            this.logger.debug('stun allocate skipped, no binary relay token', { connectionId })
+            return
+        }
+        if (!relayInfo.key) {
+            this.logger.debug('stun allocate skipped, no relay integrity key', { connectionId })
+            return
+        }
+        if (this.streamSsrcs.length !== 9) {
+            this.logger.debug('stun allocate skipped, WASM streams are incomplete', {
+                connectionId,
+                streamCount: this.streamSsrcs.length
+            })
             return
         }
 
-        const localUfrag = conn.localUfrag
-        const hmacKey = TEXT_ENCODER.encode(relayInfo.key)
-
-        const sendRegistration = (label: string) => {
-            if (!this.isConnOpen(conn)) {
-                return
-            }
-
-            const selfSsrc = this.audioSsrc
-            const peerSsrc = this.subscriptionSsrc
-            const ssrc = peerSsrc || selfSsrc
-            if (!ssrc) {
-                this.logger.debug('stun registration skipped, no ssrc', { connectionId, label })
-                return
-            }
-
-            const subs = buildSenderSubscriptions(ssrc)
-
-            if (localUfrag) {
-                const username = TEXT_ENCODER.encode(`${remoteUfrag}:${localUfrag}`)
-                const v1 = buildBindingRequestWithSubs(username, hmacKey, subs, true, true)
-                this.sendToChannel(conn, toArrayBuffer(v1))
-                this.logger.trace('stun v1 auth token ufrag sent', {
-                    connectionId,
-                    label,
-                    size: v1.length,
-                    ssrc: `0x${ssrc.toString(16)}`
-                })
-            }
-
-            if (relayInfo.token && relayInfo.token !== remoteUfrag && localUfrag) {
-                const username = TEXT_ENCODER.encode(`${relayInfo.token}:${localUfrag}`)
-                const v2 = buildBindingRequestWithSubs(username, hmacKey, subs, true, true)
-                this.sendToChannel(conn, toArrayBuffer(v2))
-                this.logger.trace('stun v2 token ufrag sent', {
-                    connectionId,
-                    label,
-                    size: v2.length
-                })
-            }
-
-            const v3 = buildBindingRequestWithSubs(undefined, undefined, subs, false, false)
-            this.sendToChannel(conn, toArrayBuffer(v3))
-            this.logger.trace('stun v3 no-mi sent', { connectionId, label, size: v3.length })
-
-            if (relayInfo.rawToken && relayInfo.rawToken.length > 0) {
-                const ssrcList = buildSSRCSubscriptionList(
-                    [selfSsrc],
-                    this.subscriptionSsrcs,
-                    this.selfPid,
-                    this.peerPid
-                )
-                const v4 = buildAllocateForRelay(
-                    relayInfo.rawToken,
-                    ssrcList,
-                    hmacKey,
-                    relayInfo.ip,
-                    relayInfo.port
-                )
-                this.sendToChannel(conn, toArrayBuffer(v4))
-                this.logger.trace('stun v4 allocate sent', { connectionId, label, size: v4.length })
-            }
-        }
-
-        sendRegistration('initial')
-        setTimeout(() => sendRegistration('retry-50ms'), 50)
-        setTimeout(() => sendRegistration('retry-150ms'), 150)
-        setTimeout(() => sendRegistration('retry-500ms'), 500)
-        setTimeout(() => sendRegistration('retry-3s'), 3000)
+        const streamDescriptors = buildWasmStreamDescriptors(this.streamSsrcs)
+        const allocate = buildAllocateForRelay(
+            relayInfo.rawToken,
+            streamDescriptors,
+            TEXT_ENCODER.encode(relayInfo.key),
+            relayInfo.ip,
+            relayInfo.port
+        )
+        this.sendToChannel(conn, toArrayBuffer(allocate))
+        this.logger.trace('WASM stun allocate sent', {
+            connectionId,
+            size: allocate.length,
+            streamCount: this.streamSsrcs.length
+        })
     }
 
     private startKeepalive(connectionId: string, conn: Connection): void {
@@ -595,6 +568,7 @@ export class WaSctpRelay extends EventEmitter {
                 this.stopKeepalive(connectionId)
                 return
             }
+            this.sendStunAllocateOnOpen(conn, conn.relayInfo)
             const ping = buildWhatsAppPing()
             this.sendToChannel(conn, toArrayBuffer(ping))
             keepaliveCount++

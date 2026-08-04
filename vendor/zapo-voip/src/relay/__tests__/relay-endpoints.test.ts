@@ -52,3 +52,38 @@ test('keeps only the 3478 relay when no web-token fallback is required', () => {
     assert.equal(relays.length, 1)
     assert.equal(relays[0]?.port, 3478)
 })
+
+test('preserves the relay port advertised by the offer ACK', () => {
+    const relays = normalizeRelayEndpoints([
+        {
+            ip: '57.144.233.57',
+            port: 3499,
+            token: 'token',
+            rawToken,
+            key: 'key',
+            relayId: 1,
+            relayName: 'gru2c01',
+            authTokenId: '4'
+        }
+    ])
+
+    assert.equal(relays.length, 1)
+    assert.equal(relays[0]?.port, 3499)
+})
+
+test('does not duplicate the web-token fallback when ACK already advertises 3480', () => {
+    const relays = normalizeRelayEndpoints([
+        {
+            ip: '57.144.233.57',
+            port: 3480,
+            token: 'token',
+            rawToken,
+            key: 'key',
+            relayId: 1,
+            relayName: 'fops-gru',
+            authTokenId: '0'
+        }
+    ])
+
+    assert.deepEqual(relays.map((relay) => relay.port), [3480])
+})

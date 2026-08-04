@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WaSctpRelay = void 0;
+exports.WaSctpRelay = exports.WA_RELAY_DATA_CHANNEL_LABEL = exports.WA_RELAY_DATA_CHANNEL_ID = void 0;
 const node_dgram_1 = __importDefault(require("node:dgram"));
 const node_events_1 = require("node:events");
 const node_net_1 = require("node:net");
@@ -28,6 +28,8 @@ const CONFIG = {
     ICE_DISCONNECT_GRACE_MS: 4000,
     FIXED_FINGERPRINT: 'sha-256 F9:CA:0C:98:A3:CC:71:D6:42:CE:5A:E2:53:D2:15:20:D3:1B:BA:D8:57:A4:F0:AF:BE:0B:FB:F3:6B:0C:A0:68'
 };
+exports.WA_RELAY_DATA_CHANNEL_ID = 0;
+exports.WA_RELAY_DATA_CHANNEL_LABEL = 'pre-negotiated';
 var ConnectionState;
 (function (ConnectionState) {
     ConnectionState["None"] = "None";
@@ -53,6 +55,7 @@ class WaSctpRelay extends node_events_1.EventEmitter {
         this.audioSsrc = 0;
         this.subscriptionSsrc = 0;
         this.subscriptionSsrcs = [];
+        this.streamSsrcs = [];
         this.selfPid = 0;
         this.peerPid = 0;
         this.sendCount = 0;
@@ -75,6 +78,20 @@ class WaSctpRelay extends node_events_1.EventEmitter {
         this.subscriptionSsrc = this.subscriptionSsrcs[0] ?? 0;
         this.logger.debug('sctp subscription ssrcs set', {
             ssrcs: this.subscriptionSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`)
+        });
+    }
+    setStreamSsrcs(ssrcs) {
+        if (ssrcs.length !== 9) {
+            throw new Error(`expected 9 WASM relay stream SSRCs, got ${ssrcs.length}`);
+        }
+        this.streamSsrcs = ssrcs.map((ssrc, index) => {
+            if (!Number.isSafeInteger(ssrc) || ssrc <= 0 || ssrc > 0xffffffff) {
+                throw new Error(`invalid WASM relay stream SSRC at index ${index}`);
+            }
+            return ssrc;
+        });
+        this.logger.debug('sctp WASM relay streams set', {
+            ssrcs: this.streamSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`)
         });
     }
     setParticipantPids(selfPid, peerPid) {
@@ -257,8 +274,9 @@ class WaSctpRelay extends node_events_1.EventEmitter {
                     });
                 };
             };
-            const channel = pc.createDataChannel('wa-web-call', {
-                ordered: false
+            const channel = pc.createDataChannel(exports.WA_RELAY_DATA_CHANNEL_LABEL, {
+                negotiated: true,
+                id: exports.WA_RELAY_DATA_CHANNEL_ID
             });
             conn.channel = channel;
             channel.binaryType = 'arraybuffer';
@@ -390,61 +408,31 @@ class WaSctpRelay extends node_events_1.EventEmitter {
     }
     sendStunAllocateOnOpen(conn, relayInfo) {
         const connectionId = `${relayInfo.ip}:${relayInfo.port}`;
-        const remoteUfrag = relayInfo.authToken || relayInfo.token;
-        if (!remoteUfrag) {
-            this.logger.debug('stun registration skipped, no ufrag', { connectionId });
+        if (!this.isConnOpen(conn))
+            return;
+        if (!relayInfo.rawToken?.length) {
+            this.logger.debug('stun allocate skipped, no binary relay token', { connectionId });
             return;
         }
-        const localUfrag = conn.localUfrag;
-        const hmacKey = bytes_js_1.TEXT_ENCODER.encode(relayInfo.key);
-        const sendRegistration = (label) => {
-            if (!this.isConnOpen(conn)) {
-                return;
-            }
-            const selfSsrc = this.audioSsrc;
-            const peerSsrc = this.subscriptionSsrc;
-            const ssrc = peerSsrc || selfSsrc;
-            if (!ssrc) {
-                this.logger.debug('stun registration skipped, no ssrc', { connectionId, label });
-                return;
-            }
-            const subs = (0, stun_js_1.buildSenderSubscriptions)(ssrc);
-            if (localUfrag) {
-                const username = bytes_js_1.TEXT_ENCODER.encode(`${remoteUfrag}:${localUfrag}`);
-                const v1 = (0, stun_js_1.buildBindingRequestWithSubs)(username, hmacKey, subs, true, true);
-                this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(v1));
-                this.logger.trace('stun v1 auth token ufrag sent', {
-                    connectionId,
-                    label,
-                    size: v1.length,
-                    ssrc: `0x${ssrc.toString(16)}`
-                });
-            }
-            if (relayInfo.token && relayInfo.token !== remoteUfrag && localUfrag) {
-                const username = bytes_js_1.TEXT_ENCODER.encode(`${relayInfo.token}:${localUfrag}`);
-                const v2 = (0, stun_js_1.buildBindingRequestWithSubs)(username, hmacKey, subs, true, true);
-                this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(v2));
-                this.logger.trace('stun v2 token ufrag sent', {
-                    connectionId,
-                    label,
-                    size: v2.length
-                });
-            }
-            const v3 = (0, stun_js_1.buildBindingRequestWithSubs)(undefined, undefined, subs, false, false);
-            this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(v3));
-            this.logger.trace('stun v3 no-mi sent', { connectionId, label, size: v3.length });
-            if (relayInfo.rawToken && relayInfo.rawToken.length > 0) {
-                const ssrcList = (0, stun_js_1.buildSSRCSubscriptionList)([selfSsrc], this.subscriptionSsrcs, this.selfPid, this.peerPid);
-                const v4 = (0, stun_js_1.buildAllocateForRelay)(relayInfo.rawToken, ssrcList, hmacKey, relayInfo.ip, relayInfo.port);
-                this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(v4));
-                this.logger.trace('stun v4 allocate sent', { connectionId, label, size: v4.length });
-            }
-        };
-        sendRegistration('initial');
-        setTimeout(() => sendRegistration('retry-50ms'), 50);
-        setTimeout(() => sendRegistration('retry-150ms'), 150);
-        setTimeout(() => sendRegistration('retry-500ms'), 500);
-        setTimeout(() => sendRegistration('retry-3s'), 3000);
+        if (!relayInfo.key) {
+            this.logger.debug('stun allocate skipped, no relay integrity key', { connectionId });
+            return;
+        }
+        if (this.streamSsrcs.length !== 9) {
+            this.logger.debug('stun allocate skipped, WASM streams are incomplete', {
+                connectionId,
+                streamCount: this.streamSsrcs.length
+            });
+            return;
+        }
+        const streamDescriptors = (0, stun_js_1.buildWasmStreamDescriptors)(this.streamSsrcs);
+        const allocate = (0, stun_js_1.buildAllocateForRelay)(relayInfo.rawToken, streamDescriptors, bytes_js_1.TEXT_ENCODER.encode(relayInfo.key), relayInfo.ip, relayInfo.port);
+        this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(allocate));
+        this.logger.trace('WASM stun allocate sent', {
+            connectionId,
+            size: allocate.length,
+            streamCount: this.streamSsrcs.length
+        });
     }
     startKeepalive(connectionId, conn) {
         this.stopKeepalive(connectionId);
@@ -457,6 +445,7 @@ class WaSctpRelay extends node_events_1.EventEmitter {
                 this.stopKeepalive(connectionId);
                 return;
             }
+            this.sendStunAllocateOnOpen(conn, conn.relayInfo);
             const ping = (0, stun_js_1.buildWhatsAppPing)();
             this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(ping));
             keepaliveCount++;

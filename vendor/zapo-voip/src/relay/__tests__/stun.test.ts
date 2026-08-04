@@ -5,13 +5,26 @@ import { bytesToHex } from 'zapo-js/util'
 
 import { TEXT_ENCODER } from '../../bytes.js'
 import {
+    buildAllocateForRelay,
     buildBindingRequestWithSubs,
     buildSenderSubscriptions,
+    buildWasmStreamDescriptors,
     buildWhatsAppPing,
     isRtpPacket,
     isStunPacket,
     parseStunResponse
 } from '../stun.js'
+
+function stunAttributeTypes(packet: Uint8Array): number[] {
+    const types: number[] = []
+    for (let offset = 20; offset + 4 <= packet.length; ) {
+        const type = (packet[offset] << 8) | packet[offset + 1]
+        const length = (packet[offset + 2] << 8) | packet[offset + 3]
+        types.push(type)
+        offset += 4 + length + ((4 - (length % 4)) % 4)
+    }
+    return types
+}
 
 test('buildWhatsAppPing emits a 20-byte STUN-like packet', () => {
     const ping = buildWhatsAppPing()
@@ -65,4 +78,27 @@ test('buildBindingRequestWithSubs accepts Uint8Array username and key', () => {
     const packet = buildBindingRequestWithSubs(username, key, subs, true, true)
     assert.ok(packet.length >= 20)
     assert.equal(isStunPacket(packet), true)
+})
+
+test('WASM allocate advertises token, nine stream descriptors and relay endpoint', () => {
+    const streams = Array.from({ length: 9 }, (_, index) => 0x10000000 + index)
+    const descriptors = buildWasmStreamDescriptors(streams)
+    const packet = buildAllocateForRelay(
+        new Uint8Array([1, 2, 3]),
+        descriptors,
+        TEXT_ENCODER.encode('relay-key'),
+        '1.2.3.4',
+        3480
+    )
+
+    assert.deepEqual(stunAttributeTypes(packet), [0x4000, 0x4024, 0x0016, 0x0008])
+    assert.ok(descriptors.length > 9 * 4)
+})
+
+test('WASM stream descriptors require exactly nine valid SSRCs', () => {
+    assert.throws(() => buildWasmStreamDescriptors([1, 2, 3]), /expected 9/)
+    assert.throws(
+        () => buildWasmStreamDescriptors([1, 2, 3, 4, 5, 6, 7, 8, 0]),
+        /invalid WASM relay stream SSRC/
+    )
 })

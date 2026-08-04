@@ -48,6 +48,7 @@ export declare class WaCallManager extends EventEmitter {
     private resolveSessionForOfferAck;
     private emitState;
     private resolvePeerLid;
+    private prepareOutgoingPeer;
     private maybeUnblockWaitingCalls;
     private activateWaitingIncoming;
 }

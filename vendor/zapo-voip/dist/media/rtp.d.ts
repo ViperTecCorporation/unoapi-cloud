@@ -1,3 +1,4 @@
+export declare function isOpusDtxPayload(payload: Uint8Array): boolean;
 export declare class RtpHeader {
     version: number;
     padding: boolean;

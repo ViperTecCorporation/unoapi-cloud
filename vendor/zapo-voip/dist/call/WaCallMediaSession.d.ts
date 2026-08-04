@@ -28,9 +28,13 @@ export declare class WaCallMediaSession implements AudioSender {
     private initialTransportSent;
     private outgoingPreacceptSent;
     private selfSsrc;
+    private selfStreamSsrcs;
     private peerSsrcs;
     private firstPacketSent;
     private acceptedByJid;
+    private acceptPending;
+    private acceptSent;
+    private remoteMuteObserved;
     private readonly debeEnabled;
     private audioSendCount;
     private audioDropCount;
@@ -82,6 +86,7 @@ export declare class WaCallMediaSession implements AudioSender {
     private ensureDeviceJid;
     private initSrtpKeys;
     private resetEncodeState;
+    private sendPendingAccept;
     private onRelayConnected;
     private onRelayData;
     private connectRelays;

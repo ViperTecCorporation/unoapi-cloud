@@ -32,6 +32,7 @@ class WaCallManager extends node_events_1.EventEmitter {
         const creds = this.deps.authClient.getCurrentCredentials();
         const callCreator = creds?.meLid || creds?.meJid || '';
         const peerJid = await this.resolvePeerLid(options.peerJid);
+        const peerDevices = await this.prepareOutgoingPeer(options.peerJid, peerJid, options.peerDevices);
         const info = call_state_js_1.CallInfo.newOutgoing(callId, peerJid, callCreator, mediaType);
         const callKey = (0, encryption_js_1.generateCallKey)();
         info.encryptionKey = callKey;
@@ -40,7 +41,7 @@ class WaCallManager extends node_events_1.EventEmitter {
             session.resetOutgoingFlags();
             const selfLid = creds?.meLid || creds?.meJid || '';
             await session.initMedia(selfLid, peerJid);
-            const offerStanza = await (0, signaling_js_1.buildOfferStanza)(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), options.peerDevices);
+            const offerStanza = await (0, signaling_js_1.buildOfferStanza)(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), peerDevices);
             await this.deps.lowLevelCoordinator.sendNode(offerStanza);
         }
         catch (err) {
@@ -50,7 +51,7 @@ class WaCallManager extends node_events_1.EventEmitter {
         }
         info.applyTransition({ type: 'offer_sent' });
         this.emitState(info);
-        this.logger.debug('outgoing offer sent', { callId, peerJid });
+        this.logger.debug('outgoing offer sent', { callId, peerJid, peerDevices });
         return callId;
     }
     async acceptCall(callId) {
@@ -345,6 +346,30 @@ class WaCallManager extends node_events_1.EventEmitter {
             this.logger.trace('lid resolution failed', { message: (0, util_1.toError)(err).message });
         }
         return peerJid;
+    }
+    async prepareOutgoingPeer(requestedPeerJid, peerJid, explicitPeerDevices) {
+        const presenceTargets = [...new Set([requestedPeerJid, peerJid])];
+        for (const jid of presenceTargets) {
+            try {
+                await this.deps.presenceCoordinator.subscribe(jid);
+            }
+            catch (err) {
+                this.logger.trace('outgoing presence subscription failed', {
+                    peerJid: jid,
+                    message: (0, util_1.toError)(err).message
+                });
+            }
+        }
+        if (explicitPeerDevices?.length)
+            return explicitPeerDevices;
+        const synced = await this.deps.signalDeviceSync.syncDeviceList([peerJid]);
+        const peerDevices = [...new Set(synced.flatMap((entry) => entry.deviceJids))];
+        this.logger.debug('outgoing peer signaling prepared', {
+            requestedPeerJid,
+            peerJid,
+            peerDevices
+        });
+        return peerDevices;
     }
     async maybeUnblockWaitingCalls() {
         while (this.activeCallCount < this.maxConcurrentCalls) {

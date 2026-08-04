@@ -5,6 +5,7 @@ import type { BinaryNode } from 'zapo-js/transport'
 
 import { CallState, EndCallReason } from '../../types.js'
 import {
+    buildAcceptStanza,
     buildRejectStanza,
     buildRelaylatencyForwardStanza,
     buildTerminateStanza,
@@ -39,10 +40,26 @@ test('buildRejectStanza emits a reject payload', () => {
 })
 
 test('needsDecryption only flags encrypted payload tags', () => {
-    assert.equal(needsDecryption('accept'), true)
-    assert.equal(needsDecryption('preaccept'), true)
+    assert.equal(needsDecryption('accept'), false)
+    assert.equal(needsDecryption('preaccept'), false)
     assert.equal(needsDecryption('offer'), false)
     assert.equal(needsDecryption('terminate'), false)
+})
+
+test('buildAcceptStanza follows WA Web child order without a second encrypted call key', async () => {
+    const node = await buildAcceptStanza('CID', 'peer:7@lid', 'creator@lid', false)
+    const accept = (node.content as BinaryNode[])[0]
+    const children = accept.content as BinaryNode[]
+
+    assert.equal(node.attrs.to, 'peer@lid')
+    assert.deepEqual(children.map((child) => child.tag), [
+        'audio',
+        'net',
+        'encopt',
+        'metadata'
+    ])
+    assert.equal(children[1].attrs.medium, '2')
+    assert.equal(children.some((child) => child.tag === 'enc'), false)
 })
 
 test('enums expose the documented call states', () => {
