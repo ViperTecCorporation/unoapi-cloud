@@ -76,6 +76,7 @@ export async function routeCallStanza(
             manager.handleRelayElection(node)
             break
         case 'reject':
+            await manager.handleCallReject(node)
             break
         default:
             break

@@ -255,7 +255,13 @@ export async function buildOfferStanza(
     })
 
     if (destinations.length === 1) {
-        offerContent.push(...getNodeChildren(destinations[0]))
+        const encryptedCallKey = getNodeChildren(destinations[0]).find(
+            (child) => child.tag === 'enc'
+        )
+        if (!encryptedCallKey) {
+            throw new Error(`encrypted call key missing for ${devices[0]}`)
+        }
+        offerContent.push(encryptedCallKey)
     } else {
         offerContent.push({ tag: 'destination', attrs: {}, content: destinations })
     }
@@ -311,10 +317,9 @@ export async function buildAcceptStanza(
         }
     )
 
-    const toJidClean = toUserJid(peerJid)
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'accept',
@@ -358,44 +363,14 @@ export function buildTerminateStanza(
     }
 }
 
-export function buildRelaylatencyForwardStanza(
-    peerJid: string,
-    callId: string,
-    callCreator: string,
-    teNodes: readonly BinaryNode[],
-    destinationJids: string[]
-): BinaryNode {
-    const destinationContent: BinaryNode[] = destinationJids.map((jid) => ({
-        tag: 'to',
-        attrs: { jid },
-        content: undefined
-    }))
-
-    return {
-        tag: 'call',
-        attrs: { to: toUserJid(peerJid), id: generateCallStanzaId() },
-        content: [
-            {
-                tag: 'relaylatency',
-                attrs: { 'call-id': callId, 'call-creator': callCreator },
-                content: [
-                    ...teNodes,
-                    { tag: 'destination', attrs: {}, content: destinationContent }
-                ]
-            }
-        ]
-    }
-}
-
 export function buildRejectStanza(
     peerJid: string,
     callId: string,
     callCreator: string
 ): BinaryNode {
-    const toJidClean = toUserJid(peerJid)
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'reject',
@@ -436,8 +411,7 @@ export function buildRelayLatencyStanza(
         latency: number
         addressBytes?: Uint8Array
     }>,
-    destinationJids: string[],
-    meId: string
+    destinationJids: string[]
 ): BinaryNode {
     const seenRelays = new Set<string>()
     const teNodes: BinaryNode[] = []
@@ -470,10 +444,9 @@ export function buildRelayLatencyStanza(
         })
     }
 
-    const toJidClean = toUserJid(peerJid)
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'relaylatency',

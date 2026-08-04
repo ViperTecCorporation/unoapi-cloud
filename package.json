@@ -1,6 +1,6 @@
 {
   "name": "viperconnect",
-  "version": "4.0.6",
+  "version": "4.0.7",
   "description": "ViperConnect by ViperTec Corporation, based on the original Unoapi Cloud project",
   "repository": {
     "type": "git",
@@ -85,7 +85,6 @@
     "@aws-sdk/s3-request-presigner": "3.1095.0",
     "@google-cloud/text-to-speech": "^6.4.1",
     "@redis/client": "^1.5.14",
-    "@roamhq/wrtc": "0.10.0",
     "@sentry/node": "^10.68.0",
     "@zapo-js/store-redis": "1.2.0",
     "@zapo-js/store-sqlite": "1.1.0",

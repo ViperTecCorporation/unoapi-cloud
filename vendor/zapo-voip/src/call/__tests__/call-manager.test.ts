@@ -107,12 +107,59 @@ function buildMuteNode(callId: string, from = '2222222222:0@lid'): BinaryNode {
     }
 }
 
+function buildAcceptNode(callId: string, from = '2222222222:0@lid'): BinaryNode {
+    return {
+        tag: 'call',
+        attrs: { from, id: 'ACCEPTMSGID' },
+        content: [
+            {
+                tag: 'accept',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': '1111111111@lid'
+                }
+            }
+        ]
+    }
+}
+
+function buildRejectNode(callId: string, from = '2222222222:0@lid'): BinaryNode {
+    return {
+        tag: 'call',
+        attrs: { from, id: 'REJECTMSGID' },
+        content: [
+            {
+                tag: 'reject',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': '1111111111@lid'
+                }
+            }
+        ]
+    }
+}
+
 test('WaCallManager rejects invalid maxConcurrentCalls', () => {
     const { deps, stores } = createMockDeps()
     assert.throws(
         () => new WaCallManager({ deps, stores, maxConcurrentCalls: 0 }),
         /maxConcurrentCalls must be a positive safe integer/
     )
+})
+
+test('already-ended offer notification is ignored without preaccepting it', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const node = buildOfferNode('ENDED-CALL')
+    const offer = (node.content as BinaryNode[])[0]
+    const attrs = offer.attrs as Record<string, string>
+    attrs.is_call_ended = '1'
+    attrs.terminate_reason = 'accepted_elsewhere'
+
+    await manager.handleCallOffer(node, '2222222222:0@lid')
+
+    assert.equal(manager.getCall('ENDED-CALL'), null)
+    assert.equal(sent.length, 0)
 })
 
 test('startCall blocks when maxConcurrentCalls is reached', async () => {
@@ -138,7 +185,7 @@ test('startCall allows parallel calls when maxConcurrentCalls > 1', async () => 
     assert.equal(manager.getCalls().length, 2)
 })
 
-test('startCall uses explicit peerDevices instead of syncing a different device list', async () => {
+test('startCall uses an inline enc for one explicit peer device', async () => {
     const { deps, stores, sent } = createMockDeps()
     let syncCalls = 0
     deps.signalDeviceSync.syncDeviceList = async () => {
@@ -160,7 +207,7 @@ test('startCall uses explicit peerDevices instead of syncing a different device 
     assert.ok(inlineEnc)
 })
 
-test('startCall prepares PN and resolved LID presence before syncing offer devices', async () => {
+test('startCall prepares PN and resolved LID presence before a single-device inline offer', async () => {
     const { deps, stores, sent } = createMockDeps()
     const subscribed: string[] = []
     deps.signalDeviceSync.queryLidsByPhoneJids = async () => [
@@ -184,6 +231,26 @@ test('startCall prepares PN and resolved LID presence before syncing offer devic
     assert.ok(inlineEnc)
 })
 
+test('startCall keeps destination routing for multiple peer devices', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+
+    await manager.startCall({
+        peerJid: '2222222222@lid',
+        peerDevices: ['2222222222:7@lid', '2222222222:8@lid']
+    })
+
+    const offer = (sent[0].content as BinaryNode[])[0]
+    const destination = (offer.content as BinaryNode[]).find((node) => node.tag === 'destination')
+    const inlineEnc = (offer.content as BinaryNode[]).find((node) => node.tag === 'enc')
+    assert.ok(destination)
+    assert.equal(inlineEnc, undefined)
+    assert.deepEqual(
+        (destination.content as BinaryNode[]).map((node) => node.attrs.jid),
+        ['2222222222:7@lid', '2222222222:8@lid']
+    )
+})
+
 test('startCall rejects explicit peerDevices from another account', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
@@ -196,6 +263,138 @@ test('startCall rejects explicit peerDevices from another account', async () => 
             }),
         /no explicit peer devices match/
     )
+})
+
+test('outgoing preaccept and accept do not emit synthetic transport or mute_v2', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const peer = '2222222222:0@lid'
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+
+    sent.length = 0
+    await manager.handleCallPreaccept(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'PREACCEPTMSGID' },
+            content: [
+                {
+                    tag: 'preaccept',
+                    attrs: { 'call-id': callId, 'call-creator': '1111111111@lid' }
+                }
+            ]
+        },
+        peer
+    )
+    await manager.handleCallAccept(buildAcceptNode(callId, peer), peer)
+
+    const actionTags = sent.flatMap((node) =>
+        Array.isArray(node.content)
+            ? node.content
+                  .filter(
+                      (child): child is BinaryNode =>
+                          typeof child === 'object' && child !== null && 'tag' in child
+                  )
+                  .map((child) => child.tag)
+            : []
+    )
+    assert.equal(actionTags.includes('transport'), false)
+    assert.equal(actionTags.includes('mute_v2'), false)
+})
+
+test('outgoing accept does not terminate the answering device when relay uses bare device zero', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    session.info.relayData = {
+        endpoints: [],
+        participantJids: ['2222222222@lid'],
+        peerParticipantJid: '2222222222@lid',
+        uuid: ''
+    }
+
+    sent.length = 0
+    await manager.handleCallAccept(buildAcceptNode(callId, '2222222222:0@lid'), '2222222222:0@lid')
+
+    const actionTags = sent.flatMap((node) =>
+        Array.isArray(node.content)
+            ? node.content
+                  .filter(
+                      (child): child is BinaryNode =>
+                          typeof child === 'object' && child !== null && 'tag' in child
+                  )
+                  .map((child) => child.tag)
+            : []
+    )
+    assert.equal(actionTags.includes('terminate'), false)
+})
+
+test('offer ACK is routed by relay call-id after the call is already active', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const peer = '2222222222:0@lid'
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+
+    await manager.handleCallAccept(buildAcceptNode(callId, peer), peer)
+    assert.equal(manager.getCall(callId)?.stateData.state, CallState.Connecting)
+
+    await manager.handleCallAck({
+        tag: 'ack',
+        attrs: { class: 'call', type: 'offer' },
+        content: [{ tag: 'relay', attrs: { 'call-id': callId }, content: [] }]
+    })
+
+    assert.ok(manager.getCall(callId))
+})
+
+test('outgoing offer ACK does not send caller-side preaccept', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+
+    sent.length = 0
+    await manager.handleCallAck({
+        tag: 'ack',
+        attrs: { class: 'call', type: 'offer' },
+        content: [{ tag: 'relay', attrs: { 'call-id': callId }, content: [] }]
+    })
+
+    assert.equal(
+        sent.some((node) => (node.content as BinaryNode[])?.[0]?.tag === 'preaccept'),
+        false
+    )
+})
+
+test('remote reject ends and removes the outgoing call', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    let ended: CallInfo | undefined
+    manager.on('call_ended', (call) => { ended = call })
+
+    await manager.handleCallReject(buildRejectNode(callId))
+
+    assert.equal(manager.getCall(callId), null)
+    assert.equal(ended?.stateData.state, CallState.Ended)
+    assert.equal(ended?.stateData.endReason, 'declined')
+})
+
+test('server offer ACK error ends and removes the routed call', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    let ended: CallInfo | undefined
+    manager.on('call_ended', (call) => { ended = call })
+
+    await manager.handleCallAck({
+        tag: 'ack',
+        attrs: { class: 'call', type: 'offer', error: '439' },
+        content: [{ tag: 'error', attrs: { 'call-id': callId }, content: undefined }]
+    })
+
+    assert.equal(manager.getCall(callId), null)
+    assert.equal(ended?.stateData.state, CallState.Ended)
+    assert.equal(ended?.stateData.endReason, 'failed')
 })
 
 test('incoming offer at capacity is tracked with canAccept false', async () => {
@@ -287,6 +486,45 @@ test('incoming answer defers accept until the caller mute_v2 arrives', async () 
     await manager.handleCallMuteV2(buildMuteNode(callId, peer), peer)
     const accept = sent.find((node) => (node.content as BinaryNode[])?.[0]?.tag === 'accept')
     assert.ok(accept)
+    assert.equal(accept.attrs.to, peer)
+})
+
+test('incoming relaylatency answers each probe to the exact sender without destination', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMINGCALL0000000000000005'
+    const peer = '2222222222:28@lid'
+
+    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    sent.length = 0
+    await manager.handleCallRelaylatency(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'RELAYLATENCYMSGID' },
+            content: [
+                {
+                    tag: 'relaylatency',
+                    attrs: { 'call-id': callId, 'call-creator': peer },
+                    content: [
+                        { tag: 'te', attrs: { latency: String(0x02000000 + 18), relay_name: 'gru2c01' }, content: new Uint8Array([1, 2, 3, 4, 0x0d, 0x96]) },
+                        { tag: 'te', attrs: { latency: String(0x02000000 + 27), relay_name: 'gru2c02' }, content: new Uint8Array([5, 6, 7, 8, 0x0d, 0x96]) }
+                    ]
+                }
+            ]
+        },
+        peer
+    )
+
+    assert.equal(sent.length, 2)
+    for (const [index, response] of sent.entries()) {
+        assert.equal(response.attrs.to, peer)
+        const action = (response.content as BinaryNode[])[0]
+        const children = action.content as BinaryNode[]
+        assert.equal(action.tag, 'relaylatency')
+        assert.equal(children.length, 1)
+        assert.equal(children[0].attrs.relay_name, `gru2c0${index + 1}`)
+        assert.equal(children.some((child) => child.tag === 'destination'), false)
+    }
 })
 
 test('handleCallTerminate only ends the matching call', async () => {

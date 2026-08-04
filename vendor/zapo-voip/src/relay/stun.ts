@@ -15,6 +15,7 @@ const STUN_MAGIC_COOKIE = 0x2112a442
 const STUN_FINGERPRINT_XOR = 0x5354554e
 
 const STUN_BINDING_REQUEST = 0x0001
+const STUN_BINDING_SUCCESS = 0x0101
 const STUN_ALLOCATE_REQUEST = 0x0003
 const WHATSAPP_PING = 0x0801
 const WHATSAPP_PONG = 0x0802
@@ -232,9 +233,9 @@ export function buildAllocateForRelay(
     streamDescriptors: Uint8Array,
     hmacKey: Uint8Array,
     relayIp?: string,
-    relayPort?: number
+    relayPort?: number,
+    transactionId: Uint8Array = generateTransactionId()
 ): Uint8Array {
-    const transactionId = generateTransactionId()
     const parts: Uint8Array[] = []
 
     parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, relayToken))
@@ -303,6 +304,29 @@ export function buildBindingRequest(
     const attrs = concatBytes(parts)
 
     return buildStunMessage(STUN_BINDING_REQUEST, attrs, transactionId, hmacKey, true)
+}
+
+/**
+ * Answers a relay-originated consent Binding request with the same transaction
+ * id. WhatsApp's relay stops forwarding peer media when this consent exchange
+ * is left unanswered.
+ */
+export function buildBindingSuccessForRequest(
+    request: Uint8Array,
+    integrityKey: Uint8Array
+): Uint8Array | undefined {
+    if (request.length < 20 || integrityKey.length === 0) return undefined
+    const messageType = ((request[0] & 0x3f) << 8) | request[1]
+    if (messageType !== STUN_BINDING_REQUEST) return undefined
+    if (readUInt32BE(request, 4) !== STUN_MAGIC_COOKIE) return undefined
+
+    return buildStunMessage(
+        STUN_BINDING_SUCCESS,
+        new Uint8Array(0),
+        request.subarray(8, 20),
+        integrityKey,
+        true
+    )
 }
 
 export function buildBindingRequestWithSubs(
@@ -407,7 +431,8 @@ export function isStunPacket(data: Uint8Array): boolean {
 
 export function isRtpPacket(data: Uint8Array): boolean {
     if (data.length < 2) return false
-    return (data[0] & 0xc0) === 0x80
+    if (data[1] >= 192 && data[1] <= 223) return false
+    return (data[0] >> 6) === 2
 }
 
 export interface StunResponseInfo {

@@ -1,10 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MLowCodec = void 0;
-const MLOW_SAMPLE_RATE = 16000;
+const MLOW_SAMPLE_RATE = 16_000;
 const MLOW_CHANNELS = 1;
 const FRAME_SIZE = 960;
-const MAX_FRAME_SIZE = 1920;
+const MAX_FRAME_SIZE = 1_920;
 const APPLICATION_VOIP = 2048;
 const SIGNAL_VOICE = 3001;
 let wasmReady = null;
@@ -24,15 +24,14 @@ function loadMlowModule() {
     return wasmReady;
 }
 class MLowCodec {
-    constructor() {
-        this.encoder = null;
-        this.decoder = null;
-        this.frameSize = FRAME_SIZE;
-        this.decodeErrors = 0;
-        this.decodeSuccess = 0;
-        this.plcFrames = 0;
-        this.opts = {};
-    }
+    encoder = null;
+    decoder = null;
+    frameSize = FRAME_SIZE;
+    decodeErrors = 0;
+    decodeSuccess = 0;
+    plcFrames = 0;
+    opts = {};
+    constructor() { }
     static async create(opts = {}) {
         const codec = new MLowCodec();
         await codec.init(opts);
@@ -56,7 +55,7 @@ class MLowCodec {
                 useSmpl: true,
                 dtx: true,
                 fec: opts.fec ?? false,
-                bitrate: opts.bitrate ?? 25000,
+                bitrate: opts.bitrate ?? 25_000,
                 complexity: opts.complexity ?? 9,
                 signal: SIGNAL_VOICE
             });
@@ -74,7 +73,7 @@ class MLowCodec {
         const pcm = new Int16Array(float32Audio.length);
         for (let i = 0; i < float32Audio.length; i++) {
             const sample = Math.max(-1, Math.min(1, float32Audio[i]));
-            pcm[i] = Math.round(sample * 32767);
+            pcm[i] = Math.round(sample * 32_767);
         }
         return this.encoder.encode(pcm, { frameSize: this.frameSize });
     }

@@ -36,6 +36,21 @@ COPY ./tsconfig.frontend.json ./tsconfig.frontend.json
 COPY ./tsconfig.runtime.json ./tsconfig.runtime.json
 RUN yarn build && yarn build:docs
 
+# WhatsApp media relays use a direct UDP -> DTLS -> SCTP -> DataChannel stack.
+# Building the small bridge separately keeps the Node worker and telephony
+# service in the same final image without emulating the relay through ICE.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS relay-bridge-builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY ./vendor/zapo-voip/native/relay-bridge/go.mod ./go.mod
+COPY ./vendor/zapo-voip/native/relay-bridge/go.sum ./go.sum
+RUN go mod download
+COPY ./vendor/zapo-voip/native/relay-bridge/main.go ./main.go
+COPY ./vendor/zapo-voip/native/relay-bridge/main_test.go ./main_test.go
+RUN CGO_ENABLED=0 go test ./... \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/relay-bridge ./main.go
+
 # The telephony source is checked out into _build/voip-service by CI. It is
 # compiled into the same artifact so every process role uses one image/tag.
 FROM node:24-bookworm-slim AS voip-builder
@@ -116,6 +131,7 @@ COPY --from=builder /app/logos ./logos
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/yarn.lock ./yarn.lock
 COPY --from=builder /app/vendor ./vendor
+COPY --from=relay-bridge-builder /out/relay-bridge ./vendor/zapo-voip/native/relay-bridge/relay-bridge
 COPY --from=voip-builder /app/dist ./voip/dist
 COPY --from=voip-builder /app/node_modules ./voip/node_modules
 COPY --from=voip-builder /app/package.json ./voip/package.json
@@ -126,7 +142,7 @@ COPY ./scripts/container-entrypoint.sh ./container-entrypoint.sh
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg wget \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p data/medias data/sessions data/stores data/logs voip/data \
-    && chmod 0755 container-entrypoint.sh voip/updater/viperconnect-voip-updater \
+    && chmod 0755 container-entrypoint.sh voip/updater/viperconnect-voip-updater vendor/zapo-voip/native/relay-bridge/relay-bridge \
     && chown -R u:u /home/u/app
 
 EXPOSE 9876 3097

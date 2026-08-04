@@ -17,8 +17,37 @@ export interface NormalizedRelayEndpoint {
     isFna?: boolean
 }
 
+/**
+ * Selects the single media relay used by WhatsApp Web.
+ * Incoming calls must bind to the caller's FNA relay; outgoing calls prefer
+ * the authenticated non-FNA relay. Allocating every advertised relay creates
+ * parallel bindings and prevents the peer media from being bridged.
+ */
+export function selectMediaRelayEndpoint(
+    endpoints: readonly RelayEndpoint[],
+    incoming: boolean
+): RelayEndpoint | undefined {
+    const usable = endpoints.filter(
+        (endpoint) => (endpoint.protocol ?? 0) === 0 && !!endpoint.key && !!endpoint.rawToken
+    )
+
+    if (incoming) {
+        const fna = usable.find((endpoint) => endpoint.isFna)
+        if (fna) return fna
+    }
+
+    return (
+        usable.find(
+            (endpoint) => !endpoint.isFna && !!endpoint.authTokenId && endpoint.authTokenId !== '0'
+        ) ??
+        usable.find((endpoint) => !endpoint.isFna) ??
+        usable[0]
+    )
+}
+
 export function normalizeRelayEndpoints(
-    endpoints: readonly RelayEndpoint[]
+    endpoints: readonly RelayEndpoint[],
+    options: { includeWebTokenFallback?: boolean } = {}
 ): NormalizedRelayEndpoint[] {
     const seen = new Set<string>()
     const uniqueEndpoints: RelayEndpoint[] = []
@@ -56,7 +85,8 @@ export function normalizeRelayEndpoints(
             ]
 
             const needsWebTokenFallback =
-                endpoint.authTokenId === '0' || /^fops/i.test(endpoint.relayName || '')
+                options.includeWebTokenFallback !== false &&
+                (endpoint.authTokenId === '0' || /^fops/i.test(endpoint.relayName || ''))
 
             if (needsWebTokenFallback && advertisedPort !== WEB_RELAY_PORT) {
                 variants.push({

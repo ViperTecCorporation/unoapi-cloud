@@ -15,9 +15,13 @@ const call_state_js_1 = require("./call-state.js");
 const WaCallMediaSession_js_1 = require("./WaCallMediaSession.js");
 const DEFAULT_MAX_CONCURRENT_CALLS = 1;
 class WaCallManager extends node_events_1.EventEmitter {
+    deps;
+    stores;
+    logger;
+    maxConcurrentCalls;
+    calls = new Map();
     constructor(config) {
         super();
-        this.calls = new Map();
         this.deps = config.deps;
         this.stores = config.stores;
         this.logger = config.logger ?? (0, zapo_js_1.createNoopLogger)();
@@ -38,7 +42,6 @@ class WaCallManager extends node_events_1.EventEmitter {
         info.encryptionKey = callKey;
         const session = this.createSession(info);
         try {
-            session.resetOutgoingFlags();
             const selfLid = creds?.meLid || creds?.meJid || '';
             await session.initMedia(selfLid, peerJid);
             const offerStanza = await (0, signaling_js_1.buildOfferStanza)(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), peerDevices);
@@ -113,6 +116,14 @@ class WaCallManager extends node_events_1.EventEmitter {
         if (!nodeInfo?.callId)
             return;
         const callId = nodeInfo.callId;
+        const offerAttrs = nodeInfo.innerNode.attrs;
+        if (offerAttrs?.is_call_ended === '1' || !!offerAttrs?.terminate_reason) {
+            this.logger.debug('already-ended offer ignored', {
+                callId,
+                terminateReason: offerAttrs?.terminate_reason
+            });
+            return;
+        }
         const existing = this.calls.get(callId);
         if (existing) {
             if (!existing.info.isEnded) {
@@ -125,7 +136,7 @@ class WaCallManager extends node_events_1.EventEmitter {
         const callCreator = nodeInfo.innerNode.attrs?.['call-creator'] || peerJid;
         const isVideo = (0, transport_1.hasNodeChild)(nodeInfo.innerNode, 'video');
         const callKey = await (0, signaling_js_1.decryptCallKey)(this.deps, nodeInfo.innerNode, peerJid, this.logger.child({ component: 'signaling' }));
-        const { relays, participantJids, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(nodeInfo.innerNode);
+        const { relays, participantJids, selfParticipantJid, peerParticipantJid, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(nodeInfo.innerNode);
         const mediaType = isVideo ? types_js_1.CallMediaType.Video : types_js_1.CallMediaType.Audio;
         const info = call_state_js_1.CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType);
         if (callKey) {
@@ -135,6 +146,8 @@ class WaCallManager extends node_events_1.EventEmitter {
             info.relayData = {
                 endpoints: relays,
                 participantJids,
+                selfParticipantJid,
+                peerParticipantJid,
                 uuid,
                 selfPid,
                 peerPid,
@@ -147,9 +160,8 @@ class WaCallManager extends node_events_1.EventEmitter {
             try {
                 const creds = this.deps.authClient.getCurrentCredentials();
                 const selfLid = creds?.meLid || creds?.meJid || '';
-                await session.initMedia(selfLid, peerJid);
+                await session.initMedia(selfParticipantJid || selfLid, peerParticipantJid || peerJid);
                 await session.sendIncomingPreaccept(peerJid);
-                await session.sendIncomingRelayLatency();
             }
             catch (err) {
                 this.logger.error('incoming call activation failed', {
@@ -209,10 +221,26 @@ class WaCallManager extends node_events_1.EventEmitter {
         await session.handleCallTransport(node);
     }
     async handleCallAck(node) {
+        if (node.attrs?.type !== 'offer')
+            return;
         const session = this.resolveSessionForOfferAck(node);
         if (!session)
             return;
+        if (node.attrs?.error) {
+            session.handleCallAckError(node.attrs.error);
+            this.calls.delete(session.callId);
+            await this.maybeUnblockWaitingCalls();
+            return;
+        }
         await session.handleCallAck(node);
+    }
+    async handleCallReject(node) {
+        const session = this.resolveSessionFromNode(node);
+        if (!session)
+            return;
+        session.handleCallReject();
+        this.calls.delete(session.callId);
+        await this.maybeUnblockWaitingCalls();
     }
     async handleCallRelaylatency(node, peerJid) {
         const session = this.resolveSessionFromNode(node);
@@ -308,7 +336,13 @@ class WaCallManager extends node_events_1.EventEmitter {
         return session;
     }
     resolveSessionForOfferAck(node) {
-        const callId = node.attrs?.['call-id'];
+        const action = Array.isArray(node.content)
+            ? node.content.find((child) => typeof child === 'object' &&
+                child !== null &&
+                'tag' in child &&
+                (child.tag === 'relay' || child.tag === 'error'))
+            : undefined;
+        const callId = node.attrs?.['call-id'] || action?.attrs?.['call-id'];
         if (callId) {
             const session = this.calls.get(callId);
             if (session)
@@ -387,7 +421,6 @@ class WaCallManager extends node_events_1.EventEmitter {
         const selfLid = creds?.meLid || creds?.meJid || '';
         await session.initMedia(selfLid, session.info.peerJid);
         await session.sendIncomingPreaccept(session.info.peerJid);
-        await session.sendIncomingRelayLatency();
         this.emitState(session.info);
         this.logger.debug('waiting incoming call unblocked', { callId: session.callId });
     }

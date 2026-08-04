@@ -196,7 +196,9 @@ export class SrtpContext {
 
 export class SrtpSession {
     private sendCtx: SrtpContext
-    private recvCtx: SrtpContext
+    private recvCtxs: SrtpContext[]
+    private selectedRecvCtx = -1
+    private readonly recvAuthLen?: number
 
     constructor(
         sendKey: SrtpKeyingMaterial,
@@ -205,7 +207,8 @@ export class SrtpSession {
         recvAuthLen?: number
     ) {
         this.sendCtx = new SrtpContext(sendKey, sendAuthLen)
-        this.recvCtx = new SrtpContext(recvKey, recvAuthLen)
+        this.recvAuthLen = recvAuthLen
+        this.recvCtxs = [new SrtpContext(recvKey, recvAuthLen)]
     }
 
     protect(packet: RtpPacket): Uint8Array {
@@ -213,7 +216,27 @@ export class SrtpSession {
     }
 
     unprotect(data: Uint8Array): RtpPacket {
-        return this.recvCtx.unprotect(data)
+        if (this.selectedRecvCtx >= 0) {
+            return this.recvCtxs[this.selectedRecvCtx].unprotect(data)
+        }
+
+        let firstError: unknown
+        for (let index = 0; index < this.recvCtxs.length; index++) {
+            try {
+                const packet = this.recvCtxs[index].unprotect(data)
+                this.selectedRecvCtx = index
+                return packet
+            } catch (err) {
+                firstError ??= err
+            }
+        }
+        throw firstError
+    }
+
+    setReceiveKeyings(keyings: readonly SrtpKeyingMaterial[]): void {
+        if (keyings.length === 0) throw new Error('at least one SRTP receive key is required')
+        this.recvCtxs = keyings.map((keying) => new SrtpContext(keying, this.recvAuthLen))
+        this.selectedRecvCtx = -1
     }
 
     setSendAuthKeying(keying: SrtpKeyingMaterial): void {

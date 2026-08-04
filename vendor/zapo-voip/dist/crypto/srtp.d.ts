@@ -28,10 +28,13 @@ export declare class SrtpContext {
 }
 export declare class SrtpSession {
     private sendCtx;
-    private recvCtx;
+    private recvCtxs;
+    private selectedRecvCtx;
+    private readonly recvAuthLen?;
     constructor(sendKey: SrtpKeyingMaterial, recvKey: SrtpKeyingMaterial, sendAuthLen?: number, recvAuthLen?: number);
     protect(packet: RtpPacket): Uint8Array;
     unprotect(data: Uint8Array): RtpPacket;
+    setReceiveKeyings(keyings: readonly SrtpKeyingMaterial[]): void;
     setSendAuthKeying(keying: SrtpKeyingMaterial): void;
 }
 export declare class SrtpError extends Error {

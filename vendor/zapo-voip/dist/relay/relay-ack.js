@@ -11,6 +11,8 @@ function parseRelayFromAck(ackNode) {
     let uuid = '';
     let selfPid;
     let peerPid;
+    let selfParticipantJid;
+    let peerParticipantJid;
     let hbhKey;
     if (!ackNode.content || !Array.isArray(ackNode.content)) {
         return { relays, participantJids, uuid };
@@ -43,10 +45,15 @@ function parseRelayFromAck(ackNode) {
         const relayContent = (0, transport_1.getNodeChildren)(relayNode);
         for (const rc of (0, transport_1.getNodeChildrenByTag)(relayNode, 'participant')) {
             const jid = rc.attrs?.jid;
+            const participantPid = rc.attrs?.pid ? parseInt(rc.attrs.pid, 10) : undefined;
             if (jid && !participantSeen.has(jid)) {
                 participantSeen.add(jid);
                 participantJids.push(jid);
             }
+            if (jid && participantPid === selfPid)
+                selfParticipantJid = jid;
+            if (jid && participantPid === peerPid)
+                peerParticipantJid = jid;
         }
         let relayKey = '';
         const tokens = new Map();
@@ -89,6 +96,9 @@ function parseRelayFromAck(ackNode) {
                 if (rcNode.content instanceof Uint8Array) {
                     rawTokens.set(tokenId, rcNode.content);
                 }
+                else if (typeof rcNode.content === 'string') {
+                    rawTokens.set(tokenId, bytes_js_1.TEXT_ENCODER.encode(rcNode.content));
+                }
             }
             if (rcNode.tag === 'auth_token' && rcNode.content) {
                 const authTokenId = rcNode.attrs?.id || '0';
@@ -98,6 +108,9 @@ function parseRelayFromAck(ackNode) {
                 authTokens.set(authTokenId, authTokenData);
                 if (rcNode.content instanceof Uint8Array) {
                     rawAuthTokens.set(authTokenId, rcNode.content);
+                }
+                else if (typeof rcNode.content === 'string') {
+                    rawAuthTokens.set(authTokenId, bytes_js_1.TEXT_ENCODER.encode(rcNode.content));
                 }
             }
         }
@@ -129,7 +142,7 @@ function parseRelayFromAck(ackNode) {
                     c2rRtt: rcNode.attrs?.c2r_rtt ? parseInt(rcNode.attrs.c2r_rtt, 10) : undefined,
                     relayName,
                     addressBytes,
-                    authTokenId: authTokenId || tokenId,
+                    authTokenId: authTokenId || undefined,
                     isFna
                 });
             }
@@ -140,5 +153,14 @@ function parseRelayFromAck(ackNode) {
             return a.isFna ? 1 : -1;
         return (a.c2rRtt ?? Infinity) - (b.c2rRtt ?? Infinity);
     });
-    return { relays, participantJids, uuid, selfPid, peerPid, hbhKey };
+    return {
+        relays,
+        participantJids,
+        selfParticipantJid,
+        peerParticipantJid,
+        uuid,
+        selfPid,
+        peerPid,
+        hbhKey
+    };
 }

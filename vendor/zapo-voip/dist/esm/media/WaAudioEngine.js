@@ -12,7 +12,7 @@ const MAX_STDERR_CHARS = 16 * 1024;
 const ffmpegProbeCache = new Map();
 function probeBinary(bin) {
     return new Promise((resolve) => {
-        execFile(bin, ['-version'], { timeout: 5000 }, (err) => resolve(!err));
+        execFile(bin, ['-version'], { timeout: 5_000 }, (err) => resolve(!err));
     });
 }
 async function hasFfmpeg(bin) {
@@ -26,23 +26,37 @@ async function hasFfmpeg(bin) {
     return available;
 }
 export class WaAudioEngine {
+    logger;
+    audioSender = null;
+    audioBuffer = null;
+    audioPosition = 0;
+    audioFinished = false;
+    onAudioFinished = null;
+    playbackInterval = null;
+    captureInterval = null;
+    circularBuffer;
+    bufferWritePos = 0;
+    bufferReadPos = 0;
+    bufferLength = 0;
+    sampleRate;
+    captureChunkSize;
+    maxBuffer;
+    outputSize;
+    intervalMs;
+    silenceMode = false;
+    externalMode = false;
+    liveWritePos = 0;
+    extStarted = false;
+    extPreBufferSize;
+    extTargetBuffer;
+    extHighWater;
+    extMaxBuffer;
+    extSkipCount = 0;
+    extDropCount = 0;
+    captureChunkBuffer;
+    silenceChunkBuffer;
+    playbackOutputBuffer;
     constructor(config = {}) {
-        this.audioSender = null;
-        this.audioBuffer = null;
-        this.audioPosition = 0;
-        this.audioFinished = false;
-        this.onAudioFinished = null;
-        this.playbackInterval = null;
-        this.captureInterval = null;
-        this.bufferWritePos = 0;
-        this.bufferReadPos = 0;
-        this.bufferLength = 0;
-        this.silenceMode = false;
-        this.externalMode = false;
-        this.liveWritePos = 0;
-        this.extStarted = false;
-        this.extSkipCount = 0;
-        this.extDropCount = 0;
         const c = { ...DEFAULT_AUDIO_CONFIG, ...config };
         this.logger = config.logger ?? createNoopLogger();
         this.sampleRate = c.sampleRate;

@@ -29,7 +29,8 @@ function buildRelayAck(): BinaryNode {
                 tag: 'relay',
                 attrs: { uuid: 'UUID-1', self_pid: '5', peer_pid: '7' },
                 content: [
-                    { tag: 'participant', attrs: { jid: '333@lid' }, content: undefined },
+                    { tag: 'participant', attrs: { jid: '333:12@lid', pid: '7' }, content: undefined },
+                    { tag: 'participant', attrs: { jid: '111:59@lid', pid: '5' }, content: undefined },
                     { tag: 'key', attrs: {}, content: enc('RELAYKEY') },
                     { tag: 'hbh_key', attrs: {}, content: hbhKey },
                     { tag: 'token', attrs: { id: '1' }, content: tokenBytes },
@@ -60,7 +61,9 @@ test('parseRelayFromAck extracts relay metadata, participants and hbh key', () =
     assert.equal(result.peerPid, 7)
     assert.deepEqual([...(result.hbhKey ?? [])], new Array(30).fill(7))
 
-    assert.deepEqual(result.participantJids, ['111@lid', '222@lid', '333@lid'])
+    assert.deepEqual(result.participantJids, ['111@lid', '222@lid', '333:12@lid', '111:59@lid'])
+    assert.equal(result.selfParticipantJid, '111:59@lid')
+    assert.equal(result.peerParticipantJid, '333:12@lid')
 
     assert.equal(result.relays.length, 1)
     const relay = result.relays[0]
@@ -144,4 +147,30 @@ test('parseRelayFromAck deprioritizes FNA relays after non-FNA regardless of rtt
     assert.equal(relays[0].isFna, false)
     assert.equal(relays[1].relayName, 'alpha')
     assert.equal(relays[1].isFna, true)
+})
+
+test('token_id is not misreported as auth_token_id', () => {
+    const ack: BinaryNode = {
+        tag: 'ack',
+        attrs: {},
+        content: [
+            {
+                tag: 'relay',
+                attrs: {},
+                content: [
+                    { tag: 'key', attrs: {}, content: enc('K') },
+                    { tag: 'token', attrs: { id: '7' }, content: 'TOKEN' },
+                    {
+                        tag: 'te2',
+                        attrs: { token_id: '7', relay_name: 'without-auth' },
+                        content: new Uint8Array([10, 0, 0, 1, 0x0d, 0x96])
+                    }
+                ]
+            }
+        ]
+    }
+
+    const relay = parseRelayFromAck(ack).relays[0]
+    assert.equal(relay.authTokenId, undefined)
+    assert.deepEqual([...(relay.rawToken ?? [])], [...enc('TOKEN')])
 })

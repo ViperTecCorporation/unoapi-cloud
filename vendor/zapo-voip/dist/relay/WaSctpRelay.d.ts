@@ -1,8 +1,6 @@
-import dgram from 'node:dgram';
 import { EventEmitter } from 'node:events';
 import { type Logger } from 'zapo-js';
-type PeerConnectionClass = RTCPeerConnection;
-type DataChannelClass = RTCDataChannel;
+import { NativeRelayTransport } from './NativeRelayTransport.js';
 export declare const WA_RELAY_DATA_CHANNEL_ID = 0;
 export declare const WA_RELAY_DATA_CHANNEL_LABEL = "pre-negotiated";
 declare enum ConnectionState {
@@ -28,18 +26,15 @@ interface RelayInfo {
 }
 interface Connection {
     state: ConnectionState;
-    peerConnection: PeerConnectionClass | null;
-    channel: DataChannelClass | null;
-    udpSocket: dgram.Socket | null;
-    incomingChannels: DataChannelClass[];
+    nativeTransport: NativeRelayTransport | null;
     buffer: ArrayBuffer[];
     bufferedBytes: number;
     id: string;
     relayInfo: RelayInfo;
     connectionTimeout: NodeJS.Timeout | null;
     hasReceivedFirstPacket: boolean;
-    localUfrag: string;
     stableRoutingConnId: bigint;
+    cachedAllocate: Uint8Array | null;
     stats: {
         sentPackets: number;
         receivedPackets: number;
@@ -49,9 +44,11 @@ interface Connection {
 }
 export interface WaSctpRelayOptions {
     readonly logger?: Logger;
+    readonly nativeTransportFactory?: (options: ConstructorParameters<typeof NativeRelayTransport>[0]) => NativeRelayTransport;
 }
 export declare class WaSctpRelay extends EventEmitter {
     private readonly logger;
+    private readonly nativeTransportFactory;
     private connections;
     private relayMap;
     private stats;
@@ -72,13 +69,10 @@ export declare class WaSctpRelay extends EventEmitter {
     setStreamSsrcs(ssrcs: readonly number[]): void;
     setParticipantPids(selfPid?: number, peerPid?: number): void;
     resendSubscriptions(): void;
-    private addRelayCandidate;
-    private modifySdpForRelay;
     private makeConnectionId;
     connectToRelay(relayInfo: RelayInfo): Promise<Connection | null>;
     private failConnection;
     private isConnOpen;
-    private setupUdpRelay;
     private findConnectionByIpPort;
     private sendStunAllocateOnOpen;
     private startKeepalive;
@@ -89,6 +83,7 @@ export declare class WaSctpRelay extends EventEmitter {
     private sendToChannel;
     private pongCount;
     private rtpRecvCount;
+    private rtcpRecvCount;
     private unknownRecvCount;
     private handleRelayMessage;
     private isPong;

@@ -45,3 +45,21 @@ test('MLowCodec PLC returns a full frame on null input', async () => {
         codec.destroy()
     }
 })
+
+test('MLowCodec decodes a captured MeowCaller inbound MLow frame', async () => {
+    const codec = await MLowCodec.create()
+    try {
+        const captured = Uint8Array.from(Buffer.from(
+            '5033135f52e61c75db208d2afb689d61cf3ce091b4c39358aa20d9ee068f1ab14e7dcb3cab6da0fc916cf036fb98958f771ee98c30def8',
+            'hex'
+        ))
+        const decoded = codec.decode(captured)
+        const peak = decoded.reduce((current, sample) => Math.max(current, Math.abs(sample)), 0)
+
+        assert.equal(decoded.length, 960)
+        assert.ok(peak > 0)
+        assert.deepEqual(codec.getStats(), { success: 1, errors: 0, plc: 0 })
+    } finally {
+        codec.destroy()
+    }
+})

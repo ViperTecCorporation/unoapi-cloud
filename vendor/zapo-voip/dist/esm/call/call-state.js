@@ -1,5 +1,18 @@
 import { CallDirection, CallMediaType, CallState } from '../types.js';
 export class CallInfo {
+    callId;
+    peerJid;
+    callCreator;
+    direction;
+    mediaType;
+    stateData;
+    createdAt;
+    groupJid;
+    isOffline;
+    callerPn;
+    encryptionKey;
+    relayData;
+    electedRelayIdx;
     constructor(init) {
         this.callId = init.callId;
         this.peerJid = init.peerJid;
@@ -165,6 +178,8 @@ export class CallInfo {
     }
 }
 export class InvalidTransition extends Error {
+    currentState;
+    attempted;
     constructor(currentState, attempted) {
         super(`invalid transition '${attempted}' in state '${currentState}'`);
         this.name = 'InvalidTransition';

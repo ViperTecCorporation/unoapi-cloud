@@ -18,40 +18,44 @@ const WaSctpRelay_js_1 = require("../relay/WaSctpRelay.js");
 const signaling_js_1 = require("../signaling/signaling.js");
 const types_js_1 = require("../types.js");
 class WaCallMediaSession {
+    info;
+    deps;
+    logger;
+    delegate;
+    rtpSession = null;
+    srtpSession = null;
+    opusCodec = null;
+    sctpRelay;
+    audioEngine;
+    selfSsrc = 0;
+    selfStreamSsrcs = [];
+    peerSsrcs = [];
+    acceptedByJid = null;
+    acceptPending = false;
+    acceptSent = false;
+    remoteMuteObserved = false;
+    debeEnabled = true;
+    audioSendCount = 0;
+    audioDropCount = 0;
+    realAudioSendCount = 0;
+    static EMPTY_BYTES = bytes_js_1.EMPTY_BYTES;
+    encodeBufferA = null;
+    encodeBufferB = null;
+    encodeBuffer = null;
+    encodeBufferPos = 0;
+    authPaddingBuffer = null;
+    audioRecvCount = 0;
+    recvRealCount = 0;
+    recvDtxCount = 0;
+    srtpErrorCount = 0;
+    relayPacketCount = 0;
+    stunResponseCount = 0;
+    selfEchoCount = 0;
+    lastRecvSeq = -1;
+    recvSeqGaps = 0;
+    actualPeerSsrc = null;
+    ssrcResubscribed = false;
     constructor(options) {
-        this.rtpSession = null;
-        this.srtpSession = null;
-        this.opusCodec = null;
-        this.initialTransportSent = false;
-        this.outgoingPreacceptSent = false;
-        this.selfSsrc = 0;
-        this.selfStreamSsrcs = [];
-        this.peerSsrcs = [];
-        this.firstPacketSent = false;
-        this.acceptedByJid = null;
-        this.acceptPending = false;
-        this.acceptSent = false;
-        this.remoteMuteObserved = false;
-        this.debeEnabled = true;
-        this.audioSendCount = 0;
-        this.audioDropCount = 0;
-        this.realAudioSendCount = 0;
-        this.encodeBufferA = null;
-        this.encodeBufferB = null;
-        this.encodeBuffer = null;
-        this.encodeBufferPos = 0;
-        this.authPaddingBuffer = null;
-        this.audioRecvCount = 0;
-        this.recvRealCount = 0;
-        this.recvDtxCount = 0;
-        this.srtpErrorCount = 0;
-        this.relayPacketCount = 0;
-        this.stunResponseCount = 0;
-        this.selfEchoCount = 0;
-        this.lastRecvSeq = -1;
-        this.recvSeqGaps = 0;
-        this.actualPeerSsrc = null;
-        this.ssrcResubscribed = false;
         this.deps = options.deps;
         this.logger = options.logger;
         this.info = options.info;
@@ -77,12 +81,13 @@ class WaCallMediaSession {
         return this.info.callId;
     }
     async initMedia(selfLid, peerJid) {
-        const selfDeviceJid = this.ensureDeviceJid(selfLid);
+        const selfDeviceJid = (0, ssrc_js_1.formatE2ESrtpParticipantId)(selfLid);
         const ssrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, selfDeviceJid);
         this.rtpSession = rtp_js_1.RtpSession.whatsappOpus(ssrc);
         this.selfSsrc = ssrc;
-        this.selfStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, selfDeviceJid);
-        const peerSsrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, this.ensureDeviceJid(peerJid));
+        const derivedStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, selfDeviceJid);
+        this.selfStreamSsrcs = (0, ssrc_js_1.prepareWasmRelayStreamSsrcs)(derivedStreamSsrcs, (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, selfDeviceJid, 6));
+        const peerSsrc = (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, (0, ssrc_js_1.formatE2ESrtpParticipantId)(peerJid));
         this.peerSsrcs = [peerSsrc];
         this.logger.debug('call media initialized', {
             callId: this.info.callId,
@@ -90,10 +95,6 @@ class WaCallMediaSession {
             peerSsrc: `0x${peerSsrc.toString(16).toUpperCase()}`
         });
         this.opusCodec = await mlow_codec_js_1.MLowCodec.create();
-    }
-    resetOutgoingFlags() {
-        this.initialTransportSent = false;
-        this.outgoingPreacceptSent = false;
     }
     async acceptCall() {
         if (!this.info.canAccept) {
@@ -187,38 +188,6 @@ class WaCallMediaSession {
             });
         }
     }
-    async sendIncomingRelayLatency() {
-        if (!this.info.relayData)
-            return;
-        const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? '';
-        const callId = this.info.callId;
-        const callCreator = this.info.callCreator;
-        const destinationJids = this.info.relayData.participantJids || [];
-        const seenRelayNames = new Set();
-        for (const ep of this.info.relayData.endpoints) {
-            const name = ep.relayName || '';
-            if (!name || seenRelayNames.has(name))
-                continue;
-            seenRelayNames.add(name);
-            try {
-                const relayData = [
-                    {
-                        relayName: name,
-                        latency: ep.c2rRtt || 0,
-                        addressBytes: ep.addressBytes
-                    }
-                ];
-                const relayLatencyNode = (0, signaling_js_1.buildRelayLatencyStanza)(this.info.peerJid, callId, callCreator, relayData, destinationJids, meId);
-                await this.deps.lowLevelCoordinator.sendNode(relayLatencyNode);
-            }
-            catch (err) {
-                this.logger.error('error sending incoming relaylatency', {
-                    relayName: name,
-                    message: (0, util_1.toError)(err).message
-                });
-            }
-        }
-    }
     async handleCallAccept(node, peerJid) {
         const nodeInfo = (0, signaling_js_1.extractNodeInfo)(node);
         if (!nodeInfo)
@@ -233,13 +202,12 @@ class WaCallMediaSession {
         const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? '';
         const meLid = this.deps.authClient.getCurrentCredentials()?.meLid;
         const ourJid = meLid || meId;
-        const ourBase = ourJid ? (0, protocol_1.toUserJid)(ourJid) : '';
         const callId = this.info.callId;
         const callCreator = this.info.callCreator;
         const acceptingDeviceJid = peerJid;
         this.acceptedByJid = acceptingDeviceJid;
         if (this.actualPeerSsrc !== null) {
-            const calculatedJid = this.ensureDeviceJid(acceptingDeviceJid);
+            const calculatedJid = (0, ssrc_js_1.formatE2ESrtpParticipantId)(acceptingDeviceJid);
             this.logger.debug('accept keeping actual peer ssrc', {
                 callId,
                 actualPeerSsrc: `0x${this.actualPeerSsrc.toString(16)}`,
@@ -247,7 +215,7 @@ class WaCallMediaSession {
             });
         }
         else {
-            const peerDeviceJidForSsrc = this.ensureDeviceJid(acceptingDeviceJid);
+            const peerDeviceJidForSsrc = (0, ssrc_js_1.formatE2ESrtpParticipantId)(acceptingDeviceJid);
             const acceptSsrc = (0, ssrc_js_1.generateSecureSsrc)(callId, peerDeviceJidForSsrc);
             this.peerSsrcs = [acceptSsrc];
             this.logger.debug('accept ssrc assigned', {
@@ -260,46 +228,6 @@ class WaCallMediaSession {
         this.sctpRelay.setParticipantPids(this.info.relayData?.selfPid, this.info.relayData?.peerPid);
         this.sctpRelay.resendSubscriptions();
         this.initSrtpKeys();
-        if (this.info.relayData?.participantJids) {
-            const otherDevices = this.info.relayData.participantJids.filter((jid) => {
-                if (jid === acceptingDeviceJid)
-                    return false;
-                const jidBase = (0, protocol_1.toUserJid)(jid);
-                if (jidBase === ourBase)
-                    return false;
-                return true;
-            });
-            for (const deviceJid of otherDevices) {
-                try {
-                    const terminateNode = (0, signaling_js_1.buildTerminateStanza)(deviceJid, callId, callCreator, undefined, 'accepted_elsewhere');
-                    await this.deps.lowLevelCoordinator.sendNode(terminateNode);
-                }
-                catch (err) {
-                    this.logger.error('error sending terminate_elsewhere', {
-                        deviceJid,
-                        message: (0, util_1.toError)(err).message
-                    });
-                }
-            }
-        }
-        try {
-            const transportNode = (0, signaling_js_1.buildTransportStanza)(acceptingDeviceJid, callId, callCreator, meId, '1', '1');
-            await this.deps.lowLevelCoordinator.sendNode(transportNode);
-        }
-        catch (err) {
-            this.logger.error('error sending transport', {
-                message: (0, util_1.toError)(err).message
-            });
-        }
-        try {
-            const muteNode = (0, signaling_js_1.buildMuteV2Stanza)(acceptingDeviceJid, callId, callCreator, 0, meId);
-            await this.deps.lowLevelCoordinator.sendNode(muteNode);
-        }
-        catch (err) {
-            this.logger.error('error sending mute_v2', {
-                message: (0, util_1.toError)(err).message
-            });
-        }
         const acceptMsgId = node.attrs?.id;
         if (acceptMsgId) {
             try {
@@ -330,49 +258,9 @@ class WaCallMediaSession {
         const nodeInfo = (0, signaling_js_1.extractNodeInfo)(node);
         if (!nodeInfo)
             return;
-        if (this.info.direction === types_js_1.CallDirection.Outgoing && this.info.relayData) {
-            const meId = this.deps.authClient.getCurrentCredentials()?.meJid ?? '';
-            const callId = this.info.callId;
-            const callCreator = this.info.callCreator;
-            const destinationJids = this.info.relayData.participantJids || [];
-            const seenRelayNames = new Set();
-            for (const ep of this.info.relayData.endpoints) {
-                const name = ep.relayName || '';
-                if (!name || seenRelayNames.has(name))
-                    continue;
-                seenRelayNames.add(name);
-                try {
-                    const relayData = [
-                        {
-                            relayName: name,
-                            latency: ep.c2rRtt || 0,
-                            addressBytes: ep.addressBytes
-                        }
-                    ];
-                    const relayLatencyNode = (0, signaling_js_1.buildRelayLatencyStanza)(this.info.peerJid, callId, callCreator, relayData, destinationJids, meId);
-                    await this.deps.lowLevelCoordinator.sendNode(relayLatencyNode);
-                }
-                catch (err) {
-                    this.logger.error('error sending relaylatency', {
-                        relayName: name,
-                        message: (0, util_1.toError)(err).message
-                    });
-                }
-            }
-            if (!this.initialTransportSent) {
-                try {
-                    const basePeerJid = (0, protocol_1.toUserJid)(peerJid);
-                    const transportNode = (0, signaling_js_1.buildTransportStanza)(basePeerJid, callId, callCreator, meId);
-                    await this.deps.lowLevelCoordinator.sendNode(transportNode);
-                    this.initialTransportSent = true;
-                }
-                catch (err) {
-                    this.logger.error('error sending initial transport', {
-                        message: (0, util_1.toError)(err).message
-                    });
-                }
-            }
-        }
+        // Outbound preaccept is only a peer state notification. The caller must keep
+        // using the relay selected by the offer ACK; emitting synthetic transport or
+        // relaylatency stanzas here can make the handset elect a nonexistent P2P path.
     }
     async handleCallTransport(_node) {
         const nodeInfo = (0, signaling_js_1.extractNodeInfo)(_node);
@@ -396,11 +284,13 @@ class WaCallMediaSession {
             this.logger.error('ack error', { callId: this.info.callId, error });
             return;
         }
-        const { relays, participantJids, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(node);
+        const { relays, participantJids, selfParticipantJid, peerParticipantJid, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(node);
         if (relays.length > 0) {
             this.info.relayData = {
                 endpoints: relays,
                 participantJids,
+                selfParticipantJid,
+                peerParticipantJid,
                 uuid,
                 selfPid,
                 peerPid,
@@ -409,7 +299,9 @@ class WaCallMediaSession {
             this.logger.debug('offer ack relays parsed', {
                 callId: this.info.callId,
                 relayCount: relays.length,
-                participantCount: participantJids.length
+                participantCount: participantJids.length,
+                selfParticipantJid,
+                peerParticipantJid
             });
             const callKey = this.info.encryptionKey;
             if (participantJids.length > 0) {
@@ -417,7 +309,7 @@ class WaCallMediaSession {
                 const meId = this.deps.authClient.getCurrentCredentials()?.meJid;
                 const ourCredJid = meLid || meId || '';
                 const ourBase = ourCredJid ? (0, protocol_1.toUserJid)(ourCredJid) : '';
-                const ourDeviceJid = this.ensureDeviceJid(participantJids.find((jid) => {
+                const ourDeviceJid = (0, ssrc_js_1.formatE2ESrtpParticipantId)(participantJids.find((jid) => {
                     const jidBase = (0, protocol_1.toUserJid)(jid);
                     return jidBase === ourBase && /:\d+@/.test(jid);
                 }) || ourCredJid);
@@ -430,10 +322,11 @@ class WaCallMediaSession {
                     this.selfSsrc = newSelfSsrc;
                     this.rtpSession = rtp_js_1.RtpSession.whatsappOpus(newSelfSsrc);
                 }
-                this.selfStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, ourDeviceJid);
+                const derivedStreamSsrcs = (0, ssrc_js_1.generateWasmRelayStreamSsrcs)(this.info.callId, ourDeviceJid);
+                this.selfStreamSsrcs = (0, ssrc_js_1.prepareWasmRelayStreamSsrcs)(derivedStreamSsrcs, (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, ourDeviceJid, 6));
                 if (peerJids.length > 0) {
                     this.peerSsrcs = [
-                        ...new Set(peerJids.map((jid) => (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, this.ensureDeviceJid(jid))))
+                        ...new Set(peerJids.map((jid) => (0, ssrc_js_1.generateSecureSsrc)(this.info.callId, (0, ssrc_js_1.formatE2ESrtpParticipantId)(jid))))
                     ];
                 }
                 if (callKey) {
@@ -442,18 +335,6 @@ class WaCallMediaSession {
                 else {
                     this.logger.debug('no call_key, srtp not initialized', {
                         callId: this.info.callId
-                    });
-                }
-            }
-            if (this.info.isInitiator && !this.outgoingPreacceptSent) {
-                try {
-                    const preacceptNode = (0, signaling_js_1.buildPreacceptStanza)(this.info.peerJid, this.info.callId, this.info.callCreator);
-                    await this.deps.lowLevelCoordinator.sendNode(preacceptNode);
-                    this.outgoingPreacceptSent = true;
-                }
-                catch (err) {
-                    this.logger.error('error sending preaccept (caller)', {
-                        message: (0, util_1.toError)(err).message
                     });
                 }
             }
@@ -476,16 +357,24 @@ class WaCallMediaSession {
         const teNodes = (0, transport_1.getNodeChildrenByTag)(inner, 'te');
         if (teNodes.length === 0)
             return;
-        const destinationJids = this.info.relayData?.participantJids || [];
-        if (destinationJids.length > 0) {
-            const forwardNode = (0, signaling_js_1.buildRelaylatencyForwardStanza)(peerJid, callId, callCreator, teNodes, destinationJids);
+        for (const teNode of teNodes) {
+            const encodedLatency = Number(teNode.attrs?.latency);
+            const latency = Number.isSafeInteger(encodedLatency) && encodedLatency >= 0x02000000
+                ? encodedLatency - 0x02000000
+                : 0;
+            const relayName = teNode.attrs?.relay_name || '';
+            if (!relayName)
+                continue;
             try {
-                await this.deps.lowLevelCoordinator.sendNode(forwardNode);
+                const response = (0, signaling_js_1.buildRelayLatencyStanza)(peerJid, callId, callCreator, [{ relayName, latency, addressBytes: teNode.content instanceof Uint8Array ? teNode.content : undefined }], []);
+                await this.deps.lowLevelCoordinator.sendNode(response);
             }
             catch (err) {
-                this.logger.error('error forwarding relaylatency', {
+                this.logger.error('error responding to relaylatency', {
+                    relayName,
                     message: (0, util_1.toError)(err).message
                 });
+                return;
             }
         }
     }
@@ -534,6 +423,35 @@ class WaCallMediaSession {
             this.info.applyTransition({
                 type: 'terminated',
                 reason: types_js_1.EndCallReason.UserEnded
+            });
+        }
+        catch (err) {
+            this.logger.trace('call transition skipped', { message: (0, util_1.toError)(err).message });
+        }
+        this.delegate.emitEnded(this.info);
+        this.delegate.emitState(this.info);
+        this.cleanup();
+    }
+    handleCallReject() {
+        try {
+            this.info.applyTransition({
+                type: 'remote_rejected',
+                reason: types_js_1.EndCallReason.Declined
+            });
+        }
+        catch (err) {
+            this.logger.trace('call transition skipped', { message: (0, util_1.toError)(err).message });
+        }
+        this.delegate.emitEnded(this.info);
+        this.delegate.emitState(this.info);
+        this.cleanup();
+    }
+    handleCallAckError(error) {
+        this.logger.error('offer rejected by server', { callId: this.info.callId, error });
+        try {
+            this.info.applyTransition({
+                type: 'terminated',
+                reason: types_js_1.EndCallReason.Failed
             });
         }
         catch (err) {
@@ -637,9 +555,6 @@ class WaCallMediaSession {
         this.ssrcResubscribed = false;
         this.recvRealCount = 0;
         this.recvDtxCount = 0;
-        this.initialTransportSent = false;
-        this.outgoingPreacceptSent = false;
-        this.firstPacketSent = false;
         this.realAudioSendCount = 0;
         this.encodeBuffer = null;
         this.encodeBufferPos = 0;
@@ -667,18 +582,14 @@ class WaCallMediaSession {
                 }
                 rtpPayload = (0, bytes_js_1.concatBytes)([rtpPayload, this.authPaddingBuffer]);
             }
-            const marker = !this.firstPacketSent;
             const tsDelta = this.rtpTsDelta;
-            const rtpPacket = this.rtpSession.createPacketWithDuration(rtpPayload, tsDelta, marker);
+            const rtpPacket = this.rtpSession.createWhatsappOpusPacket(opusFrame, tsDelta, rtpPayload);
             if (this.debeEnabled) {
                 rtpPacket.header.extension = true;
                 rtpPacket.header.extensionProfile = 0xdebe;
                 rtpPacket.header.extensionData = (0, rtp_js_1.isOpusDtxPayload)(opusFrame)
                     ? new Uint8Array([0x30, 0x01, 0x00, 0x00])
                     : WaCallMediaSession.EMPTY_BYTES;
-            }
-            if (!this.firstPacketSent) {
-                this.firstPacketSent = true;
             }
             const srtpData = this.srtpSession.protect(rtpPacket);
             this.sctpRelay.broadcast((0, bytes_js_1.toArrayBuffer)(srtpData));
@@ -700,11 +611,6 @@ class WaCallMediaSession {
             });
         }
     }
-    ensureDeviceJid(jid) {
-        if (/:\d+@/.test(jid))
-            return jid;
-        return jid.replace('@', ':0@');
-    }
     initSrtpKeys() {
         const callKey = this.info.encryptionKey;
         if (!callKey) {
@@ -716,12 +622,14 @@ class WaCallMediaSession {
         const ourCredJid = meLid || meId || '';
         const ourBase = (0, protocol_1.toUserJid)(ourCredJid);
         const participants = this.info.relayData?.participantJids || [];
-        const ourDeviceJid = this.ensureDeviceJid(participants.find((jid) => {
-            const jBase = (0, protocol_1.toUserJid)(jid);
-            return jBase === ourBase && /:\d+@/.test(jid);
-        }) || ourCredJid);
-        let rawPeerJid = this.acceptedByJid || this.info.peerJid;
-        if (!this.acceptedByJid) {
+        const ourDeviceJid = (0, ssrc_js_1.formatE2ESrtpParticipantId)(this.info.relayData?.selfParticipantJid ||
+            participants.find((jid) => {
+                const jBase = (0, protocol_1.toUserJid)(jid);
+                return jBase === ourBase && /:\d+@/.test(jid);
+            }) ||
+            ourCredJid);
+        let rawPeerJid = this.info.relayData?.peerParticipantJid || this.acceptedByJid || this.info.peerJid;
+        if (!this.info.relayData?.peerParticipantJid && !this.acceptedByJid) {
             const peerFromParticipants = participants.find((jid) => {
                 const jBase = (0, protocol_1.toUserJid)(jid);
                 return jBase !== ourBase;
@@ -729,15 +637,17 @@ class WaCallMediaSession {
             if (peerFromParticipants)
                 rawPeerJid = peerFromParticipants;
         }
-        const peerDeviceJid = this.ensureDeviceJid(rawPeerJid);
+        const peerDeviceJid = (0, ssrc_js_1.formatE2ESrtpParticipantId)(rawPeerJid);
         try {
             const sendKeying = (0, encryption_js_1.derivePerJidSrtpKey)(callKey, ourDeviceJid);
-            const recvKeying = (0, encryption_js_1.derivePerJidSrtpKey)(callKey, peerDeviceJid);
-            this.srtpSession = new srtp_js_1.SrtpSession(sendKeying, recvKeying, types_js_1.SRTP_SEND_AUTH_TAG_LEN, types_js_1.SRTP_RECV_AUTH_TAG_LEN);
+            const peerKeyJids = (0, ssrc_js_1.e2eParticipantIdVariants)(peerDeviceJid);
+            const receiveKeyings = peerKeyJids.map((jid) => (0, encryption_js_1.derivePerJidSrtpKey)(callKey, jid));
+            this.srtpSession = new srtp_js_1.SrtpSession(sendKeying, receiveKeyings[0], types_js_1.SRTP_SEND_AUTH_TAG_LEN, types_js_1.SRTP_RECV_AUTH_TAG_LEN);
+            this.srtpSession.setReceiveKeyings(receiveKeyings);
             this.logger.debug('srtp per-jid keys initialized', {
                 callId: this.info.callId,
                 sendJid: ourDeviceJid,
-                recvJid: peerDeviceJid
+                recvJids: peerKeyJids
             });
         }
         catch (err) {
@@ -777,6 +687,17 @@ class WaCallMediaSession {
             catch (err) {
                 this.logger.trace('call transition skipped', { message: (0, util_1.toError)(err).message });
             }
+            return;
+        }
+        if (!this.info.isEnded &&
+            this.srtpSession &&
+            this.rtpSession &&
+            this.opusCodec) {
+            this.audioEngine.startSilenceCapture();
+            this.logger.debug('relay connected, early RTP warmup started', {
+                callId: this.info.callId,
+                state: this.info.stateData.state
+            });
         }
     }
     onRelayData(data) {
@@ -790,7 +711,7 @@ class WaCallMediaSession {
         const pt = data[1] & 0x7f;
         if (!this.srtpSession || !this.opusCodec)
             return;
-        if (pt !== 120)
+        if (!(0, rtp_js_1.isWhatsappOpusPayloadType)(pt))
             return;
         if (data.length >= 12) {
             const ssrc = ((data[8] << 24) | (data[9] << 16) | (data[10] << 8) | data[11]) >>> 0;
@@ -824,7 +745,7 @@ class WaCallMediaSession {
                 }
             }
             this.lastRecvSeq = seq;
-            const isDtx = opusPayload.length <= 2;
+            const isDtx = (0, rtp_js_1.isOpusDtxPayload)(opusPayload);
             if (isDtx)
                 this.recvDtxCount++;
             else
@@ -867,11 +788,25 @@ class WaCallMediaSession {
             callId: this.info.callId,
             endpointCount: endpoints.length
         });
-        const relays = (0, relay_endpoints_js_1.normalizeRelayEndpoints)(endpoints);
+        const selectedEndpoint = (0, relay_endpoints_js_1.selectMediaRelayEndpoint)(endpoints, this.info.direction === types_js_1.CallDirection.Incoming);
+        const relays = selectedEndpoint
+            ? (0, relay_endpoints_js_1.normalizeRelayEndpoints)([selectedEndpoint], { includeWebTokenFallback: false })
+            : [];
         if (relays.length === 0) {
             this.logger.error('no relay configs', { callId: this.info.callId });
             return;
         }
+        this.logger.debug('media relays selected', {
+            callId: this.info.callId,
+            direction: this.info.direction,
+            relays: relays.map((relay) => ({
+                relayName: relay.name,
+                ip: relay.ip,
+                port: relay.port,
+                authTokenId: relay.authTokenId,
+                isFna: relay.isFna === true
+            }))
+        });
         if (this.selfStreamSsrcs.length !== 9) {
             this.logger.error('WASM relay streams not initialized', { callId: this.info.callId });
             return;
@@ -901,4 +836,3 @@ class WaCallMediaSession {
     }
 }
 exports.WaCallMediaSession = WaCallMediaSession;
-WaCallMediaSession.EMPTY_BYTES = bytes_js_1.EMPTY_BYTES;

@@ -25,12 +25,9 @@ export declare class WaCallMediaSession implements AudioSender {
     private opusCodec;
     private readonly sctpRelay;
     private readonly audioEngine;
-    private initialTransportSent;
-    private outgoingPreacceptSent;
     private selfSsrc;
     private selfStreamSsrcs;
     private peerSsrcs;
-    private firstPacketSent;
     private acceptedByJid;
     private acceptPending;
     private acceptSent;
@@ -59,7 +56,6 @@ export declare class WaCallMediaSession implements AudioSender {
     constructor(options: WaCallMediaSessionOptions);
     get callId(): string;
     initMedia(selfLid: string, peerJid: string): Promise<void>;
-    resetOutgoingFlags(): void;
     acceptCall(): Promise<void>;
     rejectCall(reason?: EndCallReason): Promise<void>;
     endCall(reason?: EndCallReason): Promise<void>;
@@ -69,7 +65,6 @@ export declare class WaCallMediaSession implements AudioSender {
     feedLiveAudio(data: Float32Array): number;
     getLiveBufferMs(): number;
     sendIncomingPreaccept(peerJid: string): Promise<void>;
-    sendIncomingRelayLatency(): Promise<void>;
     handleCallAccept(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallPreaccept(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallTransport(_node: BinaryNode): Promise<void>;
@@ -78,12 +73,13 @@ export declare class WaCallMediaSession implements AudioSender {
     handleRelayElection(node: BinaryNode): void;
     handleCallMuteV2(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallTerminate(): void;
+    handleCallReject(): void;
+    handleCallAckError(error: string): void;
     sendCapturedAudio(data: Float32Array): void;
     cleanup(): void;
     private get encodeFrameSamples();
     private get rtpTsDelta();
     private sendOpusFrame;
-    private ensureDeviceJid;
     private initSrtpKeys;
     private resetEncodeState;
     private sendPendingAccept;

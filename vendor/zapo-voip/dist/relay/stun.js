@@ -5,6 +5,7 @@ exports.buildSSRCSubscriptionList = buildSSRCSubscriptionList;
 exports.buildWasmStreamDescriptors = buildWasmStreamDescriptors;
 exports.buildAllocateForRelay = buildAllocateForRelay;
 exports.buildBindingRequest = buildBindingRequest;
+exports.buildBindingSuccessForRequest = buildBindingSuccessForRequest;
 exports.buildBindingRequestWithSubs = buildBindingRequestWithSubs;
 exports.buildMinimalBindingWithSubs = buildMinimalBindingWithSubs;
 exports.buildMinimalAllocateWithSubs = buildMinimalAllocateWithSubs;
@@ -21,6 +22,7 @@ const primitives_js_1 = require("../crypto/primitives.js");
 const STUN_MAGIC_COOKIE = 0x2112a442;
 const STUN_FINGERPRINT_XOR = 0x5354554e;
 const STUN_BINDING_REQUEST = 0x0001;
+const STUN_BINDING_SUCCESS = 0x0101;
 const STUN_ALLOCATE_REQUEST = 0x0003;
 const WHATSAPP_PING = 0x0801;
 const WHATSAPP_PONG = 0x0802;
@@ -35,7 +37,7 @@ const ATTR_SSRC_LIST = 0x4024;
 const ATTR_ICE_CONTROLLED = 0x8029;
 const ATTR_ICE_CONTROLLING = 0x802a;
 const ATTR_FINGERPRINT = 0x8028;
-const DEFAULT_ICE_PRIORITY = 16777215;
+const DEFAULT_ICE_PRIORITY = 16_777_215;
 function generateTransactionId() {
     return (0, primitives_js_1.randomBytes)(12);
 }
@@ -195,8 +197,7 @@ function encodeXorRelayedAddress(ip, port) {
     (0, bytes_js_1.writeUInt32BE)(data, (ipNum ^ STUN_MAGIC_COOKIE) >>> 0, 4);
     return data;
 }
-function buildAllocateForRelay(relayToken, streamDescriptors, hmacKey, relayIp, relayPort) {
-    const transactionId = generateTransactionId();
+function buildAllocateForRelay(relayToken, streamDescriptors, hmacKey, relayIp, relayPort, transactionId = generateTransactionId()) {
     const parts = [];
     parts.push(encodeAttribute(ATTR_SENDER_SUBSCRIPTIONS, relayToken));
     parts.push(encodeAttribute(ATTR_SSRC_LIST, streamDescriptors));
@@ -237,6 +238,21 @@ function buildBindingRequest(username, hmacKey, senderSubscriptions, includeIceC
     }
     const attrs = (0, bytes_js_1.concatBytes)(parts);
     return buildStunMessage(STUN_BINDING_REQUEST, attrs, transactionId, hmacKey, true);
+}
+/**
+ * Answers a relay-originated consent Binding request with the same transaction
+ * id. WhatsApp's relay stops forwarding peer media when this consent exchange
+ * is left unanswered.
+ */
+function buildBindingSuccessForRequest(request, integrityKey) {
+    if (request.length < 20 || integrityKey.length === 0)
+        return undefined;
+    const messageType = ((request[0] & 0x3f) << 8) | request[1];
+    if (messageType !== STUN_BINDING_REQUEST)
+        return undefined;
+    if ((0, bytes_js_1.readUInt32BE)(request, 4) !== STUN_MAGIC_COOKIE)
+        return undefined;
+    return buildStunMessage(STUN_BINDING_SUCCESS, new Uint8Array(0), request.subarray(8, 20), integrityKey, true);
 }
 function buildBindingRequestWithSubs(username, hmacKey, senderSubscriptions, includeIceControlling, includeFingerprint) {
     const transactionId = generateTransactionId();
@@ -300,7 +316,9 @@ function isStunPacket(data) {
 function isRtpPacket(data) {
     if (data.length < 2)
         return false;
-    return (data[0] & 0xc0) === 0x80;
+    if (data[1] >= 192 && data[1] <= 223)
+        return false;
+    return (data[0] >> 6) === 2;
 }
 const STUN_ATTR_NAMES = {
     0x0001: 'MAPPED-ADDRESS',

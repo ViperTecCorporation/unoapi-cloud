@@ -79,8 +79,6 @@ export class WaCallManager extends EventEmitter {
         const session = this.createSession(info)
 
         try {
-            session.resetOutgoingFlags()
-
             const selfLid = creds?.meLid || creds?.meJid || ''
             await session.initMedia(selfLid, peerJid)
 
@@ -185,6 +183,15 @@ export class WaCallManager extends EventEmitter {
         if (!nodeInfo?.callId) return
 
         const callId = nodeInfo.callId
+        const offerAttrs = nodeInfo.innerNode.attrs
+        if (offerAttrs?.is_call_ended === '1' || !!offerAttrs?.terminate_reason) {
+            this.logger.debug('already-ended offer ignored', {
+                callId,
+                terminateReason: offerAttrs?.terminate_reason
+            })
+            return
+        }
+
         const existing = this.calls.get(callId)
         if (existing) {
             if (!existing.info.isEnded) {
@@ -205,9 +212,16 @@ export class WaCallManager extends EventEmitter {
             this.logger.child({ component: 'signaling' })
         )
 
-        const { relays, participantJids, uuid, selfPid, peerPid, hbhKey } = parseRelayFromAck(
-            nodeInfo.innerNode
-        )
+        const {
+            relays,
+            participantJids,
+            selfParticipantJid,
+            peerParticipantJid,
+            uuid,
+            selfPid,
+            peerPid,
+            hbhKey
+        } = parseRelayFromAck(nodeInfo.innerNode)
 
         const mediaType = isVideo ? CallMediaType.Video : CallMediaType.Audio
         const info = CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType)
@@ -220,6 +234,8 @@ export class WaCallManager extends EventEmitter {
             info.relayData = {
                 endpoints: relays,
                 participantJids,
+                selfParticipantJid,
+                peerParticipantJid,
                 uuid,
                 selfPid,
                 peerPid,
@@ -234,9 +250,11 @@ export class WaCallManager extends EventEmitter {
             try {
                 const creds = this.deps.authClient.getCurrentCredentials()
                 const selfLid = creds?.meLid || creds?.meJid || ''
-                await session.initMedia(selfLid, peerJid)
+                await session.initMedia(
+                    selfParticipantJid || selfLid,
+                    peerParticipantJid || peerJid
+                )
                 await session.sendIncomingPreaccept(peerJid)
-                await session.sendIncomingRelayLatency()
             } catch (err) {
                 this.logger.error('incoming call activation failed', {
                     callId,
@@ -296,9 +314,24 @@ export class WaCallManager extends EventEmitter {
     }
 
     async handleCallAck(node: BinaryNode): Promise<void> {
+        if (node.attrs?.type !== 'offer') return
         const session = this.resolveSessionForOfferAck(node)
         if (!session) return
+        if (node.attrs?.error) {
+            session.handleCallAckError(node.attrs.error)
+            this.calls.delete(session.callId)
+            await this.maybeUnblockWaitingCalls()
+            return
+        }
         await session.handleCallAck(node)
+    }
+
+    async handleCallReject(node: BinaryNode): Promise<void> {
+        const session = this.resolveSessionFromNode(node)
+        if (!session) return
+        session.handleCallReject()
+        this.calls.delete(session.callId)
+        await this.maybeUnblockWaitingCalls()
     }
 
     async handleCallRelaylatency(node: BinaryNode, peerJid: string): Promise<void> {
@@ -408,7 +441,16 @@ export class WaCallManager extends EventEmitter {
     }
 
     private resolveSessionForOfferAck(node: BinaryNode): WaCallMediaSession | null {
-        const callId = node.attrs?.['call-id']
+        const action = Array.isArray(node.content)
+            ? node.content.find(
+                  (child): child is BinaryNode =>
+                      typeof child === 'object' &&
+                      child !== null &&
+                      'tag' in child &&
+                      (child.tag === 'relay' || child.tag === 'error')
+              )
+            : undefined
+        const callId = node.attrs?.['call-id'] || action?.attrs?.['call-id']
         if (callId) {
             const session = this.calls.get(callId)
             if (session) return session
@@ -500,7 +542,6 @@ export class WaCallManager extends EventEmitter {
 
         await session.initMedia(selfLid, session.info.peerJid)
         await session.sendIncomingPreaccept(session.info.peerJid)
-        await session.sendIncomingRelayLatency()
 
         this.emitState(session.info)
 

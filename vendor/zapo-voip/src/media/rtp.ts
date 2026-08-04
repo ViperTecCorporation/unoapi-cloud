@@ -1,5 +1,4 @@
 import { EMPTY_BYTES, readUInt16BE, readUInt32BE, writeUInt16BE, writeUInt32BE } from '../bytes.js'
-import { randomInt } from '../crypto/primitives.js'
 import { PayloadType } from '../types.js'
 
 const RTP_VERSION = 2
@@ -15,6 +14,27 @@ export function isOpusDtxPayload(payload: Uint8Array): boolean {
     const first = payload[0]
     if ((first & 0xf8) === 0x08 || first === 0x0a) return true
     return (first & 0xf0) === 0x30 && payload.length <= 6
+}
+
+export function isWhatsappOpusPayloadType(payloadType: number): boolean {
+    return payloadType === 120 || payloadType === 121
+}
+
+const OPUS_PRIMING_FRAME_1 = new Uint8Array([
+    0x12, 0x36, 0x26, 0x2b, 0x4a, 0xc8, 0x2b, 0x09, 0xc9,
+    0x1f, 0x34, 0xc2, 0xd6, 0x7a, 0x01, 0x73, 0x1b, 0x2e
+])
+
+const OPUS_PRIMING_FRAME_2 = new Uint8Array([0x90, 0xb8, 0x14, 0x14, 0xc4])
+
+export function isOpusPrimingPayload(payload: Uint8Array): boolean {
+    const expected = payload.length === OPUS_PRIMING_FRAME_1.length
+        ? OPUS_PRIMING_FRAME_1
+        : payload.length === OPUS_PRIMING_FRAME_2.length
+            ? OPUS_PRIMING_FRAME_2
+            : null
+    if (!expected) return false
+    return payload.every((byte, index) => byte === expected[index])
 }
 
 export class RtpHeader {
@@ -181,13 +201,14 @@ export class RtpSession {
     private sampleRate: number
     private timestamp: number
     private samplesPerPacket: number
+    private speechStarted = false
 
     constructor(ssrc: number, payloadType: number, sampleRate: number, samplesPerPacket: number) {
         this.ssrc = ssrc
         this.payloadType = payloadType
-        this.sequenceNumber = randomInt(0, 65536)
+        this.sequenceNumber = 1
         this.sampleRate = sampleRate
-        this.timestamp = randomInt(0, 0xffffffff)
+        this.timestamp = 0
         this.samplesPerPacket = samplesPerPacket
     }
 
@@ -227,5 +248,16 @@ export class RtpSession {
         this.timestamp = (this.timestamp + durationSamples) >>> 0
 
         return new RtpPacket(header, payload)
+    }
+
+    createWhatsappOpusPacket(
+        opusPayload: Uint8Array,
+        durationSamples: number,
+        wirePayload: Uint8Array = opusPayload
+    ): RtpPacket {
+        const speech = !isOpusDtxPayload(opusPayload) && !isOpusPrimingPayload(opusPayload)
+        const marker = speech && !this.speechStarted
+        if (speech) this.speechStarted = true
+        return this.createPacketWithDuration(wirePayload, durationSamples, marker)
     }
 }

@@ -6,16 +6,20 @@ import { aesCtr128, hmacSha1 } from './primitives.js';
 const SRTP_REPLAY_WINDOW = 64n;
 const SRTP_INDEX_MASK = (1n << 64n) - 1n;
 export class SrtpContext {
+    sessionKey;
+    sessionSalt;
+    authKey;
+    roc = 0;
+    lastSeq = 0;
+    initialized = false;
+    highestIndex = 0n;
+    replayMask = 0n;
+    authTagLen;
+    ivBuffer = new Uint8Array(16);
+    ssrcBuffer = new Uint8Array(4);
+    indexBuffer = new Uint8Array(8);
+    rocBuffer = new Uint8Array(4);
     constructor(keying, authTagLen) {
-        this.roc = 0;
-        this.lastSeq = 0;
-        this.initialized = false;
-        this.highestIndex = 0n;
-        this.replayMask = 0n;
-        this.ivBuffer = new Uint8Array(16);
-        this.ssrcBuffer = new Uint8Array(4);
-        this.indexBuffer = new Uint8Array(8);
-        this.rocBuffer = new Uint8Array(4);
         this.authTagLen = authTagLen ?? SRTP_AUTH_TAG_LEN;
         this.sessionKey = deriveKey(keying.masterKey, keying.masterSalt, SRTP_LABEL.ENCRYPTION, 16);
         this.authKey = deriveKey(keying.masterKey, keying.masterSalt, SRTP_LABEL.AUTH, 20);
@@ -143,15 +147,40 @@ export class SrtpContext {
     }
 }
 export class SrtpSession {
+    sendCtx;
+    recvCtxs;
+    selectedRecvCtx = -1;
+    recvAuthLen;
     constructor(sendKey, recvKey, sendAuthLen, recvAuthLen) {
         this.sendCtx = new SrtpContext(sendKey, sendAuthLen);
-        this.recvCtx = new SrtpContext(recvKey, recvAuthLen);
+        this.recvAuthLen = recvAuthLen;
+        this.recvCtxs = [new SrtpContext(recvKey, recvAuthLen)];
     }
     protect(packet) {
         return this.sendCtx.protect(packet);
     }
     unprotect(data) {
-        return this.recvCtx.unprotect(data);
+        if (this.selectedRecvCtx >= 0) {
+            return this.recvCtxs[this.selectedRecvCtx].unprotect(data);
+        }
+        let firstError;
+        for (let index = 0; index < this.recvCtxs.length; index++) {
+            try {
+                const packet = this.recvCtxs[index].unprotect(data);
+                this.selectedRecvCtx = index;
+                return packet;
+            }
+            catch (err) {
+                firstError ??= err;
+            }
+        }
+        throw firstError;
+    }
+    setReceiveKeyings(keyings) {
+        if (keyings.length === 0)
+            throw new Error('at least one SRTP receive key is required');
+        this.recvCtxs = keyings.map((keying) => new SrtpContext(keying, this.recvAuthLen));
+        this.selectedRecvCtx = -1;
     }
     setSendAuthKeying(keying) {
         this.sendCtx.setAuthKeying(keying);
@@ -165,6 +194,7 @@ function deriveKey(masterKey, masterSalt, label, length) {
     return aesCtr128(masterKey, iv, zeros);
 }
 export class SrtpError extends Error {
+    type;
     constructor(type, message) {
         super(message);
         this.type = type;

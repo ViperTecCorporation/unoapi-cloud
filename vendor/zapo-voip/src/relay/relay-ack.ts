@@ -6,12 +6,14 @@ import {
 } from 'zapo-js/transport'
 import { base64ToBytes, bytesToBase64 } from 'zapo-js/util'
 
-import { TEXT_DECODER } from '../bytes.js'
+import { TEXT_DECODER, TEXT_ENCODER } from '../bytes.js'
 import type { RelayEndpoint } from '../types.js'
 
 export function parseRelayFromAck(ackNode: BinaryNode): {
     relays: RelayEndpoint[]
     participantJids: string[]
+    selfParticipantJid?: string
+    peerParticipantJid?: string
     uuid: string
     selfPid?: number
     peerPid?: number
@@ -23,6 +25,8 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
     let uuid = ''
     let selfPid: number | undefined
     let peerPid: number | undefined
+    let selfParticipantJid: string | undefined
+    let peerParticipantJid: string | undefined
     let hbhKey: Uint8Array | undefined
 
     if (!ackNode.content || !Array.isArray(ackNode.content)) {
@@ -59,10 +63,13 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
 
         for (const rc of getNodeChildrenByTag(relayNode, 'participant')) {
             const jid = rc.attrs?.jid
+            const participantPid = rc.attrs?.pid ? parseInt(rc.attrs.pid, 10) : undefined
             if (jid && !participantSeen.has(jid)) {
                 participantSeen.add(jid)
                 participantJids.push(jid)
             }
+            if (jid && participantPid === selfPid) selfParticipantJid = jid
+            if (jid && participantPid === peerPid) peerParticipantJid = jid
         }
 
         let relayKey = ''
@@ -107,6 +114,8 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
                 tokens.set(tokenId, tokenData)
                 if (rcNode.content instanceof Uint8Array) {
                     rawTokens.set(tokenId, rcNode.content)
+                } else if (typeof rcNode.content === 'string') {
+                    rawTokens.set(tokenId, TEXT_ENCODER.encode(rcNode.content))
                 }
             }
 
@@ -119,6 +128,8 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
                 authTokens.set(authTokenId, authTokenData)
                 if (rcNode.content instanceof Uint8Array) {
                     rawAuthTokens.set(authTokenId, rcNode.content)
+                } else if (typeof rcNode.content === 'string') {
+                    rawAuthTokens.set(authTokenId, TEXT_ENCODER.encode(rcNode.content))
                 }
             }
         }
@@ -154,7 +165,7 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
                     c2rRtt: rcNode.attrs?.c2r_rtt ? parseInt(rcNode.attrs.c2r_rtt, 10) : undefined,
                     relayName,
                     addressBytes,
-                    authTokenId: authTokenId || tokenId,
+                    authTokenId: authTokenId || undefined,
                     isFna
                 })
             }
@@ -165,5 +176,14 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
         if (!!a.isFna !== !!b.isFna) return a.isFna ? 1 : -1
         return (a.c2rRtt ?? Infinity) - (b.c2rRtt ?? Infinity)
     })
-    return { relays, participantJids, uuid, selfPid, peerPid, hbhKey }
+    return {
+        relays,
+        participantJids,
+        selfParticipantJid,
+        peerParticipantJid,
+        uuid,
+        selfPid,
+        peerPid,
+        hbhKey
+    }
 }

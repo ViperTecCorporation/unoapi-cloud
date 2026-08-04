@@ -2,8 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RtpSession = exports.RtpPacket = exports.RtpHeader = void 0;
 exports.isOpusDtxPayload = isOpusDtxPayload;
+exports.isWhatsappOpusPayloadType = isWhatsappOpusPayloadType;
+exports.isOpusPrimingPayload = isOpusPrimingPayload;
 const bytes_js_1 = require("../bytes.js");
-const primitives_js_1 = require("../crypto/primitives.js");
 const types_js_1 = require("../types.js");
 const RTP_VERSION = 2;
 const MIN_HEADER_SIZE = 12;
@@ -20,18 +21,40 @@ function isOpusDtxPayload(payload) {
         return true;
     return (first & 0xf0) === 0x30 && payload.length <= 6;
 }
+function isWhatsappOpusPayloadType(payloadType) {
+    return payloadType === 120 || payloadType === 121;
+}
+const OPUS_PRIMING_FRAME_1 = new Uint8Array([
+    0x12, 0x36, 0x26, 0x2b, 0x4a, 0xc8, 0x2b, 0x09, 0xc9,
+    0x1f, 0x34, 0xc2, 0xd6, 0x7a, 0x01, 0x73, 0x1b, 0x2e
+]);
+const OPUS_PRIMING_FRAME_2 = new Uint8Array([0x90, 0xb8, 0x14, 0x14, 0xc4]);
+function isOpusPrimingPayload(payload) {
+    const expected = payload.length === OPUS_PRIMING_FRAME_1.length
+        ? OPUS_PRIMING_FRAME_1
+        : payload.length === OPUS_PRIMING_FRAME_2.length
+            ? OPUS_PRIMING_FRAME_2
+            : null;
+    if (!expected)
+        return false;
+    return payload.every((byte, index) => byte === expected[index]);
+}
 class RtpHeader {
+    version = RTP_VERSION;
+    padding = false;
+    extension = false;
+    marker = false;
+    payloadType;
+    sequenceNumber;
+    timestamp;
+    ssrc;
+    csrc = [];
+    extensionProfile = 0;
+    extensionData = bytes_js_1.EMPTY_BYTES;
     get csrcCount() {
         return this.csrc.length;
     }
     constructor(payloadType, sequenceNumber, timestamp, ssrc) {
-        this.version = RTP_VERSION;
-        this.padding = false;
-        this.extension = false;
-        this.marker = false;
-        this.csrc = [];
-        this.extensionProfile = 0;
-        this.extensionData = bytes_js_1.EMPTY_BYTES;
         this.payloadType = payloadType;
         this.sequenceNumber = sequenceNumber;
         this.timestamp = timestamp;
@@ -122,6 +145,8 @@ class RtpHeader {
 }
 exports.RtpHeader = RtpHeader;
 class RtpPacket {
+    header;
+    payload;
     constructor(header, payload) {
         this.header = header;
         this.payload = payload;
@@ -150,12 +175,19 @@ class RtpPacket {
 }
 exports.RtpPacket = RtpPacket;
 class RtpSession {
+    ssrc;
+    payloadType;
+    sequenceNumber;
+    sampleRate;
+    timestamp;
+    samplesPerPacket;
+    speechStarted = false;
     constructor(ssrc, payloadType, sampleRate, samplesPerPacket) {
         this.ssrc = ssrc;
         this.payloadType = payloadType;
-        this.sequenceNumber = (0, primitives_js_1.randomInt)(0, 65536);
+        this.sequenceNumber = 1;
         this.sampleRate = sampleRate;
-        this.timestamp = (0, primitives_js_1.randomInt)(0, 0xffffffff);
+        this.timestamp = 0;
         this.samplesPerPacket = samplesPerPacket;
     }
     static whatsappOpus(ssrc) {
@@ -174,6 +206,13 @@ class RtpSession {
         this.sequenceNumber = (this.sequenceNumber + 1) & 0xffff;
         this.timestamp = (this.timestamp + durationSamples) >>> 0;
         return new RtpPacket(header, payload);
+    }
+    createWhatsappOpusPacket(opusPayload, durationSamples, wirePayload = opusPayload) {
+        const speech = !isOpusDtxPayload(opusPayload) && !isOpusPrimingPayload(opusPayload);
+        const marker = speech && !this.speechStarted;
+        if (speech)
+            this.speechStarted = true;
+        return this.createPacketWithDuration(wirePayload, durationSamples, marker);
     }
 }
 exports.RtpSession = RtpSession;

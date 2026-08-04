@@ -5,6 +5,8 @@ import { RtpHeader, RtpPacket } from '../../media/rtp.js'
 import { derivePerJidSrtpKey, generateCallKey } from '../encryption.js'
 import { SrtpSession } from '../srtp.js'
 
+const fromHex = (value: string): Uint8Array => new Uint8Array(Buffer.from(value, 'hex'))
+
 test('generateCallKey returns 32 bytes', () => {
     const key = generateCallKey()
     assert.equal(key.length, 32)
@@ -18,6 +20,18 @@ test('derivePerJidSrtpKey produces expected key material lengths', async () => {
     const keying = derivePerJidSrtpKey(callKey, '12345:0@lid')
     assert.equal(keying.masterKey.length, 16)
     assert.equal(keying.masterSalt.length, 14)
+})
+
+test('derivePerJidSrtpKey matches the MeowCaller E2E-SRTP KAT', () => {
+    const callKey = fromHex('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')
+    const keying = derivePerJidSrtpKey(callKey, '222222222222222:0@lid')
+    const context = (new SrtpSession(keying, keying, 4, 4) as any).sendCtx
+
+    assert.equal(Buffer.from(keying.masterKey).toString('hex'), '3f5423fb6f67e4c588bf5741a3a4e92c')
+    assert.equal(Buffer.from(keying.masterSalt).toString('hex'), '749ee99101a47c82bb5dacec40cf')
+    assert.equal(Buffer.from(context.sessionKey).toString('hex'), '747055a9d18be0fcdc0e29d871309081')
+    assert.equal(Buffer.from(context.sessionSalt).toString('hex'), '10fb8133eff7639cc0d06788f49c')
+    assert.equal(Buffer.from(context.authKey).toString('hex'), '8eff4bb04971d92512b034ce0ebc466059bfc6ea')
 })
 
 test('SrtpSession protect/unprotect round-trips RTP payload', async () => {
@@ -54,6 +68,24 @@ test('SrtpSession unprotect rejects a tampered packet', async () => {
     tampered[12] ^= 0x80
 
     assert.throws(() => session.unprotect(tampered), /auth tag verification failed/)
+})
+
+test('SrtpSession can authenticate a peer through an alternate device key', () => {
+    const callKey = new Uint8Array(32).fill(0x2a)
+    const selfKey = derivePerJidSrtpKey(callKey, 'self:0@lid')
+    const wrongPeerKey = derivePerJidSrtpKey(callKey, 'peer:28@lid')
+    const actualPeerKey = derivePerJidSrtpKey(callKey, 'peer:0@lid')
+    const sender = new SrtpSession(actualPeerKey, selfKey, 10, 10)
+    const receiver = new SrtpSession(selfKey, wrongPeerKey, 10, 10)
+    receiver.setReceiveKeyings([wrongPeerKey, actualPeerKey])
+
+    const packet = new RtpPacket(
+        new RtpHeader(120, 1, 0, 0x11223344),
+        new Uint8Array([0x50, 1, 2, 3])
+    )
+    const decoded = receiver.unprotect(sender.protect(packet))
+
+    assert.deepEqual(decoded.payload, packet.payload)
 })
 
 test('SrtpSession round-trips across the sequence-number rollover', () => {

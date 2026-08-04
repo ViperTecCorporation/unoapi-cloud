@@ -1,4 +1,6 @@
 export declare function isOpusDtxPayload(payload: Uint8Array): boolean;
+export declare function isWhatsappOpusPayloadType(payloadType: number): boolean;
+export declare function isOpusPrimingPayload(payload: Uint8Array): boolean;
 export declare class RtpHeader {
     version: number;
     padding: boolean;
@@ -32,8 +34,10 @@ export declare class RtpSession {
     private sampleRate;
     private timestamp;
     private samplesPerPacket;
+    private speechStarted;
     constructor(ssrc: number, payloadType: number, sampleRate: number, samplesPerPacket: number);
     static whatsappOpus(ssrc: number): RtpSession;
     createPacket(payload: Uint8Array, marker?: boolean): RtpPacket;
     createPacketWithDuration(payload: Uint8Array, durationSamples: number, marker?: boolean): RtpPacket;
+    createWhatsappOpusPacket(opusPayload: Uint8Array, durationSamples: number, wirePayload?: Uint8Array): RtpPacket;
 }

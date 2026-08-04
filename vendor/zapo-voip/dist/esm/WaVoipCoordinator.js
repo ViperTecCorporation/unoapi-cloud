@@ -8,8 +8,11 @@ import { routeCallAck, routeCallReceipt, routeCallStanza } from './signaling/bri
  * events on the host {@link WaClient}.
  */
 export class WaVoipCoordinator {
+    manager;
+    deps;
+    logger;
+    unregisterHandlers = [];
     constructor(ctx, options = {}) {
-        this.unregisterHandlers = [];
         this.deps = ctx.deps;
         this.logger = ctx.logger.child({ scope: '@zapo-js/voip' }, { level: options.logLevel });
         this.manager = new WaCallManager({

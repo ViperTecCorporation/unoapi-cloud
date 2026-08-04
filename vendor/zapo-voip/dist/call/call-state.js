@@ -3,6 +3,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InvalidTransition = exports.CallInfo = void 0;
 const types_js_1 = require("../types.js");
 class CallInfo {
+    callId;
+    peerJid;
+    callCreator;
+    direction;
+    mediaType;
+    stateData;
+    createdAt;
+    groupJid;
+    isOffline;
+    callerPn;
+    encryptionKey;
+    relayData;
+    electedRelayIdx;
     constructor(init) {
         this.callId = init.callId;
         this.peerJid = init.peerJid;
@@ -169,6 +182,8 @@ class CallInfo {
 }
 exports.CallInfo = CallInfo;
 class InvalidTransition extends Error {
+    currentState;
+    attempted;
     constructor(currentState, attempted) {
         super(`invalid transition '${attempted}' in state '${currentState}'`);
         this.name = 'InvalidTransition';

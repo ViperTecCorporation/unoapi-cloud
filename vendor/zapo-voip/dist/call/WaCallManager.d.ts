@@ -36,6 +36,7 @@ export declare class WaCallManager extends EventEmitter {
     handleCallPreaccept(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallTransport(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallAck(node: BinaryNode): Promise<void>;
+    handleCallReject(node: BinaryNode): Promise<void>;
     handleCallRelaylatency(node: BinaryNode, peerJid: string): Promise<void>;
     handleRelayElection(node: BinaryNode): void;
     handleCallMuteV2(node: BinaryNode, peerJid: string): Promise<void>;

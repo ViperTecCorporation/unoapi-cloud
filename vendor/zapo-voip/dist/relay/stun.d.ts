@@ -5,12 +5,18 @@ export declare function buildSSRCSubscriptionList(selfSsrcs: number[], peerSsrcs
  * The relay expects all nine deterministic streams, even for an audio-only 1:1 call.
  */
 export declare function buildWasmStreamDescriptors(streamSsrcs: readonly number[]): Uint8Array;
-export declare function buildAllocateForRelay(relayToken: Uint8Array, streamDescriptors: Uint8Array, hmacKey: Uint8Array, relayIp?: string, relayPort?: number): Uint8Array;
+export declare function buildAllocateForRelay(relayToken: Uint8Array, streamDescriptors: Uint8Array, hmacKey: Uint8Array, relayIp?: string, relayPort?: number, transactionId?: Uint8Array): Uint8Array;
 export declare function buildBindingRequest(username: Uint8Array, hmacKey: Uint8Array | undefined, senderSubscriptions?: Uint8Array, includeIceControllingOrOptions?: boolean | {
     iceRole?: 'none' | 'controlling' | 'controlled';
     includePriority?: boolean;
     includeUsername?: boolean;
 }): Uint8Array;
+/**
+ * Answers a relay-originated consent Binding request with the same transaction
+ * id. WhatsApp's relay stops forwarding peer media when this consent exchange
+ * is left unanswered.
+ */
+export declare function buildBindingSuccessForRequest(request: Uint8Array, integrityKey: Uint8Array): Uint8Array | undefined;
 export declare function buildBindingRequestWithSubs(username: Uint8Array | undefined, hmacKey: Uint8Array | undefined, senderSubscriptions: Uint8Array | undefined, includeIceControlling: boolean, includeFingerprint: boolean): Uint8Array;
 export declare function buildMinimalBindingWithSubs(senderSubscriptions: Uint8Array, includeFingerprint?: boolean): Uint8Array;
 export declare function buildMinimalAllocateWithSubs(senderSubscriptions: Uint8Array, includeFingerprint?: boolean): Uint8Array;

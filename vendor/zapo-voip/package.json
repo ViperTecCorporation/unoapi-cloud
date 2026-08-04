@@ -1,6 +1,6 @@
 {
     "name": "@vipertec/zapo-voip",
-    "version": "1.0.0-viper.2",
+    "version": "1.0.0-viper.3",
     "description": "Vendored Zapo VoIP plugin maintained inside ViperConnect",
     "private": true,
     "license": "MIT",
@@ -23,10 +23,10 @@
     },
     "files": [
         "dist",
-        "src"
+        "src",
+        "native"
     ],
     "peerDependencies": {
-        "@roamhq/wrtc": ">=0.10.0",
         "libmlow-wasm": "^0.1.1",
         "zapo-js": "^1.0.0"
     },

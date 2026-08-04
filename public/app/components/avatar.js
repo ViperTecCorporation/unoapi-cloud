@@ -1,5 +1,5 @@
-import { escapeHtml, safeImageUrl } from '../core/html.js?v=4.0.6-7a098242';
-import { icon } from './icons.js?v=4.0.6-7a098242';
+import { escapeHtml, safeImageUrl } from '../core/html.js?v=4.0.7-7a098242';
+import { icon } from './icons.js?v=4.0.7-7a098242';
 export const renderAvatar = (picture, label, kind = 'contact') => {
     const src = safeImageUrl(picture);
     if (src) {

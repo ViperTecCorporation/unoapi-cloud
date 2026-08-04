@@ -11,7 +11,6 @@ exports.buildCallParticipantNodes = buildCallParticipantNodes;
 exports.buildOfferStanza = buildOfferStanza;
 exports.buildAcceptStanza = buildAcceptStanza;
 exports.buildTerminateStanza = buildTerminateStanza;
-exports.buildRelaylatencyForwardStanza = buildRelaylatencyForwardStanza;
 exports.buildRejectStanza = buildRejectStanza;
 exports.buildPreacceptStanza = buildPreacceptStanza;
 exports.buildRelayLatencyStanza = buildRelayLatencyStanza;
@@ -193,7 +192,11 @@ async function buildOfferStanza(deps, stores, callId, callKey, peerJid, isVideo,
         content: CAPABILITY_OFFER
     });
     if (destinations.length === 1) {
-        offerContent.push(...(0, transport_1.getNodeChildren)(destinations[0]));
+        const encryptedCallKey = (0, transport_1.getNodeChildren)(destinations[0]).find((child) => child.tag === 'enc');
+        if (!encryptedCallKey) {
+            throw new Error(`encrypted call key missing for ${devices[0]}`);
+        }
+        offerContent.push(encryptedCallKey);
     }
     else {
         offerContent.push({ tag: 'destination', attrs: {}, content: destinations });
@@ -234,10 +237,9 @@ async function buildAcceptStanza(callId, peerJid, callCreator, isVideo) {
         attrs: { peer_abtest_bucket_id_list: '125208,94276' },
         content: undefined
     });
-    const toJidClean = (0, protocol_1.toUserJid)(peerJid);
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'accept',
@@ -272,32 +274,10 @@ function buildTerminateStanza(peerJid, callId, callCreator, audioDurationMs, rea
         ]
     };
 }
-function buildRelaylatencyForwardStanza(peerJid, callId, callCreator, teNodes, destinationJids) {
-    const destinationContent = destinationJids.map((jid) => ({
-        tag: 'to',
-        attrs: { jid },
-        content: undefined
-    }));
-    return {
-        tag: 'call',
-        attrs: { to: (0, protocol_1.toUserJid)(peerJid), id: generateCallStanzaId() },
-        content: [
-            {
-                tag: 'relaylatency',
-                attrs: { 'call-id': callId, 'call-creator': callCreator },
-                content: [
-                    ...teNodes,
-                    { tag: 'destination', attrs: {}, content: destinationContent }
-                ]
-            }
-        ]
-    };
-}
 function buildRejectStanza(peerJid, callId, callCreator) {
-    const toJidClean = (0, protocol_1.toUserJid)(peerJid);
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'reject',
@@ -323,7 +303,7 @@ function buildPreacceptStanza(peerJid, callId, callCreator) {
         ]
     };
 }
-function buildRelayLatencyStanza(peerJid, callId, callCreator, relays, destinationJids, meId) {
+function buildRelayLatencyStanza(peerJid, callId, callCreator, relays, destinationJids) {
     const seenRelays = new Set();
     const teNodes = [];
     for (const relay of relays) {
@@ -353,10 +333,9 @@ function buildRelayLatencyStanza(peerJid, callId, callCreator, relays, destinati
             content: destinationContent
         });
     }
-    const toJidClean = (0, protocol_1.toUserJid)(peerJid);
     return {
         tag: 'call',
-        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        attrs: { to: peerJid, id: generateCallStanzaId() },
         content: [
             {
                 tag: 'relaylatency',

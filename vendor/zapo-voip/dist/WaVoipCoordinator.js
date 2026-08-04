@@ -11,8 +11,11 @@ const bridge_js_1 = require("./signaling/bridge.js");
  * events on the host {@link WaClient}.
  */
 class WaVoipCoordinator {
+    manager;
+    deps;
+    logger;
+    unregisterHandlers = [];
     constructor(ctx, options = {}) {
-        this.unregisterHandlers = [];
         this.deps = ctx.deps;
         this.logger = ctx.logger.child({ scope: '@zapo-js/voip' }, { level: options.logLevel });
         this.manager = new WaCallManager_js_1.WaCallManager({

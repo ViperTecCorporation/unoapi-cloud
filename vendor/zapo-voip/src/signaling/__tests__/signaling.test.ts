@@ -7,7 +7,7 @@ import { CallState, EndCallReason } from '../../types.js'
 import {
     buildAcceptStanza,
     buildRejectStanza,
-    buildRelaylatencyForwardStanza,
+    buildRelayLatencyStanza,
     buildTerminateStanza,
     extractNodeInfo,
     extractRelayEndpoints,
@@ -33,9 +33,10 @@ test('buildTerminateStanza targets the peer device JID with a terminate payload'
     assert.equal(inner.attrs['call-id'], 'CALLID')
 })
 
-test('buildRejectStanza emits a reject payload', () => {
-    const node = buildRejectStanza('12345@lid', 'CALLID', '12345@lid')
+test('buildRejectStanza preserves the exact peer device JID', () => {
+    const node = buildRejectStanza('12345:7@lid', 'CALLID', '12345@lid')
     const inner = (node.content as unknown as Array<{ tag: string }>)[0]
+    assert.equal(node.attrs.to, '12345:7@lid')
     assert.equal(inner.tag, 'reject')
 })
 
@@ -51,7 +52,7 @@ test('buildAcceptStanza follows WA Web child order without a second encrypted ca
     const accept = (node.content as BinaryNode[])[0]
     const children = accept.content as BinaryNode[]
 
-    assert.equal(node.attrs.to, 'peer@lid')
+    assert.equal(node.attrs.to, 'peer:7@lid')
     assert.deepEqual(children.map((child) => child.tag), [
         'audio',
         'net',
@@ -75,18 +76,18 @@ test('buildTerminateStanza includes reason and duration attributes', () => {
     assert.equal(inner.attrs.audio_duration, '1500')
 })
 
-test('buildRelaylatencyForwardStanza wraps te nodes and destinations under the user jid', () => {
-    const teNodes: BinaryNode[] = [{ tag: 'te', attrs: { latency: '1' }, content: undefined }]
-    const node = buildRelaylatencyForwardStanza(
+test('buildRelayLatencyStanza preserves the exact device and can omit destination', () => {
+    const address = new Uint8Array([1, 2, 3, 4, 0x0d, 0x96])
+    const node = buildRelayLatencyStanza(
         '12345:7@s.whatsapp.net',
         'CID',
         'creator@lid',
-        teNodes,
-        ['a@lid', 'b@lid']
+        [{ relayName: 'gru2c01', latency: 42, addressBytes: address }],
+        []
     )
 
     assert.equal(node.tag, 'call')
-    assert.equal(node.attrs.to, '12345@s.whatsapp.net')
+    assert.equal(node.attrs.to, '12345:7@s.whatsapp.net')
 
     const relaylatency = (node.content as BinaryNode[])[0]
     assert.equal(relaylatency.tag, 'relaylatency')
@@ -94,12 +95,10 @@ test('buildRelaylatencyForwardStanza wraps te nodes and destinations under the u
 
     const children = relaylatency.content as BinaryNode[]
     assert.equal(children[0].tag, 'te')
-    const destination = children[children.length - 1]
-    assert.equal(destination.tag, 'destination')
-    assert.deepEqual(
-        (destination.content as BinaryNode[]).map((child) => child.attrs.jid),
-        ['a@lid', 'b@lid']
-    )
+    assert.equal(children[0].attrs.latency, String(0x02000000 + 42))
+    assert.equal(children[0].attrs.relay_name, 'gru2c01')
+    assert.deepEqual(children[0].content, address)
+    assert.equal(children.some((child) => child.tag === 'destination'), false)
 })
 
 test('extractNodeInfo reads the inner call tag and ids', () => {

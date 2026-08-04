@@ -16,14 +16,13 @@ export declare function buildCallParticipantNodes(deps: WaVoipDeps, devices: str
 export declare function buildOfferStanza(deps: WaVoipDeps, stores: WaVoipStores, callId: string, callKey: Uint8Array, peerJid: string, isVideo: boolean, logger?: Logger, peerDevices?: readonly string[]): Promise<BinaryNode>;
 export declare function buildAcceptStanza(callId: string, peerJid: string, callCreator: string, isVideo: boolean): Promise<BinaryNode>;
 export declare function buildTerminateStanza(peerJid: string, callId: string, callCreator: string, audioDurationMs?: number, reason?: string): BinaryNode;
-export declare function buildRelaylatencyForwardStanza(peerJid: string, callId: string, callCreator: string, teNodes: readonly BinaryNode[], destinationJids: string[]): BinaryNode;
 export declare function buildRejectStanza(peerJid: string, callId: string, callCreator: string): BinaryNode;
 export declare function buildPreacceptStanza(peerJid: string, callId: string, callCreator: string): BinaryNode;
 export declare function buildRelayLatencyStanza(peerJid: string, callId: string, callCreator: string, relays: Array<{
     relayName: string;
     latency: number;
     addressBytes?: Uint8Array;
-}>, destinationJids: string[], meId: string): BinaryNode;
+}>, destinationJids: string[]): BinaryNode;
 export declare function buildTransportStanza(peerJid: string, callId: string, callCreator: string, meId: string, messageType?: string, p2pCandRound?: string): BinaryNode;
 export declare function buildMuteV2Stanza(peerDeviceJid: string, callId: string, callCreator: string, muteState: number, meId: string): BinaryNode;
 export declare function buildAcceptReceiptStanza(peerDeviceJid: string, acceptMsgId: string, callId: string, callCreator: string, ourJid: string): BinaryNode;

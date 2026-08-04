@@ -103,6 +103,8 @@ export interface RelayEndpoint {
 export interface RelayData {
     endpoints: RelayEndpoint[];
     participantJids?: string[];
+    selfParticipantJid?: string;
+    peerParticipantJid?: string;
     uuid?: string;
     selfPid?: number;
     peerPid?: number;

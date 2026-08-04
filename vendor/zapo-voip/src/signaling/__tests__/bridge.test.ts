@@ -25,6 +25,7 @@ function mocks() {
         handleCallTerminate: async () => void dispatched.push('terminate'),
         handleCallRelaylatency: async () => void dispatched.push('relaylatency'),
         handleCallMuteV2: async () => void dispatched.push('mute_v2'),
+        handleCallReject: async () => void dispatched.push('reject'),
         handleRelayElection: () => void dispatched.push('relay_election')
     } as unknown as WaCallManager
     return { sent, dispatched, deps, manager }
@@ -60,6 +61,7 @@ test('routeCallStanza routes each call tag to its handler', async () => {
         'terminate',
         'relaylatency',
         'mute_v2',
+        'reject',
         'relay_election'
     ]) {
         const { dispatched, deps, manager } = mocks()

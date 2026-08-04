@@ -2,7 +2,7 @@
 
 WhatsApp **VOIP / calling** plugin for [`zapo-js`](https://github.com/vinikjkkj/zapo).
 
-Registers on `WaClient` via the plugin system and exposes everything at **`client.voip`**: MLow voice codec (WhatsApp's Opus variant through [`libmlow-wasm`](https://www.npmjs.com/package/libmlow-wasm)), RTP/SRTP, STUN, WebRTC/SCTP relay transport, and `<call>` signaling (offer / accept / preaccept / transport / relaylatency / mute / terminate).
+Registers on `WaClient` via the plugin system and exposes everything at **`client.voip`**: MLow voice codec (WhatsApp's Opus variant through [`libmlow-wasm`](https://www.npmjs.com/package/libmlow-wasm)), RTP/SRTP, STUN, native DTLS/SCTP relay transport, and `<call>` signaling (offer / accept / preaccept / transport / relaylatency / mute / terminate).
 
 Incoming `<call>`, call-class `<ack>`, and call `<receipt>` stanzas are handled automatically (prepend handlers return `true` so the core client does not double-ack).
 
@@ -20,12 +20,9 @@ Peer dependencies:
 | -------------- | -------------- | ----------------------------------------------- |
 | `zapo-js`      | yes            | `WaClient` and plugin host                      |
 | `libmlow-wasm` | yes            | MLow encode/decode (WASM, no native build step) |
-| `@roamhq/wrtc` | for real calls | SCTP relay transport                            |
 | `ffmpeg` (CLI) | optional       | Decode pre-recorded audio files (`loadAudio`)   |
 
-```bash
-npm install @roamhq/wrtc
-```
+The relay helper is compiled from `native/relay-bridge` by the ViperConnect Docker build and does not require a WebRTC Node package.
 
 Node **20.9+**. `libmlow-wasm` is ESM-only; the codec loads it via dynamic `import()`.
 

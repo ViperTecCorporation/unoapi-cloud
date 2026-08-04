@@ -12,4 +12,13 @@ export interface NormalizedRelayEndpoint {
     authTokenId?: string;
     isFna?: boolean;
 }
-export declare function normalizeRelayEndpoints(endpoints: readonly RelayEndpoint[]): NormalizedRelayEndpoint[];
+/**
+ * Selects the single media relay used by WhatsApp Web.
+ * Incoming calls must bind to the caller's FNA relay; outgoing calls prefer
+ * the authenticated non-FNA relay. Allocating every advertised relay creates
+ * parallel bindings and prevents the peer media from being bridged.
+ */
+export declare function selectMediaRelayEndpoint(endpoints: readonly RelayEndpoint[], incoming: boolean): RelayEndpoint | undefined;
+export declare function normalizeRelayEndpoints(endpoints: readonly RelayEndpoint[], options?: {
+    includeWebTokenFallback?: boolean;
+}): NormalizedRelayEndpoint[];
