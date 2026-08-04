@@ -1,4 +1,4 @@
-import type { CallInfo } from '@zapo-js/voip'
+import type { CallInfo } from '@vipertec/zapo-voip'
 
 export interface ZapoVoipCoordinator {
   startCall(options: { peerJid: string; isVideo?: boolean; peerDevices?: string[] }): Promise<string>
@@ -24,8 +24,8 @@ export class ZapoVoiceAdapter {
   }
 
   async accept(callId: string) {
-    this.coordinator.setExternalAudioMode(callId, true)
     await this.coordinator.acceptCall(callId)
+    this.coordinator.setExternalAudioMode(callId, true)
   }
 
   reject(callId: string, reason?: unknown) {

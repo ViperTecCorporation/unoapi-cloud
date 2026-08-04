@@ -27,6 +27,9 @@ describe('ZapoVoiceAdapter', () => {
     expect(coordinator.setExternalAudioMode).toHaveBeenNthCalledWith(1, 'call_1', true)
     expect(coordinator.setExternalAudioMode).toHaveBeenNthCalledWith(2, 'call_1', true)
     expect(coordinator.acceptCall).toHaveBeenCalledWith('call_1')
+    expect(coordinator.acceptCall.mock.invocationCallOrder[0]).toBeLessThan(
+      coordinator.setExternalAudioMode.mock.invocationCallOrder[1],
+    )
     expect(coordinator.rejectCall).toHaveBeenCalledWith('call_1', undefined)
     expect(coordinator.endCall).toHaveBeenCalledWith('call_1', undefined)
     expect(coordinator.setMute).toHaveBeenCalledWith('call_1', true)

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-jest.mock('@zapo-js/voip', () => ({
+jest.mock('@vipertec/zapo-voip', () => ({
   voipPlugin: jest.fn().mockReturnValue({ name: 'voip' }),
 }))
 jest.mock('@zapo-js/media-utils', () => ({
@@ -26,6 +26,7 @@ import type { Listener } from '../../src/services/listener'
 import type { SessionStore } from '../../src/services/session_store'
 import type { Store } from '../../src/services/store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
+import { voipPlugin } from '@vipertec/zapo-voip'
 
 describe('ClientZapo', () => {
   const phone = '5566999999999'
@@ -111,6 +112,10 @@ describe('ClientZapo', () => {
       'picture',
       'voip_call_incoming',
     ]))
+    expect(voipPlugin).toHaveBeenCalledWith({
+      maxConcurrentCalls: expect.any(Number),
+      logLevel: 'debug',
+    })
   })
 
   test('reuses native Zapo credentials without requesting pairing history again', async () => {

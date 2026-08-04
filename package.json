@@ -46,7 +46,7 @@
     "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json",
     "build:docs": "node ./scripts/openapi-to-json.mjs",
     "check:baileys-lock": "node ./scripts/check-baileys-lock.mjs",
-    "postinstall": "node ./scripts/patch-zapo-payment-info.cjs && node ./scripts/patch-zapo-voip-media.cjs"
+    "postinstall": "node ./scripts/patch-zapo-payment-info.cjs"
   },
   "devDependencies": {
     "@whiskeysockets/baileys": "git+https://github.com/ViperTecCorporation/Baileys.git#Main",
@@ -89,7 +89,7 @@
     "@sentry/node": "^10.68.0",
     "@zapo-js/store-redis": "1.2.0",
     "@zapo-js/store-sqlite": "1.1.0",
-    "@zapo-js/voip": "1.0.0",
+    "@vipertec/zapo-voip": "file:vendor/vipertec-zapo-voip-1.0.0-viper.1.tgz",
     "@zapo-js/media-utils": "1.0.0",
     "amqplib": "^0.10.8",
     "audio-decode": "^2.2.3",

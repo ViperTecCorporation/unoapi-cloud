@@ -2020,10 +2020,9 @@
   resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.1.0.tgz#0685bf76939e256e142c6f171ab2a1311809ab39"
   integrity sha512-leoHja38lB7kBxVlcbktIMZjbocropExyjL2LPun6Ofd8gnr0+mcx9xyYpsj4htLM95OFMfd2jd5zbU6IqjgDQ==
 
-"@zapo-js/voip@1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/voip/-/voip-1.0.0.tgz#39cb7d7b94d13f28f9403534e9e9723e2c8559f2"
-  integrity sha512-BEhwxxdviFC5iIrRIk+kopuzFi/FOKJYvs1o3jx0siK0jVFAEPAA/2QyEiineqR4QQZzulsoQTzmS16Z2ub0PQ==
+"@vipertec/zapo-voip@file:vendor/vipertec-zapo-voip-1.0.0-viper.1.tgz":
+  version "1.0.0-viper.1"
+  resolved "file:vendor/vipertec-zapo-voip-1.0.0-viper.1.tgz#3043d9202ceecc31fb0efd140f4f02aba902d21c"
 
 accepts@~1.3.4, accepts@~1.3.8:
   version "1.3.8"

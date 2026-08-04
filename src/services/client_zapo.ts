@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import QRCode from 'qrcode'
-import { WaClient as ZapoWaClient, createNoopLogger, type WaClient as WaClientType, type WaStoreSession } from 'zapo-js'
-import { voipPlugin, type CallInfo } from '@zapo-js/voip'
+import { PinoLogger, WaClient as ZapoWaClient, type WaClient as WaClientType, type WaStoreSession } from 'zapo-js'
+import { voipPlugin, type CallInfo } from '@vipertec/zapo-voip'
 import { v1 as uuid } from 'uuid'
 import type { Client, Contact } from './client'
 import { clients } from './client'
@@ -59,7 +59,8 @@ type ZapoClient = WaClientType & {
 type ClientFactory = (options: ConstructorParameters<typeof ZapoWaClient>[0]) => ZapoClient
 type LeaseFactory = (phone: string) => RedisLease
 
-const defaultClientFactory: ClientFactory = (options) => new ZapoWaClient(options, createNoopLogger('info')) as ZapoClient
+const defaultClientFactory: ClientFactory = (options) =>
+  new ZapoWaClient(options, new PinoLogger(logger.child({ scope: 'zapo' }), 'error')) as ZapoClient
 const mediaMessageKeys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage'] as const
 
 export class ClientZapo implements Client {
@@ -890,7 +891,7 @@ export class ClientZapo implements Client {
       addons: { autoDecrypt: false },
       media: zapoMediaOptions,
       signPasskeyAssertion: this.signPasskeyAssertion.bind(this),
-      plugins: [voipPlugin({ maxConcurrentCalls: VOIP_MAX_CONCURRENT_CALLS })],
+      plugins: [voipPlugin({ maxConcurrentCalls: VOIP_MAX_CONCURRENT_CALLS, logLevel: 'debug' })],
     })
     const generation = ++this.connectionGeneration
     const voiceBridgeUrl = resolveZapoVoiceBridgeUrl(VOIP_SERVICE_URL, VOIP_BRIDGE_URL)
