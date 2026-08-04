@@ -1,0 +1,36 @@
+{
+    "name": "@vipertec/zapo-voip",
+    "version": "1.0.0-viper.1",
+    "description": "Vendored Zapo VoIP plugin maintained inside ViperConnect",
+    "private": true,
+    "license": "MIT",
+    "author": "vinikjkkj <contact@vinicius.email> (https://github.com/vinikjkkj)",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ViperTecCorporation/ViperConnect.git",
+        "directory": "vendor/zapo-voip"
+    },
+    "main": "dist/index.js",
+    "module": "dist/esm/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "require": "./dist/index.js",
+            "import": "./dist/esm/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "src"
+    ],
+    "peerDependencies": {
+        "@roamhq/wrtc": ">=0.10.0",
+        "libmlow-wasm": "^0.1.1",
+        "zapo-js": "^1.0.0"
+    },
+    "engines": {
+        "node": ">=20.9.0"
+    }
+}

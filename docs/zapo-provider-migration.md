@@ -160,7 +160,7 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Privacy token | consulta, bootstrap e cache | privacy token | testado |
 | Passkey | bridge WebAuthn externo | `signPasskeyAssertion` | testado |
 | Coexistencia | fluxo Meta especifico atual | sem coordinator equivalente documentado | sem capability |
-| Chamadas | receber, rejeitar e fazer bridge de áudio ao vivo | fork compatível `@vipertec/zapo-voip`, `client.voip` | testado |
+| Chamadas | receber, rejeitar e fazer bridge de áudio ao vivo | plugin dedicado `vendor/zapo-voip`, `client.voip` | testado |
 | Status | publicar e receber `status@broadcast` | `client.status` e evento message | testado |
 | Catálogo | produto compartilhado e pedido itemizado no webhook | `productMessage`, `orderMessage` e `BizQueryOrder` | concluido |
 | Recuperacao | reenviar preservando ID publico | `message.send({ id })` e retry interno | testado |

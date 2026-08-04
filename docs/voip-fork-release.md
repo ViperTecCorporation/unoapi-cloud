@@ -1,22 +1,25 @@
-# Fork VoIP mantido pela ViperTec
+# Plugin VoIP dedicado mantido pela ViperTec
 
-A UnoAPI usa o pacote `@vipertec/zapo-voip`, mantido no fork
-[`ViperTecCorporation/zapo-voip`](https://github.com/ViperTecCorporation/zapo-voip).
+A UnoAPI usa o pacote `@vipertec/zapo-voip`, mantido diretamente em
+`vendor/zapo-voip` dentro do ViperConnect. Ele nao depende de acompanhar um fork
+completo do repositorio Zapo.
 
 Versao atualmente integrada: `1.0.0-viper.1`.
 
-O pacote e incorporado ao build por `vendor/vipertec-zapo-voip-1.0.0-viper.1.tgz`
-para tornar a imagem reproduzivel sem depender do registry npm durante o build.
+O pacote e incorporado ao build por `file:vendor/zapo-voip`. A pasta contem o
+codigo-fonte auditavel e o `dist` usado em producao, tornando a imagem
+reproduzivel sem depender do registry npm durante o build.
 
-Principais ajustes do fork:
+Principais ajustes locais:
 
 - descoberta explicita dos dispositivos do destinatario antes da oferta;
 - inscricao em todos os SSRCs de audio anunciados pelo peer;
 - propagacao dos PIDs reais no relay SCTP;
 - atualizacao da inscricao quando o SSRC aceito diverge do inicialmente anunciado;
+- fallback seletivo do relay web-token em `3480` quando o ACK usa `authTokenId=0`
+  ou identifica um relay FOPS;
 - testes do envelope da oferta e da configuracao de relay.
 
-O relay de midia continua usando a porta `3478`, conforme o fluxo oficial do
-plugin. A UnoAPI nao deve forcar a midia para `3480`.
-
-Release: <https://github.com/ViperTecCorporation/zapo-voip/releases/tag/voip-v1.0.0-viper.1>
+O relay principal continua em `3478`. A variante `3480` e aberta somente quando
+os metadados do ACK indicam o fluxo web-token, reproduzindo o comportamento do
+motor nativo que ja funcionava.

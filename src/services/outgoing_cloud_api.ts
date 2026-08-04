@@ -255,6 +255,14 @@ export class OutgoingCloudApi implements Outgoing {
     // Clone to avoid cross-webhook mutations
     try { message = JSON.parse(JSON.stringify(message)) } catch {}
     if (skipTypebot && message && typeof message === 'object') delete message.__unoapiSkipTypebot
+    // Typebot is a bot input endpoint. Forwarding a message sent by the same
+    // session makes it answer its own output and can create an infinite loop
+    // (for example, repeated "Invalid message. Please, try again."). Keep
+    // outgoing echoes available to Chatwoot and regular audit webhooks only.
+    if (webhook.typebot && isOutgoingMessage(message)) {
+      logger.info('Skip outgoing message echo for Typebot phone=%s webhook=%s', phone, webhook?.id || '<none>')
+      return
+    }
     const destinyPhone = await this.isInBlacklist(phone, webhook.id, message)
     if (destinyPhone) {
       logger.info(`Session phone %s webhook %s and destiny phone %s are in blacklist`, phone, webhook.id, destinyPhone)

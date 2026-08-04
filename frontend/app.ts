@@ -263,6 +263,20 @@ export class ViperConnectApp {
         this.modal = { type: 'voip-credentials', value }
         this.render()
       } catch (error) { this.showToast(this.messageFor(error)) }
+    } else if (action === 'drop-voip-registration') {
+      const extensionId = actionElement.dataset.extensionId || ''
+      const registrationId = actionElement.dataset.registrationId || ''
+      const registrationType = actionElement.dataset.registrationType || ''
+      if (extensionId && registrationId && window.confirm('Desconectar este registro de ramal?')) {
+        try {
+          await this.api.voipConsole(
+            `extensions/${encodeURIComponent(extensionId)}/registrations/${encodeURIComponent(registrationId)}?type=${encodeURIComponent(registrationType)}`,
+            'DELETE',
+          )
+          this.showToast(t('Registro de ramal desconectado.'))
+          await this.loadVoip()
+        } catch (error) { this.showToast(this.messageFor(error)) }
+      }
     } else if (action === 'edit-voip-recording-settings') {
       this.modal = { type: 'voip-recording-settings' }
       this.render()

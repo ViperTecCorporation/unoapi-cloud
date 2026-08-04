@@ -89,7 +89,7 @@
     "@sentry/node": "^10.68.0",
     "@zapo-js/store-redis": "1.2.0",
     "@zapo-js/store-sqlite": "1.1.0",
-    "@vipertec/zapo-voip": "file:vendor/vipertec-zapo-voip-1.0.0-viper.1.tgz",
+    "@vipertec/zapo-voip": "file:vendor/zapo-voip",
     "@zapo-js/media-utils": "1.0.0",
     "amqplib": "^0.10.8",
     "audio-decode": "^2.2.3",

@@ -160,6 +160,49 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(mockFetch).toHaveBeenCalledTimes(0)
   })
 
+  test('never forwards outgoing message echoes to Typebot', async () => {
+    mockFetch.mockReset()
+    mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'ok' } as any)
+    const echoPayload: any = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{
+        field: 'smb_message_echoes',
+        value: {
+          messaging_product: 'whatsapp',
+          metadata: { display_phone_number: phone, phone_number_id: phone },
+          contacts: [{ wa_id: phone }],
+          messages: [{
+            from: phone,
+            id: 'ECHO1',
+            type: 'text',
+            text: { body: 'Invalid message. Please, try again.' },
+          }],
+        },
+      }] }],
+    }
+    const typebotWebhook = {
+      ...defaultConfig.webhooks[0],
+      id: 'typebot',
+      urlAbsolute: 'https://bot.local/webhook',
+      enabled: true,
+      sendIncomingMessages: true,
+      sendOutgoingMessages: true,
+      typebot: true,
+    } as Webhook
+    const regularWebhook = {
+      ...typebotWebhook,
+      id: 'chatwoot',
+      urlAbsolute: 'https://chatwoot.local/webhook',
+      typebot: false,
+    } as Webhook
+
+    await service.sendHttp(phone!, typebotWebhook, echoPayload, {})
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    await service.sendHttp(phone!, regularWebhook, echoPayload, {})
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
   test('not sendHttp in webhook when is sendUpdateMessages false', async () => {
     webhook.sendUpdateMessages = false
     mockFetch.mockReset()

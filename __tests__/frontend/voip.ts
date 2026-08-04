@@ -36,6 +36,48 @@ describe('VoIP manager page', () => {
     expect(html).not.toContain('<textarea')
   })
 
+  test('renders active extension registrations and disconnect controls', () => {
+    const html = renderVoipPage({
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'Empresa' }],
+      extensions: [
+        { id: 'extension-1', username: '1001', displayName: 'Recepção', enabled: true },
+        { id: 'extension-2', username: '1002', displayName: 'Financeiro', enabled: true },
+      ],
+      registrations: {
+        total: 2,
+        webrtc: [{
+          registrationId: 'webrtc-registration-1',
+          id: 'extension-1',
+          username: '1001',
+          extensionLabel: 'Recepção',
+          contact: 'sip:1001@browser.invalid',
+          userAgent: 'JsSIP',
+          expiresIn: 180,
+        }],
+        sipRtp: [{
+          registrationId: 'sip-registration-1',
+          id: 'extension-1',
+          username: '1001',
+          extensionLabel: 'Recepção',
+          contact: 'sip:1001@192.168.0.101:5060',
+          userAgent: 'MicroSIP',
+          expiresIn: 45,
+        }],
+      },
+    }, false, '', { tab: 'extensions' })
+
+    expect(html).toContain('Registros ativos')
+    expect(html).toContain('Registrado')
+    expect(html).toContain('2 conexão(ões) · WebRTC + SIP/RTP')
+    expect(html).toContain('Sem registro')
+    expect(html).toContain('MicroSIP')
+    expect(html).toContain('data-action="drop-voip-registration"')
+    expect(html).toContain('data-registration-id="sip-registration-1"')
+    expect(html).toContain('data-registration-type="sip_rtp"')
+  })
+
   test('creates a company in the quick line flow and reveals admin credentials', () => {
     const assignment = renderVoipAssignLineModal({ bridges: [], calls: [], companies: [] }, '5566996269251')
     expect(assignment).toContain('name="companyLabel"')

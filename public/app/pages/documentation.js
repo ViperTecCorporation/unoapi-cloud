@@ -1,5 +1,5 @@
-import { escapeHtml } from '../core/html.js?v=4.0.5-9c6b8a68';
-import { t } from '../core/i18n.js?v=4.0.5-9c6b8a68';
+import { escapeHtml } from '../core/html.js?v=4.0.5-7a098242';
+import { t } from '../core/i18n.js?v=4.0.5-7a098242';
 export const DOCUMENTATION_URL = 'https://viperconnect.vipertec.net/';
 export const renderDocumentationPage = () => `
   <section class="documentation-embed" aria-label="${escapeHtml(t('Documentação'))}">

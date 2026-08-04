@@ -16,6 +16,7 @@ const english = {
   'Transferir para': 'Transfer to',
   'Transferência iniciada.': 'Transfer started.',
   'Configuração removida.': 'Configuration removed.',
+  'Registro de ramal desconectado.': 'Extension registration disconnected.',
   'Histórico e gravações': 'History and recordings',
   'Últimas chamadas processadas pelo serviço de telefonia.': 'Latest calls processed by the telephony service.',
   Gravação: 'Recording',

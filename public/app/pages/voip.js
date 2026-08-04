@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js?v=4.0.5-9c6b8a68';
-import { renderModal } from '../components/modal.js?v=4.0.5-9c6b8a68';
-import { renderStatus } from '../components/status.js?v=4.0.5-9c6b8a68';
-import { escapeHtml } from '../core/html.js?v=4.0.5-9c6b8a68';
+import { icon } from '../components/icons.js?v=4.0.5-7a098242';
+import { renderModal } from '../components/modal.js?v=4.0.5-7a098242';
+import { renderStatus } from '../components/status.js?v=4.0.5-7a098242';
+import { escapeHtml } from '../core/html.js?v=4.0.5-7a098242';
 const labels = {
     companies: 'Empresas',
     accounts: 'Linhas',
@@ -45,6 +45,27 @@ const resourceGrid = (state, resource, columns, extraActions) => {
   </section>`;
 };
 const companyName = (state, id) => asItems(state.companies).find(item => item.id === id)?.label || id || '—';
+const activeRegistrations = (state) => [
+    ...asItems(state.registrations?.webrtc).map(item => ({ ...item, transport: 'webrtc' })),
+    ...asItems(state.registrations?.sipRtp).map(item => ({ ...item, transport: 'sip_rtp' })),
+];
+const registrationsForExtension = (state, extension) => activeRegistrations(state).filter(registration => `${registration.id || ''}` === `${extension.id || ''}`
+    || `${registration.username || ''}` === `${extension.username || ''}`);
+const registrationTransport = (registration) => registration.transport === 'sip_rtp' ? 'SIP/RTP' : 'WebRTC';
+const registrationContact = (registration) => {
+    if (typeof registration.contact === 'string' && registration.contact.trim())
+        return registration.contact;
+    const address = registration.peer?.address || registration.peer?.host;
+    const port = registration.peer?.port;
+    return address ? `${address}${port ? `:${port}` : ''}` : '—';
+};
+const registrationStatus = (state, extension) => {
+    const registrations = registrationsForExtension(state, extension);
+    if (!registrations.length)
+        return `<div class="stack stack--compact">${badge('Sem registro')}<span class="muted">Nenhum endpoint conectado</span></div>`;
+    const transports = [...new Set(registrations.map(registrationTransport))].join(' + ');
+    return `<div class="stack stack--compact">${badge('Registrado', 'success')}<span class="muted">${registrations.length} conexão(ões) · ${escapeHtml(transports)}</span></div>`;
+};
 const renderOverview = (state) => {
     const lines = state.zapoLines || [];
     const pending = lines.filter(item => item.assignmentStatus === 'pending_company').length;
@@ -85,13 +106,29 @@ const renderLines = (state) => {
         ['Status', item => item.enabled ? badge('Ativa', 'success') : badge('Inativa')],
     ])}`;
 };
+const renderActiveRegistrations = (state) => {
+    const registrations = activeRegistrations(state);
+    return `<section class="section">${sectionHeading('Registros ativos', 'Endpoints SIP e WebRTC conectados neste momento.')}
+    <div class="table-wrap"><table><thead><tr><th>Ramal</th><th>Transporte</th><th>Contato</th><th>Cliente</th><th>Expira em</th><th class="table-actions">Ações</th></tr></thead><tbody>
+      ${registrations.length ? registrations.map(registration => `<tr>
+        <td><strong>${escapeHtml(registration.extensionLabel || registration.displayName || registration.username || registration.id || '—')}</strong><br><span class="muted">${escapeHtml(registration.username || registration.id || '—')}</span></td>
+        <td>${badge(registrationTransport(registration), 'success')}</td>
+        <td><code>${escapeHtml(registrationContact(registration))}</code></td>
+        <td>${escapeHtml(registration.userAgent || '—')}</td>
+        <td>${Number.isFinite(Number(registration.expiresIn)) ? `${Math.max(0, Number(registration.expiresIn))}s` : '—'}</td>
+        <td class="table-actions"><button class="btn btn--danger" type="button" data-action="drop-voip-registration" data-extension-id="${escapeHtml(`${registration.id || registration.username || ''}`)}" data-registration-id="${escapeHtml(`${registration.registrationId || ''}`)}" data-registration-type="${registration.transport}">${icon('trash')}Desconectar</button></td>
+      </tr>`).join('') : emptyRow(6, 'Nenhum ramal registrado neste momento.')}
+    </tbody></table></div>
+  </section>`;
+};
 const renderExtensions = (state) => resourceGrid(state, 'extensions', [
     ['Ramal', item => `<strong>${escapeHtml(item.displayName || item.id)}</strong><br><span class="muted">${escapeHtml(item.username || item.id)}</span>`],
     ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
     ['Tipo', item => escapeHtml(item.type || 'both')],
     ['Grupos', item => `${item.extensionGroupIds?.length || 0}`],
-    ['Status', item => item.enabled ? badge('Ativo', 'success') : badge('Inativo')],
-], item => state.auth?.role === 'user' ? '' : `<button class="btn btn--ghost" type="button" data-action="show-voip-credentials" data-id="${escapeHtml(`${item.id}`)}">${icon('eye')}Credenciais</button>`) + resourceGrid(state, 'extensionGroups', [
+    ['Configuração', item => item.enabled ? badge('Ativo', 'success') : badge('Inativo')],
+    ['Registro', item => registrationStatus(state, item)],
+], item => state.auth?.role === 'user' ? '' : `<button class="btn btn--ghost" type="button" data-action="show-voip-credentials" data-id="${escapeHtml(`${item.id}`)}">${icon('eye')}Credenciais</button>`) + renderActiveRegistrations(state) + resourceGrid(state, 'extensionGroups', [
     ['Grupo', item => `<strong>${escapeHtml(item.label || item.id)}</strong>`],
     ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
     ['Ramais', item => `${item.extensionIds?.length || 0}`],
