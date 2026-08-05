@@ -2,8 +2,8 @@
 
 O ViperConnect mantém a única sessão Zapo e conecta o worker responsável ao
 serviço de telefonia por `WS /v1/bridge/zapo`. O serviço VoIP não cria outro QR,
-auth store ou socket. Se ele ficar offline, as mensagens continuam funcionando
-e a telefonia aparece como indisponível.
+repositório de credenciais ou socket de sessão. Se ele ficar offline, as
+mensagens continuam funcionando e a telefonia aparece como indisponível.
 
 ## Configuração da Uno
 
@@ -25,8 +25,6 @@ local sem TLS ela pode ser omitida; nesse caso a Uno deriva
 PORT=3097
 VOIP_SERVICE_TOKEN=gere-um-token-longo
 VOIP_BRIDGE_TOKEN=gere-um-token-longo
-VOIP_ZAPO_ONLY=true
-VOIP_STANDALONE_AUTO_START=false
 ```
 
 O valor de `VOIP_BRIDGE_TOKEN` deve ser igual ao `VOIP_SERVICE_TOKEN` usado pela
@@ -73,9 +71,8 @@ O worker usa `zapo-js`, o plugin VoIP mantido dentro do ViperConnect,
 seu próprio `package.json` e `node_modules`; bibliotecas WebRTC desse processo
 atendem os ramais no navegador e não transportam a mídia do WhatsApp.
 
-O protocolo de relay foi alinhado aos vetores públicos do MeowCaller, mas o
-projeto não é instalado nem executado como dependência. A sessão e a
-sinalização continuam pertencendo integralmente à Zapo. Entre os dois
+O transporte de relay segue contratos públicos validados para chamadas 1:1,
+mas a sessão e a sinalização pertencem integralmente à Zapo. Entre os dois
 processos trafegam apenas comandos de chamada e PCM mono a 16 kHz pelo bridge
 autenticado.
 
@@ -85,8 +82,7 @@ autenticado.
 2. Uma chamada recebida gera `call.incoming`, mas não é atendida automaticamente.
 3. O serviço toca os ramais SIP/WebRTC ou SIP/RTP configurados.
 4. Somente o primeiro ramal que atende dispara `call.command: accept`.
-5. Na entrada, esse aceite abre o relay sem enviar controles proativos; o
-   primeiro `mute_v2` remoto conclui o accept de sinalização e recebe ACK tipado.
+5. A Zapo conclui a sinalização e abre a mídia da chamada atendida.
 6. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
 7. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
 
@@ -105,23 +101,78 @@ saída continua sendo a dona da ponte de áudio, como numa chamada externa.
 
 ## API administrativa
 
-- `GET /admin/voip/bootstrap`: linhas, chamadas, ramais e configuração agregada;
-- `GET /admin/voip/calls`: chamadas ativas;
-- `POST /admin/voip/calls`: inicia chamada com `session`, `peerJid` e `extensionId`;
-- `POST /admin/voip/calls/{callId}/{command}`: `accept`, `reject`, `end` ou `mute`.
-- `POST /admin/voip/console/calls/{callId}/transfer`: transfere para outro ramal;
-- `PUT|DELETE /admin/voip/console/{resource}/{id}`: mantém empresas, linhas,
-  grupos, sessões, ramais e usuários;
-- `GET /admin/voip/console/history`: consulta histórico e gravações;
-- `GET /admin/voip/recordings/{recordId}`: reproduz ou baixa uma gravação pelo
-  proxy autenticado da Uno;
-- `GET|PUT /admin/voip/console/recording/settings`: configura gravações;
-- `GET /admin/voip/console/zapo-lines`: inventário de linhas descobertas pela bridge;
+Todas as rotas abaixo passam pela Uno e usam a mesma autenticação
+administrativa da API. O navegador não recebe `VOIP_SERVICE_TOKEN`.
+
+### Estado, chamadas e transferência
+
+- `GET /admin/voip/bootstrap`: retorna configuração, linhas Zapo, chamadas,
+  reservas, registros SIP/WebRTC, histórico inicial e resumo de armazenamento;
+- `GET /admin/voip/calls`: lista chamadas ativas;
+- `POST /admin/voip/calls`: inicia chamada com `session`, `peerJid` e
+  `extensionId`;
+- `POST /admin/voip/calls/{callId}/{command}`: executa `accept`, `reject`, `end`
+  ou `mute`;
+- `POST /admin/voip/console/calls/{callId}/transfer`: transfere uma chamada
+  ativa para `targetExtensionId`.
+
+### Cadastro e slots bridge
+
+- `GET /admin/voip/console/{resource}`: lista `companies`, `accounts`,
+  `lineGroups`, `extensionGroups`, `sessions`, `extensions` ou `users`;
+- `PUT /admin/voip/console/{resource}/{id}`: cria ou atualiza o recurso;
+- `DELETE /admin/voip/console/{resource}/{id}`: remove o recurso;
+- `PUT /admin/voip/console/accounts/{accountId}/slots/{slotId}`: cria ou atualiza
+  um slot bridge com `label`, `enabled` e `maxActiveCalls`;
+- `DELETE /admin/voip/console/accounts/{accountId}/slots/{slotId}`: remove um
+  slot sem abrir ou apagar a sessão Zapo;
+- `GET /admin/voip/console/zapo-lines`: lista as linhas descobertas pela bridge;
 - `POST /admin/voip/console/zapo-lines/{session}/assign`: atribui a linha a uma
-  empresa e pode criar conta, sessão, slot, grupos, rota e ramal básicos;
-- `GET /admin/voip/console/extensions/{extensionId}/credentials`: recupera para
-  administrador o usuário, senha, URI SIP e URLs WebRTC do ramal;
-- `GET|PUT /admin/voip/console/license`: consulta ou atualiza a licença.
+  empresa e, com `createBasicRoute=true`, cria conta, sessão, slot, grupos, rota
+  e ramal básicos.
+
+Slots representam capacidade simultânea da bridge, não aparelhos adicionais.
+Cada slot pertence a uma linha e `maxActiveCalls` limita quantas chamadas ele
+pode possuir ao mesmo tempo. A sessão escolhe os slots permitidos em
+`deviceSlotIds`; não existe pareamento separado dentro da telefonia.
+
+### Ramais, registros e roteamento
+
+- `GET /admin/voip/console/extensions/{extensionId}/credentials`: retorna ao
+  administrador usuário, senha, URI SIP e parâmetros WebRTC do ramal;
+- `DELETE /admin/voip/console/extensions/{extensionId}/registrations/{registrationId}`:
+  desconecta um registro ativo; use `type=webrtc` ou `type=sip_rtp` para limitar
+  o transporte;
+- `GET /admin/voip/console/extensionGroups/{extensionGroupId}/transfer-audio`:
+  reproduz o áudio de transferência configurado;
+- `PUT /admin/voip/console/extensionGroups/{extensionGroupId}/transfer-audio`:
+  envia MP3 ou WAV binário, com até 15 MB, e aceita o nome em `X-File-Name`;
+- `POST /admin/voip/console/router/resolve-inbound`: simula entrada com
+  `sessionId` e `callId` opcional;
+- `POST /admin/voip/console/router/resolve-outbound`: simula saída com
+  `extensionId`, `target` e `callId` opcional;
+- `GET /admin/voip/console/router/locks`: lista reservas ativas;
+- `DELETE /admin/voip/console/router/locks/{lockId}`: libera uma reserva;
+- `DELETE /admin/voip/console/router/calls/{callId}/locks`: libera todas as
+  reservas pertencentes a uma chamada.
+
+Ramais podem pertencer a vários grupos. `extensionGroupDistances` define a
+prioridade numérica de cada grupo no roteamento: menor distância toca primeiro.
+O simulador aplica as mesmas regras reais, mas não abre a chamada.
+
+### Histórico, gravações e IA
+
+- `GET /admin/voip/console/history`: filtra por `page`, `pageSize` (máximo 100),
+  `search`, `startDate` e `endDate`;
+- `GET /admin/voip/recordings/{recordId}`: reproduz ou baixa uma gravação pela
+  fachada autenticada da Uno;
+- `GET /admin/voip/console/recording/summary`: resume arquivos e bytes por linha;
+- `GET /admin/voip/console/recording/settings`: consulta a configuração sem
+  devolver segredos;
+- `PUT /admin/voip/console/recording/settings`: configura disco local ou S3
+  compatível, formato, estéreo, retenção e URLs assinadas;
+- `DELETE /admin/voip/console/recording/accounts/{accountId}`: remove as
+  gravações armazenadas da linha e retorna `deleted` e `bytes`.
 
 A página **Telefonia** do Manager usa abas, grids e modais para empresas,
 linhas, ramais, grupos, sessões, chamadas, gravações e usuários. O JSON interno
@@ -140,7 +191,19 @@ O mesmo ramal pode ser registrado em vários telefones SIP e navegadores WebRTC.
 Todos tocam na chamada recebida; o primeiro que atende fica com a chamada e as
 outras pernas são canceladas como atendidas em outro lugar.
 
+Cada empresa pode configurar transcrição e resumo pós-chamada por IA. URLs,
+modelos, idioma, prompt e a inclusão da transcrição são editáveis no Manager;
+tokens já salvos não voltam para o navegador e um campo secreto vazio preserva
+o valor existente. A configuração fica em `companies/{id}` dentro de
+`aiSummary`, mantendo cada empresa isolada.
+
+Cada linha também pode encaminhar a gravação ao Chatwoot. A opção
+`chatwootRecording.privateNote` controla se o anexo entra como nota privada, e
+o token salvo segue a mesma regra de preservação de segredo.
+
 No histórico, gravações com estado `available` possuem os botões **Reproduzir**
 e **Baixar**. A reprodução acontece em um player de áudio dentro do próprio
-grid; o navegador recebe o áudio pela fachada autenticada da Uno e nunca conhece
-o token interno do serviço VoIP.
+grid; o histórico possui busca, período e paginação. O navegador recebe o áudio
+pela fachada autenticada da Uno e nunca conhece o token interno do serviço VoIP.
+O Manager também mostra quantidade e tamanho por linha e exige confirmação
+antes da limpeza em lote.

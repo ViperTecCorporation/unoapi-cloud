@@ -32,7 +32,7 @@ export class VoipService {
     try {
       const headers = new Headers(init.headers)
       headers.set('Authorization', `Bearer ${this.token}`)
-      if (init.body) headers.set('Content-Type', 'application/json')
+      if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
       const response = await this.fetcher(new URL(path, this.baseUrl).toString(), { ...init, headers, signal: controller.signal })
       const text = await response.text()
       let payload: unknown
@@ -58,17 +58,16 @@ export class VoipService {
     }
   }
 
-  async stream(path: string): Promise<Response> {
+  async stream(path: string, init: RequestInit = {}): Promise<Response> {
     if (!this.available()) throw new VoipServiceError(503, 'voip_service_not_configured')
     if (!path.startsWith('/v1/')) throw new VoipServiceError(400, 'invalid_voip_service_path')
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), Math.max(1_000, this.timeoutMs))
     timer.unref?.()
     try {
-      const response = await this.fetcher(new URL(path, this.baseUrl).toString(), {
-        headers: { Authorization: `Bearer ${this.token}` },
-        signal: controller.signal,
-      })
+      const headers = new Headers(init.headers)
+      headers.set('Authorization', `Bearer ${this.token}`)
+      const response = await this.fetcher(new URL(path, this.baseUrl).toString(), { ...init, headers, signal: controller.signal })
       if (!response.ok) {
         const text = await response.text()
         let payload: unknown = text

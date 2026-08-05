@@ -197,6 +197,25 @@ export interface VoipLineInventoryItem extends VoipBridgeStatus {
   routingConfigured: boolean
 }
 
+export interface VoipHistoryQuery {
+  page?: number
+  pageSize?: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface VoipHistoryPage {
+  items: Array<Record<string, any>>
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}
+
 export interface VoipBootstrap {
   bridges: VoipBridgeStatus[]
   calls: VoipCallStatus[]
@@ -207,11 +226,10 @@ export interface VoipBootstrap {
   lineGroups?: Array<Record<string, any>>
   extensionGroups?: Array<Record<string, any>>
   users?: Array<Record<string, any>>
-  history?: { items?: Array<Record<string, any>>; total?: number }
+  history?: Partial<VoipHistoryPage>
   recordingSummary?: Record<string, any>
   recording?: Record<string, any>
   registrations?: { total?: number; webrtc?: Array<Record<string, any>>; sipRtp?: Array<Record<string, any>> }
-  license?: Record<string, any>
   autoUpdate?: Record<string, any>
   zapoLines?: VoipLineInventoryItem[]
   auth?: { role?: 'admin' | 'user'; companyIds?: string[] }

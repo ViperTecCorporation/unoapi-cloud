@@ -98,8 +98,6 @@ services:
       UNOAPI_PROCESS_ROLE: "voip"
       VOIP_SERVICE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
       VOIP_BRIDGE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
-      VOIP_ZAPO_ONLY: "true"
-      VOIP_STANDALONE_AUTO_START: "false"
       VOIP_AUTO_UPDATE_ENABLED: "false"
       VOIP_AUTO_UPDATE_APPLY_ENABLED: "false"
     volumes:

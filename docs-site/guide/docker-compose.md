@@ -5,6 +5,11 @@ Estes são os dois modelos do próprio projeto e usam a imagem
 última imagem publicada no canal `latest`. Ambos preservam a arquitetura usada em produção:
 web, broker e worker Zapo separados, com Valkey e RabbitMQ persistentes.
 
+Cada tag Git de release no formato `v*` publica duas referências da mesma
+imagem: a versão imutável, por exemplo `4.0.8`, e `latest`. Use `latest` para
+acompanhar o canal estável automaticamente ou fixe a versão semântica quando
+precisar controlar a janela de atualização.
+
 ## Proxy Nginx na borda
 
 Use quando o domínio e o TLS já são administrados pelo Nginx Proxy Manager ou
@@ -84,9 +89,7 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 | `VOIP_TURN_URL`, `VOIP_TURN_USERNAME`, `VOIP_TURN_CREDENTIAL` | Relay autenticado para WebRTC quando a conexão direta falhar. |
 | `VOIP_CALL_ENGINE` | Deve permanecer `zapo_native`. |
 | `VOIP_NATIVE_LOG_LEVEL` | Nível do motor de chamadas; use `info` normalmente e `debug` somente para diagnóstico. |
-| `VOIP_ZAPO_ONLY` | Garante operação somente pela bridge Zapo. |
-| `VOIP_STANDALONE_AUTO_START` | Deve ficar `false`; a sessão pertence à Uno. |
-| `CALL_HISTORY_STORAGE`, `VOIP_APP_STORAGE`, `VOICE_CONFIG_STORAGE`, `VOIP_LICENSE_STORAGE` | Mantêm histórico, estado, configuração e licença no SQLite. |
+| `CALL_HISTORY_STORAGE`, `VOIP_APP_STORAGE`, `VOICE_CONFIG_STORAGE` | Mantêm histórico, estado operacional e configuração no SQLite. |
 | `VOIP_SQLITE_PATH` | Banco persistido no volume da telefonia. |
 | `SIP_RTP_PUBLIC_IP` | Domínio ou IP público anunciado para SIP/RTP. |
 | `SIP_RTP_PUBLIC_ADVERTISE_IP` | IP público literal anunciado quando o servidor está atrás de NAT. |
@@ -158,6 +161,8 @@ services:
 ```
 
 Para atualizar depois, execute `docker compose pull && docker compose up -d`.
+Esse comando baixa o novo `latest` publicado pela tag de release. Se o Compose
+estiver fixado em uma versão, altere a tag explicitamente antes do `pull`.
 
 Somente a API é publicada. Valkey e RabbitMQ ficam restritos à network interna
 e mantêm dados nos volumes `redis` e `rabbitmq`.

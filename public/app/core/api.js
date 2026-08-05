@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.7-7a098242';
+import { t } from './i18n.js?v=4.0.8-5ad21a7e';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -178,6 +178,58 @@ export class ApiClient {
             method,
             body: payload === undefined ? undefined : JSON.stringify(payload),
         });
+    }
+    voipHistory(options = {}) {
+        const query = new URLSearchParams();
+        if (options.page)
+            query.set('page', `${options.page}`);
+        if (options.pageSize)
+            query.set('pageSize', `${options.pageSize}`);
+        if (options.search?.trim())
+            query.set('search', options.search.trim());
+        if (options.startDate?.trim())
+            query.set('startDate', options.startDate.trim());
+        if (options.endDate?.trim())
+            query.set('endDate', options.endDate.trim());
+        const encodedQuery = query.toString();
+        const suffix = encodedQuery ? `?${encodedQuery}` : '';
+        return this.request(`/admin/voip/console/history${suffix}`);
+    }
+    voipSaveBridgeSlot(accountId, slotId, payload) {
+        return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'PUT', {
+            ...payload,
+            mode: 'bridge',
+            bridgeSoftware: 'zapo',
+        });
+    }
+    voipDeleteBridgeSlot(accountId, slotId) {
+        return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'DELETE');
+    }
+    voipUploadTransferAudio(extensionGroupId, file) {
+        return this.request(`/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': file.type || 'application/octet-stream',
+                'X-File-Name': encodeURIComponent(file.name),
+            },
+            body: file,
+        });
+    }
+    async voipTransferAudio(extensionGroupId) {
+        const headers = new Headers();
+        if (this.token)
+            headers.set('Authorization', `Bearer ${this.token}`);
+        const response = await this.fetcher.call(globalThis, `${this.baseUrl}/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, { headers });
+        if (!response.ok) {
+            const text = await response.text();
+            let payload = text;
+            try {
+                payload = text ? JSON.parse(text) : undefined;
+            }
+            catch { }
+            throw new ApiError(response.status, errorMessage(payload, response.status), payload);
+        }
+        return response.blob();
     }
     voipTransfer(callId, targetExtensionId) {
         return this.voipConsole(`calls/${encodeURIComponent(callId)}/transfer`, 'POST', { targetExtensionId });

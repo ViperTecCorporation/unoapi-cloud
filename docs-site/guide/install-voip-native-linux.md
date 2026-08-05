@@ -82,8 +82,6 @@ NODE_ENV=production
 PORT=3097
 VOIP_SERVICE_TOKEN=GERE_UM_TOKEN_LONGO_E_ALEATORIO
 VOIP_BRIDGE_TOKEN=GERE_UM_TOKEN_LONGO_E_ALEATORIO
-VOIP_ZAPO_ONLY=true
-VOIP_STANDALONE_AUTO_START=false
 VOIP_CALL_ENGINE=zapo_native
 VOIP_NATIVE_LOG_LEVEL=info
 
@@ -99,7 +97,6 @@ CALL_HISTORY_STORAGE=sqlite
 VOIP_SQLITE_PATH=/var/lib/viperconnect-voip-service/voip.sqlite
 VOIP_APP_STORAGE=sqlite
 VOICE_CONFIG_STORAGE=sqlite
-VOIP_LICENSE_STORAGE=sqlite
 VOIP_MEMORY_RESTART_RSS_MB=0
 
 SIP_RTP_ENABLED=true
@@ -161,8 +158,8 @@ provedor, NAT e roteador precisam encaminhar as mesmas portas UDP.
 
 No proxy de borda, encaminhe `voip.seudominio.com` para
 `http://IP_DO_SERVIDOR:3097`, habilite WebSocket e preserve o upgrade da rota
-`/sip/ws`. O proxy entrega TLS público; SIP/RTP e as faixas UDP continuam indo
-diretamente ao host, sem passar pelo proxy HTTP.
+`/sip/ws` e da bridge `/v1/bridge/zapo`. O proxy entrega TLS público; SIP/RTP e
+as faixas UDP continuam indo diretamente ao host, sem passar pelo proxy HTTP.
 
 ## 6. Iniciar e validar
 
@@ -178,8 +175,10 @@ Depois confirme no Manager:
 
 1. a linha Zapo aparece conectada;
 2. o ramal registra por SIP ou WebRTC;
-3. uma chamada toca e possui áudio nos dois sentidos;
-4. histórico e gravação persistem após reiniciar o serviço.
+3. os registros ativos aparecem no grid do ramal;
+4. uma chamada toca e possui áudio nos dois sentidos;
+5. histórico, gravação e configuração persistem após reiniciar o serviço;
+6. o simulador de roteamento resolve a linha e o ramal esperados sem abrir chamada.
 
 ## Atualizar e remover
 

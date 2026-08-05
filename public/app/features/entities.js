@@ -1,7 +1,7 @@
-import { renderAvatar } from '../components/avatar.js?v=4.0.7-7a098242';
-import { icon } from '../components/icons.js?v=4.0.7-7a098242';
-import { escapeHtml } from '../core/html.js?v=4.0.7-7a098242';
-import { t } from '../core/i18n.js?v=4.0.7-7a098242';
+import { renderAvatar } from '../components/avatar.js?v=4.0.8-5ad21a7e';
+import { icon } from '../components/icons.js?v=4.0.8-5ad21a7e';
+import { escapeHtml } from '../core/html.js?v=4.0.8-5ad21a7e';
+import { t } from '../core/i18n.js?v=4.0.8-5ad21a7e';
 const contactName = (contact) => contact.display_name || contact.push_name || contact.username || contact.phone_number || contact.user_id;
 export const filterContacts = (contacts, query) => {
     const needle = query.trim().toLowerCase();

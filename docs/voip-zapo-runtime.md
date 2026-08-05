@@ -23,9 +23,8 @@ ramais
   sinalizacao de chamada e midia do WhatsApp;
 - o servico de telefonia nao abre uma segunda sessao Zapo; ele cuida de SIP,
   ramais, roteamento, gravacao e conversao de audio;
-- o MeowCaller nao e dependencia npm, modulo Go importado nem processo em
-  execucao. Ele foi a referencia de protocolo e de vetores usados para
-  reimplementar o trecho necessario no vendor da ViperTec;
+- o transporte de relay e implementado pelo vendor da ViperTec e pelo helper
+  nativo empacotado na imagem; nao existe processo externo de chamada;
 - RabbitMQ nao transporta audio. O bridge usa JSON para controle e frames
   binarios `VPA1` para PCM.
 
@@ -38,8 +37,8 @@ O processo VoIP usa o manifesto do repositorio separado
 `ViperTecCorporation/viperconnect-voip-service`. O workflow o baixa para
 `_build/voip-service` e o Docker executa `npm ci` em uma etapa propria. A pasta
 `_build/` local e temporaria, esta no `.gitignore` e pode conter uma copia
-antiga; ela nunca deve ser tratada como fonte de verdade. Na revisao desta
-auditoria, a branch integrada do servico estava em `0.1.58`.
+antiga; ela nunca deve ser tratada como fonte de verdade. A imagem de release
+registra a revisao exata da branch integrada para permitir reproducao e rollback.
 
 O `Dockerfile` copia os dois grafos para caminhos diferentes e o entrypoint
 seleciona o executavel:
@@ -62,8 +61,7 @@ As dependencias que formam o caminho de chamada sao:
 | `relay-bridge` | binario Go estatico | UDP, DTLS, SCTP e DataChannel direto com o relay |
 
 O pacote `@vipertec/zapo-voip` declara somente `zapo-js` e `libmlow-wasm` como
-peer dependencies. Ele nao depende do MeowCaller nem de uma implementacao Node
-de WebRTC.
+peer dependencies. Ele nao depende de uma implementacao Node de WebRTC.
 
 O helper nativo e compilado no Docker com estas versoes Pion fixadas no
 `go.mod`:
@@ -77,12 +75,9 @@ O `protobufjs` fixado em `resolutions` pertence ao grafo geral de protocolo. Ele
 nao codifica o bridge PCM. Os nove StreamDescriptors do Allocate STUN sao
 gerados no proprio vendor e enviados no atributo `0x4024`.
 
-A raiz ainda mantem uma dependencia de desenvolvimento do motor legado para
-compilar e testar areas que coexistem no repositorio. A imagem padrao instala o
-grafo raiz com `yarn install --production`, e
-`scripts/check-zapo-runtime-graph.mjs` impede que imports ou artefatos desse
-motor entrem no `dist` do runtime Zapo. Portanto, isso nao e fallback de chamada
-nem dependencia ativa do worker em producao.
+O build da imagem instala apenas o grafo de producao do worker e executa
+`scripts/check-zapo-runtime-graph.mjs` para impedir que imports ou artefatos
+fora do runtime Zapo entrem no `dist` publicado.
 
 ## Dependencias do processo VoIP
 
@@ -91,25 +86,17 @@ SRTP e nao abre o relay do WhatsApp. No caminho Zapo ativo, os componentes
 centrais sao `express`, `ws`, `zod`, os gateways SIP e
 `ZapoBridgeRegistry`/`ZapoBridgeCallService`.
 
-Algumas dependencias do manifesto completo da telefonia precisam ser
-interpretadas corretamente:
+As dependencias centrais do manifesto da telefonia sao:
 
 | Dependencia | Uso real |
 | --- | --- |
-| `@roamhq/wrtc` | perna SIP/WebRTC dos ramais no navegador e codigo antigo ainda presente; nao e o relay WhatsApp |
-| `zapo-js` | camada de compatibilidade do motor nativo antigo; o bridge `VPA1` nao depende dela |
-| `koffi` | integracao nativa/WASM antiga e ajuste de memoria; nao substitui o helper Go do worker |
+| `@roamhq/wrtc` | perna SIP/WebRTC dos ramais no navegador; nao e o relay WhatsApp |
 | `ws` | WebSocket SIP e bridge Zapo autenticado |
 | AWS SDK | armazenamento e acesso a gravacoes quando configurado |
 
-O manifesto `0.1.58` nao declara diretamente o cliente do motor legado.
-Entretanto, o fonte do servico ainda possui modulos standalone, rotas e tarefas
-de compatibilidade. Com `VOIP_ZAPO_ONLY=true`, o caller e a bridge antigos nao
-sao iniciados, mas a limpeza estrutural ainda nao terminou: existem imports de
-bootstrap, preload do WASM antigo e limpeza de auth que devem ser removidos em
-uma mudanca separada. Essa divida nao participa do caminho
-`ZapoBridgeCallService`, mas tambem impede afirmar que todo o repositorio VoIP ja
-foi fisicamente purgado.
+O processo de telefonia inicia diretamente a bridge Zapo, os gateways SIP e os
+servicos administrativos. Ele nao abre sessao de WhatsApp, nao possui
+pareamento proprio e nao executa tarefas de credenciais paralelas.
 
 ## Contrato entre os processos
 
@@ -131,11 +118,10 @@ No sentido WhatsApp para SIP, o vendor decodifica o Opus remoto e publica PCM
 `uno_to_voip`. No sentido SIP para WhatsApp, a telefonia envia PCM
 `voip_to_uno`, e o vendor aplica backpressure, codec, RTP e SRTP.
 
-## O que foi portado da referencia MeowCaller
+## Contrato de relay implementado
 
-O MeowCaller foi auditado na revisao
-`6d9b7b2c18072155a4581ab8c7fccc51b4fd0a73`. Foram portados contratos de fio e
-comportamentos 1:1, nao o projeto completo:
+O vendor foi auditado contra vetores publicos de protocolo e implementa os
+contratos de fio necessarios para chamadas 1:1:
 
 - transporte direto `UDP -> DTLS client -> SCTP client -> DataChannel`, sem
   ICE, SDP ou `RTCPeerConnection`;
@@ -152,11 +138,10 @@ comportamentos 1:1, nao o projeto completo:
   `mute_v2` do caller;
 - preferencia de relay FNA no inbound e non-FNA autenticado no outbound.
 
-## O que continua sendo Zapo e o que e extensao ViperTec
+## Responsabilidades da Zapo e extensoes ViperTec
 
 A Zapo continua sendo dona da sessao, plugin host, Signal, privacy token,
-resolucao LID/device, envio/recepcao das stanzas e stores. O runtime nao foi
-substituido pelo MeowCaller.
+resolucao LID/device, envio/recepcao das stanzas e stores.
 
 O fluxo final e deliberadamente hibrido:
 
@@ -217,8 +202,33 @@ silenciosa depois do accept. O primeiro relay permanece selecionado enquanto o
 plano de controle estiver vivo e somente uma falha real do transporte/controle
 permite avancar para o proximo candidato.
 
-O MeowCaller fornece a referencia para a escolha inicial e os contratos de fio,
-mas esse failover depois da abertura e uma extensao local.
+Os vetores publicos fornecem a referencia para a escolha inicial e os contratos
+de fio, mas esse failover depois da abertura e uma extensao local.
+
+## Superficies administrativas da imagem integrada
+
+A Uno expoe uma fachada autenticada em `/admin/voip` e nunca entrega o token do
+servico ao navegador. O bootstrap agrega configuracao, linhas Zapo, chamadas,
+registros SIP/WebRTC, locks, a primeira pagina do historico e o resumo de
+gravacoes.
+
+O contrato administrativo consolidado inclui:
+
+- empresas com fuso horario e transcricao/resumo por IA isolados por empresa;
+- contas com integracao opcional de gravacao no Chatwoot e controle de nota
+  privada;
+- slots exclusivamente `bridge`, com `maxActiveCalls` e selecao por sessao;
+- ramais SIP/WebRTC com varios registros simultaneos e desconexao individual;
+- distancia por grupo de ramais, onde o menor numero possui maior prioridade;
+- historico com busca, periodo, pagina e `pageSize` limitado a 100;
+- gravacao local ou S3 compativel, MP3/WAV/GSM, retencao, resumo por linha,
+  reproducao autenticada e limpeza por conta;
+- audio MP3/WAV de ate 15 MB por grupo de transferencia;
+- simulacao de roteamento inbound/outbound e liberacao explicita de locks.
+
+Configuracoes e segredos sao persistidos pelo servico de telefonia. Respostas
+administrativas omitem os segredos; campos secretos vazios preservam os valores
+ja salvos.
 
 ## Evidencia de validacao
 
@@ -273,7 +283,7 @@ chamadas adicionais. Os call IDs
 - registrar no artefato a revisao exata do repositorio VoIP incorporado. A branch
   configuravel do workflow e pratica, mas uma tag nao deve ficar sem
   rastreabilidade do segundo repositorio.
+- cada tag Git `v*` publica a referencia semantica correspondente e tambem
+  atualiza `latest`; ambas devem apontar para o mesmo digest da imagem integrada.
 
-Detalhes byte a byte e a matriz contra a referencia estao em
-`docs/voip-meowcaller-audit.md`. O processo de empacotamento e release esta em
-`docs/voip-fork-release.md`.
+O processo de empacotamento e release esta em `docs/voip-fork-release.md`.

@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ViperTecCorporation/viperconnect-voip-service
-          ref: ${{ inputs.voip_ref || vars.VOIP_SOURCE_REF || 'codex/zapo-uno-voice-bridge' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.voip_ref || 'codex/zapo-uno-voice-bridge' }}
           token: ${{ secrets.VOIP_REPOSITORY_TOKEN || github.token }}
           path: _build/voip-service
 
@@ -68,6 +68,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha
 
       - name: Set up QEMU

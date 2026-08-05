@@ -123,4 +123,42 @@ describe('frontend API client', () => {
     )
     expect(new Headers((fetcher as jest.Mock).mock.calls[0][1].headers).get('Authorization')).toBe('Bearer admin-token')
   })
+
+  test('queries paged VoIP history without losing filters', async () => {
+    const fetcher = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [], total: 0, page: 2, pageSize: 50, totalPages: 1,
+    }))) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+
+    await api.voipHistory({ page: 2, pageSize: 50, search: ' 1001 ', startDate: '2026-08-01', endDate: '2026-08-05' })
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://unoapi.example/admin/voip/console/history?page=2&pageSize=50&search=1001&startDate=2026-08-01&endDate=2026-08-05',
+      expect.any(Object),
+    )
+  })
+
+  test('forces bridge mode in slot CRUD and encodes Unicode transfer filenames', async () => {
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ saved: true })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ uploaded: true }))) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+    api.setToken('admin')
+
+    await api.voipSaveBridgeSlot('line 1', 'slot/a', { enabled: true })
+    const file = new File([new Uint8Array([1, 2])], 'áudio espera.mp3', { type: 'audio/mpeg' })
+    await api.voipUploadTransferAudio('support', file)
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      'https://unoapi.example/admin/voip/console/accounts/line%201/slots/slot%2Fa',
+      expect.any(Object),
+    )
+    const calls = (fetcher as jest.Mock).mock.calls
+    expect(JSON.parse(`${calls[0][1]?.body}`)).toMatchObject({ mode: 'bridge', bridgeSoftware: 'zapo' })
+    const headers = new Headers(calls[1][1]?.headers)
+    expect(headers.get('X-File-Name')).toBe(encodeURIComponent('áudio espera.mp3'))
+    expect(headers.get('Content-Type')).toBe('audio/mpeg')
+  })
 })

@@ -9,6 +9,8 @@ import type {
   SessionConfig,
   VersionStatus,
   VoipBootstrap,
+  VoipHistoryPage,
+  VoipHistoryQuery,
   WebhookConfig,
 } from '../domain/types.js'
 import { t } from './i18n.js'
@@ -224,6 +226,54 @@ export class ApiClient {
       method,
       body: payload === undefined ? undefined : JSON.stringify(payload),
     })
+  }
+
+  voipHistory(options: VoipHistoryQuery = {}): Promise<VoipHistoryPage> {
+    const query = new URLSearchParams()
+    if (options.page) query.set('page', `${options.page}`)
+    if (options.pageSize) query.set('pageSize', `${options.pageSize}`)
+    if (options.search?.trim()) query.set('search', options.search.trim())
+    if (options.startDate?.trim()) query.set('startDate', options.startDate.trim())
+    if (options.endDate?.trim()) query.set('endDate', options.endDate.trim())
+    const encodedQuery = query.toString()
+    const suffix = encodedQuery ? `?${encodedQuery}` : ''
+    return this.request<VoipHistoryPage>(`/admin/voip/console/history${suffix}`)
+  }
+
+  voipSaveBridgeSlot(accountId: string, slotId: string, payload: Record<string, unknown>): Promise<any> {
+    return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'PUT', {
+      ...payload,
+      mode: 'bridge',
+      bridgeSoftware: 'zapo',
+    })
+  }
+
+  voipDeleteBridgeSlot(accountId: string, slotId: string): Promise<any> {
+    return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'DELETE')
+  }
+
+  voipUploadTransferAudio(extensionGroupId: string, file: File): Promise<any> {
+    return this.request(`/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+      },
+      body: file,
+    })
+  }
+
+  async voipTransferAudio(extensionGroupId: string): Promise<Blob> {
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, { headers })
+    if (!response.ok) {
+      const text = await response.text()
+      let payload: unknown = text
+      try { payload = text ? JSON.parse(text) : undefined } catch {}
+      throw new ApiError(response.status, errorMessage(payload, response.status), payload)
+    }
+    return response.blob()
   }
 
   voipTransfer(callId: string, targetExtensionId: string): Promise<any> {

@@ -1,4 +1,11 @@
-import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipResourceModal } from '../../frontend/pages/voip'
+import {
+  renderVoipAssignLineModal,
+  renderVoipBridgeSlotModal,
+  renderVoipCredentialsModal,
+  renderVoipPage,
+  renderVoipRecordingSettingsModal,
+  renderVoipResourceModal,
+} from '../../frontend/pages/voip'
 
 describe('VoIP manager page', () => {
   test('renders native bridge and call controls without an iframe or internal token', () => {
@@ -93,5 +100,116 @@ describe('VoIP manager page', () => {
     expect(credentials).toContain('secret')
     expect(credentials).toContain('wss://sip.example.net/sip/ws')
     expect(credentials).toContain('data-action="copy-value"')
+  })
+
+  test('renders complete company AI settings and keeps redacted secrets blank', () => {
+    const html = renderVoipResourceModal({
+      bridges: [],
+      calls: [],
+      companies: [{
+        id: 'company-1',
+        label: 'Empresa',
+        enabled: true,
+        aiSummary: {
+          enabled: true,
+          hasTranscriptionApiKey: true,
+          hasSummaryApiKey: true,
+          summaryPrompt: 'Resuma objetivamente.',
+        },
+      }],
+    }, 'companies', 'company-1')
+
+    expect(html).toContain('name="id" type="text" value="company-1" required readonly')
+    expect(html).toContain('name="aiSummaryEnabled"')
+    expect(html).toContain('name="aiTranscriptionApiKey" type="password" value=""')
+    expect(html).toContain('name="aiSummaryApiKey" type="password" value=""')
+    expect(html).toContain('Chave configurada. Deixe o campo vazio para manter.')
+    expect(html).toContain('<textarea name="aiSummaryPrompt"')
+    expect(html).not.toContain('Licença')
+  })
+
+  test('manages bridge slots without exposing standalone or QR controls', () => {
+    const state = {
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'Empresa' }],
+      accounts: [{
+        id: 'line-1',
+        label: 'Linha',
+        companyId: 'company-1',
+        phoneNumber: '5566999554300',
+        slots: [
+          { id: '5566999554300-a', label: 'Principal', mode: 'bridge', maxActiveCalls: 3, enabled: true },
+          { id: 'legacy-a', label: 'Legado', mode: 'standalone', enabled: true },
+        ],
+        chatwootRecording: { privateNote: true, hasApiAccessToken: true },
+      }],
+    }
+    const account = renderVoipResourceModal(state, 'accounts', 'line-1')
+    expect(account).toContain('data-action="new-voip-slot"')
+    expect(account).toContain('data-action="edit-voip-slot"')
+    expect(account).toContain('data-action="delete-voip-slot"')
+    expect(account).toContain('5566999554300-a')
+    expect(account).not.toContain('legacy-a')
+    expect(account).not.toContain('data-slot-register')
+    expect(account).not.toContain('data-slot-deregister')
+    expect(account).toContain('name="chatwootPrivateNote"')
+
+    const slot = renderVoipBridgeSlotModal(state, 'line-1', '5566999554300-a')
+    expect(slot).toContain('name="slotId" type="text" value="5566999554300-a" required readonly')
+    expect(slot).toContain('name="maxActiveCalls"')
+    expect(slot).toContain('Slot bridge Zapo')
+  })
+
+  test('preserves bridge slot selection and exposes extension group distance', () => {
+    const state = {
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'Empresa' }],
+      accounts: [{ id: 'line-1', label: 'Linha', slots: [{ id: 'slot-1', label: 'Bridge', mode: 'bridge' }] }],
+      lineGroups: [],
+      extensionGroups: [{ id: 'support', label: 'Suporte' }],
+      extensions: [{ id: 'ext-1', extensionGroupIds: ['support'], extensionGroupDistances: { support: 2 } }],
+      sessions: [{ id: 'session-1', deviceSlotIds: ['slot-1'], routing: { extensions: [] } }],
+    }
+    const session = renderVoipResourceModal(state, 'sessions', 'session-1')
+    expect(session).toContain('name="deviceSlotIds"')
+    expect(session).toContain('value="slot-1" selected')
+
+    const extension = renderVoipResourceModal(state, 'extensions', 'ext-1')
+    expect(extension).toContain('name="extensionGroupDistance:support"')
+    expect(extension).toContain('value="2"')
+  })
+
+  test('renders history filters, correct recording sizes and format-aware downloads', () => {
+    const html = renderVoipPage({
+      bridges: [],
+      calls: [],
+      history: {
+        items: [{ id: 'record-1', callId: 'call-1', recordingStatus: 'available', recordingMime: 'audio/wav' }],
+        total: 31,
+        page: 2,
+        pageSize: 20,
+        totalPages: 2,
+      },
+      recordingSummary: { accounts: [{ accountId: 'line-1', count: 1, sizeBytes: 1536 }] },
+    }, false, '', { tab: 'recordings', recordingUrls: { 'record-1': 'blob:recording' } })
+    expect(html).toContain('data-form="voip-history-filter"')
+    expect(html).toContain('data-action="voip-history-page"')
+    expect(html).toContain('data-recording-extension="wav"')
+    expect(html).toContain('1.5 KB')
+    expect(html).not.toContain('autoplay')
+  })
+
+  test('renders every recording storage option and no license card', () => {
+    const html = renderVoipRecordingSettingsModal({
+      bridges: [],
+      calls: [],
+      recording: { hasS3SecretAccessKey: true },
+    })
+    expect(html).toContain('name="deleteLocalAfterUpload"')
+    expect(html).toContain('name="s3ForcePathStyle"')
+    expect(html).toContain('name="s3PresignTtlSeconds"')
+    expect(html).toContain('Chave configurada')
   })
 })

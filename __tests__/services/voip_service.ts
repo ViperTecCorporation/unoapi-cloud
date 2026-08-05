@@ -40,4 +40,39 @@ describe('VoipService', () => {
     expect(response.headers.get('content-type')).toBe('audio/mpeg')
     await expect(response.arrayBuffer()).resolves.toHaveProperty('byteLength', 3)
   })
+
+  test('preserves explicit content headers when uploading raw transfer audio', async () => {
+    const body = Buffer.from([1, 2, 3])
+    const fetcher = jest.fn(async (url: string, init: RequestInit) => {
+      const headers = new Headers(init.headers)
+      expect(url).toBe('http://voip.local:3097/v1/console/extensionGroups/group-1/transfer-audio')
+      expect(headers.get('Authorization')).toBe('Bearer internal-secret')
+      expect(headers.get('Content-Type')).toBe('audio/mpeg')
+      expect(headers.get('X-File-Name')).toBe('espera.mp3')
+      expect(init.body).toBe(body)
+      return new Response(JSON.stringify({ id: 'group-1', transferAudioSource: 'configured' }), { status: 200 })
+    })
+    const service = new VoipService('http://voip.local:3097', 'internal-secret', 1_000, fetcher as any)
+    await expect(service.request('/v1/console/extensionGroups/group-1/transfer-audio', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'audio/mpeg', 'X-File-Name': 'espera.mp3' },
+      body: body as BodyInit,
+    })).resolves.toEqual({ id: 'group-1', transferAudioSource: 'configured' })
+  })
+
+  test('supports authenticated streaming requests with custom methods and headers', async () => {
+    const fetcher = jest.fn(async (_url: string, init: RequestInit) => {
+      const headers = new Headers(init.headers)
+      expect(init.method).toBe('GET')
+      expect(headers.get('Authorization')).toBe('Bearer internal-secret')
+      expect(headers.get('Accept')).toBe('audio/*')
+      return new Response(new Uint8Array([4, 5]), { status: 200, headers: { 'Content-Type': 'audio/wav' } })
+    })
+    const service = new VoipService('http://voip.local:3097', 'internal-secret', 1_000, fetcher as any)
+    const response = await service.stream('/v1/console/extensionGroups/group-1/transfer-audio', {
+      method: 'GET',
+      headers: { Accept: 'audio/*' },
+    })
+    expect(response.headers.get('content-type')).toBe('audio/wav')
+  })
 })

@@ -136,6 +136,20 @@ export const router = (
   router.post('/admin/voip/calls', middleware, voipController.calls.bind(voipController))
   router.post('/admin/voip/calls/:callId/:command', middleware, voipController.command.bind(voipController))
   router.get('/admin/voip/recordings/:recordId', middleware, voipController.recording.bind(voipController))
+  router.get(
+    '/admin/voip/console/extensionGroups/:extensionGroupId/transfer-audio',
+    middleware,
+    voipController.transferAudio.bind(voipController),
+  )
+  router.put(
+    '/admin/voip/console/extensionGroups/:extensionGroupId/transfer-audio',
+    middleware,
+    express.raw({
+      type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav', 'application/octet-stream'],
+      limit: process.env.VOIP_TRANSFER_AUDIO_UPLOAD_LIMIT || '15mb',
+    }),
+    voipController.transferAudio.bind(voipController),
+  )
   router.all('/admin/voip/console/*', middleware, voipController.console.bind(voipController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))
