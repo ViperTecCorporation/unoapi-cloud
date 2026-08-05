@@ -16,6 +16,53 @@ const RECEIPT_CALL_TAGS = new Set([
     'relaylatency',
     'mute_v2'
 ]);
+const ZAPO_CALL_RECEIPT_TAGS = new Set(protocol_1.WA_CALL_RECEIPT_PAYLOAD_TAGS);
+function buildCallResponse(deps, node, inner) {
+    const peerJid = node.attrs.from;
+    const stanzaId = node.attrs.id;
+    if (ZAPO_CALL_RECEIPT_TAGS.has(inner.tag) &&
+        inner.attrs?.['call-id'] &&
+        inner.attrs?.['call-creator']) {
+        const credentials = deps.authClient.getCurrentCredentials();
+        let fromJid;
+        try {
+            fromJid = (0, protocol_1.isLidJid)(peerJid)
+                ? credentials?.meLid
+                    ? (0, protocol_1.normalizeDeviceJid)(credentials.meLid)
+                    : undefined
+                : credentials?.meJid
+                    ? (0, protocol_1.toUserJid)(credentials.meJid)
+                    : undefined;
+        }
+        catch {
+            fromJid = undefined;
+        }
+        return (0, transport_1.buildReceiptNode)({
+            kind: 'custom',
+            attrs: {
+                id: stanzaId,
+                to: peerJid,
+                ...(fromJid ? { from: fromJid } : {})
+            },
+            content: [
+                {
+                    tag: inner.tag,
+                    attrs: {
+                        'call-id': inner.attrs['call-id'],
+                        'call-creator': inner.attrs['call-creator']
+                    }
+                }
+            ]
+        });
+    }
+    return (0, transport_1.buildAckNode)({
+        kind: 'custom',
+        ackClass: 'call',
+        to: peerJid,
+        id: stanzaId,
+        type: inner.tag
+    });
+}
 async function routeCallStanza(manager, deps, node, logger) {
     const log = logger ?? (0, zapo_js_1.createNoopLogger)();
     const inner = (0, transport_1.getFirstNodeChild)(node);
@@ -23,18 +70,19 @@ async function routeCallStanza(manager, deps, node, logger) {
         return null;
     const tag = inner.tag;
     const peerJid = node.attrs.from;
-    await deps.lowLevelCoordinator.sendNode((0, transport_1.buildAckNode)({
-        kind: 'custom',
-        ackClass: 'call',
-        to: peerJid,
-        id: node.attrs.id,
-        type: tag
-    }));
+    const response = buildCallResponse(deps, node, inner);
+    const deferResponseUntilHandled = tag === 'mute_v2';
+    if (!deferResponseUntilHandled) {
+        await deps.lowLevelCoordinator.sendNode(response);
+    }
     let normalizedPeerJid;
     try {
         normalizedPeerJid = (0, protocol_1.normalizeDeviceJid)(peerJid);
     }
     catch (err) {
+        if (deferResponseUntilHandled) {
+            await deps.lowLevelCoordinator.sendNode(response);
+        }
         log.warn('failed to normalize call peer jid', {
             from: peerJid,
             message: (0, util_1.toError)(err).message
@@ -61,7 +109,12 @@ async function routeCallStanza(manager, deps, node, logger) {
             await manager.handleCallRelaylatency(node, normalizedPeerJid);
             break;
         case 'mute_v2':
-            await manager.handleCallMuteV2(node, normalizedPeerJid);
+            try {
+                await manager.handleCallMuteV2(node, normalizedPeerJid);
+            }
+            finally {
+                await deps.lowLevelCoordinator.sendNode(response);
+            }
             break;
         case 'relay_election':
             manager.handleRelayElection(node);

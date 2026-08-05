@@ -48,6 +48,12 @@ export class WaSctpRelay extends EventEmitter {
     streamSsrcs = [];
     selfPid = 0;
     peerPid = 0;
+    readyConnectionIds = new Set();
+    mediaConnectionId = null;
+    mediaConnectionConfirmed = false;
+    mediaPendingSelectionDropCount = 0;
+    startupMediaFanoutEnabled = false;
+    startupMediaFanoutLogCount = 0;
     constructor(options = {}) {
         super();
         this.logger = options.logger ?? createNoopLogger();
@@ -91,6 +97,104 @@ export class WaSctpRelay extends EventEmitter {
             selfPid: this.selfPid,
             peerPid: this.peerPid
         });
+    }
+    setStartupMediaFanout(enabled) {
+        this.startupMediaFanoutEnabled = enabled;
+        this.startupMediaFanoutLogCount = 0;
+        this.logger.debug('sctp startup media fanout changed', { enabled });
+    }
+    hasReadyConnection() {
+        return this.getReadyConnectionCount() > 0;
+    }
+    getReadyConnectionCount() {
+        let count = 0;
+        for (const connectionId of this.readyConnectionIds) {
+            const conn = this.connections.get(connectionId);
+            if (conn && this.isConnOpen(conn))
+                count++;
+        }
+        return count;
+    }
+    getConfiguredRelayCount() {
+        return this.relayMap.size;
+    }
+    getReceiveStats() {
+        return {
+            rtp: this.remoteRtpRecvCount,
+            rtcp: this.remoteRtcpRecvCount,
+            pongs: this.pongCount,
+            received: this.stats.received,
+            readyConnections: this.getReadyConnectionCount(),
+            lastControlResponseAt: this.lastControlResponseAt
+        };
+    }
+    selectMediaConnection(connectionId, confirmed = false) {
+        const conn = this.connections.get(connectionId);
+        if (!conn || !this.isConnOpen(conn))
+            return false;
+        if (this.mediaConnectionConfirmed && this.mediaConnectionId !== connectionId)
+            return false;
+        if (this.mediaConnectionId === connectionId) {
+            if (confirmed) {
+                this.mediaConnectionConfirmed = true;
+                this.startupMediaFanoutEnabled = false;
+            }
+            return true;
+        }
+        this.mediaConnectionId = connectionId;
+        this.mediaConnectionConfirmed = confirmed;
+        if (confirmed)
+            this.startupMediaFanoutEnabled = false;
+        this.logger.debug('relay media path selected', {
+            connectionId: conn.id,
+            relayName: conn.relayInfo.name,
+            ip: conn.relayInfo.ip,
+            port: conn.relayInfo.port,
+            tokenId: conn.relayInfo.tokenId,
+            confirmed
+        });
+        return true;
+    }
+    selectMediaConnectionByRelayId(relayId) {
+        if (!Number.isSafeInteger(relayId) || relayId < 0)
+            return false;
+        for (const conn of this.connections.values()) {
+            if (conn.relayInfo.relayId === relayId && this.isConnOpen(conn)) {
+                return this.selectMediaConnection(conn.id, false);
+            }
+        }
+        return false;
+    }
+    waitForReadyCount(minimumCount = 1, timeoutMs = 2000) {
+        const requiredCount = Math.max(0, Math.floor(minimumCount));
+        const currentCount = this.getReadyConnectionCount();
+        if (requiredCount === 0 || currentCount >= requiredCount) {
+            return Promise.resolve(currentCount);
+        }
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (count) => {
+                if (settled)
+                    return;
+                settled = true;
+                clearTimeout(timer);
+                this.off('relay_ready', onReady);
+                this.off('relay_cleanup', onCleanup);
+                resolve(count);
+            };
+            const onReady = () => {
+                const readyCount = this.getReadyConnectionCount();
+                if (readyCount >= requiredCount)
+                    finish(readyCount);
+            };
+            const onCleanup = () => finish(0);
+            const timer = setTimeout(() => finish(this.getReadyConnectionCount()), timeoutMs);
+            this.on('relay_ready', onReady);
+            this.on('relay_cleanup', onCleanup);
+        });
+    }
+    async waitForReady(timeoutMs = 2000) {
+        return (await this.waitForReadyCount(1, timeoutMs)) > 0;
     }
     resendSubscriptions() {
         for (const conn of this.connections.values()) {
@@ -142,8 +246,10 @@ export class WaSctpRelay extends EventEmitter {
             });
             conn.nativeTransport = transport;
             transport.on('open', () => {
-                if (conn.state !== ConnectionState.Connecting)
+                if (this.connections.get(connectionId) !== conn ||
+                    conn.state !== ConnectionState.Connecting) {
                     return;
+                }
                 this.logger.debug('native relay data channel open', { connectionId });
                 conn.state = ConnectionState.Open;
                 this.stats.connected++;
@@ -157,6 +263,10 @@ export class WaSctpRelay extends EventEmitter {
                 this.emit('relay_connected', { ip: relayInfo.ip, port: relayInfo.port });
             });
             transport.on('message', (buffer) => {
+                if (this.connections.get(connectionId) !== conn ||
+                    !this.isConnOpen(conn)) {
+                    return;
+                }
                 if (conn.stats.receivedPackets === 0) {
                     this.logger.trace('first message on native relay data channel', {
                         connectionId,
@@ -166,6 +276,8 @@ export class WaSctpRelay extends EventEmitter {
                 this.handleRelayMessage(buffer, relayInfo, conn);
             });
             transport.on('transport_error', (err) => {
+                if (this.connections.get(connectionId) !== conn)
+                    return;
                 this.logger.warn('native relay transport error', {
                     connectionId,
                     message: err.message
@@ -191,12 +303,29 @@ export class WaSctpRelay extends EventEmitter {
         if (!conn || conn.state === ConnectionState.Failed)
             return;
         this.logger.warn('sctp connection failed', { connectionId: conn.id, reason });
+        const wasConnected = conn.state === ConnectionState.Open;
         conn.state = ConnectionState.Failed;
         this.stopKeepalive(conn.id);
         if (conn.connectionTimeout)
             clearTimeout(conn.connectionTimeout);
         closeQuietly(conn.nativeTransport, this.logger);
+        this.readyConnectionIds.delete(conn.id);
+        if (this.mediaConnectionId === conn.id) {
+            this.mediaConnectionId = null;
+            this.mediaConnectionConfirmed = false;
+        }
         this.connections.delete(conn.id);
+        if (wasConnected) {
+            this.stats.connected = Math.max(0, this.stats.connected - 1);
+        }
+        this.emit('relay_failed', {
+            connectionId: conn.id,
+            relayId: conn.relayInfo.relayId,
+            relayName: conn.relayInfo.name,
+            ip: conn.relayInfo.ip,
+            port: conn.relayInfo.port,
+            reason
+        });
     }
     isConnOpen(conn) {
         if (conn.state !== ConnectionState.Open)
@@ -236,10 +365,27 @@ export class WaSctpRelay extends EventEmitter {
         }
         const allocate = conn.cachedAllocate;
         this.sendToChannel(conn, toArrayBuffer(allocate));
+        this.logger.debug('voip_diag relay_allocate_sent', {
+            connectionId,
+            size: allocate.length,
+            streamSsrcs: this.streamSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`),
+            subscriptionSsrcs: this.subscriptionSsrcs.map((ssrc) => `0x${ssrc.toString(16).padStart(8, '0')}`),
+            selfPid: this.selfPid,
+            peerPid: this.peerPid,
+            tokenId: relayInfo.tokenId,
+            authTokenId: relayInfo.authTokenId,
+            tokenBytes: relayInfo.rawToken.length,
+            keyBytes: TEXT_ENCODER.encode(relayInfo.key).length
+        });
         this.logger.trace('WASM stun allocate sent', {
             connectionId,
             size: allocate.length,
-            streamCount: this.streamSsrcs.length
+            streamCount: this.streamSsrcs.length,
+            subscriptionCount: this.subscriptionSsrcs.length,
+            tokenId: relayInfo.tokenId,
+            authTokenId: relayInfo.authTokenId,
+            tokenBytes: relayInfo.rawToken.length,
+            keyBytes: TEXT_ENCODER.encode(relayInfo.key).length
         });
     }
     startKeepalive(connectionId, conn) {
@@ -297,6 +443,11 @@ export class WaSctpRelay extends EventEmitter {
             clearTimeout(conn.connectionTimeout);
         closeQuietly(conn.nativeTransport, this.logger);
         this.stats.connected = Math.max(0, this.stats.connected - 1);
+        this.readyConnectionIds.delete(connectionId);
+        if (this.mediaConnectionId === connectionId) {
+            this.mediaConnectionId = null;
+            this.mediaConnectionConfirmed = false;
+        }
         this.connections.delete(connectionId);
     }
     drainBuffer(connectionId) {
@@ -359,7 +510,10 @@ export class WaSctpRelay extends EventEmitter {
     pongCount = 0;
     rtpRecvCount = 0;
     rtcpRecvCount = 0;
+    remoteRtpRecvCount = 0;
+    remoteRtcpRecvCount = 0;
     unknownRecvCount = 0;
+    lastControlResponseAt = 0;
     handleRelayMessage(data, relayInfo, conn) {
         conn.stats.receivedPackets++;
         conn.stats.receivedBytes += data.length;
@@ -399,6 +553,7 @@ export class WaSctpRelay extends EventEmitter {
         if (twoBits === 0) {
             const stunInfo = parseStunResponse(data);
             if (stunInfo) {
+                this.lastControlResponseAt = Date.now();
                 if (stunInfo.rawType === 0x0001 && relayInfo.key) {
                     const bindingSuccess = buildBindingSuccessForRequest(data, TEXT_ENCODER.encode(relayInfo.key));
                     if (bindingSuccess && this.sendToChannel(conn, toArrayBuffer(bindingSuccess))) {
@@ -431,6 +586,15 @@ export class WaSctpRelay extends EventEmitter {
                             connectionId: conn.id,
                             method: stunInfo.method
                         });
+                        if (stunInfo.method === 'allocate' &&
+                            !this.readyConnectionIds.has(conn.id)) {
+                            this.readyConnectionIds.add(conn.id);
+                            this.emit('relay_ready', {
+                                ip: relayInfo.ip,
+                                port: relayInfo.port,
+                                connectionId: conn.id
+                            });
+                        }
                     }
                     if (stunInfo.stableRoutingConnId && conn.stableRoutingConnId === 0n) {
                         conn.stableRoutingConnId = stunInfo.stableRoutingConnId;
@@ -470,6 +634,9 @@ export class WaSctpRelay extends EventEmitter {
             const pt = data[1] & 0x7f;
             const seq = data.length >= 4 ? (data[2] << 8) | data[3] : 0;
             const ssrc = data.length >= 12 ? readUInt32BE(data, 8) : 0;
+            if (!this.audioSsrc || ssrc !== this.audioSsrc) {
+                this.remoteRtpRecvCount++;
+            }
             this.logger.trace('rtp packet received', {
                 count: this.rtpRecvCount,
                 payloadType: pt,
@@ -487,6 +654,10 @@ export class WaSctpRelay extends EventEmitter {
         }
         if (isRtcp) {
             this.rtcpRecvCount++;
+            const ssrc = data.length >= 8 ? readUInt32BE(data, 4) : 0;
+            if (!this.audioSsrc || ssrc !== this.audioSsrc) {
+                this.remoteRtcpRecvCount++;
+            }
             if (this.rtcpRecvCount <= 3 || this.rtcpRecvCount % 20 === 0) {
                 this.logger.trace('rtcp packet received', {
                     count: this.rtcpRecvCount,
@@ -509,6 +680,10 @@ export class WaSctpRelay extends EventEmitter {
         this.emit('relay_receive', {
             ip: relayInfo.ip,
             port: relayInfo.port,
+            connectionId: conn.id,
+            relayId: relayInfo.relayId,
+            tokenId: relayInfo.tokenId,
+            authTokenId: relayInfo.authTokenId,
             data
         });
     }
@@ -535,6 +710,7 @@ export class WaSctpRelay extends EventEmitter {
                 key: relay.key,
                 relayId: relay.relayId,
                 name: relay.name || 'unknown',
+                tokenId: relay.tokenId,
                 authTokenId: relay.authTokenId,
                 isFna: relay.isFna
             };
@@ -602,6 +778,69 @@ export class WaSctpRelay extends EventEmitter {
         conn.bufferedBytes += data.byteLength;
     }
     broadcast(data) {
+        const bytes = new Uint8Array(data);
+        const isMedia = bytes.length > 0 && ((bytes[0] & 0xc0) >> 6) === 2;
+        if (isMedia) {
+            if (this.mediaConnectionConfirmed && this.mediaConnectionId) {
+                const selected = this.connections.get(this.mediaConnectionId);
+                if (selected && this.isConnOpen(selected)) {
+                    this.sendToChannel(selected, data);
+                    return;
+                }
+                this.mediaConnectionId = null;
+                this.mediaConnectionConfirmed = false;
+            }
+            // The official Zapo transport publishes the same protected RTP on
+            // every advertised relay. For a direct incoming call we need that
+            // behavior only during startup: the caller may have selected a
+            // different live relay than our provisional candidate and will not
+            // publish remote media until it receives RTP on that path. The
+            // first authenticated remote packet confirms one connection and
+            // returns egress to a single relay.
+            if (this.startupMediaFanoutEnabled && !this.mediaConnectionConfirmed) {
+                let sent = 0;
+                for (const conn of this.connections.values()) {
+                    if (!this.isConnOpen(conn))
+                        continue;
+                    this.sendToChannel(conn, data);
+                    sent++;
+                }
+                if (sent > 0) {
+                    this.startupMediaFanoutLogCount++;
+                    if (this.startupMediaFanoutLogCount === 1 ||
+                        this.startupMediaFanoutLogCount % 250 === 0) {
+                        this.logger.debug('startup media fanned out across relays', {
+                            sent,
+                            configured: this.relayMap.size,
+                            connected: this.getConnectedCount()
+                        });
+                    }
+                    return;
+                }
+            }
+            if (this.mediaConnectionId) {
+                const selected = this.connections.get(this.mediaConnectionId);
+                if (selected && this.isConnOpen(selected)) {
+                    this.sendToChannel(selected, data);
+                    return;
+                }
+                this.mediaConnectionId = null;
+            }
+            // Outside inbound startup, wait a few milliseconds for the
+            // provisional relay to open instead of duplicating media.
+            if (this.relayMap.size > 1) {
+                this.mediaPendingSelectionDropCount++;
+                if (this.mediaPendingSelectionDropCount === 1 ||
+                    this.mediaPendingSelectionDropCount % 250 === 0) {
+                    this.logger.debug('media waiting for relay selection', {
+                        dropped: this.mediaPendingSelectionDropCount,
+                        configured: this.relayMap.size,
+                        connected: this.getConnectedCount()
+                    });
+                }
+                return;
+            }
+        }
         for (const conn of this.connections.values()) {
             if (this.isConnOpen(conn)) {
                 this.sendToChannel(conn, data);
@@ -618,29 +857,57 @@ export class WaSctpRelay extends EventEmitter {
     getConnectedCount() {
         return this.stats.connected;
     }
-    cleanup() {
-        this.logger.debug('sctp cleaning up connections', { count: this.connections.size });
+    /**
+     * Closes only the native relay transport state. Media identities and the
+     * current SRTP/codec session are deliberately preserved so a caller can
+     * configure the next advertised candidate without rebuilding the call.
+     */
+    resetTransport(reason = 'relay_reconfigure') {
+        this.logger.debug('sctp resetting transport', {
+            reason,
+            connections: this.connections.size,
+            configured: this.relayMap.size
+        });
         for (const [id] of this.keepaliveTimers) {
             this.stopKeepalive(id);
         }
         for (const [, conn] of this.connections) {
             if (conn.connectionTimeout)
                 clearTimeout(conn.connectionTimeout);
+            conn.state = ConnectionState.Closed;
             closeQuietly(conn.nativeTransport, this.logger);
         }
+        this.emit('relay_cleanup', { reason, transportOnly: true });
+        this.readyConnectionIds.clear();
+        this.mediaConnectionId = null;
+        this.mediaConnectionConfirmed = false;
+        this.mediaPendingSelectionDropCount = 0;
+        this.startupMediaFanoutEnabled = false;
+        this.startupMediaFanoutLogCount = 0;
         this.connections.clear();
         this.relayMap.clear();
         this.globalBuffer = [];
         this.globalBufferedBytes = 0;
         this.configuring = false;
-        this.stats.connected = 0;
-        this.audioSsrc = 0;
-        this.subscriptionSsrc = 0;
+        this.stats = { sent: 0, received: 0, connected: 0 };
         this.pongCount = 0;
         this.rtpRecvCount = 0;
         this.rtcpRecvCount = 0;
+        this.remoteRtpRecvCount = 0;
+        this.remoteRtcpRecvCount = 0;
         this.unknownRecvCount = 0;
+        this.lastControlResponseAt = 0;
         this.sendCount = 0;
+    }
+    cleanup() {
+        this.logger.debug('sctp cleaning up connections', { count: this.connections.size });
+        this.resetTransport('call_cleanup');
+        this.audioSsrc = 0;
+        this.subscriptionSsrc = 0;
+        this.subscriptionSsrcs = [];
+        this.streamSsrcs = [];
+        this.selfPid = 0;
+        this.peerPid = 0;
         this.logger.debug('sctp all connections cleaned');
     }
 }

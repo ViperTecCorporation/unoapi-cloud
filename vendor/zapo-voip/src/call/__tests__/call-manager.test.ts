@@ -3,9 +3,16 @@ import { test } from 'node:test'
 
 import type { BinaryNode } from 'zapo-js/transport'
 
-import { CallState, type WaVoipDeps, type WaVoipStores } from '../../types.js'
+import {
+    formatE2ESrtpParticipantId,
+    generateSecureSsrc,
+    generateWasmRelayStreamSsrcs,
+    prepareWasmRelayStreamSsrcs
+} from '../../crypto/ssrc.js'
+import { CallDirection, CallState, type WaVoipDeps, type WaVoipStores } from '../../types.js'
 import { type CallInfo } from '../call-state.js'
 import { WaCallManager } from '../WaCallManager.js'
+import { WaCallMediaSession } from '../WaCallMediaSession.js'
 
 function createMockDeps(): { deps: WaVoipDeps; stores: WaVoipStores; sent: BinaryNode[] } {
     const sent: BinaryNode[] = []
@@ -139,6 +146,70 @@ function buildRejectNode(callId: string, from = '2222222222:0@lid'): BinaryNode 
     }
 }
 
+function buildRelayOfferAck(callId: string): BinaryNode {
+    return {
+        tag: 'ack',
+        attrs: { class: 'call', type: 'offer' },
+        content: [
+            {
+                tag: 'relay',
+                attrs: { 'call-id': callId, uuid: 'UUID-1', self_pid: '5', peer_pid: '7' },
+                content: [
+                    {
+                        tag: 'participant',
+                        attrs: { jid: '2222222222:28@lid', pid: '7' },
+                        content: undefined
+                    },
+                    {
+                        tag: 'participant',
+                        attrs: { jid: '1111111111:59@lid', pid: '5' },
+                        content: undefined
+                    },
+                    { tag: 'key', attrs: {}, content: new TextEncoder().encode('RELAYKEY') },
+                    { tag: 'token', attrs: { id: '0' }, content: new Uint8Array([1, 2, 3]) },
+                    {
+                        tag: 'te2',
+                        attrs: {
+                            token_id: '0',
+                            relay_name: 'gru1c01',
+                            relay_id: '1',
+                            c2r_rtt: '20'
+                        },
+                        content: new Uint8Array([192, 168, 1, 1, 0x0d, 0x96])
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+function withVoipSettings(
+    node: BinaryNode,
+    useMlowCodecV1: boolean,
+    targetBitrate = 25_000
+): BinaryNode {
+    const settings = {
+        encode: {
+            use_mlow_codec_v1: String(useMlowCodecV1),
+            frame_ms: '20'
+        },
+        rc: {
+            target_bitrate: String(targetBitrate)
+        }
+    }
+    const envelopeContent = node.content as BinaryNode[]
+    const innerContent = envelopeContent[0]?.content
+    const settingsContainer = Array.isArray(innerContent)
+        ? innerContent
+        : envelopeContent
+    settingsContainer.push({
+        tag: 'voip_settings',
+        attrs: {},
+        content: new TextEncoder().encode(JSON.stringify(settings))
+    })
+    return node
+}
+
 test('WaCallManager rejects invalid maxConcurrentCalls', () => {
     const { deps, stores } = createMockDeps()
     assert.throws(
@@ -160,6 +231,803 @@ test('already-ended offer notification is ignored without preaccepting it', asyn
 
     assert.equal(manager.getCall('ENDED-CALL'), null)
     assert.equal(sent.length, 0)
+})
+
+test('incoming offer sends only preaccept without opening media or proactive relay latency', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMINGCALLWITHRELAY00000001'
+    const peer = '2222222222:28@lid'
+    const offerNode = buildOfferNode(callId, peer)
+    const offer = (offerNode.content as BinaryNode[])[0]
+    const relay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;(offer.content as BinaryNode[]).push(relay)
+
+    const originalPrepare = WaCallMediaSession.prototype.prepareIncomingRelay
+    let prepares = 0
+    WaCallMediaSession.prototype.prepareIncomingRelay = async () => {
+        prepares++
+    }
+    try {
+        await manager.handleCallOffer(offerNode, peer)
+    } finally {
+        WaCallMediaSession.prototype.prepareIncomingRelay = originalPrepare
+    }
+
+    const actions = sent.map((node) => (node.content as BinaryNode[])?.[0])
+    assert.equal(prepares, 0)
+    assert.deepEqual(actions.map((node) => node?.tag), ['preaccept'])
+    assert.deepEqual(sent.map((node) => node.attrs.to), [peer])
+    assert.equal(actions.filter((node) => node?.tag === 'preaccept').length, 1)
+    assert.equal(actions.filter((node) => node?.tag === 'relaylatency').length, 0)
+    const preaccept = actions.find((node) => node?.tag === 'preaccept')!
+    const session = (manager as any).calls.get(callId)
+    const audio = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'audio'
+    )
+    assert.equal(session.opusCodec.getMode(), 'mlow')
+    assert.equal(audio?.attrs.rate, '16000')
+    const capability = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'capability'
+    )
+    assert.deepEqual(
+        capability?.content,
+        new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x07])
+    )
+})
+
+test('incoming offer selects RFC Opus and advertises 8000 when voip_settings disables MLow', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-OPUS-FALLBACK'
+    const peer = '2222222222:0@lid'
+
+    await manager.handleCallOffer(
+        withVoipSettings(buildOfferNode(callId, peer), false),
+        peer
+    )
+
+    const session = (manager as any).calls.get(callId)
+    assert.equal(session.opusCodec.getMode(), 'opus')
+    assert.equal(session.opusCodec.usesSmpl(), false)
+
+    const preacceptEnvelope = sent.find(
+        (node) => (node.content as BinaryNode[])?.[0]?.tag === 'preaccept'
+    )
+    assert.ok(preacceptEnvelope)
+    const preaccept = (preacceptEnvelope.content as BinaryNode[])[0]
+    const audio = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'audio'
+    )
+    assert.equal(audio?.attrs.rate, '8000')
+})
+
+test('incoming relay preparation is idempotent', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-RELAY-PREPARE-ONCE'
+
+    await manager.handleCallOffer(buildOfferNode(callId), '2222222222:0@lid')
+    const session = (manager as any).calls.get(callId)
+    session.info.relayData = {
+        endpoints: [
+            {
+                ip: '57.144.137.57',
+                port: 3478,
+                token: 'relay-token',
+                rawToken: new Uint8Array([1, 2, 3]),
+                key: 'relay-key',
+                relayId: 0,
+                relayName: 'bsb1c01',
+                tokenId: '0',
+                authTokenId: '0'
+            }
+        ],
+        participantJids: ['2222222222:0@lid'],
+        uuid: ''
+    }
+    let connects = 0
+    session.connectRelays = async () => {
+        connects++
+    }
+
+    await Promise.all([
+        session.prepareIncomingRelay(),
+        session.prepareIncomingRelay(),
+        session.prepareIncomingRelay()
+    ])
+
+    assert.equal(connects, 1)
+})
+
+test('incoming transport records the relay but does not start media before answer', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-TRANSPORT-WAITS-ANSWER'
+    const peer = '2222222222:28@lid'
+
+    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    const session = (manager as any).calls.get(callId)
+    let connects = 0
+    session.connectRelays = async () => {
+        connects++
+    }
+
+    await session.handleCallTransport({
+        tag: 'call',
+        attrs: { from: peer, id: 'TRANSPORT-MSG' },
+        content: [
+            {
+                tag: 'transport',
+                attrs: { 'call-id': callId, 'call-creator': peer },
+                content: [
+                    {
+                        tag: 'relay',
+                        attrs: {
+                            ip: '57.144.137.57',
+                            port: '3478',
+                            token: 'relay-token',
+                            key: 'relay-key'
+                        }
+                    }
+                ]
+            }
+        ]
+    })
+
+    assert.equal(connects, 0)
+    manager.getCall(callId)!.encryptionKey = new Uint8Array(32).fill(9)
+    await manager.acceptCall(callId)
+    assert.equal(connects, 1)
+})
+
+test('outgoing media relay preparation opens exactly one selected UDP candidate', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    let configuredRelays: unknown[] = []
+    const selectedRelayIds: number[] = []
+    const startupFanoutModes: boolean[] = []
+
+    session.sctpRelay.configureRelays = async (relays: unknown[]) => {
+        configuredRelays = relays
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = (relayId: number) => {
+        selectedRelayIds.push(relayId)
+        return true
+    }
+    session.sctpRelay.setStartupMediaFanout = (enabled: boolean) => {
+        startupFanoutModes.push(enabled)
+    }
+
+    await session.connectRelays([
+        {
+            ip: '157.240.226.133',
+            port: 3478,
+            token: 'relay-token-1',
+            rawToken: new Uint8Array([1, 2, 3]),
+            key: 'relay-key-1',
+            relayId: 1,
+            relayName: 'gru1c02',
+            tokenId: '1',
+            authTokenId: '0',
+            protocol: 0
+        },
+        {
+            ip: '57.144.137.57',
+            port: 3478,
+            token: 'relay-token-2',
+            rawToken: new Uint8Array([4, 5, 6]),
+            key: 'relay-key-2',
+            relayId: 0,
+            relayName: 'bsb1c01',
+            tokenId: '0',
+            authTokenId: '0',
+            protocol: 0
+        }
+    ])
+
+    assert.deepEqual(
+        configuredRelays.map((relay: any) => relay.name),
+        ['bsb1c01']
+    )
+    assert.deepEqual(selectedRelayIds, [0])
+    assert.deepEqual(startupFanoutModes, [])
+})
+
+test('incoming media relay preparation opens only the selected candidate', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-MULTI-RELAY'
+    const peer = '2222222222:28@lid'
+
+    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    const session = (manager as any).calls.get(callId)
+    let configuredRelays: unknown[] = []
+    const selectedRelayIds: number[] = []
+    const startupFanoutModes: boolean[] = []
+
+    session.sctpRelay.configureRelays = async (relays: unknown[]) => {
+        configuredRelays = relays
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = (relayId: number) => {
+        selectedRelayIds.push(relayId)
+        return true
+    }
+    session.sctpRelay.setStartupMediaFanout = (enabled: boolean) => {
+        startupFanoutModes.push(enabled)
+    }
+
+    await session.connectRelays([
+        {
+            ip: '157.240.226.133',
+            port: 3478,
+            token: 'relay-token-1',
+            rawToken: new Uint8Array([1, 2, 3]),
+            key: 'relay-key-1',
+            relayId: 1,
+            relayName: 'gru1c02',
+            tokenId: '1',
+            authTokenId: '0',
+            protocol: 0
+        },
+        {
+            ip: '57.144.137.57',
+            port: 3478,
+            token: 'relay-token-2',
+            rawToken: new Uint8Array([4, 5, 6]),
+            key: 'relay-key-2',
+            relayId: 0,
+            relayName: 'bsb1c01',
+            tokenId: '0',
+            authTokenId: '0',
+            protocol: 0
+        }
+    ])
+
+    assert.deepEqual(
+        configuredRelays.map((relay: any) => relay.name),
+        ['gru1c02']
+    )
+    assert.deepEqual(selectedRelayIds, [1])
+    assert.deepEqual(startupFanoutModes, [])
+    session.handleCallTerminate()
+})
+
+test('remote-media startup stall resets only the relay and advances one candidate', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    const resetReasons: string[] = []
+    let stats = {
+        rtp: 0,
+        rtcp: 0,
+        pongs: 1,
+        received: 3,
+        readyConnections: 1,
+        lastControlResponseAt: Date.now()
+    }
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.hasConnection = () => true
+    session.sctpRelay.getReceiveStats = () => stats
+    session.sctpRelay.resetTransport = (reason: string) => {
+        resetReasons.push(reason)
+    }
+
+    await session.connectRelays([
+        {
+            ip: '157.240.226.133',
+            port: 3499,
+            token: 'relay-token-1',
+            rawToken: new Uint8Array([1, 2, 3]),
+            key: 'relay-key-1',
+            relayId: 1,
+            relayName: 'gru1c02',
+            tokenId: '1',
+            authTokenId: '0'
+        },
+        {
+            ip: '57.144.137.57',
+            port: 3501,
+            token: 'relay-token-2',
+            rawToken: new Uint8Array([4, 5, 6]),
+            key: 'relay-key-2',
+            relayId: 0,
+            relayName: 'bsb1c01',
+            tokenId: '0',
+            authTokenId: '0'
+        }
+    ])
+
+    session.info.stateData.state = CallState.Active
+    session.acceptedByJid = '2222222222:0@lid'
+    const generation = session.relayRecoveryGeneration
+    await session.evaluateRemoteMediaWatchdog(generation)
+
+    assert.deepEqual(configured, ['bsb1c01', 'gru1c02'])
+    assert.deepEqual(resetReasons, ['no_first_remote_media'])
+    assert.equal(session.relayCandidateIndex, 1)
+    assert.equal(session.sctpRelay.getConfiguredRelayCount(), 0)
+
+    stats = { ...stats, pongs: 2 }
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('incoming call retains a live relay while waiting for the first remote media', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    const resetReasons: string[] = []
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.hasConnection = () => true
+    session.sctpRelay.getReceiveStats = () => ({
+        rtp: 0,
+        rtcp: 0,
+        pongs: 2,
+        received: 4,
+        readyConnections: 1,
+        lastControlResponseAt: Date.now()
+    })
+    session.sctpRelay.resetTransport = (reason: string) => resetReasons.push(reason)
+
+    session.info.direction = CallDirection.Incoming
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        }
+    ])
+
+    session.info.stateData.state = CallState.Active
+    session.acceptSent = true
+    const generation = session.relayRecoveryGeneration
+    await session.evaluateRemoteMediaWatchdog(generation)
+
+    assert.deepEqual(configured, ['bsb1c01'])
+    assert.deepEqual(resetReasons, [])
+    assert.equal(session.relayCandidateIndex, 0)
+    assert.equal(session.relayRecoveryTimer, null)
+    session.cleanup()
+})
+
+test('relay candidate that never opens or answers control advances after the bounded startup deadline', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    const resetReasons: string[] = []
+    let resolveSecondCandidate!: () => void
+    const secondCandidateConfigured = new Promise<void>((resolve) => {
+        resolveSecondCandidate = resolve
+    })
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+        if (configured.length === 1) {
+            // Keep the production timer path but avoid making the test wait
+            // the full control deadline after connectRelays returns.
+            session.relayAttemptStartedAt = Date.now() - 3001
+        } else if (configured.length === 2) {
+            resolveSecondCandidate()
+        }
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.hasConnection = () => false
+    session.sctpRelay.getReceiveStats = () => ({
+        rtp: 0,
+        rtcp: 0,
+        pongs: 0,
+        received: 0,
+        readyConnections: 0,
+        lastControlResponseAt: 0
+    })
+    session.sctpRelay.resetTransport = (reason: string) => resetReasons.push(reason)
+
+    session.info.stateData.state = CallState.Active
+    session.acceptedByJid = '2222222222:0@lid'
+
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        }
+    ])
+    assert.equal(session.relayRecoveryTimer !== null, true)
+    let timeout: NodeJS.Timeout | null = null
+    try {
+        await Promise.race([
+            secondCandidateConfigured,
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(
+                    () => reject(new Error('relay recovery watchdog did not advance')),
+                    2500
+                )
+            })
+        ])
+    } finally {
+        if (timeout) clearTimeout(timeout)
+    }
+    if (session.relayRecoveryInFlight) {
+        await session.relayRecoveryInFlight
+    }
+
+    assert.deepEqual(configured, ['bsb1c01', 'gru1c02'])
+    assert.deepEqual(resetReasons, ['relay_control_unavailable'])
+    assert.equal(session.relayCandidateIndex, 1)
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('relay transport failures advance each advertised candidate once and preserve media state', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    const resetReasons: string[] = []
+    const reapplied = { ssrc: 0, streams: 0, subscriptions: 0, pids: 0 }
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.getReceiveStats = () => ({
+        rtp: 0,
+        rtcp: 0,
+        pongs: 0,
+        received: 0,
+        readyConnections: 0,
+        lastControlResponseAt: 0
+    })
+    session.sctpRelay.resetTransport = (reason: string) => resetReasons.push(reason)
+    session.sctpRelay.setSsrc = () => reapplied.ssrc++
+    session.sctpRelay.setStreamSsrcs = () => reapplied.streams++
+    session.sctpRelay.setSubscriptionSsrcs = () => reapplied.subscriptions++
+    session.sctpRelay.setParticipantPids = () => reapplied.pids++
+
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        },
+        {
+            ip: '31.13.93.53', port: 3480, token: 'c', rawToken: new Uint8Array([3]),
+            key: 'c', relayId: 2, relayName: 'fna1c01', authTokenId: '2', isFna: true
+        }
+    ])
+
+    const preservedRtp = { kind: 'rtp' }
+    const preservedSrtp = { kind: 'srtp' }
+    session.rtpSession = preservedRtp
+    session.srtpSession = preservedSrtp
+
+    await session.handleRelayFailure({
+        connectionId: 'stale', relayId: 99, ip: '127.0.0.1', port: 3478,
+        reason: 'native_transport_error'
+    })
+    assert.deepEqual(configured, ['bsb1c01'])
+
+    const first = session.relayCandidates[0]
+    await Promise.all([
+        session.handleRelayFailure({
+            connectionId: 'first', relayId: first.relayId, ip: first.ip, port: first.port,
+            reason: 'native_transport_error'
+        }),
+        session.handleRelayFailure({
+            connectionId: 'first-duplicate', relayId: first.relayId, ip: first.ip, port: first.port,
+            reason: 'native_transport_error'
+        })
+    ])
+
+    const second = session.relayCandidates[1]
+    await session.handleRelayFailure({
+        connectionId: 'second', relayId: second.relayId, ip: second.ip, port: second.port,
+        reason: 'connection_timeout'
+    })
+    const third = session.relayCandidates[2]
+    await session.handleRelayFailure({
+        connectionId: 'third', relayId: third.relayId, ip: third.ip, port: third.port,
+        reason: 'native_transport_error'
+    })
+
+    assert.deepEqual(configured, ['bsb1c01', 'gru1c02', 'fna1c01'])
+    assert.deepEqual(resetReasons, ['relay_transport_failed', 'relay_transport_failed'])
+    assert.deepEqual(reapplied, { ssrc: 3, streams: 3, subscriptions: 3, pids: 3 })
+    assert.equal(session.rtpSession, preservedRtp)
+    assert.equal(session.srtpSession, preservedSrtp)
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('relay recovery does not switch candidates while muted or on hold', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    let resets = 0
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.getReceiveStats = () => ({
+        rtp: 0, rtcp: 0, pongs: 0, received: 0, readyConnections: 0,
+        lastControlResponseAt: 0
+    })
+    session.sctpRelay.resetTransport = () => resets++
+
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        }
+    ])
+    session.info.stateData.state = CallState.Active
+    session.acceptedByJid = '2222222222:0@lid'
+    session.relayAttemptStartedAt = Date.now() - 3001
+    session.remoteMuted = true
+    await session.evaluateRemoteMediaWatchdog(session.relayRecoveryGeneration)
+
+    session.remoteMuted = false
+    session.info.stateData.state = CallState.OnHold
+    await session.evaluateRemoteMediaWatchdog(session.relayRecoveryGeneration)
+
+    assert.deepEqual(configured, ['bsb1c01'])
+    assert.equal(resets, 0)
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('two authenticated Opus frames followed by three seconds of silence advance the relay candidate', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    const resetReasons: string[] = []
+    const stats = {
+        rtp: 2,
+        rtcp: 0,
+        pongs: 5,
+        received: 12,
+        readyConnections: 1,
+        lastControlResponseAt: Date.now()
+    }
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.hasConnection = () => true
+    session.sctpRelay.getReceiveStats = () => stats
+    session.sctpRelay.resetTransport = (reason: string) => resetReasons.push(reason)
+
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        }
+    ])
+    session.info.stateData.state = CallState.Active
+    session.acceptedByJid = '2222222222:0@lid'
+    session.audioRecvCount = 2
+    session.relayAttemptAudioBaseCount = 0
+    session.remoteMediaStarted = true
+    session.lastAuthenticatedAudioCount = 2
+    session.lastRemoteMediaProgressAt = Date.now() - 3001
+
+    await session.evaluateRemoteMediaWatchdog(session.relayRecoveryGeneration)
+
+    assert.deepEqual(configured, ['bsb1c01', 'gru1c02'])
+    assert.deepEqual(resetReasons, ['remote_media_stalled'])
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('ten authenticated Opus frames establish media and stop relay recovery', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const configured: string[] = []
+    let resets = 0
+    const stats = {
+        rtp: 46,
+        rtcp: 6,
+        pongs: 5,
+        received: 60,
+        readyConnections: 1,
+        lastControlResponseAt: Date.now()
+    }
+
+    session.sctpRelay.configureRelays = async (relays: Array<{ name: string }>) => {
+        configured.push(relays[0]?.name)
+    }
+    session.sctpRelay.selectMediaConnectionByRelayId = () => true
+    session.sctpRelay.hasConnection = () => true
+    session.sctpRelay.getReceiveStats = () => stats
+    session.sctpRelay.resetTransport = () => resets++
+
+    await session.connectRelays([
+        {
+            ip: '57.144.137.57', port: 3478, token: 'a', rawToken: new Uint8Array([1]),
+            key: 'a', relayId: 0, relayName: 'bsb1c01', authTokenId: '0'
+        },
+        {
+            ip: '157.240.226.133', port: 3478, token: 'b', rawToken: new Uint8Array([2]),
+            key: 'b', relayId: 1, relayName: 'gru1c02', authTokenId: '0'
+        }
+    ])
+    session.info.stateData.state = CallState.Active
+    session.acceptedByJid = '2222222222:0@lid'
+    session.audioRecvCount = 10
+    session.relayAttemptAudioBaseCount = 0
+    session.remoteMediaStarted = true
+    session.lastAuthenticatedAudioCount = 2
+    session.lastRemoteMediaProgressAt = Date.now() - 3001
+
+    await session.evaluateRemoteMediaWatchdog(session.relayRecoveryGeneration)
+
+    assert.deepEqual(configured, ['bsb1c01'])
+    assert.equal(resets, 0)
+    assert.equal(session.lastAuthenticatedAudioCount, 10)
+    assert.equal(session.remoteMediaEstablished, true)
+    assert.equal(session.relayRecoveryTimer, null)
+
+    session.stopRemoteMediaWatchdog(true)
+    session.cleanup()
+})
+
+test('incoming relaylatency is answered per probe without destination routing', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-RELAYLATENCY-MEOW'
+    const peer = '2222222222:28@lid'
+
+    const offerNode = buildOfferNode(callId, peer)
+    const relay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(relay)
+    await manager.handleCallOffer(offerNode, peer)
+    sent.length = 0
+
+    await manager.handleCallRelaylatency(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'RELAYLATENCY-MSG' },
+            content: [
+                {
+                    tag: 'relaylatency',
+                    attrs: { 'call-id': callId, 'call-creator': peer },
+                    content: [
+                        {
+                            tag: 'te',
+                            attrs: { relay_name: 'bsb1c01', latency: String(0x2000000 + 42) },
+                            content: new Uint8Array([57, 144, 137, 57, 0x0d, 0x96])
+                        }
+                    ]
+                }
+            ]
+        },
+        peer
+    )
+
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0]?.attrs.to, peer)
+    const response = (sent[0]?.content as BinaryNode[])[0]
+    const responseChildren = response.content as BinaryNode[]
+    assert.equal(response.tag, 'relaylatency')
+    assert.equal(responseChildren.some((child) => child.tag === 'destination'), false)
+    assert.equal(responseChildren[0]?.attrs.relay_name, 'bsb1c01')
+    assert.equal(responseChildren[0]?.attrs.latency, String(0x2000000 + 42))
+})
+
+test('relay election applies the announced relay id to media egress', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    let selectedRelayId = -1
+
+    session.sctpRelay.selectMediaConnectionByRelayId = (relayId: number) => {
+        selectedRelayId = relayId
+        return true
+    }
+    session.handleRelayElection({
+        tag: 'call',
+        attrs: { from: '2222222222:0@lid', id: 'ELECTION-STANZA' },
+        content: [
+            {
+                tag: 'relay_election',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': '1111111111:59@lid',
+                    elected_relay_idx: '1'
+                }
+            }
+        ]
+    })
+
+    assert.equal(session.info.electedRelayIdx, 1)
+    assert.equal(selectedRelayId, 1)
+})
+
+test('media path is confirmed only after remote SRTP authentication succeeds', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const peerSsrc = session.peerSsrcs[0]
+    const packet = new Uint8Array(12)
+    packet[0] = 0x80
+    packet[1] = 120
+    packet[8] = (peerSsrc >>> 24) & 0xff
+    packet[9] = (peerSsrc >>> 16) & 0xff
+    packet[10] = (peerSsrc >>> 8) & 0xff
+    packet[11] = peerSsrc & 0xff
+    const selected: Array<{ connectionId: string; confirmed: boolean }> = []
+
+    session.sctpRelay.selectMediaConnection = (connectionId: string, confirmed: boolean) => {
+        selected.push({ connectionId, confirmed })
+        return true
+    }
+    session.opusCodec = {
+        decode: () => new Float32Array(960),
+        getStats: () => ({ success: 1, errors: 0 })
+    }
+    session.srtpSession = {
+        unprotect: () => {
+            throw new Error('invalid auth tag')
+        }
+    }
+
+    session.onRelayData(packet, 'relay-invalid')
+    assert.deepEqual(selected, [])
+
+    session.srtpSession = {
+        unprotect: () => ({
+            header: { sequenceNumber: 1, timestamp: 960, ssrc: peerSsrc },
+            payload: new Uint8Array([0xf8, 0xff, 0xfe])
+        })
+    }
+    session.onRelayData(packet, 'relay-valid')
+
+    assert.deepEqual(selected, [{ connectionId: 'relay-valid', confirmed: true }])
 })
 
 test('startCall blocks when maxConcurrentCalls is reached', async () => {
@@ -265,11 +1133,14 @@ test('startCall rejects explicit peerDevices from another account', async () => 
     )
 })
 
-test('outgoing preaccept and accept do not emit synthetic transport or mute_v2', async () => {
+test('outgoing preaccept and accept emit the official relay signaling once', async () => {
     const { deps, stores, sent } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const peer = '2222222222:0@lid'
     const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    session.connectRelays = async () => undefined
+    await session.handleCallAck(buildRelayOfferAck(callId))
 
     sent.length = 0
     await manager.handleCallPreaccept(
@@ -285,20 +1156,66 @@ test('outgoing preaccept and accept do not emit synthetic transport or mute_v2',
         },
         peer
     )
+    await manager.handleCallPreaccept(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'PREACCEPTMSGID-RETRY' },
+            content: [
+                {
+                    tag: 'preaccept',
+                    attrs: { 'call-id': callId, 'call-creator': '1111111111@lid' }
+                }
+            ]
+        },
+        peer
+    )
+
+    await manager.handleCallAccept(buildAcceptNode(callId, peer), peer)
     await manager.handleCallAccept(buildAcceptNode(callId, peer), peer)
 
-    const actionTags = sent.flatMap((node) =>
+    const actionNodes = sent.flatMap((node) =>
         Array.isArray(node.content)
             ? node.content
                   .filter(
                       (child): child is BinaryNode =>
                           typeof child === 'object' && child !== null && 'tag' in child
                   )
-                  .map((child) => child.tag)
             : []
     )
-    assert.equal(actionTags.includes('transport'), false)
-    assert.equal(actionTags.includes('mute_v2'), false)
+    const transports = actionNodes.filter((node) => node.tag === 'transport')
+    const muteNodes = actionNodes.filter((node) => node.tag === 'mute_v2')
+    const relayLatencyNodes = actionNodes.filter((node) => node.tag === 'relaylatency')
+    const initialTransports = transports.filter(
+        (node) => node.attrs['transport-message-type'] === '0'
+    )
+    const acceptedTransports = transports.filter(
+        (node) => node.attrs['transport-message-type'] === '1'
+    )
+
+    assert.equal(relayLatencyNodes.length, 2)
+    assert.equal(initialTransports.length, 1)
+    assert.equal(acceptedTransports.length, 1)
+    assert.equal(muteNodes.length, 1)
+    assert.equal(initialTransports[0]?.attrs['p2p-cand-round'], '0')
+    assert.equal(acceptedTransports[0]?.attrs['p2p-cand-round'], '1')
+    assert.deepEqual(
+        (acceptedTransports[0]?.content as BinaryNode[]).map((node) => [node.tag, node.attrs]),
+        [['net', { medium: '2', protocol: '0' }]]
+    )
+    assert.equal(muteNodes[0]?.attrs['mute-state'], '0')
+
+    const transportEnvelope = sent.find(
+        (node) => Array.isArray(node.content) && node.content.includes(acceptedTransports[0]!)
+    )
+    const initialTransportEnvelope = sent.find(
+        (node) => Array.isArray(node.content) && node.content.includes(initialTransports[0]!)
+    )
+    const muteEnvelope = sent.find(
+        (node) => Array.isArray(node.content) && node.content.includes(muteNodes[0]!)
+    )
+    assert.equal(initialTransportEnvelope?.attrs.to, '2222222222@lid')
+    assert.equal(transportEnvelope?.attrs.to, peer)
+    assert.equal(muteEnvelope?.attrs.to, peer)
 })
 
 test('outgoing accept does not terminate the answering device when relay uses bare device zero', async () => {
@@ -308,7 +1225,7 @@ test('outgoing accept does not terminate the answering device when relay uses ba
     const session = (manager as any).calls.get(callId)
     session.info.relayData = {
         endpoints: [],
-        participantJids: ['2222222222@lid'],
+        participantJids: ['2222222222@lid', '2222222222:28@lid'],
         peerParticipantJid: '2222222222@lid',
         uuid: ''
     }
@@ -329,6 +1246,98 @@ test('outgoing accept does not terminate the answering device when relay uses ba
     assert.equal(actionTags.includes('terminate'), false)
 })
 
+test('incoming mirrored leg stops when the same local account accepts the outbound call', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'LOCAL-ZAPO-MIRRORED-CALL'
+    const caller = '2222222222:0@lid'
+    let ended = 0
+    manager.on('call_ended', () => {
+        ended++
+    })
+
+    await manager.handleCallOffer(buildOfferNode(callId, caller), caller)
+    sent.length = 0
+
+    const localDevice = '1111111111:15@lid'
+    await manager.handleCallAccept(
+        buildAcceptNode(callId, localDevice),
+        localDevice
+    )
+    await manager.handleCallAccept(
+        buildAcceptNode(callId, localDevice),
+        localDevice
+    )
+
+    assert.equal(manager.getCall(callId)?.stateData.state, CallState.Ended)
+    assert.equal(ended, 1)
+    assert.equal(sent.length, 0)
+})
+
+test('local mirrored target ends without cleaning the matching outbound source call', async () => {
+    const sourceMocks = createMockDeps()
+    const targetMocks = createMockDeps()
+    targetMocks.deps.authClient.getCurrentCredentials = () => ({
+        meJid: '5511998888888@s.whatsapp.net',
+        meLid: '2222222222@lid',
+        signedIdentity: undefined
+    }) as any
+
+    const sourceManager = new WaCallManager({
+        deps: sourceMocks.deps,
+        stores: sourceMocks.stores
+    })
+    const targetManager = new WaCallManager({
+        deps: targetMocks.deps,
+        stores: targetMocks.stores
+    })
+    const callId = await sourceManager.startCall({ peerJid: '2222222222@lid' })
+    const caller = '1111111111:0@lid'
+    await targetManager.handleCallOffer(buildOfferNode(callId, caller), caller)
+
+    const sourceSession = (sourceManager as any).calls.get(callId)
+    const targetSession = (targetManager as any).calls.get(callId)
+    let sourceCleanups = 0
+    let targetCleanups = 0
+    const originalSourceCleanup = sourceSession.cleanup.bind(sourceSession)
+    const originalTargetCleanup = targetSession.cleanup.bind(targetSession)
+    sourceSession.cleanup = () => {
+        sourceCleanups++
+        originalSourceCleanup()
+    }
+    targetSession.cleanup = () => {
+        targetCleanups++
+        originalTargetCleanup()
+    }
+
+    let sourceEnded = 0
+    let targetEnded = 0
+    sourceManager.on('call_ended', () => sourceEnded++)
+    targetManager.on('call_ended', () => targetEnded++)
+    sourceMocks.sent.length = 0
+    targetMocks.sent.length = 0
+
+    const acceptingPnDevice = '5511998888888:15@s.whatsapp.net'
+    const accept = buildAcceptNode(callId, acceptingPnDevice)
+    await sourceManager.handleCallAccept(accept, acceptingPnDevice)
+    await targetManager.handleCallAccept(accept, acceptingPnDevice)
+    await targetManager.handleCallAccept(accept, acceptingPnDevice)
+
+    assert.notEqual(sourceManager.getCall(callId)?.stateData.state, CallState.Ended)
+    assert.equal(targetManager.getCall(callId)?.stateData.state, CallState.Ended)
+    assert.equal(sourceCleanups, 0)
+    assert.equal(targetCleanups, 1)
+    assert.equal(sourceEnded, 0)
+    assert.equal(targetEnded, 1)
+    const sourceActionTags = sourceMocks.sent.flatMap((node) =>
+        Array.isArray(node.content)
+            ? node.content.map((child) => child.tag)
+            : []
+    )
+    assert.equal(sourceActionTags.includes('terminate'), false)
+    assert.equal(targetMocks.sent.length, 0)
+})
+
 test('offer ACK is routed by relay call-id after the call is already active', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
@@ -347,22 +1356,92 @@ test('offer ACK is routed by relay call-id after the call is already active', as
     assert.ok(manager.getCall(callId))
 })
 
-test('outgoing offer ACK does not send caller-side preaccept', async () => {
+test('outgoing offer ACK sends caller-side preaccept exactly once', async () => {
     const { deps, stores, sent } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = await manager.startCall({ peerJid: '2222222222@lid' })
 
-    sent.length = 0
-    await manager.handleCallAck({
-        tag: 'ack',
-        attrs: { class: 'call', type: 'offer' },
-        content: [{ tag: 'relay', attrs: { 'call-id': callId }, content: [] }]
-    })
+    const session = (manager as any).calls.get(callId)
+    const initialCodec = session.opusCodec
+    session.connectRelays = async () => undefined
 
-    assert.equal(
-        sent.some((node) => (node.content as BinaryNode[])?.[0]?.tag === 'preaccept'),
-        false
+    sent.length = 0
+    const ack = buildRelayOfferAck(callId)
+    await manager.handleCallAck(ack)
+    await manager.handleCallAck(ack)
+
+    const preaccepts = sent.filter(
+        (node) => (node.content as BinaryNode[])?.[0]?.tag === 'preaccept'
     )
+    assert.equal(preaccepts.length, 1)
+    const preaccept = (preaccepts[0].content as BinaryNode[])[0]
+    const audio = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'audio'
+    )
+    assert.equal(session.opusCodec, initialCodec)
+    assert.equal(session.opusCodec.getMode(), 'mlow')
+    assert.equal(audio?.attrs.rate, '16000')
+    const capability = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'capability'
+    )
+    assert.deepEqual(
+        capability?.content,
+        new Uint8Array([0x01, 0x05, 0xff, 0x09, 0xe4, 0xbb, 0x07])
+    )
+})
+
+test('outgoing offer ACK switches to RFC Opus and advertises 8000 from voip_settings', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    session.connectRelays = async () => undefined
+
+    const initialCodec = session.opusCodec
+    assert.equal(initialCodec.getMode(), 'mlow')
+    sent.length = 0
+    await manager.handleCallAck(
+        withVoipSettings(buildRelayOfferAck(callId), false)
+    )
+
+    assert.equal(session.opusCodec.getMode(), 'opus')
+    assert.equal(session.opusCodec.usesSmpl(), false)
+    assert.notEqual(session.opusCodec, initialCodec)
+    const preacceptEnvelope = sent.find(
+        (node) => (node.content as BinaryNode[])?.[0]?.tag === 'preaccept'
+    )
+    assert.ok(preacceptEnvelope)
+    const preaccept = (preacceptEnvelope.content as BinaryNode[])[0]
+    const audio = (preaccept.content as BinaryNode[]).find(
+        (node) => node.tag === 'audio'
+    )
+    assert.equal(audio?.attrs.rate, '8000')
+})
+
+test('outgoing offer ACK preserves the local media identity initialized from the session LID', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const initialSelfSsrc = session.selfSsrc
+    const initialSelfStreamSsrcs = [...session.selfStreamSsrcs]
+
+    session.connectRelays = async () => undefined
+
+    await session.handleCallAck(buildRelayOfferAck(callId))
+
+    const ackSelfJid = formatE2ESrtpParticipantId('1111111111:59@lid')
+    const ackSelfSsrc = generateSecureSsrc(callId, ackSelfJid)
+    const ackSelfStreams = prepareWasmRelayStreamSsrcs(
+        generateWasmRelayStreamSsrcs(callId, ackSelfJid),
+        generateSecureSsrc(callId, ackSelfJid, 6)
+    )
+
+    assert.equal(session.selfMediaJid, formatE2ESrtpParticipantId('1111111111@lid'))
+    assert.equal(session.selfSsrc, initialSelfSsrc)
+    assert.deepEqual(session.selfStreamSsrcs, initialSelfStreamSsrcs)
+    assert.notEqual(session.selfSsrc, ackSelfSsrc)
+    assert.notDeepEqual(session.selfStreamSsrcs, ackSelfStreams)
 })
 
 test('remote reject ends and removes the outgoing call', async () => {
@@ -467,35 +1546,97 @@ test('incoming offer with capacity creates a second session', async () => {
     assert.equal(manager.getCalls().length, 2)
 })
 
-test('incoming answer defers accept until the caller mute_v2 arrives', async () => {
+test('incoming answer opens media without proactive signaling and defers accept until caller mute_v2', async () => {
     const { deps, stores, sent } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = 'INCOMINGCALL0000000000000004'
     const peer = '2222222222:0@lid'
 
-    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    const offerNode = buildOfferNode(callId, peer)
+    const relay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(relay)
+    await manager.handleCallOffer(offerNode, peer)
+    manager.getCall(callId)!.encryptionKey = new Uint8Array(32).fill(9)
+    const session = (manager as any).calls.get(callId)
+    let relayPrepares = 0
+    let answerTagsBeforeRelay: string[] = []
+    session.prepareIncomingRelay = async () => {
+        relayPrepares++
+        answerTagsBeforeRelay = sent.slice(beforeAnswer).map(
+            (node: BinaryNode) => (node.content as BinaryNode[])?.[0]?.tag
+        )
+    }
     const beforeAnswer = sent.length
     await manager.acceptCall(callId)
 
-    const answerNodes = sent.slice(beforeAnswer)
-    assert.equal(
-        answerNodes.some((node) => (node.content as BinaryNode[])?.[0]?.tag === 'accept'),
-        false
-    )
+    assert.equal(relayPrepares, 1)
+    assert.deepEqual(answerTagsBeforeRelay, [])
+    assert.deepEqual(sent.slice(beforeAnswer), [])
 
     await manager.handleCallMuteV2(buildMuteNode(callId, peer), peer)
-    const accept = sent.find((node) => (node.content as BinaryNode[])?.[0]?.tag === 'accept')
-    assert.ok(accept)
-    assert.equal(accept.attrs.to, peer)
+    const answerNodes = sent.slice(beforeAnswer)
+    assert.equal(answerNodes.length, 1)
+    assert.deepEqual(
+        answerNodes.map((node) => (node.content as BinaryNode[])?.[0]?.tag),
+        ['accept']
+    )
+    assert.equal(answerNodes[0]?.attrs.to, peer)
+    const accept = (answerNodes[0]?.content as BinaryNode[])[0]
+    const acceptChildren = accept.content as BinaryNode[]
+    assert.equal(accept.tag, 'accept')
+    assert.deepEqual(
+        acceptChildren.map((node) => node.tag),
+        ['audio', 'net', 'encopt', 'metadata']
+    )
+    assert.equal(acceptChildren[1]?.attrs.medium, '2')
+
+    await manager.handleCallMuteV2(buildMuteNode(callId, peer), peer)
+    assert.equal(sent.slice(beforeAnswer).length, 1)
 })
 
-test('incoming relaylatency answers each probe to the exact sender without destination', async () => {
+test('mute_v2 before local answer preserves its exact device and call creator for accept', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-MUTE-BEFORE-ANSWER'
+    const offerPeer = '2222222222:0@lid'
+    const mutePeer = '2222222222:28@lid'
+    const muteCreator = '2222222222@lid'
+
+    await manager.handleCallOffer(buildOfferNode(callId, offerPeer), offerPeer)
+    manager.getCall(callId)!.encryptionKey = new Uint8Array(32).fill(9)
+    sent.length = 0
+
+    const muteNode = buildMuteNode(callId, mutePeer)
+    ;((muteNode.content as BinaryNode[])[0].attrs as Record<string, string>)[
+        'call-creator'
+    ] = muteCreator
+    await manager.handleCallMuteV2(muteNode, mutePeer)
+    assert.equal(sent.length, 0)
+
+    await manager.acceptCall(callId)
+    assert.equal(sent.length, 1)
+    assert.deepEqual(
+        sent.map((node) => (node.content as BinaryNode[])?.[0]?.tag),
+        ['accept']
+    )
+    assert.equal(sent[0]?.attrs.to, mutePeer)
+    const accept = (sent[0]?.content as BinaryNode[])[0]
+    assert.equal(accept.attrs['call-creator'], muteCreator)
+})
+
+test('incoming relaylatency responds to every probe without destination nodes', async () => {
     const { deps, stores, sent } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = 'INCOMINGCALL0000000000000005'
     const peer = '2222222222:28@lid'
 
     await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    const session = (manager as any).calls.get(callId)
+    session.info.relayData = {
+        endpoints: [],
+        participantJids: ['1111111111:59@lid', peer],
+        uuid: ''
+    }
     sent.length = 0
     await manager.handleCallRelaylatency(
         {
@@ -516,15 +1657,18 @@ test('incoming relaylatency answers each probe to the exact sender without desti
     )
 
     assert.equal(sent.length, 2)
-    for (const [index, response] of sent.entries()) {
-        assert.equal(response.attrs.to, peer)
-        const action = (response.content as BinaryNode[])[0]
-        const children = action.content as BinaryNode[]
-        assert.equal(action.tag, 'relaylatency')
-        assert.equal(children.length, 1)
-        assert.equal(children[0].attrs.relay_name, `gru2c0${index + 1}`)
-        assert.equal(children.some((child) => child.tag === 'destination'), false)
-    }
+    assert.deepEqual(sent.map((node) => node.attrs.to), [peer, peer])
+    const actions = sent.map((node) => (node.content as BinaryNode[])[0])
+    assert.deepEqual(
+        actions.map((action) => (action.content as BinaryNode[])[0]?.attrs.relay_name),
+        ['gru2c01', 'gru2c02']
+    )
+    assert.equal(
+        actions.some((action) =>
+            (action.content as BinaryNode[]).some((child) => child.tag === 'destination')
+        ),
+        false
+    )
 })
 
 test('handleCallTerminate only ends the matching call', async () => {

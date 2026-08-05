@@ -45,6 +45,26 @@ export interface MLowCodecOptions {
     readonly bitrate?: number
     readonly complexity?: number
     readonly fec?: boolean
+    readonly mode?: AudioCodecMode
+    readonly useSmpl?: boolean
+}
+
+export type AudioCodecMode = 'mlow' | 'opus'
+
+function resolveCodecMode(opts: MLowCodecOptions): AudioCodecMode {
+    const modeFromUseSmpl = opts.useSmpl === false ? 'opus' : 'mlow'
+
+    if (
+        opts.mode !== undefined &&
+        opts.useSmpl !== undefined &&
+        opts.mode !== modeFromUseSmpl
+    ) {
+        throw new Error(
+            `[MLowCodec] conflicting codec options: mode=${opts.mode}, useSmpl=${opts.useSmpl}`
+        )
+    }
+
+    return opts.mode ?? modeFromUseSmpl
 }
 
 export class MLowCodec {
@@ -55,6 +75,7 @@ export class MLowCodec {
     private decodeSuccess = 0
     private plcFrames = 0
     private opts: MLowCodecOptions = {}
+    private mode: AudioCodecMode = 'mlow'
 
     private constructor() {}
 
@@ -66,12 +87,14 @@ export class MLowCodec {
 
     private async init(opts: MLowCodecOptions): Promise<void> {
         this.opts = opts
+        this.mode = resolveCodecMode(opts)
+        const useSmpl = this.mode === 'mlow'
         const lib = await loadMlowModule()
 
         this.decoder = await lib.createDecoder({
             channels: MLOW_CHANNELS,
             sampleRate: MLOW_SAMPLE_RATE,
-            useSmpl: true,
+            useSmpl,
             maxFrameSize: MAX_FRAME_SIZE
         })
 
@@ -81,7 +104,7 @@ export class MLowCodec {
                 sampleRate: MLOW_SAMPLE_RATE,
                 application: APPLICATION_VOIP,
                 frameSize: FRAME_SIZE,
-                useSmpl: true,
+                useSmpl,
                 dtx: true,
                 fec: opts.fec ?? false,
                 bitrate: opts.bitrate ?? 25_000,
@@ -107,18 +130,18 @@ export class MLowCodec {
         return this.encoder.encode(pcm, { frameSize: this.frameSize })
     }
 
-    decode(mlowFrame: Uint8Array | null): Float32Array {
+    decode(encodedFrame: Uint8Array | null): Float32Array {
         if (!this.decoder) {
             throw new Error('[MLowCodec] decoder not initialized')
         }
 
-        if (mlowFrame === null) {
+        if (encodedFrame === null) {
             this.plcFrames++
             return this.decoder.decodePacketLossFloat(this.frameSize)
         }
 
         try {
-            const audio = this.decoder.decodeFloat(mlowFrame, { frameSize: this.frameSize })
+            const audio = this.decoder.decodeFloat(encodedFrame, { frameSize: this.frameSize })
             this.decodeSuccess++
             return audio
         } catch {
@@ -149,6 +172,14 @@ export class MLowCodec {
 
     getSampleRate(): number {
         return MLOW_SAMPLE_RATE
+    }
+
+    getMode(): AudioCodecMode {
+        return this.mode
+    }
+
+    usesSmpl(): boolean {
+        return this.mode === 'mlow'
     }
 
     async reset(): Promise<void> {

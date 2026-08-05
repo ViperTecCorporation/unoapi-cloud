@@ -23,6 +23,15 @@ function loadMlowModule() {
     }
     return wasmReady;
 }
+function resolveCodecMode(opts) {
+    const modeFromUseSmpl = opts.useSmpl === false ? 'opus' : 'mlow';
+    if (opts.mode !== undefined &&
+        opts.useSmpl !== undefined &&
+        opts.mode !== modeFromUseSmpl) {
+        throw new Error(`[MLowCodec] conflicting codec options: mode=${opts.mode}, useSmpl=${opts.useSmpl}`);
+    }
+    return opts.mode ?? modeFromUseSmpl;
+}
 class MLowCodec {
     encoder = null;
     decoder = null;
@@ -31,6 +40,7 @@ class MLowCodec {
     decodeSuccess = 0;
     plcFrames = 0;
     opts = {};
+    mode = 'mlow';
     constructor() { }
     static async create(opts = {}) {
         const codec = new MLowCodec();
@@ -39,11 +49,13 @@ class MLowCodec {
     }
     async init(opts) {
         this.opts = opts;
+        this.mode = resolveCodecMode(opts);
+        const useSmpl = this.mode === 'mlow';
         const lib = await loadMlowModule();
         this.decoder = await lib.createDecoder({
             channels: MLOW_CHANNELS,
             sampleRate: MLOW_SAMPLE_RATE,
-            useSmpl: true,
+            useSmpl,
             maxFrameSize: MAX_FRAME_SIZE
         });
         try {
@@ -52,7 +64,7 @@ class MLowCodec {
                 sampleRate: MLOW_SAMPLE_RATE,
                 application: APPLICATION_VOIP,
                 frameSize: FRAME_SIZE,
-                useSmpl: true,
+                useSmpl,
                 dtx: true,
                 fec: opts.fec ?? false,
                 bitrate: opts.bitrate ?? 25_000,
@@ -77,16 +89,16 @@ class MLowCodec {
         }
         return this.encoder.encode(pcm, { frameSize: this.frameSize });
     }
-    decode(mlowFrame) {
+    decode(encodedFrame) {
         if (!this.decoder) {
             throw new Error('[MLowCodec] decoder not initialized');
         }
-        if (mlowFrame === null) {
+        if (encodedFrame === null) {
             this.plcFrames++;
             return this.decoder.decodePacketLossFloat(this.frameSize);
         }
         try {
-            const audio = this.decoder.decodeFloat(mlowFrame, { frameSize: this.frameSize });
+            const audio = this.decoder.decodeFloat(encodedFrame, { frameSize: this.frameSize });
             this.decodeSuccess++;
             return audio;
         }
@@ -113,6 +125,12 @@ class MLowCodec {
     }
     getSampleRate() {
         return MLOW_SAMPLE_RATE;
+    }
+    getMode() {
+        return this.mode;
+    }
+    usesSmpl() {
+        return this.mode === 'mlow';
     }
     async reset() {
         this.destroy();

@@ -10,10 +10,29 @@ const encryption_js_1 = require("../crypto/encryption.js");
 const WaAudioEngine_js_1 = require("../media/WaAudioEngine.js");
 const relay_ack_js_1 = require("../relay/relay-ack.js");
 const signaling_js_1 = require("../signaling/signaling.js");
+const voip_settings_js_1 = require("../signaling/voip-settings.js");
 const types_js_1 = require("../types.js");
 const call_state_js_1 = require("./call-state.js");
 const WaCallMediaSession_js_1 = require("./WaCallMediaSession.js");
 const DEFAULT_MAX_CONCURRENT_CALLS = 1;
+const FORCE_SELF_MEDIA_ZERO_LID = String(process.env.ZAPO_VOIP_FORCE_SELF_MEDIA_ZERO_LID ?? '').toLowerCase() === 'true';
+function toZeroDeviceLid(jid) {
+    const bare = jid.split('/', 1)[0].trim();
+    const at = bare.lastIndexOf('@');
+    if (at <= 0)
+        return bare;
+    const user = bare.slice(0, at);
+    const domain = bare.slice(at + 1);
+    if (domain !== 'lid')
+        return bare;
+    const base = user.split(':', 1)[0];
+    return `${base}:0@${domain}`;
+}
+function resolveSelfMediaJid(jid) {
+    if (!FORCE_SELF_MEDIA_ZERO_LID)
+        return jid;
+    return toZeroDeviceLid(jid);
+}
 class WaCallManager extends node_events_1.EventEmitter {
     deps;
     stores;
@@ -41,9 +60,10 @@ class WaCallManager extends node_events_1.EventEmitter {
         const callKey = (0, encryption_js_1.generateCallKey)();
         info.encryptionKey = callKey;
         const session = this.createSession(info);
+        const selfLid = creds?.meLid || creds?.meJid || '';
+        const selfMediaJid = resolveSelfMediaJid(selfLid);
         try {
-            const selfLid = creds?.meLid || creds?.meJid || '';
-            await session.initMedia(selfLid, peerJid);
+            await session.initMedia(selfMediaJid, peerJid);
             const offerStanza = await (0, signaling_js_1.buildOfferStanza)(this.deps, this.stores, callId, callKey, peerJid, options.isVideo ?? false, this.logger.child({ component: 'signaling' }), peerDevices);
             await this.deps.lowLevelCoordinator.sendNode(offerStanza);
         }
@@ -55,6 +75,18 @@ class WaCallManager extends node_events_1.EventEmitter {
         info.applyTransition({ type: 'offer_sent' });
         this.emitState(info);
         this.logger.debug('outgoing offer sent', { callId, peerJid, peerDevices });
+        this.logger.debug('voip_diag outgoing_offer_identity', {
+            callId,
+            requestedPeerJid: options.peerJid,
+            resolvedPeerJid: peerJid,
+            peerDevices,
+            callCreator,
+            meJid: creds?.meJid,
+            meLid: creds?.meLid,
+            selfMediaJid,
+            forceSelfMediaZeroLid: FORCE_SELF_MEDIA_ZERO_LID,
+            mediaType
+        });
         return callId;
     }
     async acceptCall(callId) {
@@ -139,6 +171,7 @@ class WaCallManager extends node_events_1.EventEmitter {
         const { relays, participantJids, selfParticipantJid, peerParticipantJid, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(nodeInfo.innerNode);
         const mediaType = isVideo ? types_js_1.CallMediaType.Video : types_js_1.CallMediaType.Audio;
         const info = call_state_js_1.CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType);
+        const voipSettings = (0, voip_settings_js_1.parseVoipSettingsFromNode)(nodeInfo.innerNode);
         if (callKey) {
             info.encryptionKey = callKey;
         }
@@ -154,13 +187,47 @@ class WaCallManager extends node_events_1.EventEmitter {
                 hbhKey
             };
         }
+        this.logger.debug('voip_diag incoming_offer_identity', {
+            callId,
+            peerJid,
+            callCreator,
+            meJid: this.deps.authClient.getCurrentCredentials()?.meJid,
+            meLid: this.deps.authClient.getCurrentCredentials()?.meLid,
+            isVideo,
+            hasCallKey: !!callKey,
+            relayCount: relays.length,
+            participantJids,
+            selfParticipantJid,
+            peerParticipantJid,
+            selfPid,
+            peerPid,
+            relayCandidates: relays.map((relay) => ({
+                relayName: relay.relayName,
+                relayId: relay.relayId,
+                ip: relay.ip,
+                port: relay.port,
+                protocol: relay.protocol ?? 0,
+                c2rRtt: relay.c2rRtt,
+                isFna: relay.isFna === true,
+                tokenId: relay.tokenId,
+                tokenBytes: relay.rawToken?.length ?? 0,
+                authTokenId: relay.authTokenId,
+                authTokenBytes: relay.rawAuthToken?.length ?? 0
+            })),
+            codecMode: voipSettings.codecMode,
+            voipSettingsPresent: voipSettings.present,
+            voipSettingsMalformed: voipSettings.malformed,
+            voipFrameMs: voipSettings.frameMs,
+            voipTargetBitrate: voipSettings.targetBitrate
+        });
         const atCapacity = this.activeCallCount >= this.maxConcurrentCalls;
         const session = this.createSession(info, { acceptBlocked: atCapacity });
+        await session.configureVoipSettings(voipSettings, 'incoming_offer', true);
         if (!atCapacity) {
             try {
                 const creds = this.deps.authClient.getCurrentCredentials();
                 const selfLid = creds?.meLid || creds?.meJid || '';
-                await session.initMedia(selfParticipantJid || selfLid, peerParticipantJid || peerJid);
+                await session.initMedia(selfLid, peerParticipantJid || peerJid);
                 await session.sendIncomingPreaccept(peerJid);
             }
             catch (err) {

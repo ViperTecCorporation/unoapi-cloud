@@ -92,6 +92,7 @@ export interface RelayEndpoint {
     c2rRtt?: number
     relayName?: string
     addressBytes?: Uint8Array
+    tokenId?: string
     authTokenId?: string
     isFna?: boolean
 }

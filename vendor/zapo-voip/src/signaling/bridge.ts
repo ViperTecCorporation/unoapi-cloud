@@ -1,6 +1,16 @@
 import { createNoopLogger, type Logger } from 'zapo-js'
-import { normalizeDeviceJid } from 'zapo-js/protocol'
-import { type BinaryNode, buildAckNode, getFirstNodeChild } from 'zapo-js/transport'
+import {
+    isLidJid,
+    normalizeDeviceJid,
+    toUserJid,
+    WA_CALL_RECEIPT_PAYLOAD_TAGS
+} from 'zapo-js/protocol'
+import {
+    type BinaryNode,
+    buildAckNode,
+    buildReceiptNode,
+    getFirstNodeChild
+} from 'zapo-js/transport'
 import { toError } from 'zapo-js/util'
 
 import type { WaCallManager } from '../call/WaCallManager.js'
@@ -15,6 +25,58 @@ const RECEIPT_CALL_TAGS = new Set([
     'relaylatency',
     'mute_v2'
 ])
+const ZAPO_CALL_RECEIPT_TAGS = new Set<string>(WA_CALL_RECEIPT_PAYLOAD_TAGS)
+
+function buildCallResponse(deps: WaVoipDeps, node: BinaryNode, inner: BinaryNode): BinaryNode {
+    const peerJid = node.attrs.from
+    const stanzaId = node.attrs.id
+
+    if (
+        ZAPO_CALL_RECEIPT_TAGS.has(inner.tag) &&
+        inner.attrs?.['call-id'] &&
+        inner.attrs?.['call-creator']
+    ) {
+        const credentials = deps.authClient.getCurrentCredentials()
+        let fromJid: string | undefined
+        try {
+            fromJid = isLidJid(peerJid)
+                ? credentials?.meLid
+                    ? normalizeDeviceJid(credentials.meLid)
+                    : undefined
+                : credentials?.meJid
+                  ? toUserJid(credentials.meJid)
+                  : undefined
+        } catch {
+            fromJid = undefined
+        }
+
+        return buildReceiptNode({
+            kind: 'custom',
+            attrs: {
+                id: stanzaId,
+                to: peerJid,
+                ...(fromJid ? { from: fromJid } : {})
+            },
+            content: [
+                {
+                    tag: inner.tag,
+                    attrs: {
+                        'call-id': inner.attrs['call-id'],
+                        'call-creator': inner.attrs['call-creator']
+                    }
+                }
+            ]
+        })
+    }
+
+    return buildAckNode({
+        kind: 'custom',
+        ackClass: 'call',
+        to: peerJid,
+        id: stanzaId,
+        type: inner.tag
+    })
+}
 
 export async function routeCallStanza(
     manager: WaCallManager,
@@ -28,21 +90,20 @@ export async function routeCallStanza(
 
     const tag = inner.tag
     const peerJid = node.attrs.from
+    const response = buildCallResponse(deps, node, inner)
+    const deferResponseUntilHandled = tag === 'mute_v2'
 
-    await deps.lowLevelCoordinator.sendNode(
-        buildAckNode({
-            kind: 'custom',
-            ackClass: 'call',
-            to: peerJid,
-            id: node.attrs.id,
-            type: tag
-        })
-    )
+    if (!deferResponseUntilHandled) {
+        await deps.lowLevelCoordinator.sendNode(response)
+    }
 
     let normalizedPeerJid: string
     try {
         normalizedPeerJid = normalizeDeviceJid(peerJid)
     } catch (err) {
+        if (deferResponseUntilHandled) {
+            await deps.lowLevelCoordinator.sendNode(response)
+        }
         log.warn('failed to normalize call peer jid', {
             from: peerJid,
             message: toError(err).message
@@ -70,7 +131,11 @@ export async function routeCallStanza(
             await manager.handleCallRelaylatency(node, normalizedPeerJid)
             break
         case 'mute_v2':
-            await manager.handleCallMuteV2(node, normalizedPeerJid)
+            try {
+                await manager.handleCallMuteV2(node, normalizedPeerJid)
+            } finally {
+                await deps.lowLevelCoordinator.sendNode(response)
+            }
             break
         case 'relay_election':
             manager.handleRelayElection(node)

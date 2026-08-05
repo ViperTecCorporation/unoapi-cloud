@@ -21,6 +21,7 @@ interface RelayInfo {
     key: string;
     relayId: number;
     name?: string;
+    tokenId?: string;
     authTokenId?: string;
     isFna?: boolean;
 }
@@ -46,6 +47,14 @@ export interface WaSctpRelayOptions {
     readonly logger?: Logger;
     readonly nativeTransportFactory?: (options: ConstructorParameters<typeof NativeRelayTransport>[0]) => NativeRelayTransport;
 }
+export interface RelayReceiveStats {
+    readonly rtp: number;
+    readonly rtcp: number;
+    readonly pongs: number;
+    readonly received: number;
+    readonly readyConnections: number;
+    readonly lastControlResponseAt: number;
+}
 export declare class WaSctpRelay extends EventEmitter {
     private readonly logger;
     private readonly nativeTransportFactory;
@@ -62,12 +71,27 @@ export declare class WaSctpRelay extends EventEmitter {
     private streamSsrcs;
     private selfPid;
     private peerPid;
+    private readyConnectionIds;
+    private mediaConnectionId;
+    private mediaConnectionConfirmed;
+    private mediaPendingSelectionDropCount;
+    private startupMediaFanoutEnabled;
+    private startupMediaFanoutLogCount;
     constructor(options?: WaSctpRelayOptions);
     setSsrc(ssrc: number): void;
     setSubscriptionSsrc(ssrc: number): void;
     setSubscriptionSsrcs(ssrcs: readonly number[]): void;
     setStreamSsrcs(ssrcs: readonly number[]): void;
     setParticipantPids(selfPid?: number, peerPid?: number): void;
+    setStartupMediaFanout(enabled: boolean): void;
+    hasReadyConnection(): boolean;
+    getReadyConnectionCount(): number;
+    getConfiguredRelayCount(): number;
+    getReceiveStats(): RelayReceiveStats;
+    selectMediaConnection(connectionId: string, confirmed?: boolean): boolean;
+    selectMediaConnectionByRelayId(relayId: number): boolean;
+    waitForReadyCount(minimumCount?: number, timeoutMs?: number): Promise<number>;
+    waitForReady(timeoutMs?: number): Promise<boolean>;
     resendSubscriptions(): void;
     private makeConnectionId;
     connectToRelay(relayInfo: RelayInfo): Promise<Connection | null>;
@@ -84,7 +108,10 @@ export declare class WaSctpRelay extends EventEmitter {
     private pongCount;
     private rtpRecvCount;
     private rtcpRecvCount;
+    private remoteRtpRecvCount;
+    private remoteRtcpRecvCount;
     private unknownRecvCount;
+    private lastControlResponseAt;
     private handleRelayMessage;
     private isPong;
     configureRelays(relays: Array<{
@@ -97,6 +124,7 @@ export declare class WaSctpRelay extends EventEmitter {
         key: string;
         relayId: number;
         name?: string;
+        tokenId?: string;
         authTokenId?: string;
         isFna?: boolean;
     }>): Promise<void>;
@@ -105,6 +133,12 @@ export declare class WaSctpRelay extends EventEmitter {
     broadcast(data: ArrayBuffer): void;
     hasConnection(): boolean;
     getConnectedCount(): number;
+    /**
+     * Closes only the native relay transport state. Media identities and the
+     * current SRTP/codec session are deliberately preserved so a caller can
+     * configure the next advertised candidate without rebuilding the call.
+     */
+    resetTransport(reason?: string): void;
     cleanup(): void;
 }
 export {};

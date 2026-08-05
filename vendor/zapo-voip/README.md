@@ -1,4 +1,4 @@
-# @zapo-js/voip
+# @vipertec/zapo-voip
 
 WhatsApp **VOIP / calling** plugin for [`zapo-js`](https://github.com/vinikjkkj/zapo).
 
@@ -6,20 +6,45 @@ Registers on `WaClient` via the plugin system and exposes everything at **`clien
 
 Incoming `<call>`, call-class `<ack>`, and call `<receipt>` stanzas are handled automatically (prepend handlers return `true` so the core client does not double-ack).
 
-> Calls flow over WhatsApp relay servers using the MLow codec. This package handles **audio** calls with **pre-recorded** files or **live** 16 kHz mono PCM. Video is offered in signaling but not encoded.
+The ViperConnect runtime is explicitly hybrid. The offer and outbound control
+flow remain integrated with Zapo, while the direct relay transport and the
+inbound 1:1 accept flow follow MeowCaller-derived behavior. An incoming answer
+only commits the local state and opens the selected relay; it does not send
+`mute_v2` or `transport` proactively. The caller's first `mute_v2` then triggers
+`buildDirectAcceptStanza` with the negotiated audio rate, `net medium="2"`,
+`encopt`, and metadata, followed by a call-class ACK that preserves
+`type="mute_v2"`. That active accept does not carry a second Signal-encrypted
+`callKey`.
 
-## Install
+For outbound calls, the offer ACK selects codec/relay state and triggers the
+caller preaccept. A received preaccept sends relay latency plus the initial 0/0
+transport; a received accept sends transport 1/1 and `mute_v2(0)` to the exact
+device that answered. This is not described as a pure Zapo or pure MeowCaller
+state machine.
 
-```bash
-npm install zapo-js @zapo-js/voip libmlow-wasm
+> Calls flow over WhatsApp relay servers using MLow or RFC Opus, selected per call. This package handles **audio** calls with **pre-recorded** files or **live** 16 kHz mono PCM. Video is offered in signaling but not encoded.
+
+## Integracao no ViperConnect
+
+```json
+{
+  "dependencies": {
+    "@vipertec/zapo-voip": "file:vendor/zapo-voip",
+    "libmlow-wasm": "0.1.1",
+    "zapo-js": "1.7.0"
+  }
+}
 ```
+
+O pacote e privado e vendorizado; ele nao e baixado do npm. O Docker compila o
+helper em `native/relay-bridge` e copia o binario para a mesma imagem.
 
 Peer dependencies:
 
 | Package        | Required       | Purpose                                         |
 | -------------- | -------------- | ----------------------------------------------- |
 | `zapo-js`      | yes            | `WaClient` and plugin host                      |
-| `libmlow-wasm` | yes            | MLow encode/decode (WASM, no native build step) |
+| `libmlow-wasm` | yes            | MLow/RFC Opus encode/decode (WASM, no native build step) |
 | `ffmpeg` (CLI) | optional       | Decode pre-recorded audio files (`loadAudio`)   |
 
 The relay helper is compiled from `native/relay-bridge` by the ViperConnect Docker build and does not require a WebRTC Node package.
@@ -28,11 +53,11 @@ Node **20.9+**. `libmlow-wasm` is ESM-only; the codec loads it via dynamic `impo
 
 ## Quick start
 
-Importing from `@zapo-js/voip` applies `WaClient` type extensions (`client.voip` and `voip_*` events):
+Importing from `@vipertec/zapo-voip` applies `WaClient` type extensions (`client.voip` and `voip_*` events):
 
 ```ts
 import { WaClient } from 'zapo-js'
-import { voipPlugin, EndCallReason } from '@zapo-js/voip'
+import { voipPlugin, EndCallReason } from '@vipertec/zapo-voip'
 
 const client = new WaClient({
     store,
@@ -160,9 +185,54 @@ Plugin options: `maxConcurrentCalls?: number` (default `1`), `logLevel?: LogLeve
 
 ## Codec
 
-MLow runs through **`libmlow-wasm`** (≥ 0.1.1): 16 kHz, mono, 960-sample frames (60 ms), `useSmpl: true`, DTX enabled. No `koffi`, no bundled native libraries.
+The codec is selected independently for each call from `voip_settings`:
+
+- literal `encode.use_mlow_codec_v1="false"` selects RFC Opus with
+  `useSmpl: false` and advertises `audio rate="8000"`;
+- absent settings, `"true"`, or malformed settings use the safe MLow fallback
+  with `useSmpl: true` and advertise `audio rate="16000"`.
+
+Inbound negotiation is read from the `offer`; outbound negotiation is read from
+the offer ACK. Once `preaccept` has been sent, later settings are ignored so the
+codec and advertised rate cannot change during the call. Both modes use
+**`libmlow-wasm`** (>= 0.1.1), mono PCM and 960-sample frames (60 ms), with DTX
+enabled. The local negotiation, initialization order and codec round trips are
+covered by tests. MeowCaller currently provides an in-progress codec-selection
+scaffold; this README does not claim its RFC Opus fallback is complete upstream.
+
+MeowCaller revision `6d9b7b2` observes settings at inbound offer, outbound ACK,
+and outbound accept, with the last explicit valid value winning, but its media
+loop still instantiates MLow and signals a fixed 16 kHz rate. ViperConnect
+intentionally treats only offer/ACK as authoritative and ignores a late accept
+setting after caller preaccept.
+
+Relay candidates keep the original wire order of the received `te2` children;
+they are not sorted by RTT before selection. For a call between two sessions in
+the same worker, an inbound mirrored leg is stopped locally when the accepting
+device matches either the session `meLid` or `meJid`. That guard only cleans the
+mirrored local leg and does not send a WhatsApp `terminate`.
+
+Inbound 1:1 keeps its first selected relay while the control plane remains
+alive. Initial zero RTP or a short media stall must not silently re-elect a
+different relay after accept; only a real transport/control failure may advance
+the candidate. Outbound recovery remains sequential and opens only one logical
+relay at a time.
+
+No `koffi` or bundled native codec libraries are required.
 
 The signaling and media stack (RTP/SRTP, SCTP relay, codec, audio engine) is internal to the package; use `client.voip` and the events above.
+
+The vendored suite currently has `176/176` passing tests. On 2026-08-05, eight
+live calls (two inbound and two outbound on an iPhone 16, then the same matrix
+on a Galaxy S9e) completed with bidirectional audio and no SRTP or Opus error.
+All used the first relay candidate; forced live failover remains a separate
+release criterion.
+
+The exact frozen CommonJS runtime was revalidated in four additional live calls
+before commit. Its SHA-256 values are `87d0011588c10451ef68301a22128264a327ac2e8aab8641a5834be35d6c61d8`
+for `WaCallMediaSession.js`, `055269c99c8e999f7bcf86362aba45a0544a462fd713a9bc807c7159167aec28`
+for `WaCallManager.js`, and `d99a6e28ab14975f15dc1fa682a45ceb868d9a5fc124fde81172c883d720f9cb`
+for `signaling/bridge.js`.
 
 ## Credits
 

@@ -202,6 +202,9 @@ export class RtpSession {
     private timestamp: number
     private samplesPerPacket: number
     private speechStarted = false
+    private packetsSent = 0
+    private octetsSent = 0
+    private lastRtpTimestamp = 0
 
     constructor(ssrc: number, payloadType: number, sampleRate: number, samplesPerPacket: number) {
         this.ssrc = ssrc
@@ -217,24 +220,14 @@ export class RtpSession {
     }
 
     createPacket(payload: Uint8Array, marker = false): RtpPacket {
-        const header = new RtpHeader(
-            this.payloadType,
-            this.sequenceNumber,
-            this.timestamp,
-            this.ssrc
-        )
-        header.marker = marker
-
-        this.sequenceNumber = (this.sequenceNumber + 1) & 0xffff
-        this.timestamp = (this.timestamp + this.samplesPerPacket) >>> 0
-
-        return new RtpPacket(header, payload)
+        return this.createPacketWithDuration(payload, this.samplesPerPacket, marker)
     }
 
     createPacketWithDuration(
         payload: Uint8Array,
         durationSamples: number,
-        marker = false
+        marker = false,
+        countedOctets = payload.length
     ): RtpPacket {
         const header = new RtpHeader(
             this.payloadType,
@@ -246,6 +239,9 @@ export class RtpSession {
 
         this.sequenceNumber = (this.sequenceNumber + 1) & 0xffff
         this.timestamp = (this.timestamp + durationSamples) >>> 0
+        this.packetsSent = (this.packetsSent + 1) >>> 0
+        this.octetsSent = (this.octetsSent + countedOctets) >>> 0
+        this.lastRtpTimestamp = header.timestamp
 
         return new RtpPacket(header, payload)
     }
@@ -258,6 +254,19 @@ export class RtpSession {
         const speech = !isOpusDtxPayload(opusPayload) && !isOpusPrimingPayload(opusPayload)
         const marker = speech && !this.speechStarted
         if (speech) this.speechStarted = true
-        return this.createPacketWithDuration(wirePayload, durationSamples, marker)
+        return this.createPacketWithDuration(
+            wirePayload,
+            durationSamples,
+            marker,
+            opusPayload.length
+        )
+    }
+
+    getSenderStats(): { packetsSent: number; octetsSent: number; rtpTimestamp: number } {
+        return {
+            packetsSent: this.packetsSent,
+            octetsSent: this.octetsSent,
+            rtpTimestamp: this.lastRtpTimestamp
+        }
     }
 }

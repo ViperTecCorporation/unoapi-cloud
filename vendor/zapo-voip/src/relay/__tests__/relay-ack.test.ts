@@ -74,6 +74,7 @@ test('parseRelayFromAck extracts relay metadata, participants and hbh key', () =
     assert.equal(relay.protocol, 1)
     assert.equal(relay.c2rRtt, 40)
     assert.equal(relay.relayName, 'r1')
+    assert.equal(relay.tokenId, '1')
     assert.equal(relay.authTokenId, '9')
     assert.deepEqual([...(relay.rawToken ?? [])], [0xaa, 0xbb, 0xcc])
     assert.deepEqual([...(relay.rawAuthToken ?? [])], [0x11, 0x22])
@@ -106,7 +107,7 @@ test('parseRelayFromAck returns an empty result for a childless ack', () => {
     assert.equal(result.hbhKey, undefined)
 })
 
-test('parseRelayFromAck deprioritizes FNA relays after non-FNA regardless of rtt', () => {
+test('parseRelayFromAck preserves te2 wire order for relay selection', () => {
     const fnaAddr = new Uint8Array([10, 0, 0, 1, 0x0d, 0x96])
     const edgeAddr = new Uint8Array([192, 168, 1, 1, 0x0d, 0x96])
 
@@ -143,10 +144,10 @@ test('parseRelayFromAck deprioritizes FNA relays after non-FNA regardless of rtt
 
     const { relays } = parseRelayFromAck(ack)
     assert.equal(relays.length, 2)
-    assert.equal(relays[0].relayName, 'zulu')
-    assert.equal(relays[0].isFna, false)
-    assert.equal(relays[1].relayName, 'alpha')
-    assert.equal(relays[1].isFna, true)
+    assert.equal(relays[0].relayName, 'alpha')
+    assert.equal(relays[0].isFna, true)
+    assert.equal(relays[1].relayName, 'zulu')
+    assert.equal(relays[1].isFna, false)
 })
 
 test('token_id is not misreported as auth_token_id', () => {

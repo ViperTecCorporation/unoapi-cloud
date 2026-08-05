@@ -59,14 +59,36 @@ serviços ViperConnect. O entrypoint oficial da imagem reconhece
 `UNOAPI_PROCESS_ROLE=voip` e inicia o processo correto; sobrescrevê-lo também
 impede o desligamento gracioso do worker Zapo.
 
+## Onde cada parte roda
+
+Uma única imagem e tag contém dois runtimes Node isolados:
+
+| Processo | Responsabilidade |
+| --- | --- |
+| worker Zapo | sessão, sinalização da chamada, relay WhatsApp, RTP/SRTP e codec |
+| telefonia | SIP/WebRTC, SIP/RTP, ramais, roteamento, gravação e bridge PCM |
+
+O worker usa `zapo-js`, o plugin VoIP mantido dentro do ViperConnect,
+`libmlow-wasm` e um pequeno helper nativo para o relay direto. A telefonia usa
+seu próprio `package.json` e `node_modules`; bibliotecas WebRTC desse processo
+atendem os ramais no navegador e não transportam a mídia do WhatsApp.
+
+O protocolo de relay foi alinhado aos vetores públicos do MeowCaller, mas o
+projeto não é instalado nem executado como dependência. A sessão e a
+sinalização continuam pertencendo integralmente à Zapo. Entre os dois
+processos trafegam apenas comandos de chamada e PCM mono a 16 kHz pelo bridge
+autenticado.
+
 ## Fluxo de chamada
 
 1. A sessão Zapo abre o bridge autenticado após ficar online.
 2. Uma chamada recebida gera `call.incoming`, mas não é atendida automaticamente.
 3. O serviço toca os ramais SIP/WebRTC ou SIP/RTP configurados.
 4. Somente o primeiro ramal que atende dispara `call.command: accept`.
-5. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
-6. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
+5. Na entrada, esse aceite abre o relay sem enviar controles proativos; o
+   primeiro `mute_v2` remoto conclui o accept de sinalização e recebe ACK tipado.
+6. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
+7. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
 
 Cada chamada é isolada por `session + callId`. O limite inicial recomendado é
 2; limite cheio retorna erro explícito, sem fallback.

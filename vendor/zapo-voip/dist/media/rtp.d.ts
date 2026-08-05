@@ -35,9 +35,17 @@ export declare class RtpSession {
     private timestamp;
     private samplesPerPacket;
     private speechStarted;
+    private packetsSent;
+    private octetsSent;
+    private lastRtpTimestamp;
     constructor(ssrc: number, payloadType: number, sampleRate: number, samplesPerPacket: number);
     static whatsappOpus(ssrc: number): RtpSession;
     createPacket(payload: Uint8Array, marker?: boolean): RtpPacket;
-    createPacketWithDuration(payload: Uint8Array, durationSamples: number, marker?: boolean): RtpPacket;
+    createPacketWithDuration(payload: Uint8Array, durationSamples: number, marker?: boolean, countedOctets?: number): RtpPacket;
     createWhatsappOpusPacket(opusPayload: Uint8Array, durationSamples: number, wirePayload?: Uint8Array): RtpPacket;
+    getSenderStats(): {
+        packetsSent: number;
+        octetsSent: number;
+        rtpTimestamp: number;
+    };
 }

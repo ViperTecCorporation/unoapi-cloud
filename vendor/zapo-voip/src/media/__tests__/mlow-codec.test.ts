@@ -9,9 +9,51 @@ test('MLowCodec initializes at 16 kHz with a 960-sample frame size', async () =>
         assert.equal(codec.getFrameSize(), 960)
         assert.equal(codec.getSampleRate(), 16_000)
         assert.equal(codec.getFrameDurationMs(), 60)
+        assert.equal(codec.getMode(), 'mlow')
+        assert.equal(codec.usesSmpl(), true)
     } finally {
         codec.destroy()
     }
+})
+
+test('MLowCodec initializes standard Opus with SMPL disabled', async () => {
+    const codec = await MLowCodec.create({ mode: 'opus' })
+    try {
+        assert.equal(codec.getMode(), 'opus')
+        assert.equal(codec.usesSmpl(), false)
+        assert.equal(codec.getSampleRate(), 16_000)
+        assert.equal(codec.getFrameSize(), 960)
+    } finally {
+        codec.destroy()
+    }
+})
+
+test('MLowCodec round-trips a standard Opus frame', async () => {
+    const codec = await MLowCodec.create({ useSmpl: false })
+    try {
+        const frame = new Float32Array(960)
+        for (let i = 0; i < frame.length; i++) {
+            frame[i] = Math.sin((2 * Math.PI * 523.25 * i) / 16_000) * 0.25
+        }
+
+        const packet = codec.encode(frame)
+        assert.ok(packet.length > 0)
+
+        const decoded = codec.decode(packet)
+        const peak = decoded.reduce((current, sample) => Math.max(current, Math.abs(sample)), 0)
+        assert.equal(decoded.length, 960)
+        assert.ok(peak > 0)
+        assert.deepEqual(codec.getStats(), { success: 1, errors: 0, plc: 0 })
+    } finally {
+        codec.destroy()
+    }
+})
+
+test('MLowCodec rejects conflicting mode and useSmpl options', async () => {
+    await assert.rejects(
+        MLowCodec.create({ mode: 'opus', useSmpl: true }),
+        /conflicting codec options/
+    )
 })
 
 test('MLowCodec round-trips a voiced 960-sample frame with useSmpl', async () => {

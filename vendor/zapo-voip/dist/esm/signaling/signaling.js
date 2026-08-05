@@ -96,8 +96,13 @@ export async function decryptCallKey(deps, node, peerJid, logger) {
     }
     return undefined;
 }
-const CAPABILITY_OFFER = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x13]);
-const CAPABILITY_PREACCEPT = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x07]);
+const CAPABILITY_OFFER = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe4, 0xbb, 0x07]);
+const CAPABILITY_INCOMING_PREACCEPT = new Uint8Array([
+    0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x07
+]);
+const CAPABILITY_OUTGOING_PREACCEPT = new Uint8Array([
+    0x01, 0x05, 0xff, 0x09, 0xe4, 0xbb, 0x07
+]);
 export async function buildCallParticipantNodes(deps, devices, callKey) {
     const resolved = await deps.sessionResolver.ensureSessionsBatch(devices);
     const plaintext = await encodeWAMessage({ call: { callKey } });
@@ -193,6 +198,18 @@ export async function buildOfferStanza(deps, stores, callId, callKey, peerJid, i
             content: encodeSignedDeviceIdentity(creds.signedIdentity)
         });
     }
+    log.debug('voip_diag offer_stanza_shape', {
+        callId,
+        to: peerJid,
+        callCreator,
+        devices,
+        childTags: offerContent.map((child) => child.tag),
+        destinationCount: destinations.length,
+        inlineEnc: destinations.length === 1,
+        hasPrivacy: offerContent.some((child) => child.tag === 'privacy'),
+        hasDeviceIdentity: offerContent.some((child) => child.tag === 'device-identity'),
+        includeVideo: isVideo
+    });
     return {
         tag: 'call',
         attrs: { to: peerJid, id: generateCallStanzaId() },
@@ -205,9 +222,65 @@ export async function buildOfferStanza(deps, stores, callId, callKey, peerJid, i
         ]
     };
 }
-export async function buildAcceptStanza(callId, peerJid, callCreator, isVideo) {
+export async function buildAcceptStanza(deps, callId, callKey, peerJid, callCreator, isVideo) {
+    await deps.messageDispatch.syncSignalSession(callCreator);
+    const bytes = await encodeWAMessage({ call: { callKey } });
+    let encNode;
+    let shouldIncludeDeviceIdentity = false;
+    try {
+        const { type, ciphertext } = await deps.signalProtocol.encryptMessage(parseSignalAddressFromJid(callCreator), bytes);
+        if (type === 'pkmsg') {
+            shouldIncludeDeviceIdentity = true;
+        }
+        encNode = {
+            tag: 'enc',
+            attrs: { v: '2', type, count: '0' },
+            content: ciphertext
+        };
+    }
+    catch (err) {
+        throw new Error(`Failed to encrypt accept for ${callCreator}: ${err.message}`);
+    }
     const acceptContent = [
-        { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } }
+        { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } },
+        { tag: 'net', attrs: { medium: '3' } },
+        encNode,
+        { tag: 'encopt', attrs: { keygen: '2' } }
+    ];
+    const acceptSignedIdentity = deps.authClient.getCurrentCredentials()?.signedIdentity;
+    if (shouldIncludeDeviceIdentity && acceptSignedIdentity) {
+        acceptContent.push({
+            tag: 'device-identity',
+            attrs: {},
+            content: encodeSignedDeviceIdentity(acceptSignedIdentity)
+        });
+    }
+    if (isVideo) {
+        acceptContent.push({ tag: 'video', attrs: { enc: 'vp8' } });
+    }
+    const toJidClean = toUserJid(peerJid);
+    return {
+        tag: 'call',
+        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'accept',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: acceptContent
+            }
+        ]
+    };
+}
+/**
+ * Builds the direct-call callee accept used by the MeowCaller 1:1 state machine.
+ * It is intentionally sent only after the caller's first mute_v2 stanza.
+ *
+ * Source of truth:
+ * https://github.com/purpshell/meowcaller/blob/6d9b7b2c18072155a4581ab8c7fccc51b4fd0a73/signaling/stanza.go#L113-L166
+ */
+export function buildDirectAcceptStanza(callId, peerJid, callCreator, isVideo, audioRate = '16000') {
+    const acceptContent = [
+        { tag: 'audio', attrs: { enc: 'opus', rate: audioRate } }
     ];
     if (isVideo) {
         acceptContent.push({ tag: 'video', attrs: { enc: 'vp8' } });
@@ -254,6 +327,27 @@ export function buildTerminateStanza(peerJid, callId, callCreator, audioDuration
         ]
     };
 }
+export function buildRelaylatencyForwardStanza(peerJid, callId, callCreator, teNodes, destinationJids) {
+    const destinationContent = destinationJids.map((jid) => ({
+        tag: 'to',
+        attrs: { jid },
+        content: undefined
+    }));
+    return {
+        tag: 'call',
+        attrs: { to: toUserJid(peerJid), id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: [
+                    ...teNodes,
+                    { tag: 'destination', attrs: {}, content: destinationContent }
+                ]
+            }
+        ]
+    };
+}
 export function buildRejectStanza(peerJid, callId, callCreator) {
     return {
         tag: 'call',
@@ -266,7 +360,7 @@ export function buildRejectStanza(peerJid, callId, callCreator) {
         ]
     };
 }
-export function buildPreacceptStanza(peerJid, callId, callCreator) {
+function buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, capability, audioRate) {
     return {
         tag: 'call',
         attrs: { to: peerJid, id: generateCallStanzaId() },
@@ -275,14 +369,24 @@ export function buildPreacceptStanza(peerJid, callId, callCreator) {
                 tag: 'preaccept',
                 attrs: { 'call-id': callId, 'call-creator': callCreator },
                 content: [
-                    { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } },
+                    { tag: 'audio', attrs: { enc: 'opus', rate: audioRate } },
                     { tag: 'encopt', attrs: { keygen: '2' } },
-                    { tag: 'capability', attrs: { ver: '1' }, content: CAPABILITY_PREACCEPT }
+                    { tag: 'capability', attrs: { ver: '1' }, content: capability }
                 ]
             }
         ]
     };
 }
+/** MeowCaller callee capability used for an inbound offer. */
+export function buildIncomingPreacceptStanza(peerJid, callId, callCreator, audioRate = '16000') {
+    return buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, CAPABILITY_INCOMING_PREACCEPT, audioRate);
+}
+/** ViperConnect caller-side capability preserved from the live outbound success. */
+export function buildOutgoingPreacceptStanza(peerJid, callId, callCreator, audioRate = '16000') {
+    return buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, CAPABILITY_OUTGOING_PREACCEPT, audioRate);
+}
+/** @deprecated Use the direction-specific preaccept builder. */
+export const buildPreacceptStanza = buildIncomingPreacceptStanza;
 export function buildRelayLatencyStanza(peerJid, callId, callCreator, relays, destinationJids) {
     const seenRelays = new Set();
     const teNodes = [];
@@ -372,7 +476,7 @@ export function buildAcceptReceiptStanza(peerDeviceJid, acceptMsgId, callId, cal
         content: [{ tag: 'accept', attrs: { 'call-id': callId, 'call-creator': callCreator } }]
     });
 }
-export const ENCRYPTED_TAGS = [];
+export const ENCRYPTED_TAGS = ['preaccept', 'accept'];
 export function needsDecryption(tag) {
     return ENCRYPTED_TAGS.includes(tag);
 }

@@ -136,6 +136,12 @@ nem aos serviços `unoapi`, `unoapi-broker`, `unoapi-worker-zapo` e
 que usa `exec node` e permite ao worker receber `SIGTERM`, desconectar as sessões
 e liberar as leases antes de reiniciar.
 
+Embora todos usem a mesma imagem/tag, `unoapi-worker-zapo` e
+`viperconnect-telefonia` executam aplicações e árvores de dependência separadas.
+O primeiro mantém sessão, protocolo e mídia Zapo; o segundo mantém SIP, ramais,
+roteamento e gravações. `UNOAPI_PROCESS_ROLE` escolhe o runtime correto sem
+sobrescrever o entrypoint oficial.
+
 Modelo correto:
 
 ```yaml

@@ -14,6 +14,7 @@ import {
     extractNodeInfo,
     generateCallId
 } from '../signaling/signaling.js'
+import { parseVoipSettingsFromNode } from '../signaling/voip-settings.js'
 import {
     CallDirection,
     CallMediaType,
@@ -28,6 +29,26 @@ import { CallInfo } from './call-state.js'
 import { WaCallMediaSession } from './WaCallMediaSession.js'
 
 const DEFAULT_MAX_CONCURRENT_CALLS = 1
+const FORCE_SELF_MEDIA_ZERO_LID =
+    String(process.env.ZAPO_VOIP_FORCE_SELF_MEDIA_ZERO_LID ?? '').toLowerCase() === 'true'
+
+function toZeroDeviceLid(jid: string): string {
+    const bare = jid.split('/', 1)[0].trim()
+    const at = bare.lastIndexOf('@')
+    if (at <= 0) return bare
+
+    const user = bare.slice(0, at)
+    const domain = bare.slice(at + 1)
+    if (domain !== 'lid') return bare
+
+    const base = user.split(':', 1)[0]
+    return `${base}:0@${domain}`
+}
+
+function resolveSelfMediaJid(jid: string): string {
+    if (!FORCE_SELF_MEDIA_ZERO_LID) return jid
+    return toZeroDeviceLid(jid)
+}
 
 export interface WaCallManagerConfig {
     deps: WaVoipDeps
@@ -77,10 +98,11 @@ export class WaCallManager extends EventEmitter {
         info.encryptionKey = callKey
 
         const session = this.createSession(info)
+        const selfLid = creds?.meLid || creds?.meJid || ''
+        const selfMediaJid = resolveSelfMediaJid(selfLid)
 
         try {
-            const selfLid = creds?.meLid || creds?.meJid || ''
-            await session.initMedia(selfLid, peerJid)
+            await session.initMedia(selfMediaJid, peerJid)
 
             const offerStanza = await buildOfferStanza(
                 this.deps,
@@ -104,6 +126,18 @@ export class WaCallManager extends EventEmitter {
         this.emitState(info)
 
         this.logger.debug('outgoing offer sent', { callId, peerJid, peerDevices })
+        this.logger.debug('voip_diag outgoing_offer_identity', {
+            callId,
+            requestedPeerJid: options.peerJid,
+            resolvedPeerJid: peerJid,
+            peerDevices,
+            callCreator,
+            meJid: creds?.meJid,
+            meLid: creds?.meLid,
+            selfMediaJid,
+            forceSelfMediaZeroLid: FORCE_SELF_MEDIA_ZERO_LID,
+            mediaType
+        })
 
         return callId
     }
@@ -225,6 +259,7 @@ export class WaCallManager extends EventEmitter {
 
         const mediaType = isVideo ? CallMediaType.Video : CallMediaType.Audio
         const info = CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType)
+        const voipSettings = parseVoipSettingsFromNode(nodeInfo.innerNode)
 
         if (callKey) {
             info.encryptionKey = callKey
@@ -243,15 +278,50 @@ export class WaCallManager extends EventEmitter {
             }
         }
 
+        this.logger.debug('voip_diag incoming_offer_identity', {
+            callId,
+            peerJid,
+            callCreator,
+            meJid: this.deps.authClient.getCurrentCredentials()?.meJid,
+            meLid: this.deps.authClient.getCurrentCredentials()?.meLid,
+            isVideo,
+            hasCallKey: !!callKey,
+            relayCount: relays.length,
+            participantJids,
+            selfParticipantJid,
+            peerParticipantJid,
+            selfPid,
+            peerPid,
+            relayCandidates: relays.map((relay) => ({
+                relayName: relay.relayName,
+                relayId: relay.relayId,
+                ip: relay.ip,
+                port: relay.port,
+                protocol: relay.protocol ?? 0,
+                c2rRtt: relay.c2rRtt,
+                isFna: relay.isFna === true,
+                tokenId: relay.tokenId,
+                tokenBytes: relay.rawToken?.length ?? 0,
+                authTokenId: relay.authTokenId,
+                authTokenBytes: relay.rawAuthToken?.length ?? 0
+            })),
+            codecMode: voipSettings.codecMode,
+            voipSettingsPresent: voipSettings.present,
+            voipSettingsMalformed: voipSettings.malformed,
+            voipFrameMs: voipSettings.frameMs,
+            voipTargetBitrate: voipSettings.targetBitrate
+        })
+
         const atCapacity = this.activeCallCount >= this.maxConcurrentCalls
         const session = this.createSession(info, { acceptBlocked: atCapacity })
+        await session.configureVoipSettings(voipSettings, 'incoming_offer', true)
 
         if (!atCapacity) {
             try {
                 const creds = this.deps.authClient.getCurrentCredentials()
                 const selfLid = creds?.meLid || creds?.meJid || ''
                 await session.initMedia(
-                    selfParticipantJid || selfLid,
+                    selfLid,
                     peerParticipantJid || peerJid
                 )
                 await session.sendIncomingPreaccept(peerJid)

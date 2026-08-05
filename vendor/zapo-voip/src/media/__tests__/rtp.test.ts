@@ -82,6 +82,22 @@ test('WhatsApp RTP stream starts with the MeowCaller sequence and timestamp', ()
     assert.equal(second.header.timestamp, 960)
 })
 
+test('WhatsApp RTP sender stats count original Opus bytes for RTCP reports', () => {
+    const session = RtpSession.whatsappOpus(0x12345678)
+    session.createWhatsappOpusPacket(
+        new Uint8Array([0x50, 0x01, 0x02]),
+        960,
+        new Uint8Array([0x50, 0x01, 0x02, 0, 0, 0, 0, 0, 0])
+    )
+    session.createWhatsappOpusPacket(new Uint8Array([0x90]), 320)
+
+    assert.deepEqual(session.getSenderStats(), {
+        packetsSent: 2,
+        octetsSent: 4,
+        rtpTimestamp: 960
+    })
+})
+
 test('RTP speech and DTX headers match the MeowCaller byte KAT', () => {
     const speech = new RtpHeader(120, 1, 0, 0x12345678)
     speech.marker = true

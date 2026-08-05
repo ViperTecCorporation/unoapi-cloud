@@ -14,6 +14,9 @@ O plano detalhado e o contrato `voip-bridge/v1` estão registrados na branch
 `codex/zapo-uno-voice-bridge` do repositório `unoapi-voip-service`, em
 `docs/zapo-uno-voice-bridge-plan.md`.
 
+O estado final das dependencias, do protocolo de relay e da validacao de midia
+esta consolidado em `docs/voip-zapo-runtime.md`.
+
 ## O que muda na Uno
 
 1. Configurar o plugin de voz Zapo com limite concorrente explícito:
@@ -121,8 +124,10 @@ JSON nem transportado pelo RabbitMQ.
 
 O serviço VoIP possui o mesmo vetor binário, registry autenticado, media port,
 integração com gravação/histórico e transferência de chamada para outro ramal.
-A validação real de áudio e concorrência permanece como a próxima etapa antes
-da promoção da release.
+A validação real de áudio foi concluída em 2026-08-05 com oito chamadas
+bidirecionais de entrada e saída em iPhone 16 e Galaxy S9e. Failover forçado de
+relay e concorrência simultânea acima de uma chamada permanecem como critérios
+separados antes da promoção definitiva.
 
 ## Critérios da parte Uno
 

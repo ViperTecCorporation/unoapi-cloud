@@ -142,17 +142,13 @@ function parseRelayFromAck(ackNode) {
                     c2rRtt: rcNode.attrs?.c2r_rtt ? parseInt(rcNode.attrs.c2r_rtt, 10) : undefined,
                     relayName,
                     addressBytes,
+                    tokenId,
                     authTokenId: authTokenId || undefined,
                     isFna
                 });
             }
         }
     }
-    relays.sort((a, b) => {
-        if (!!a.isFna !== !!b.isFna)
-            return a.isFna ? 1 : -1;
-        return (a.c2rRtt ?? Infinity) - (b.c2rRtt ?? Infinity);
-    });
     return {
         relays,
         participantJids,
