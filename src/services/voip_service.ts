@@ -6,6 +6,11 @@ const MAX_CONCURRENT_CALLS = 32
 const records = (value: unknown): Array<Record<string, any>> => Array.isArray(value) ? value : []
 const LEGACY_SLOT_FIELDS = new Set(['slots', 'slot', 'slotId', 'deviceSlotIds'])
 
+const withoutLegacyConsoleIdentity = (value: Record<string, any>) => {
+  const { users: _users, auth: _auth, ...current } = value
+  return current
+}
+
 export const sanitizeVoipConsolePayload = <T>(value: T): T => {
   if (Array.isArray(value)) return value.map(item => sanitizeVoipConsolePayload(item)) as T
   if (!value || typeof value !== 'object') return value
@@ -73,10 +78,10 @@ export const normalizeVoipAdminState = (value: Record<string, any>) => {
   })
 
   const normalizedConfig = nestedConfig
-    ? { ...nestedConfig, accounts, sessions }
+    ? { ...withoutLegacyConsoleIdentity(nestedConfig), accounts, sessions }
     : undefined
   return sanitizeVoipConsolePayload({
-    ...value,
+    ...withoutLegacyConsoleIdentity(value),
     ...(normalizedConfig ? { config: normalizedConfig } : {}),
     accounts,
     sessions,

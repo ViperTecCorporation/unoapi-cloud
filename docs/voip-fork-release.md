@@ -103,10 +103,25 @@ caminho pode ser informado por `ZAPO_VOIP_RELAY_BRIDGE_PATH`.
   local espelhada;
 - o hostpath `zapo-voip-relay-recovery-20260805-02` foi aplicado sobre a imagem
   `4.0.7`, e somente o container do worker Zapo foi recriado;
+- o roteamento sem slots foi validado com o hostpath
+  `slotless-routing-20260806-03` no processo VoIP. O bundle usa capacidade por
+  linha e nao contem `no_available_voip_slot`, `outbound_slot`, `account.slots`
+  nem `deviceSlotIds` no JavaScript ativo;
+- o hostpath `zapo-incoming-reject-20260806-01` foi aplicado somente ao worker
+  Zapo. Ele ignora `<reject>` numa chamada inbound sem alterar arquivos de
+  midia; o CommonJS ativo foi conferido nos dois caminhos com SHA-256
+  `f49be3653f094e78de8b8a71f9d56934060c080be09f310d6e042c0ed2f7d511`;
 - em 2026-08-05 foram validadas oito chamadas bidirecionais: duas entradas e
   duas saidas SIP com iPhone 16, seguidas pela mesma matriz com Galaxy S9e;
 - todas estabilizaram no primeiro relay, com contadores remotos autenticados
   positivos e sem erro SRTP ou Opus;
+- em 2026-08-06, duas chamadas de saida simultaneas e duas chamadas de entrada
+  simultaneas foram validadas na mesma linha. As sobreposicoes ativas foram de
+  5,659 s e 10,927 s, respectivamente; todas tiveram audio bidirecional, fim
+  normal e zero erro SRTP/Opus;
+- no mesmo canario, uma entrada real na linha `5566996222471` comprovou o guard
+  de rejeicao: tocou os ramais, atendeu, manteve audio nos dois sentidos e
+  encerrou normalmente;
 - antes do commit, o mesmo estado foi revalidado em mais quatro chamadas. Os
   call IDs `00BA672F9419331B09FF04EB85A88531`,
   `00B17BF9607D128100B831F70288C3E7`,
@@ -116,7 +131,7 @@ caminho pode ser informado por `ZAPO_VOIP_RELAY_BRIDGE_PATH`.
 - os SHA-256 do CommonJS aplicado e revalidado sao
   `87d0011588c10451ef68301a22128264a327ac2e8aab8641a5834be35d6c61d8`
   (`WaCallMediaSession.js`),
-  `055269c99c8e999f7bcf86362aba45a0544a462fd713a9bc807c7159167aec28`
+  `f49be3653f094e78de8b8a71f9d56934060c080be09f310d6e042c0ed2f7d511`
   (`WaCallManager.js`) e
   `d99a6e28ab14975f15dc1fa682a45ceb868d9a5fc124fde81172c883d720f9cb`
   (`signaling/bridge.js`);
@@ -125,7 +140,11 @@ caminho pode ser informado por `ZAPO_VOIP_RELAY_BRIDGE_PATH`.
   imagem ate a proxima publicacao unificada.
 
 Essa verificacao prova o caminho normal com relay vivo em dois modelos de
-aparelho. O failover sequencial esta coberto pela suite, mas ainda precisa de um
-canario que degrade deliberadamente o primeiro relay. O commit final e o hash da
-imagem oficial devem substituir a referencia temporaria de hostpath antes da
-publicacao.
+aparelho, a capacidade concorrente padrao e o guard de rejeicao inbound. O
+failover sequencial esta coberto pela suite, mas ainda precisa de um canario que
+degrade deliberadamente o primeiro relay.
+
+Os hostpaths acima sao canarios temporarios: recriar os containers apenas com o
+Compose base os remove. A promocao termina somente quando a imagem unificada
+incorporar os SHAs exatos dos dois repositorios, passar os guards de build e
+rodar sem mounts sobre `dist`.

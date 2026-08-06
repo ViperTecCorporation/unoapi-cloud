@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.8-bc7f7dd8';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.8-bc7f7dd8';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.8-bc7f7dd8';
-import { SocketBridge } from './core/socket.js?v=4.0.8-bc7f7dd8';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.8-bc7f7dd8';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.8-bc7f7dd8';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.8-bc7f7dd8';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.8-bc7f7dd8';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.8-bc7f7dd8';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.8-bc7f7dd8';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.8-bc7f7dd8';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.8-bc7f7dd8';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.8-bc7f7dd8';
-import { renderSessionPage } from './pages/session.js?v=4.0.8-bc7f7dd8';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.8-bc7f7dd8';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.8-bc7f7dd8';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.8-bc7f7dd8';
-import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.8-2f35b649';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.8-c5975654';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.8-c5975654';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.8-c5975654';
+import { SocketBridge } from './core/socket.js?v=4.0.8-c5975654';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.8-c5975654';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.8-c5975654';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.8-c5975654';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.8-c5975654';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.8-c5975654';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.8-c5975654';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.8-c5975654';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.8-c5975654';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.8-c5975654';
+import { renderSessionPage } from './pages/session.js?v=4.0.8-c5975654';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.8-c5975654';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.8-c5975654';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.8-c5975654';
+import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.8-c5975654';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -702,10 +702,6 @@ export class ViperConnectApp {
                 const distance = raw ? Number(raw) : Number.isFinite(currentDistance) && currentDistance > 0 ? currentDistance : index + 1;
                 return [groupId, Math.max(1, Number.isFinite(distance) ? distance : index + 1)];
             }));
-        }
-        if (resource === 'users') {
-            put('displayName', 'username', 'password', 'role');
-            payload.companyIds = values('companyIds');
         }
         return payload;
     }

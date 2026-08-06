@@ -660,10 +660,6 @@ export class ViperConnectApp {
         return [groupId, Math.max(1, Number.isFinite(distance) ? distance : index + 1)]
       }))
     }
-    if (resource === 'users') {
-      put('displayName', 'username', 'password', 'role')
-      payload.companyIds = values('companyIds')
-    }
     return payload
   }
 

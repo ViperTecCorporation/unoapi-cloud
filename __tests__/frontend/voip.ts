@@ -29,7 +29,13 @@ describe('VoIP manager page', () => {
     expect(html).toContain('old-call')
     expect(html).toContain('data-action="play-voip-recording"')
     expect(html).toContain('<audio')
+    expect(html).toContain('Chamadas e gravações')
+    expect(html).toContain('Histórico e gravações')
+    expect(html).toContain('data-action="edit-voip-recording-settings"')
+    expect(html.match(/data-form="voip-history-filter"/g)).toHaveLength(1)
     expect(html).toContain('data-action="voip-tab"')
+    expect(html).not.toContain('data-tab="recordings"')
+    expect(html).not.toContain('data-tab="users"')
     expect(html).not.toContain('<iframe')
     expect(html).not.toContain('VOIP_SERVICE_TOKEN')
   })
@@ -220,9 +226,10 @@ describe('VoIP manager page', () => {
         totalPages: 2,
       },
       recordingSummary: { accounts: [{ accountId: 'line-1', count: 1, sizeBytes: 1536 }] },
-    }, false, '', { tab: 'recordings', recordingUrls: { 'record-1': 'blob:recording' } })
+    }, false, '', { tab: 'calls', recordingUrls: { 'record-1': 'blob:recording' } })
     expect(html).toContain('data-form="voip-history-filter"')
     expect(html).toContain('data-action="voip-history-page"')
+    expect(html).toContain('Armazenamento de gravações por linha')
     expect(html).toContain('data-recording-extension="wav"')
     expect(html).toContain('1.5 KB')
     expect(html).not.toContain('autoplay')

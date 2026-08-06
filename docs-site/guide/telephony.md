@@ -88,15 +88,24 @@ autenticado.
 6. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
 7. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
 
-Cada chamada é isolada por `session + callId`. O limite inicial recomendado é
-2 e pode ser ajustado por linha entre 1 e 32; limite cheio retorna erro
-explícito, sem fallback.
+Se o WhatsApp entregar um `<reject>` estranho para uma chamada recebida, o
+worker o ignora porque a sessão não foi a iniciadora. Rejeição de uma chamada
+de saída continua normal, e o cancelamento remoto de uma entrada continua vindo
+por `<terminate>`. Esse guard não altera o caminho de mídia.
 
-O roteador cria uma reserva exclusiva para cada saída. `maxConcurrentCalls`
-define a concorrência da linha Zapo e o encerramento de uma chamada libera
-somente a própria reserva. O padrão é 2 e o limite aceito é 32. A variável
+Cada chamada é isolada por `session + callId`. Não existem slots ou seleção de
+dispositivo no roteamento ativo. `maxConcurrentCalls` é a capacidade única da
+linha Zapo, compartilhada por locks de entrada (`inbound_call`) e saída
+(`outbound_line`). O encerramento libera somente o lock da própria chamada.
+
+O padrão é 2 e o valor pode ser ajustado entre 1 e 32. Capacidade cheia
+retorna `line_capacity_exhausted`, sem fallback. A variável
 `VOIP_MAX_CONCURRENT_CALLS` define a capacidade anunciada pelo worker; mantenha
 o valor igual ou acima do configurado nas linhas.
+
+Em validação real de 2026-08-06, duas chamadas de saída simultâneas e duas
+chamadas de entrada simultâneas foram mantidas na mesma linha, com áudio
+bidirecional independente, encerramento normal e zero erro SRTP/Opus.
 
 Se o número chamado também estiver conectado como sessão Zapo nesta instalação,
 o WhatsApp gera uma perna recebida espelhada com o mesmo `callId`. Ela é
@@ -123,7 +132,7 @@ administrativa da API. O navegador não recebe `VOIP_SERVICE_TOKEN`.
 ### Cadastro de linhas e sessões Zapo
 
 - `GET /admin/voip/console/{resource}`: lista `companies`, `accounts`,
-  `lineGroups`, `extensionGroups`, `sessions`, `extensions` ou `users`;
+  `lineGroups`, `extensionGroups`, `sessions` ou `extensions`;
 - `PUT /admin/voip/console/{resource}/{id}`: cria ou atualiza o recurso;
 - `DELETE /admin/voip/console/{resource}/{id}`: remove o recurso;
 - `GET /admin/voip/console/zapo-lines`: lista as linhas descobertas pela bridge;
@@ -134,8 +143,8 @@ administrativa da API. O navegador não recebe `VOIP_SERVICE_TOKEN`.
 A sessão Zapo já é a origem da telefonia e não exige cadastro de dispositivo,
 QR code ou seleção adicional. Cada linha possui `maxConcurrentCalls`; sessões e
 rotas apenas apontam para a linha Zapo correspondente. Configurações antigas com
-slots continuam sendo lidas durante a migração, mas o Manager não cria nem edita
-esses campos legados.
+slots podem ser lidas uma vez para migrar a capacidade, mas esses campos não
+participam do roteador ativo e o Manager não os cria nem edita.
 
 ### Ramais, registros e roteamento
 
@@ -176,9 +185,13 @@ O simulador aplica as mesmas regras reais, mas não abre a chamada.
   gravações armazenadas da linha e retorna `deleted` e `bytes`.
 
 A página **Telefonia** do Manager usa abas, grids e modais para empresas,
-linhas, ramais, grupos, sessões, chamadas, gravações e usuários. O JSON interno
-não é exposto como editor de configuração. Segredos já configurados aparecem
-apenas como indicadores e são preservados quando o campo secreto não é reenviado.
+linhas, ramais, grupos, sessões e telefonia. **Chamadas e gravações** ficam numa
+única aba: chamadas ativas, histórico, player, download, configuração e resumo
+de armazenamento usam o mesmo fluxo, sem repetir filtros ou registros. O serviço
+VoIP não possui frontend nem usuários administrativos próprios; a Uno é a
+interface única. O JSON interno não é exposto como editor de configuração.
+Segredos já configurados aparecem apenas como indicadores e são preservados
+quando o campo secreto não é reenviado.
 
 Uma sessão Zapo recém-conectada aparece primeiro como **Aguardando empresa**.
 Ela não entra no roteamento até a ativação administrativa. Se existir uma única

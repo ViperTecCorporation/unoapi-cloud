@@ -219,8 +219,11 @@ Os contadores remotos autenticados foram `117`, `39`, `51`, `86`, `171`, `89`,
 nos dois sentidos. Todas as chamadas estabilizaram no primeiro relay. Isso
 valida ao vivo o caminho normal, mas nao demonstra que o failover foi acionado.
 
-Um canario com o primeiro relay deliberadamente degradado e uma rodada de
-chamadas simultaneas acima de uma continuam como criterios separados.
+Um canario com o primeiro relay deliberadamente degradado continua como
+criterio separado. A concorrencia foi validada em 2026-08-06 com duas entradas
+simultaneas e duas saidas simultaneas na mesma linha, todas com audio
+bidirecional e sem erro SRTP/Opus; os call IDs e tempos de sobreposicao estao
+registrados em `docs/voip-zapo-runtime.md`.
 
 ## Roteiro para novos canarios
 
@@ -268,5 +271,6 @@ recebe contrato, adapter, teste e documentacao proprios.
   no vendor executado pelo worker.
 
 Os testes automatizados provam envelopes, vetores, recuperacao e contratos
-locais. Os canarios provam o caminho normal com relay vivo; failover forcado e
-concorrencia simultanea continuam pendentes.
+locais. Os canarios provam o caminho normal com relay vivo e duas chamadas
+simultaneas; somente o failover forcado continua pendente neste conjunto de
+criterios.

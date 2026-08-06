@@ -5,7 +5,7 @@ import { escapeHtml } from '../core/html.js'
 import { t } from '../core/i18n.js'
 import type { VoipBootstrap, VoipLineInventoryItem, VoipTab } from '../domain/types.js'
 
-export type VoipResourceName = 'companies' | 'accounts' | 'lineGroups' | 'extensionGroups' | 'sessions' | 'extensions' | 'users'
+export type VoipResourceName = 'companies' | 'accounts' | 'lineGroups' | 'extensionGroups' | 'sessions' | 'extensions'
 
 interface RenderVoipOptions {
   tab?: VoipTab
@@ -21,7 +21,6 @@ const labels: Record<VoipResourceName, string> = {
   extensionGroups: 'Grupos de ramais',
   sessions: 'Sessões Zapo',
   extensions: 'Ramais',
-  users: 'Usuários',
 }
 
 const tabs: Array<[VoipTab, string]> = [
@@ -29,10 +28,8 @@ const tabs: Array<[VoipTab, string]> = [
   ['lines', 'Linhas'],
   ['extensions', 'Ramais'],
   ['routing', 'Grupos e rotas'],
-  ['calls', 'Chamadas'],
-  ['recordings', 'Gravações'],
+  ['calls', 'Chamadas e gravações'],
   ['companies', 'Empresas'],
-  ['users', 'Usuários'],
   ['settings', 'Configurações'],
 ]
 
@@ -197,7 +194,7 @@ const renderExtensions = (state: VoipBootstrap, transferAudioUrls: Record<string
   ['Grupos', item => `${item.extensionGroupIds?.length || 0}`],
   ['Configuração', item => item.enabled ? badge('Ativo', 'success') : badge('Inativo')],
   ['Registro', item => registrationStatus(state, item)],
-], item => state.auth?.role === 'user' ? '' : `<button class="btn btn--ghost" type="button" data-action="show-voip-credentials" data-id="${escapeHtml(`${item.id}`)}">${icon('eye')}Credenciais</button>`) + renderActiveRegistrations(state) + resourceGrid(state, 'extensionGroups', [
+], item => `<button class="btn btn--ghost" type="button" data-action="show-voip-credentials" data-id="${escapeHtml(`${item.id}`)}">${icon('eye')}Credenciais</button>`) + renderActiveRegistrations(state) + resourceGrid(state, 'extensionGroups', [
   ['Grupo', item => `<strong>${escapeHtml(item.label || item.id)}</strong>`],
   ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
   ['Ramais', item => `${item.extensionIds?.length || 0}`],
@@ -238,10 +235,10 @@ const recordingCell = (item: Record<string, any>, urls: Record<string, string>) 
   return `<div class="voip-recording-actions">${player}<div class="row-actions"><button class="btn btn--ghost" type="button" data-action="play-voip-recording" data-record-id="${escapeHtml(id)}">${icon('phone')}Reproduzir</button><button class="btn btn--ghost" type="button" data-action="download-voip-recording" data-record-id="${escapeHtml(id)}" data-call-id="${escapeHtml(`${item.callId || id}`)}" data-recording-extension="${recordingExtension(item)}">Baixar</button></div></div>`
 }
 
-const historyTable = (state: VoipBootstrap, urls: Record<string, string>, recordingsOnly = false) => {
-  const items = (state.history?.items || []).filter(item => !recordingsOnly || item.recordingStatus === 'available')
+const historyTable = (state: VoipBootstrap, urls: Record<string, string>) => {
+  const items = state.history?.items || []
   return `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Linha</th><th>Ramal</th><th>Direção</th><th>Status</th><th>Duração</th><th>Gravação</th></tr></thead><tbody>
-    ${items.length ? items.map(item => `<tr><td>${escapeHtml(`${item.startedAt || '—'}`)}</td><td>${escapeHtml(`${item.accountLabel || item.accountId || item.phoneNumber || '—'}`)}</td><td>${escapeHtml(`${item.extensionLabel || item.extensionUsername || '—'}`)}</td><td>${escapeHtml(`${item.direction || '—'}`)}</td><td>${escapeHtml(`${item.status || '—'}`)}</td><td>${item.durationSeconds ?? item.recordingDurationSeconds ?? '—'}s</td><td>${recordingCell(item, urls)}</td></tr>`).join('') : emptyRow(7, recordingsOnly ? 'Nenhuma gravação disponível.' : 'Nenhuma chamada no período.')}
+    ${items.length ? items.map(item => `<tr><td>${escapeHtml(`${item.startedAt || '—'}`)}</td><td>${escapeHtml(`${item.accountLabel || item.accountId || item.phoneNumber || '—'}`)}</td><td>${escapeHtml(`${item.extensionLabel || item.extensionUsername || '—'}`)}</td><td>${escapeHtml(`${item.direction || '—'}`)}</td><td>${escapeHtml(`${item.status || '—'}`)}</td><td>${item.durationSeconds ?? item.recordingDurationSeconds ?? '—'}s</td><td>${recordingCell(item, urls)}</td></tr>`).join('') : emptyRow(7, 'Nenhuma chamada no período.')}
   </tbody></table></div>`
 }
 
@@ -261,10 +258,8 @@ const historyControls = (state: VoipBootstrap) => {
 const renderCalls = (state: VoipBootstrap, urls: Record<string, string>) => `<section class="section">${sectionHeading('Nova chamada', 'Origine pela sessão Zapo e conecte ao ramal selecionado.')}
   <form class="filters" data-form="voip-call"><label class="field"><span>Sessão</span><select name="session" required><option value="">Selecione</option>${(state.zapoLines || []).filter(item => item.connected && item.assignmentStatus === 'assigned').map(item => `<option value="${escapeHtml(item.session)}">${escapeHtml(item.session)} · ${escapeHtml(item.companyLabel || '')}</option>`).join('')}</select></label><label class="field"><span>Ramal</span><select name="extensionId" required><option value="">Selecione</option>${options(asItems(state.extensions))}</select></label><label class="field"><span>Destino</span><input name="peerJid" placeholder="5566999999999" required></label><button class="btn" type="submit">${icon('phone')}Ligar</button></form></section>
   <section class="section">${sectionHeading('Chamadas em andamento', 'Transferência e encerramento das chamadas ativas.')}<div class="table-wrap"><table><thead><tr><th>Call ID</th><th>Sessão</th><th>Direção</th><th>Destino</th><th class="table-actions">Ações</th></tr></thead><tbody>${state.calls?.length ? state.calls.map(call => `<tr><td><code>${escapeHtml(call.callId)}</code></td><td>${escapeHtml(call.session)}</td><td>${escapeHtml(call.direction)}</td><td>${escapeHtml(call.callerPn || call.peerJid || '—')}</td><td class="table-actions"><form class="row-actions" data-form="voip-transfer"><input type="hidden" name="callId" value="${escapeHtml(call.callId)}"><select name="targetExtensionId" required><option value="">Transferir para</option>${options(asItems(state.extensions))}</select><button class="btn btn--ghost" type="submit">Transferir</button><button class="btn btn--danger" type="button" data-action="end-voip-call" data-session="${escapeHtml(call.session)}" data-call-id="${escapeHtml(call.callId)}">Encerrar</button></form></td></tr>`).join('') : emptyRow(5, 'Nenhuma chamada ativa.')}</tbody></table></div></section>
-  <section class="section">${sectionHeading('Histórico', 'Pesquise e navegue pelas chamadas processadas pelo serviço VoIP.')}${historyControls(state)}${historyTable(state, urls)}</section>`
-
-const renderRecordings = (state: VoipBootstrap, urls: Record<string, string>) => `<section class="section">${sectionHeading('Gravações', 'Reproduza no próprio grid ou baixe o arquivo.', `<button class="btn btn--ghost" type="button" data-action="edit-voip-recording-settings">${icon('settings')}Configurar</button>`)}${historyControls(state)}${historyTable(state, urls, true)}</section>
-  <section class="section">${sectionHeading('Armazenamento por linha', 'Uso agregado das gravações armazenadas.')}<div class="table-wrap"><table><thead><tr><th>Linha</th><th>Empresa</th><th>Arquivos</th><th>Tamanho</th></tr></thead><tbody>${asItems(state.recordingSummary?.accounts).map(item => `<tr><td>${escapeHtml(item.accountLabel || item.phoneNumber || item.accountId || '—')}</td><td>${escapeHtml(item.companyLabel || '—')}</td><td>${item.count || 0}</td><td>${formatBytes(item.sizeBytes)}</td></tr>`).join('') || emptyRow(4, 'Nenhuma gravação armazenada.')}</tbody></table></div></section>`
+  <section class="section">${sectionHeading('Histórico e gravações', 'Pesquise as chamadas, reproduza no próprio grid ou baixe a gravação.', `<button class="btn btn--ghost" type="button" data-action="edit-voip-recording-settings">${icon('settings')}Configurar gravações</button>`)}${historyControls(state)}${historyTable(state, urls)}</section>
+  <section class="section">${sectionHeading('Armazenamento de gravações por linha', 'Uso agregado dos arquivos armazenados.')}<div class="table-wrap"><table><thead><tr><th>Linha</th><th>Empresa</th><th>Arquivos</th><th>Tamanho</th></tr></thead><tbody>${asItems(state.recordingSummary?.accounts).map(item => `<tr><td>${escapeHtml(item.accountLabel || item.phoneNumber || item.accountId || '—')}</td><td>${escapeHtml(item.companyLabel || '—')}</td><td>${item.count || 0}</td><td>${formatBytes(item.sizeBytes)}</td></tr>`).join('') || emptyRow(4, 'Nenhuma gravação armazenada.')}</tbody></table></div></section>`
 
 const renderSettings = (state: VoipBootstrap) => `<section class="section">${sectionHeading('Configurações da telefonia', 'Parâmetros operacionais e estado do serviço.')}
   <div class="settings-grid"><article class="card stack"><h3>Gravações</h3><p class="muted">Formato: ${escapeHtml(`${state.recording?.format || '—'}`)} · destino: ${escapeHtml(`${state.recording?.provider || '—'}`)}</p><button class="btn" type="button" data-action="edit-voip-recording-settings">${icon('settings')}Configurar gravações</button></article><article class="card stack"><h3>Atualização</h3><strong>${escapeHtml(`${state.autoUpdate?.status || state.autoUpdate?.state || '—'}`)}</strong><p class="muted">Atualizador do serviço de telefonia.</p></article></div>
@@ -277,10 +272,8 @@ export const renderVoipPage = (state: VoipBootstrap, loading: boolean, error = '
       : tab === 'extensions' ? renderExtensions(state, renderOptions.transferAudioUrls || {})
         : tab === 'routing' ? renderRouting(state, renderOptions.routerResult)
           : tab === 'calls' ? renderCalls(state, renderOptions.recordingUrls || {})
-            : tab === 'recordings' ? renderRecordings(state, renderOptions.recordingUrls || {})
-              : tab === 'companies' ? resourceGrid(state, 'companies', [['Empresa', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.id)}</span>`], ['Fuso horário', item => escapeHtml(item.timeZone || '—')], ['IA pós-chamada', item => item.aiSummary?.enabled ? badge('Ativa', 'success') : badge('Inativa')], ['Status', item => item.enabled ? badge('Ativa', 'success') : badge('Inativa')]])
-                : tab === 'users' ? resourceGrid(state, 'users', [['Usuário', item => `<strong>${escapeHtml(item.displayName || item.username || item.id)}</strong><br><span class="muted">${escapeHtml(item.username || item.id)}</span>`], ['Perfil', item => escapeHtml(item.role || 'user')], ['Empresas', item => `${item.companyIds?.length || 0}`], ['Status', item => item.enabled ? badge('Ativo', 'success') : badge('Inativo')]])
-                  : renderSettings(state)
+            : tab === 'companies' ? resourceGrid(state, 'companies', [['Empresa', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.id)}</span>`], ['Fuso horário', item => escapeHtml(item.timeZone || '—')], ['IA pós-chamada', item => item.aiSummary?.enabled ? badge('Ativa', 'success') : badge('Inativa')], ['Status', item => item.enabled ? badge('Ativa', 'success') : badge('Inativa')]])
+              : renderSettings(state)
   return `<header class="page-header"><div><span class="eyebrow">Telefonia</span><h1>Manager VoIP</h1><p class="muted">Linhas Zapo, empresas, roteamento, ramais, chamadas e gravações.</p></div><button class="btn btn--ghost" type="button" data-action="refresh-voip">${icon('refresh')}${loading ? 'Atualizando…' : 'Atualizar'}</button></header>
     ${error ? `<div class="form-error" role="alert">${escapeHtml(error)}</div>` : ''}
     <nav class="tabs" aria-label="Áreas da telefonia">${tabs.map(([value, label]) => `<button class="tab ${tab === value ? 'tab--active' : ''}" type="button" data-action="voip-tab" data-tab="${value}" aria-selected="${tab === value}">${escapeHtml(label)}</button>`).join('')}</nav>${body}`
@@ -313,7 +306,6 @@ export const renderVoipResourceModal = (state: VoipBootstrap, resource: VoipReso
     const distanceFields = extensionGroups.map((group, index) => field(`extensionGroupDistance:${group.id}`, `Prioridade · ${group.label || group.id}`, item.extensionGroupDistances?.[group.id] || index + 1, 'number', false, false, 'min="1"')).join('')
     fields += `${field('displayName', 'Nome do ramal', item.displayName, 'text', true)}${field('username', 'Usuário SIP', item.username, 'text', true)}${field('password', isNew ? 'Senha SIP' : 'Nova senha SIP (opcional)', '', 'password', isNew)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}<label class="field"><span>Tipo</span><select name="type"><option value="both" ${selected(item.type, 'both')}>SIP e WebRTC</option><option value="sip" ${selected(item.type, 'sip')}>SIP/RTP</option><option value="webrtc" ${selected(item.type, 'webrtc')}>WebRTC</option></select></label>${selectField('extensionGroupIds', 'Grupos', extensionGroups, item.extensionGroupIds, false, true)}${distanceFields ? `<h3 class="wide">Distância nos grupos</h3>${distanceFields}<p class="muted wide">Menor número significa maior prioridade de toque dentro dos grupos selecionados.</p>` : ''}`
   }
-  if (resource === 'users') fields += `${field('displayName', 'Nome', item.displayName, 'text', true)}${field('username', 'Usuário', item.username, 'text', true)}${field('password', isNew ? 'Senha' : 'Nova senha (opcional)', '', 'password', isNew)}<label class="field"><span>Perfil</span><select name="role"><option value="user" ${selected(item.role, 'user')}>Usuário</option><option value="admin" ${selected(item.role, 'admin')}>Administrador</option></select></label>${selectField('companyIds', 'Empresas permitidas', companies, item.companyIds, false, true)}`
   const content = `<form class="form-grid voip-editor-form" data-form="voip-resource-fields"><input type="hidden" name="resource" value="${resource}">${fields}<div class="form-actions wide">${!isNew ? `<button class="btn btn--danger" type="button" data-action="delete-voip-resource" data-resource="${resource}" data-id="${escapeHtml(id)}">${icon('trash')}Excluir</button>` : ''}<button class="btn" type="submit">${icon('save')}Salvar</button></div></form>`
   return renderModal('voip-resource', `${isNew ? 'Adicionar' : 'Editar'} ${labels[resource].toLowerCase()}`, content, { subtitle: 'Telefonia', wide: true })
 }

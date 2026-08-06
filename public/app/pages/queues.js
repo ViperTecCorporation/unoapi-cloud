@@ -1,10 +1,10 @@
-import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.8-bc7f7dd8';
-import { icon } from '../components/icons.js?v=4.0.8-bc7f7dd8';
-import { renderModal } from '../components/modal.js?v=4.0.8-bc7f7dd8';
-import { escapeHtml } from '../core/html.js?v=4.0.8-bc7f7dd8';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.8-bc7f7dd8';
-import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.8-bc7f7dd8';
-import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.8-bc7f7dd8';
+import { renderInfoTooltip } from '../components/form_controls.js?v=4.0.8-c5975654';
+import { icon } from '../components/icons.js?v=4.0.8-c5975654';
+import { renderModal } from '../components/modal.js?v=4.0.8-c5975654';
+import { escapeHtml } from '../core/html.js?v=4.0.8-c5975654';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.8-c5975654';
+import { sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.8-c5975654';
+import { parseRabbitQueueName, rabbitQueueScopeLabels } from '../domain/rabbit_queue.js?v=4.0.8-c5975654';
 export const queueDescriptionKey = (name) => {
     const descriptions = {
         outgoing: 'Entrega eventos e webhooks do ViperConnect às aplicações cadastradas.',

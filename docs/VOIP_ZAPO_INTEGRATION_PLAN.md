@@ -89,7 +89,7 @@ linha. Quando o destino também é uma sessão Zapo
 local, a perna inbound espelhada com o mesmo `callId` é observada sem criar uma
 segunda ponte SIP, gravação ou registro de histórico.
 
-Limite cheio retorna erro explícito `concurrent_call_limit`; não existe
+Limite cheio retorna erro explícito `line_capacity_exhausted`; não existe
 fallback.
 
 ## Fases coordenadas
@@ -126,9 +126,10 @@ JSON nem transportado pelo RabbitMQ.
 O serviço VoIP possui o mesmo vetor binário, registry autenticado, media port,
 integração com gravação/histórico e transferência de chamada para outro ramal.
 A validação real de áudio foi concluída em 2026-08-05 com oito chamadas
-bidirecionais de entrada e saída em iPhone 16 e Galaxy S9e. Failover forçado de
-relay e concorrência simultânea acima de uma chamada permanecem como critérios
-separados antes da promoção definitiva.
+bidirecionais de entrada e saída em iPhone 16 e Galaxy S9e. Em 2026-08-06, duas
+saídas simultâneas e duas entradas simultâneas foram validadas na mesma linha,
+com áudio independente, encerramento normal e zero erro SRTP/Opus. O failover
+forçado de relay permanece como critério separado antes da promoção definitiva.
 
 ## Critérios da parte Uno
 
@@ -158,10 +159,13 @@ isolamento de SIP/RTP sem criar uma segunda imagem ou tag de produção.
 ## Manager avançado
 
 A página Telefonia agrega o bootstrap do console, bridges, chamadas, histórico
-e resumo de gravações em abas e modais alinhados ao frontend principal. Empresas,
-linhas, grupos de linhas, grupos de ramais, sessões, ramais, usuários e gravação
-possuem formulários de CRUD, sem editor JSON como interface principal. Linhas
-descobertas pela bridge ficam pendentes até a ativação administrativa. Uma
+e resumo de gravações em abas e modais alinhados ao frontend principal. A aba
+**Chamadas e gravações** concentra chamadas ativas, histórico, player, download,
+configuração e armazenamento sem repetir o grid. Empresas, linhas, grupos de
+linhas, grupos de ramais, sessões, ramais e gravação possuem formulários de CRUD,
+sem editor JSON como interface principal. A gestão de usuários e o frontend
+administrativo próprio do serviço VoIP foram removidos; a Uno é a interface
+única. Linhas descobertas pela bridge ficam pendentes até a ativação administrativa. Uma
 empresa única é selecionada automaticamente, nenhuma empresa gera um cadastro
 básico e várias empresas exigem escolha explícita. A ativação provisiona rota e
 ramal idempotentes; as credenciais SIP/WebRTC ficam recuperáveis por administrador.

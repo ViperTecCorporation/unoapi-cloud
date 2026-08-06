@@ -1,6 +1,6 @@
 # Runtime VoIP Zapo: dependencias, protocolo e solucao de midia
 
-Estado consolidado em 2026-08-05. Este documento e a fonte canonica para
+Estado consolidado em 2026-08-06. Este documento e a fonte canonica para
 entender onde cada parte da telefonia executa, quais dependencias pertencem a
 cada processo e quais correcoes estabilizaram o audio 1:1.
 
@@ -171,6 +171,11 @@ O fluxo final e deliberadamente hibrido:
 - chamadas entre duas sessoes locais possuem uma perna inbound espelhada. O
   guard encerra somente essa perna interna, sem transmitir `terminate` e sem
   disputar a perna outbound.
+- um `<reject>` recebido para uma chamada que nao foi iniciada pela sessao e
+  ignorado. O encerramento remoto de uma entrada continua sendo representado
+  por `<terminate>`, enquanto o `<reject>` de uma chamada iniciada localmente
+  conserva o comportamento normal. Esse guard atua apenas na sinalizacao e nao
+  altera relay, RTP, codec, offer/answer ou a ponte de audio.
 
 Sao extensoes proprias da ViperTec: o helper Go integrado a imagem, o bridge
 PCM para SIP, a protecao da perna local, a negociacao de codec concluida no
@@ -239,6 +244,11 @@ O contrato administrativo consolidado inclui:
 - audio MP3/WAV de ate 15 MB por grupo de transferencia;
 - simulacao de roteamento inbound/outbound e liberacao explicita de locks.
 
+No Manager, chamadas ativas, historico, reproducao/download e resumo de
+armazenamento ficam na mesma aba **Chamadas e gravacoes**. O servico VoIP nao
+possui frontend administrativo nem cadastro proprio de usuarios; a unica
+interface administrativa e a fachada autenticada da Uno.
+
 Configuracoes e segredos sao persistidos pelo servico de telefonia. Respostas
 administrativas omitem os segredos; campos secretos vazios preservam os valores
 ja salvos.
@@ -263,8 +273,27 @@ aparelho antigo com MLow.
 As oito chamadas estabilizaram no primeiro relay. Portanto, o caminho normal
 esta comprovado ao vivo. A recuperacao sequencial esta coberta por testes
 automatizados, mas ainda precisa de um canario que provoque deliberadamente um
-primeiro relay degradado. Concorrencia simultanea acima de uma chamada tambem
-continua como criterio de release separado.
+primeiro relay degradado.
+
+Em 2026-08-06, a concorrencia de duas chamadas na mesma sessao
+`5566999554300` foi comprovada nas duas direcoes:
+
+| Direcao | Call IDs | Sobreposicao ativa | Resultado |
+| --- | --- | ---: | --- |
+| saida SIP | `97CCA774AB66615D454FF52D080ADA26` e `B21EF71FFC7747D9D282735686088F5A` | 5,659 s | ambas bidirecionais, fim normal |
+| entrada | `006362448DA416EF0DFFFEF840074E2C` e `00F1670C760FAAFDE612387F346B28D0` | 10,927 s | ambas bidirecionais, fim normal |
+
+Nos quatro fluxos houve RTP e PCM nos dois sentidos, com `srtpErrors=0` e
+`opusErr=0`. Nao ocorreu `no_available_voip_slot` nem erro de capacidade. Isso
+valida o limite padrao `maxConcurrentCalls=2` sem slots de dispositivo; uma
+combinacao simultanea mista, com uma entrada e uma saida, nao fez parte desse
+canario.
+
+No mesmo dia, a linha `5566996222471` validou o guard de rejeicao inbound no
+call ID `004702FE66D3CFC1D5E188C1EA670D8F`: tocou os ramais, o primeiro atendeu,
+o segundo encerrou como `answered_elsewhere`, a chamada ficou ativa e terminou
+por `extension_bye`, com audio bidirecional e zero erro SRTP/Opus. A regra e
+generica por direcao; o numero nao esta hardcoded.
 
 Antes de congelar o estado no Git, o mesmo CommonJS foi revalidado em quatro
 chamadas adicionais. Os call IDs
@@ -277,7 +306,7 @@ chamadas adicionais. Os call IDs
 | Arquivo | SHA-256 |
 | --- | --- |
 | `dist/call/WaCallMediaSession.js` | `87d0011588c10451ef68301a22128264a327ac2e8aab8641a5834be35d6c61d8` |
-| `dist/call/WaCallManager.js` | `055269c99c8e999f7bcf86362aba45a0544a462fd713a9bc807c7159167aec28` |
+| `dist/call/WaCallManager.js` | `f49be3653f094e78de8b8a71f9d56934060c080be09f310d6e042c0ed2f7d511` |
 | `dist/signaling/bridge.js` | `d99a6e28ab14975f15dc1fa682a45ceb868d9a5fc124fde81172c883d720f9cb` |
 
 ## Regras para manutencao e release
@@ -296,6 +325,9 @@ chamadas adicionais. Os call IDs
 - registrar no artefato a revisao exata do repositorio VoIP incorporado. A branch
   configuravel do workflow e pratica, mas uma tag nao deve ficar sem
   rastreabilidade do segundo repositorio.
+- hostpaths servem somente para canario. A promocao exige imagem unificada com
+  os SHAs exatos, sem mounts sobre `dist`; recriar um container apenas com o
+  Compose base remove um hostpath temporario.
 - cada tag Git `v*` publica a referencia semantica correspondente e tambem
   atualiza `latest`; ambas devem apontar para o mesmo digest da imagem integrada.
 

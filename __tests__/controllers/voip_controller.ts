@@ -56,6 +56,20 @@ describe('VoipController', () => {
     })
   })
 
+  test.each(['users', 'users/legacy-user', 'login'])('blocks removed legacy console path %s', async suffix => {
+    const service = { request: jest.fn() }
+    const controller = new VoipController(service as any)
+    const res = response()
+    await controller.console({
+      method: 'GET',
+      params: { 0: suffix },
+      originalUrl: `/admin/voip/console/${suffix}`,
+    } as any, res)
+    expect(res.status).toHaveBeenCalledWith(404)
+    expect(res.json).toHaveBeenCalledWith({ error: 'resource_not_found' })
+    expect(service.request).not.toHaveBeenCalled()
+  })
+
   test('forwards line concurrency without slot fields', async () => {
     const service = { request: jest.fn().mockResolvedValue({ config: { accounts: [] } }) }
     const controller = new VoipController(service as any)

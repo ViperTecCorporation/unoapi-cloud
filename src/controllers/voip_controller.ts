@@ -2,6 +2,8 @@ import type { Request, Response } from 'express'
 import { Readable } from 'node:stream'
 import { sanitizeVoipConsolePayload, VoipService, VoipServiceError } from '../services/voip_service'
 
+const REMOVED_CONSOLE_PATHS = new Set(['login', 'users'])
+
 export class VoipController {
   constructor(private readonly service = new VoipService()) {}
 
@@ -72,6 +74,8 @@ export class VoipController {
     try {
       const suffix = `${req.params[0] || ''}`.replace(/^\/+/, '')
       if (!suffix || suffix.includes('..')) return res.status(400).json({ error: 'invalid_voip_console_path' })
+      const resource = suffix.split('/', 1)[0].toLowerCase()
+      if (REMOVED_CONSOLE_PATHS.has(resource)) return res.status(404).json({ error: 'resource_not_found' })
       const method = req.method.toUpperCase()
       return res.json(
         sanitizeVoipConsolePayload(await this.service.request(`/v1/console/${suffix}${this.queryString(req)}`, {

@@ -1467,7 +1467,7 @@ paths:
         - $ref: '#/components/parameters/VoipResourcePath'
       responses:
         '200':
-          description: Recursos visíveis para as empresas autorizadas.
+          description: Recursos administrativos configurados no serviço de telefonia.
           content:
             application/json:
               schema:
@@ -1500,7 +1500,6 @@ paths:
                 - { $ref: '#/components/schemas/VoipExtensionGroup' }
                 - { $ref: '#/components/schemas/VoipSession' }
                 - { $ref: '#/components/schemas/VoipExtension' }
-                - { $ref: '#/components/schemas/VoipUser' }
       responses:
         '200':
           description: Configuração validada, persistida e devolvida com segredos omitidos.
@@ -1813,7 +1812,7 @@ components:
       description: Coleção administrativa da telefonia.
       schema:
         type: string
-        enum: [companies, accounts, lineGroups, extensionGroups, sessions, extensions, users]
+        enum: [companies, accounts, lineGroups, extensionGroups, sessions, extensions]
 
   schemas:
     VersionStatus:
@@ -1990,18 +1989,6 @@ components:
           type: object
           description: Prioridade por grupo; o menor valor toca primeiro.
           additionalProperties: { type: integer, minimum: 1 }
-
-    VoipUser:
-      type: object
-      required: [username, displayName, role]
-      properties:
-        id: { type: string, readOnly: true }
-        enabled: { type: boolean, default: true }
-        username: { type: string }
-        displayName: { type: string }
-        role: { type: string, enum: [admin, user] }
-        password: { type: string, format: password, writeOnly: true }
-        companyIds: { type: array, items: { type: string } }
 
     VoipConfigResponse:
       type: object
@@ -2211,9 +2198,6 @@ components:
         extensions:
           type: array
           items: { $ref: '#/components/schemas/VoipExtension' }
-        users:
-          type: array
-          items: { $ref: '#/components/schemas/VoipUser' }
         registrations: { $ref: '#/components/schemas/VoipRegistrations' }
         zapoLines:
           type: array

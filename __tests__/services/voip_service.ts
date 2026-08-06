@@ -15,6 +15,7 @@ describe('VoipService', () => {
         ? {
           config: {
             extensions: [{ id: '1001' }],
+            users: [{ id: 'legacy-user' }],
             accounts: [{
               id: 'line-1',
               phoneNumber: '5566999554300',
@@ -22,6 +23,8 @@ describe('VoipService', () => {
             }],
             sessions: [{ id: 'session-1', accountId: 'line-1', deviceSlotIds: ['legacy-slot'] }],
           },
+          auth: { role: 'admin', userId: 'legacy-user' },
+          users: [{ id: 'legacy-user' }],
           zapoLines: [{ session: '5566999554300', accountId: 'line-1', slotId: 'legacy-slot' }],
         }
         : url.endsWith('/v1/zapo/bridges')
@@ -46,6 +49,9 @@ describe('VoipService', () => {
     expect(result.accounts[0]).not.toHaveProperty('slots')
     expect(result.sessions[0]).not.toHaveProperty('deviceSlotIds')
     expect(result.zapoLines[0]).not.toHaveProperty('slotId')
+    expect(result).not.toHaveProperty('auth')
+    expect(result).not.toHaveProperty('users')
+    expect(result.config).not.toHaveProperty('users')
     expect(fetcher).toHaveBeenCalledTimes(5)
   })
 

@@ -5,7 +5,9 @@ export default defineConfig({
   title: 'ViperConnect Developers',
   description: 'Documentação oficial e referência interativa da API ViperConnect.',
   cleanUrls: true,
-  lastUpdated: true,
+  // The documentation image intentionally does not install Git. Keeping this
+  // disabled also lets VitePress hot reload markdown files in that container.
+  lastUpdated: false,
   head: [
     ['link', { rel: 'icon', href: '/viperconnect_icon.svg' }],
     ['meta', { name: 'theme-color', content: '#9d3836' }],

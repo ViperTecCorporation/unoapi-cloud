@@ -184,7 +184,7 @@ export interface VoipCallStatus {
   streamId?: number
 }
 
-export type VoipTab = 'overview' | 'lines' | 'extensions' | 'routing' | 'calls' | 'recordings' | 'companies' | 'users' | 'settings'
+export type VoipTab = 'overview' | 'lines' | 'extensions' | 'routing' | 'calls' | 'companies' | 'settings'
 
 export interface VoipLineInventoryItem extends VoipBridgeStatus {
   sourceId: string
@@ -250,14 +250,12 @@ export interface VoipBootstrap {
   accounts?: VoipLineAccount[]
   lineGroups?: Array<Record<string, any>>
   extensionGroups?: Array<Record<string, any>>
-  users?: Array<Record<string, any>>
   history?: Partial<VoipHistoryPage>
   recordingSummary?: Record<string, any>
   recording?: Record<string, any>
   registrations?: { total?: number; webrtc?: Array<Record<string, any>>; sipRtp?: Array<Record<string, any>> }
   autoUpdate?: Record<string, any>
   zapoLines?: VoipLineInventoryItem[]
-  auth?: { role?: 'admin' | 'user'; companyIds?: string[] }
   [key: string]: unknown
 }
 
