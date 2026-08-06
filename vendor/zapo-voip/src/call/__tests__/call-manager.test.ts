@@ -1615,6 +1615,26 @@ test('remote reject ends and removes the outgoing call', async () => {
     assert.equal(ended?.stateData.endReason, 'declined')
 })
 
+test('hosted-device reject does not end an incoming ringing call', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-HOSTED-REJECT-IGNORED'
+    const peer = '2222222222:0@lid'
+    let ended: CallInfo | undefined
+    manager.on('call_ended', (call) => { ended = call })
+
+    await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
+    await manager.handleCallReject(
+        buildRejectNode(callId, '182222711709908:99@hosted.lid')
+    )
+
+    const call = manager.getCall(callId)
+    assert.ok(call)
+    assert.equal(call.stateData.state, CallState.IncomingRinging)
+    assert.equal(call.canAccept, true)
+    assert.equal(ended, undefined)
+})
+
 test('server offer ACK error ends and removes the routed call', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })

@@ -39,6 +39,18 @@ O processo VoIP usa o manifesto do repositorio separado
 `_build/` local e temporaria, esta no `.gitignore` e pode conter uma copia
 antiga; ela nunca deve ser tratada como fonte de verdade. A imagem de release
 registra a revisao exata da branch integrada para permitir reproducao e rollback.
+O workflow resolve o checkout para um SHA antes do Docker build, grava esse SHA
+no label `io.vipertec.viperconnect.voip.revision` e em
+`/home/u/app/voip/SOURCE_REVISION`. Em publicacao manual, informe o SHA do VoIP
+em `voip_ref`; usar apenas uma branch movel nao e suficiente para reproduzir uma
+imagem antiga.
+
+O estágio `voip-builder` também valida o JavaScript compilado antes de permitir
+a imagem: `voice_router.js` deve usar `outbound_line`, `maxConcurrentCalls` e os
+erros de capacidade por linha. O build falha se reaparecerem
+`no_available_voip_slot`, `outbound_slot`, `account.slots`, `deviceSlotIds` ou os
+seletores legados de slot. Assim uma regressao local nao pode ser publicada
+silenciosamente na imagem unificada.
 
 O `Dockerfile` copia os dois grafos para caminhos diferentes e o entrypoint
 seleciona o executavel:

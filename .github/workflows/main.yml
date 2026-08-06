@@ -55,6 +55,14 @@ jobs:
           token: ${{ secrets.VOIP_REPOSITORY_TOKEN || github.token }}
           path: _build/voip-service
 
+      - name: Resolve exact telephony source revision
+        id: voip-source
+        shell: bash
+        run: |
+          voip_sha="$(git -C _build/voip-service rev-parse HEAD)"
+          echo "sha=${voip_sha}" >> "${GITHUB_OUTPUT}"
+          echo "VoIP source revision: ${voip_sha}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -94,5 +102,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VOIP_SOURCE_SHA=${{ steps.voip-source.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

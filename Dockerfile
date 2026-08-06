@@ -69,7 +69,9 @@ COPY ./_build/voip-service/public ./public
 COPY ./_build/voip-service/scripts ./scripts
 COPY ./_build/voip-service/tsconfig.json ./tsconfig.json
 COPY ./_build/voip-service/.env.example ./.env.example
-RUN npm run build
+COPY ./scripts/assert-voip-slotless-runtime.mjs /usr/local/bin/assert-voip-slotless-runtime.mjs
+RUN npm run build \
+    && node /usr/local/bin/assert-voip-slotless-runtime.mjs /app/dist/services/voice_router.js
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS voip-updater
 ARG TARGETARCH
@@ -111,6 +113,8 @@ RUN corepack enable \
 
 FROM node:24-bookworm-slim AS runtime-base
 
+ARG VOIP_SOURCE_SHA=unknown
+
 LABEL \
   maintainer="ViperTec Corporation <suporte@vipertec.com.br>" \
   org.opencontainers.image.title="ViperConnect" \
@@ -118,7 +122,8 @@ LABEL \
   org.opencontainers.image.authors="ViperTec Corporation <suporte@vipertec.com.br>; Rodrigo Caitano <caitano28@gmail.com>; original Unoapi Cloud project by Clairton Rodrigo" \
   org.opencontainers.image.url="https://github.com/ViperTecCorporation/ViperConnect" \
   org.opencontainers.image.vendor="https://uno.ltd" \
-  org.opencontainers.image.licenses="GPLv3"
+  org.opencontainers.image.licenses="GPLv3" \
+  io.vipertec.viperconnect.voip.revision="${VOIP_SOURCE_SHA}"
 
 ENV NODE_ENV=production
  
@@ -142,6 +147,7 @@ COPY ./scripts/container-entrypoint.sh ./container-entrypoint.sh
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg wget \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p data/medias data/sessions data/stores data/logs voip/data \
+    && printf '%s\n' "${VOIP_SOURCE_SHA}" > voip/SOURCE_REVISION \
     && chmod 0755 container-entrypoint.sh voip/updater/viperconnect-voip-updater vendor/zapo-voip/native/relay-bridge/relay-bridge \
     && chown -R u:u /home/u/app
 

@@ -308,6 +308,14 @@ export class WaCallManager extends EventEmitter {
         const session = this.resolveSessionFromNode(node);
         if (!session)
             return;
+        if (!session.info.isInitiator) {
+            this.logger.debug('reject ignored for incoming call', {
+                callId: session.callId,
+                from: node.attrs?.from,
+                state: session.info.stateData.state
+            });
+            return;
+        }
         session.handleCallReject();
         this.calls.delete(session.callId);
         this.pendingRelaylatency.delete(session.callId);
