@@ -138,26 +138,22 @@ describe('frontend API client', () => {
     )
   })
 
-  test('forces bridge mode in slot CRUD and encodes Unicode transfer filenames', async () => {
-    const fetcher = jest
-      .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ saved: true })))
+  test('uploads transfer audio with an encoded Unicode filename', async () => {
+    const fetcher = jest.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ uploaded: true }))) as unknown as typeof fetch
     const api = new ApiClient('https://unoapi.example', fetcher)
     api.setToken('admin')
 
-    await api.voipSaveBridgeSlot('line 1', 'slot/a', { enabled: true })
     const file = new File([new Uint8Array([1, 2])], 'áudio espera.mp3', { type: 'audio/mpeg' })
     await api.voipUploadTransferAudio('support', file)
 
     expect(fetcher).toHaveBeenNthCalledWith(
       1,
-      'https://unoapi.example/admin/voip/console/accounts/line%201/slots/slot%2Fa',
+      'https://unoapi.example/admin/voip/console/extensionGroups/support/transfer-audio',
       expect.any(Object),
     )
     const calls = (fetcher as jest.Mock).mock.calls
-    expect(JSON.parse(`${calls[0][1]?.body}`)).toMatchObject({ mode: 'bridge', bridgeSoftware: 'zapo' })
-    const headers = new Headers(calls[1][1]?.headers)
+    const headers = new Headers(calls[0][1]?.headers)
     expect(headers.get('X-File-Name')).toBe(encodeURIComponent('áudio espera.mp3'))
     expect(headers.get('Content-Type')).toBe('audio/mpeg')
   })

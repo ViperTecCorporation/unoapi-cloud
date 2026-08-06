@@ -1,13 +1,13 @@
-import { icon } from '../components/icons.js?v=4.0.8-5ad21a7e';
-import { renderModal } from '../components/modal.js?v=4.0.8-5ad21a7e';
-import { renderStatus } from '../components/status.js?v=4.0.8-5ad21a7e';
-import { escapeHtml } from '../core/html.js?v=4.0.8-5ad21a7e';
+import { icon } from '../components/icons.js?v=4.0.8-bc7f7dd8';
+import { renderModal } from '../components/modal.js?v=4.0.8-bc7f7dd8';
+import { renderStatus } from '../components/status.js?v=4.0.8-bc7f7dd8';
+import { escapeHtml } from '../core/html.js?v=4.0.8-bc7f7dd8';
 const labels = {
     companies: 'Empresas',
-    accounts: 'Linhas',
+    accounts: 'Linhas Zapo',
     lineGroups: 'Grupos de linhas',
     extensionGroups: 'Grupos de ramais',
-    sessions: 'Sessões de roteamento',
+    sessions: 'Sessões Zapo',
     extensions: 'Ramais',
     users: 'Usuários',
 };
@@ -26,6 +26,10 @@ const asItems = (value) => Array.isArray(value) ? value : [];
 const checked = (value) => value !== false ? 'checked' : '';
 const selected = (current, value) => `${current ?? ''}` === `${value ?? ''}` ? 'selected' : '';
 const selectedMany = (current, value) => Array.isArray(current) && current.map(String).includes(String(value)) ? 'selected' : '';
+const maxConcurrentCalls = (value, fallback = 2) => {
+    const parsed = Number(value);
+    return Math.min(32, Math.max(1, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback));
+};
 const options = (items, current, multiple = false) => items.map(item => {
     const label = item.label || item.displayName || item.username || item.phoneNumber || item.id;
     return `<option value="${escapeHtml(`${item.id}`)}" ${multiple ? selectedMany(current, item.id) : selected(current, item.id)}>${escapeHtml(`${label}`)}</option>`;
@@ -52,7 +56,14 @@ const recordingExtension = (item) => {
     const match = key.match(/\.(mp3|wav|gsm)$/);
     return match?.[1] || 'mp3';
 };
-const bridgeSlots = (account) => asItems(account.slots).filter(slot => slot.mode === 'bridge');
+const lineConcurrency = (state, account) => {
+    const session = asItems(state.sessions).find(item => item.accountId === account.id || item.unoSession === account.phoneNumber);
+    const discovered = (state.zapoLines || []).find(item => item.accountId === account.id || item.session === account.phoneNumber);
+    const legacyTotal = asItems(account.slots)
+        .filter(item => item.enabled !== false)
+        .reduce((total, item) => total + maxConcurrentCalls(item.maxActiveCalls, 1), 0);
+    return maxConcurrentCalls(account.maxConcurrentCalls ?? session?.maxConcurrentCalls ?? discovered?.maxConcurrentCalls, legacyTotal || 2);
+};
 const sectionHeading = (title, description, action = '') => `
   <div class="section__heading"><div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(description)}</p></div>${action}</div>`;
 const emptyRow = (columns, text) => `<tr><td colspan="${columns}"><div class="empty-state">${escapeHtml(text)}</div></td></tr>`;
@@ -114,19 +125,13 @@ const renderLines = (state) => {
         <td>${renderStatus(line.connected ? 'online' : 'offline')}</td>
         <td>${line.companyId ? escapeHtml(line.companyLabel || line.companyId) : badge('Aguardando empresa', 'warning')}</td>
         <td>${line.routingConfigured ? badge('Configurado', 'success') : badge('Pendente', 'warning')}</td>
-        <td>${line.maxConcurrentCalls || '—'}</td>
+        <td>${maxConcurrentCalls(line.maxConcurrentCalls)}</td>
         <td class="table-actions"><div class="row-actions">
           ${line.assignmentStatus === 'pending_company' ? `<button class="btn" type="button" data-action="assign-voip-line" data-session="${escapeHtml(line.session)}">${icon('link')}Ativar linha</button>` : editButton('accounts', line.accountId || line.session)}
         </div></td>
       </tr>`).join('') : emptyRow(6, 'Nenhuma sessão Zapo foi descoberta.')}
     </tbody></table></div>
-  </section>
-  ${resourceGrid(state, 'accounts', [
-        ['Linha', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.phoneNumber || item.id)}</span>`],
-        ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
-        ['Slots bridge', item => `${bridgeSlots(item).length}`],
-        ['Status', item => item.enabled ? badge('Ativa', 'success') : badge('Inativa')],
-    ])}`;
+  </section>`;
 };
 const renderActiveRegistrations = (state) => {
     const registrations = activeRegistrations(state);
@@ -242,18 +247,6 @@ const switchField = (name, label, value) => `<label class="voip-check"><input na
 const selectField = (name, label, items, current, required = false, multiple = false) => `<label class="field"><span>${escapeHtml(label)}</span><select name="${name}" ${required ? 'required' : ''} ${multiple ? 'multiple size="5"' : ''}>${multiple ? '' : '<option value="">Selecione</option>'}${options(items, current, multiple)}</select></label>`;
 const textareaField = (name, label, value = '') => `<label class="field wide"><span>${escapeHtml(label)}</span><textarea name="${name}" rows="6">${escapeHtml(`${value ?? ''}`)}</textarea></label>`;
 const configuredSecret = (configured) => configured ? '<p class="muted">Chave configurada. Deixe o campo vazio para manter.</p>' : '';
-const slotOptions = (accounts) => accounts.flatMap(account => bridgeSlots(account).map(slot => ({
-    id: slot.id,
-    label: `${account.label || account.phoneNumber || account.id} / ${slot.label || slot.id}`,
-})));
-const renderAccountSlots = (state, account, isNew) => {
-    if (isNew)
-        return '<p class="muted wide">Salve a linha para então cadastrar seus slots bridge.</p>';
-    const slots = bridgeSlots(account);
-    return `<section class="wide stack"><div class="section__heading"><div><h3>Slots bridge</h3><p class="muted">Somente conexões Zapo; sem QR ou motor standalone.</p></div><button class="btn btn--ghost" type="button" data-action="new-voip-slot" data-account-id="${escapeHtml(`${account.id}`)}">${icon('plus')}Adicionar slot</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Slot</th><th>Chamadas simultâneas</th><th>Status</th><th class="table-actions">Ações</th></tr></thead><tbody>${slots.length ? slots.map(slot => `<tr><td><strong>${escapeHtml(slot.label || slot.id)}</strong><br><span class="muted">${escapeHtml(slot.id)}</span></td><td>${Number(slot.maxActiveCalls || 1)}</td><td>${slot.enabled ? badge('Ativo', 'success') : badge('Inativo')}</td><td class="table-actions"><div class="row-actions"><button class="btn btn--ghost" type="button" data-action="edit-voip-slot" data-account-id="${escapeHtml(`${account.id}`)}" data-slot-id="${escapeHtml(`${slot.id}`)}">${icon('edit')}Editar</button><button class="btn btn--danger" type="button" data-action="delete-voip-slot" data-account-id="${escapeHtml(`${account.id}`)}" data-slot-id="${escapeHtml(`${slot.id}`)}">${icon('trash')}Excluir</button></div></td></tr>`).join('') : emptyRow(4, 'Nenhum slot bridge cadastrado.')}</tbody></table></div>
-  </section>`;
-};
 export const renderVoipResourceModal = (state, resource, id = '') => {
     const item = asItems(state[resource]).find(value => `${value.id}` === id) || { enabled: true };
     const isNew = !id;
@@ -268,13 +261,13 @@ export const renderVoipResourceModal = (state, resource, id = '') => {
         fields += `${field('label', 'Nome da empresa', item.label, 'text', true)}${field('timeZone', 'Fuso horário', item.timeZone || 'America/Cuiaba', 'text', true)}<h3 class="wide">IA pós-chamada</h3>${switchField('aiSummaryEnabled', 'Gerar transcrição e resumo', ai.enabled === true)}${switchField('aiIncludeTranscript', 'Incluir transcrição junto ao resumo', ai.includeTranscript !== false)}${field('aiTranscriptionBaseUrl', 'URL da transcrição', ai.transcriptionBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiTranscriptionApiKey', 'Chave da transcrição (vazio mantém)', '', 'password')}${configuredSecret(ai.hasTranscriptionApiKey)}${field('aiTranscriptionModel', 'Modelo de transcrição', ai.transcriptionModel || 'whisper-large-v3')}${field('aiTranscriptionLanguage', 'Idioma', ai.transcriptionLanguage || 'pt')}${field('aiSummaryBaseUrl', 'URL do resumo', ai.summaryBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiSummaryApiKey', 'Chave do resumo (vazio mantém)', '', 'password')}${configuredSecret(ai.hasSummaryApiKey)}${field('aiSummaryModel', 'Modelo de resumo', ai.summaryModel || 'openai/gpt-oss-20b')}${textareaField('aiSummaryPrompt', 'Prompt do resumo', ai.summaryPrompt)}`;
     }
     if (resource === 'accounts')
-        fields += `${field('label', 'Nome da linha', item.label, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${field('phoneNumber', 'Número WhatsApp', item.phoneNumber, 'text', true)}<h3 class="wide">Gravações no Chatwoot</h3>${field('chatwootBaseUrl', 'Chatwoot URL', item.chatwootRecording?.baseUrl)}${field('chatwootAccountId', 'Chatwoot account ID', item.chatwootRecording?.accountId)}${field('chatwootInboxId', 'Chatwoot inbox ID', item.chatwootRecording?.inboxId)}${field('chatwootApiAccessToken', 'Chatwoot token (vazio mantém)', '', 'password')}${configuredSecret(item.chatwootRecording?.hasApiAccessToken)}${switchField('chatwootRecordingEnabled', 'Enviar gravações ao Chatwoot', item.chatwootRecording?.enabled === true)}${switchField('chatwootPrivateNote', 'Enviar como nota privada', item.chatwootRecording?.privateNote !== false)}${renderAccountSlots(state, item, isNew)}`;
+        fields += `${field('label', 'Nome da linha', item.label, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${field('phoneNumber', 'Número da sessão Zapo', item.phoneNumber, 'text', true)}${field('maxConcurrentCalls', 'Chamadas simultâneas', lineConcurrency(state, item), 'number', true, false, 'min="1" max="32" step="1"')}<p class="muted wide">A linha usa a sessão Zapo conectada. Configure entre 1 e 32 chamadas simultâneas.</p><h3 class="wide">Gravações no Chatwoot</h3>${field('chatwootBaseUrl', 'Chatwoot URL', item.chatwootRecording?.baseUrl)}${field('chatwootAccountId', 'Chatwoot account ID', item.chatwootRecording?.accountId)}${field('chatwootInboxId', 'Chatwoot inbox ID', item.chatwootRecording?.inboxId)}${field('chatwootApiAccessToken', 'Chatwoot token (vazio mantém)', '', 'password')}${configuredSecret(item.chatwootRecording?.hasApiAccessToken)}${switchField('chatwootRecordingEnabled', 'Enviar gravações ao Chatwoot', item.chatwootRecording?.enabled === true)}${switchField('chatwootPrivateNote', 'Enviar como nota privada', item.chatwootRecording?.privateNote !== false)}`;
     if (resource === 'lineGroups')
         fields += `${field('label', 'Nome do grupo', item.label, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${selectField('inboundSessionIds', 'Linhas de entrada', accounts, item.inboundSessionIds, false, true)}${selectField('outboundPrioritySessionIds', 'Prioridade de saída', accounts, item.outboundPrioritySessionIds, false, true)}${selectField('targetExtensionGroupIds', 'Grupos de ramais de destino', extensionGroups, item.targetExtensionGroupIds, false, true)}`;
     if (resource === 'extensionGroups')
         fields += `${field('label', 'Nome do grupo', item.label, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${selectField('extensionIds', 'Ramais', extensions, item.extensionIds, false, true)}<label class="field wide"><span>Áudio ao transferir (MP3 ou WAV)</span><input name="transferAudioFile" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,.mp3,.wav"><small class="muted">${item.transferAudioSource ? `Atual: ${escapeHtml(item.transferAudioFilename || 'arquivo configurado')}. Selecione outro apenas para substituir.` : 'Opcional. É usado enquanto o destino da transferência atende.'}</small></label>`;
     if (resource === 'sessions')
-        fields += `${field('label', 'Nome', item.label, 'text', true)}${field('unoSession', 'Sessão Zapo', item.unoSession, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${selectField('accountId', 'Linha', accounts, item.accountId, true)}${selectField('deviceSlotIds', 'Slots bridge permitidos', slotOptions(accounts), item.deviceSlotIds, false, true)}${selectField('lineGroupIds', 'Grupos de linhas', lineGroups, item.lineGroupIds, false, true)}${selectField('inboundLineGroupIds', 'Grupos de entrada', lineGroups, item.inboundLineGroupIds, false, true)}${selectField('outboundLineGroupIds', 'Grupos de saída', lineGroups, item.outboundLineGroupIds, false, true)}${selectField('extensions', 'Ramais diretos', extensions, item.routing?.extensions, false, true)}${field('ringTimeoutSeconds', 'Tempo de toque (segundos)', item.routing?.ringTimeoutSeconds || 20, 'number', true, false, 'min="1"')}`;
+        fields += `${field('label', 'Nome', item.label, 'text', true)}${field('unoSession', 'Sessão Zapo', item.unoSession, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${selectField('accountId', 'Linha Zapo', accounts, item.accountId, true)}${selectField('lineGroupIds', 'Grupos de linhas', lineGroups, item.lineGroupIds, false, true)}${selectField('inboundLineGroupIds', 'Grupos de entrada', lineGroups, item.inboundLineGroupIds, false, true)}${selectField('outboundLineGroupIds', 'Grupos de saída', lineGroups, item.outboundLineGroupIds, false, true)}${selectField('extensions', 'Ramais diretos', extensions, item.routing?.extensions, false, true)}${field('ringTimeoutSeconds', 'Tempo de toque (segundos)', item.routing?.ringTimeoutSeconds || 20, 'number', true, false, 'min="1"')}`;
     if (resource === 'extensions') {
         const distanceFields = extensionGroups.map((group, index) => field(`extensionGroupDistance:${group.id}`, `Prioridade · ${group.label || group.id}`, item.extensionGroupDistances?.[group.id] || index + 1, 'number', false, false, 'min="1"')).join('');
         fields += `${field('displayName', 'Nome do ramal', item.displayName, 'text', true)}${field('username', 'Usuário SIP', item.username, 'text', true)}${field('password', isNew ? 'Senha SIP' : 'Nova senha SIP (opcional)', '', 'password', isNew)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}<label class="field"><span>Tipo</span><select name="type"><option value="both" ${selected(item.type, 'both')}>SIP e WebRTC</option><option value="sip" ${selected(item.type, 'sip')}>SIP/RTP</option><option value="webrtc" ${selected(item.type, 'webrtc')}>WebRTC</option></select></label>${selectField('extensionGroupIds', 'Grupos', extensionGroups, item.extensionGroupIds, false, true)}${distanceFields ? `<h3 class="wide">Distância nos grupos</h3>${distanceFields}<p class="muted wide">Menor número significa maior prioridade de toque dentro dos grupos selecionados.</p>` : ''}`;
@@ -284,26 +277,6 @@ export const renderVoipResourceModal = (state, resource, id = '') => {
     const content = `<form class="form-grid voip-editor-form" data-form="voip-resource-fields"><input type="hidden" name="resource" value="${resource}">${fields}<div class="form-actions wide">${!isNew ? `<button class="btn btn--danger" type="button" data-action="delete-voip-resource" data-resource="${resource}" data-id="${escapeHtml(id)}">${icon('trash')}Excluir</button>` : ''}<button class="btn" type="submit">${icon('save')}Salvar</button></div></form>`;
     return renderModal('voip-resource', `${isNew ? 'Adicionar' : 'Editar'} ${labels[resource].toLowerCase()}`, content, { subtitle: 'Telefonia', wide: true });
 };
-const nextBridgeSlot = (account) => {
-    const used = new Set(asItems(account.slots).map(slot => `${slot.id}`));
-    const base = `${account.phoneNumber || account.id || 'slot'}`.replace(/\D/g, '') || `${account.id || 'slot'}`;
-    for (let index = 0; index < 26; index += 1) {
-        const suffix = String.fromCharCode(97 + index);
-        const id = `${base}-${suffix}`;
-        if (!used.has(id))
-            return { id, label: `Dispositivo ${suffix.toUpperCase()}` };
-    }
-    const index = used.size + 1;
-    return { id: `${base}-${index}`, label: `Dispositivo ${index}` };
-};
-export const renderVoipBridgeSlotModal = (state, accountId, slotId = '') => {
-    const account = asItems(state.accounts).find(item => `${item.id}` === accountId);
-    const current = account ? bridgeSlots(account).find(slot => `${slot.id}` === slotId) : undefined;
-    const value = current || (account ? nextBridgeSlot(account) : { id: '', label: '' });
-    const isNew = !slotId;
-    const content = `<form class="form-grid" data-form="voip-bridge-slot"><input type="hidden" name="accountId" value="${escapeHtml(accountId)}">${field('slotId', 'ID do slot', value.id, 'text', true, true)}${field('label', 'Nome', value.label, 'text', true)}${field('maxActiveCalls', 'Chamadas simultâneas', value.maxActiveCalls || 1, 'number', true, false, 'min="1"')}${switchField('enabled', 'Ativo', value.enabled !== false)}<p class="muted wide">Slot bridge Zapo. O ID não pode ser alterado após a criação.</p><div class="form-actions wide"><button class="btn" type="submit">${icon('save')}Salvar slot</button></div></form>`;
-    return renderModal('voip-bridge-slot', `${isNew ? 'Adicionar' : 'Editar'} slot bridge`, content, { subtitle: account?.label || accountId, wide: true });
-};
 export const renderVoipAssignLineModal = (state, session) => {
     const companies = asItems(state.companies).filter(item => item.enabled !== false);
     const companyField = companies.length === 0
@@ -311,7 +284,7 @@ export const renderVoipAssignLineModal = (state, session) => {
         : companies.length === 1
             ? `<input type="hidden" name="companyId" value="${escapeHtml(`${companies[0].id}`)}"><p class="muted wide">Empresa: <strong>${escapeHtml(`${companies[0].label || companies[0].id}`)}</strong></p>`
             : selectField('companyId', 'Empresa', companies, '', true);
-    return renderModal('voip-line-assignment', 'Ativar linha Zapo', `<form class="form-grid" data-form="voip-line-assignment"><input type="hidden" name="session" value="${escapeHtml(session)}">${field('label', 'Nome da linha', `Linha ${session}`, 'text', true)}${companyField}${field('maxActiveCalls', 'Chamadas simultâneas', (state.zapoLines || []).find(item => item.session === session)?.maxConcurrentCalls || 1, 'number', true)}${switchField('createBasicRoute', 'Criar grupo, rota e ramal básicos automaticamente', true)}<div class="form-actions wide"><button class="btn" type="submit">${icon('link')}Ativar e configurar</button></div></form>`, { subtitle: session, wide: true });
+    return renderModal('voip-line-assignment', 'Ativar linha Zapo', `<form class="form-grid" data-form="voip-line-assignment"><input type="hidden" name="session" value="${escapeHtml(session)}">${field('label', 'Nome da linha', `Linha ${session}`, 'text', true)}${companyField}${field('maxConcurrentCalls', 'Chamadas simultâneas', maxConcurrentCalls((state.zapoLines || []).find(item => item.session === session)?.maxConcurrentCalls), 'number', true, false, 'min="1" max="32" step="1"')}${switchField('createBasicRoute', 'Criar grupo, rota e ramal básicos automaticamente', true)}<div class="form-actions wide"><button class="btn" type="submit">${icon('link')}Ativar e configurar</button></div></form>`, { subtitle: session, wide: true });
 };
 export const renderVoipRecordingSettingsModal = (state) => {
     const value = state.recording || {};

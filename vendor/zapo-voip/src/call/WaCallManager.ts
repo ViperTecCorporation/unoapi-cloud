@@ -29,6 +29,9 @@ import { CallInfo } from './call-state.js'
 import { WaCallMediaSession } from './WaCallMediaSession.js'
 
 const DEFAULT_MAX_CONCURRENT_CALLS = 1
+const MAX_PENDING_RELAYLATENCY_PER_CALL = 8
+const MAX_PENDING_RELAYLATENCY_CALLS = 32
+const PENDING_RELAYLATENCY_TTL_MS = 15_000
 const FORCE_SELF_MEDIA_ZERO_LID =
     String(process.env.ZAPO_VOIP_FORCE_SELF_MEDIA_ZERO_LID ?? '').toLowerCase() === 'true'
 
@@ -57,6 +60,12 @@ export interface WaCallManagerConfig {
     maxConcurrentCalls?: number
 }
 
+interface PendingRelaylatency {
+    readonly node: BinaryNode
+    readonly peerJid: string
+    readonly receivedAt: number
+}
+
 export class WaCallManager extends EventEmitter {
     private readonly deps: WaVoipDeps
     private readonly stores: WaVoipStores
@@ -64,6 +73,7 @@ export class WaCallManager extends EventEmitter {
     private readonly maxConcurrentCalls: number
 
     private readonly calls = new Map<string, WaCallMediaSession>()
+    private readonly pendingRelaylatency = new Map<string, PendingRelaylatency[]>()
 
     constructor(config: WaCallManagerConfig) {
         super()
@@ -325,6 +335,7 @@ export class WaCallManager extends EventEmitter {
                     peerParticipantJid || peerJid
                 )
                 await session.sendIncomingPreaccept(peerJid)
+                await this.replayPendingRelaylatency(session)
             } catch (err) {
                 this.logger.error('incoming call activation failed', {
                     callId,
@@ -341,6 +352,7 @@ export class WaCallManager extends EventEmitter {
                 this.emitState(info)
                 session.cleanup()
                 this.calls.delete(callId)
+                this.pendingRelaylatency.delete(callId)
                 await this.maybeUnblockWaitingCalls()
                 return
             }
@@ -401,12 +413,47 @@ export class WaCallManager extends EventEmitter {
         if (!session) return
         session.handleCallReject()
         this.calls.delete(session.callId)
+        this.pendingRelaylatency.delete(session.callId)
         await this.maybeUnblockWaitingCalls()
     }
 
     async handleCallRelaylatency(node: BinaryNode, peerJid: string): Promise<void> {
-        const session = this.resolveSessionFromNode(node)
-        if (!session) return
+        const nodeInfo = extractNodeInfo(node)
+        if (!nodeInfo?.callId) return
+
+        const session = this.calls.get(nodeInfo.callId)
+        if (!session) {
+            const now = Date.now()
+            for (const [pendingCallId, entries] of this.pendingRelaylatency) {
+                const fresh = entries.filter(
+                    (entry) => now - entry.receivedAt <= PENDING_RELAYLATENCY_TTL_MS
+                )
+                if (fresh.length === 0) this.pendingRelaylatency.delete(pendingCallId)
+                else if (fresh.length !== entries.length) {
+                    this.pendingRelaylatency.set(pendingCallId, fresh)
+                }
+            }
+
+            while (this.pendingRelaylatency.size >= MAX_PENDING_RELAYLATENCY_CALLS) {
+                const oldestCallId = this.pendingRelaylatency.keys().next().value as
+                    | string
+                    | undefined
+                if (!oldestCallId) break
+                this.pendingRelaylatency.delete(oldestCallId)
+            }
+
+            const pending = this.pendingRelaylatency.get(nodeInfo.callId) ?? []
+            if (pending.length >= MAX_PENDING_RELAYLATENCY_PER_CALL) pending.shift()
+            pending.push({ node, peerJid, receivedAt: now })
+            this.pendingRelaylatency.set(nodeInfo.callId, pending)
+            this.logger.debug('voip_diag relaylatency_queued_before_session', {
+                callId: nodeInfo.callId,
+                peerJid,
+                queued: pending.length
+            })
+            return
+        }
+
         await session.handleCallRelaylatency(node, peerJid)
     }
 
@@ -427,6 +474,7 @@ export class WaCallManager extends EventEmitter {
         if (!session) return
         session.handleCallTerminate()
         this.calls.delete(session.callId)
+        this.pendingRelaylatency.delete(session.callId)
         await this.maybeUnblockWaitingCalls()
     }
 
@@ -435,6 +483,7 @@ export class WaCallManager extends EventEmitter {
             session.cleanup()
         }
         this.calls.clear()
+        this.pendingRelaylatency.clear()
         this.removeAllListeners()
     }
 
@@ -612,9 +661,29 @@ export class WaCallManager extends EventEmitter {
 
         await session.initMedia(selfLid, session.info.peerJid)
         await session.sendIncomingPreaccept(session.info.peerJid)
+        await this.replayPendingRelaylatency(session)
 
         this.emitState(session.info)
 
         this.logger.debug('waiting incoming call unblocked', { callId: session.callId })
+    }
+
+    private async replayPendingRelaylatency(session: WaCallMediaSession): Promise<void> {
+        const pending = this.pendingRelaylatency.get(session.callId)
+        if (!pending?.length) return
+
+        this.pendingRelaylatency.delete(session.callId)
+        let replayed = 0
+        for (const entry of pending) {
+            if (Date.now() - entry.receivedAt > PENDING_RELAYLATENCY_TTL_MS) continue
+            await session.handleCallRelaylatency(entry.node, entry.peerJid)
+            replayed++
+        }
+
+        this.logger.debug('voip_diag relaylatency_replayed_after_preaccept', {
+            callId: session.callId,
+            queued: pending.length,
+            replayed
+        })
     }
 }

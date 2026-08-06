@@ -1,11 +1,11 @@
-import { icon } from '../components/icons.js?v=4.0.8-5ad21a7e';
-import { renderStatus } from '../components/status.js?v=4.0.8-5ad21a7e';
-import { escapeHtml } from '../core/html.js?v=4.0.8-5ad21a7e';
-import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.8-5ad21a7e';
-import { renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.8-5ad21a7e';
-import { renderSessionConfig } from '../features/session_config.js?v=4.0.8-5ad21a7e';
-import { renderWebhooks } from '../features/webhooks.js?v=4.0.8-5ad21a7e';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.8-5ad21a7e';
+import { icon } from '../components/icons.js?v=4.0.8-bc7f7dd8';
+import { renderStatus } from '../components/status.js?v=4.0.8-bc7f7dd8';
+import { escapeHtml } from '../core/html.js?v=4.0.8-bc7f7dd8';
+import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.8-bc7f7dd8';
+import { renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.8-bc7f7dd8';
+import { renderSessionConfig } from '../features/session_config.js?v=4.0.8-bc7f7dd8';
+import { renderWebhooks } from '../features/webhooks.js?v=4.0.8-bc7f7dd8';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.8-bc7f7dd8';
 const tabs = [
     ['overview', 'Visão geral'],
     ['config', 'Configuração'],

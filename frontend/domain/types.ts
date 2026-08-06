@@ -193,8 +193,33 @@ export interface VoipLineInventoryItem extends VoipBridgeStatus {
   companyLabel?: string
   accountId?: string
   sessionId?: string
-  slotId?: string
   routingConfigured: boolean
+}
+
+export interface VoipLineAccount {
+  id: string
+  enabled?: boolean
+  label?: string
+  companyId?: string
+  phoneNumber?: string
+  maxConcurrentCalls?: number
+  chatwootRecording?: Record<string, any>
+  [key: string]: unknown
+}
+
+export interface VoipRoutingSession {
+  id: string
+  enabled?: boolean
+  label?: string
+  unoSession?: string
+  companyId?: string
+  accountId?: string
+  maxConcurrentCalls?: number
+  lineGroupIds?: string[]
+  inboundLineGroupIds?: string[]
+  outboundLineGroupIds?: string[]
+  routing?: Record<string, any>
+  [key: string]: unknown
 }
 
 export interface VoipHistoryQuery {
@@ -220,9 +245,9 @@ export interface VoipBootstrap {
   bridges: VoipBridgeStatus[]
   calls: VoipCallStatus[]
   extensions?: Array<{ id: string; username?: string; displayName?: string; enabled?: boolean }>
-  sessions?: Array<{ id: string; label?: string; enabled?: boolean }>
+  sessions?: VoipRoutingSession[]
   companies?: Array<Record<string, any>>
-  accounts?: Array<Record<string, any>>
+  accounts?: VoipLineAccount[]
   lineGroups?: Array<Record<string, any>>
   extensionGroups?: Array<Record<string, any>>
   users?: Array<Record<string, any>>

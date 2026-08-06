@@ -483,12 +483,19 @@ export class WaCallMediaSession {
         const nodeInfo = extractNodeInfo(_node);
         if (!nodeInfo)
             return;
-        const relays = extractRelayEndpoints(nodeInfo.innerNode);
+        const nestedRelays = this.info.direction === CallDirection.Incoming
+            ? this.ingestIncomingRelayUpdate(_node, 'transport')
+            : [];
+        const relays = nestedRelays.length > 0
+            ? nestedRelays
+            : extractRelayEndpoints(nodeInfo.innerNode);
         if (relays.length > 0 && !this.sctpRelay.hasConnection()) {
-            this.info.relayData = {
-                ...this.info.relayData,
-                endpoints: relays
-            };
+            if (nestedRelays.length === 0) {
+                this.info.relayData = {
+                    ...this.info.relayData,
+                    endpoints: relays
+                };
+            }
             if (this.info.direction === CallDirection.Incoming) {
                 if (this.info.stateData.state !== CallState.IncomingRinging) {
                     await this.prepareIncomingRelay();
@@ -641,12 +648,20 @@ export class WaCallMediaSession {
         const nodeInfo = extractNodeInfo(node);
         if (!nodeInfo || this.info.direction !== CallDirection.Incoming)
             return;
+        this.ingestIncomingRelayUpdate(node, 'relaylatency');
         const inner = nodeInfo.innerNode;
         const callId = inner.attrs?.['call-id'] || this.info.callId;
         const callCreator = inner.attrs?.['call-creator'] || this.info.callCreator;
         const teNodes = getNodeChildrenByTag(inner, 'te');
         if (teNodes.length === 0)
             return;
+        this.logger.debug('voip_diag inbound_relaylatency_received', {
+            callId,
+            peerJid,
+            relayNames: teNodes.map((te) => te.attrs?.relay_name || '').filter(Boolean),
+            probeCount: teNodes.length
+        });
+        let responded = 0;
         for (const te of teNodes) {
             const relayName = te.attrs?.relay_name || '';
             if (!relayName)
@@ -664,6 +679,7 @@ export class WaCallMediaSession {
                     }
                 ], []);
                 await this.deps.lowLevelCoordinator.sendNode(response);
+                responded++;
             }
             catch (err) {
                 this.logger.error('error responding to incoming relaylatency', {
@@ -674,6 +690,50 @@ export class WaCallMediaSession {
                 });
             }
         }
+        this.logger.debug('voip_diag inbound_relaylatency_responded', {
+            callId,
+            peerJid,
+            probeCount: teNodes.length,
+            responded
+        });
+    }
+    ingestIncomingRelayUpdate(node, source) {
+        const parsed = parseRelayFromAck(node);
+        if (parsed.relays.length === 0)
+            return [];
+        const current = this.info.relayData;
+        const connectionStarted = this.relayCandidates.length > 0 || this.sctpRelay.hasConnection();
+        if (!connectionStarted) {
+            this.info.relayData = {
+                endpoints: parsed.relays,
+                participantJids: parsed.participantJids.length > 0
+                    ? parsed.participantJids
+                    : current?.participantJids ?? [],
+                selfParticipantJid: parsed.selfParticipantJid ?? current?.selfParticipantJid,
+                peerParticipantJid: parsed.peerParticipantJid ?? current?.peerParticipantJid,
+                uuid: parsed.uuid || current?.uuid || '',
+                selfPid: parsed.selfPid ?? current?.selfPid,
+                peerPid: parsed.peerPid ?? current?.peerPid,
+                hbhKey: parsed.hbhKey ?? current?.hbhKey
+            };
+        }
+        this.logger.debug('voip_diag inbound_relay_update_received', {
+            callId: this.info.callId,
+            source,
+            applied: !connectionStarted,
+            connectionStarted,
+            relayCount: parsed.relays.length,
+            relayCandidates: parsed.relays.map((relay) => ({
+                relayName: relay.relayName,
+                relayId: relay.relayId,
+                ip: relay.ip,
+                port: relay.port,
+                isFna: relay.isFna === true,
+                tokenId: relay.tokenId,
+                authTokenId: relay.authTokenId
+            }))
+        });
+        return parsed.relays;
     }
     handleRelayElection(node) {
         const inner = getFirstNodeChild(node);
@@ -1303,7 +1363,40 @@ export class WaCallMediaSession {
             }))
         });
         try {
-            await this.connectRelayCandidate(0, 'initial_selection');
+            if (this.info.direction === CallDirection.Incoming &&
+                candidates.length > 1) {
+                const first = candidates[0];
+                this.provisionalRelayId = first.relayId;
+                this.relayAttemptStartedAt = Date.now();
+                this.sctpRelay.setSsrc(this.selfSsrc);
+                this.sctpRelay.setStreamSsrcs(this.selfStreamSsrcs);
+                this.sctpRelay.setSubscriptionSsrcs(this.peerSsrcs);
+                this.sctpRelay.setParticipantPids(this.info.relayData?.selfPid, this.info.relayData?.peerPid);
+                // The validated WASM inbound path kept every advertised relay
+                // allocated while publishing media on only one provisional path.
+                // This lets an authenticated packet arriving on another relay
+                // confirm that path without duplicating outbound RTP.
+                this.sctpRelay.setStartupMediaFanout(false);
+                this.logger.info('inbound relay candidates preconnected without media fanout', {
+                    callId: this.info.callId,
+                    candidateCount: candidates.length,
+                    provisionalRelayId: first.relayId,
+                    relayIds: candidates.map((candidate) => candidate.relayId),
+                    relayNames: candidates.map((candidate) => candidate.name)
+                });
+                await this.sctpRelay.configureRelays(candidates);
+                const provisionalApplied = this.sctpRelay.selectMediaConnectionByRelayId(first.relayId);
+                this.logger.debug('inbound relay candidates configured', {
+                    callId: this.info.callId,
+                    connected: this.sctpRelay.getConnectedCount(),
+                    candidateCount: candidates.length,
+                    provisionalRelayId: first.relayId,
+                    provisionalApplied
+                });
+            }
+            else {
+                await this.connectRelayCandidate(0, 'initial_selection');
+            }
         }
         finally {
             // Relay setup may finish while the native transport is still

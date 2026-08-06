@@ -15,6 +15,7 @@ export declare class WaCallManager extends EventEmitter {
     private readonly logger;
     private readonly maxConcurrentCalls;
     private readonly calls;
+    private readonly pendingRelaylatency;
     constructor(config: WaCallManagerConfig);
     startCall(options: CallOfferOptions): Promise<string>;
     acceptCall(callId: string): Promise<void>;
@@ -52,4 +53,5 @@ export declare class WaCallManager extends EventEmitter {
     private prepareOutgoingPeer;
     private maybeUnblockWaitingCalls;
     private activateWaitingIncoming;
+    private replayPendingRelaylatency;
 }

@@ -240,18 +240,6 @@ export class ApiClient {
     return this.request<VoipHistoryPage>(`/admin/voip/console/history${suffix}`)
   }
 
-  voipSaveBridgeSlot(accountId: string, slotId: string, payload: Record<string, unknown>): Promise<any> {
-    return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'PUT', {
-      ...payload,
-      mode: 'bridge',
-      bridgeSoftware: 'zapo',
-    })
-  }
-
-  voipDeleteBridgeSlot(accountId: string, slotId: string): Promise<any> {
-    return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'DELETE')
-  }
-
   voipUploadTransferAudio(extensionGroupId: string, file: File): Promise<any> {
     return this.request(`/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, {
       method: 'PUT',

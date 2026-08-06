@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express'
 import { Readable } from 'node:stream'
-import { VoipService, VoipServiceError } from '../services/voip_service'
+import { sanitizeVoipConsolePayload, VoipService, VoipServiceError } from '../services/voip_service'
 
 export class VoipController {
   constructor(private readonly service = new VoipService()) {}
@@ -74,10 +74,10 @@ export class VoipController {
       if (!suffix || suffix.includes('..')) return res.status(400).json({ error: 'invalid_voip_console_path' })
       const method = req.method.toUpperCase()
       return res.json(
-        await this.service.request(`/v1/console/${suffix}${this.queryString(req)}`, {
+        sanitizeVoipConsolePayload(await this.service.request(`/v1/console/${suffix}${this.queryString(req)}`, {
           method,
           body: ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? JSON.stringify(req.body || {}) : undefined,
-        }),
+        })),
       )
     } catch (error) {
       return this.error(res, error)

@@ -183,6 +183,31 @@ function buildRelayOfferAck(callId: string): BinaryNode {
     }
 }
 
+function buildRelayPatch(
+    callId: string,
+    relayName: string,
+    relayId: number,
+    address: Uint8Array
+): BinaryNode {
+    const source = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    return {
+        ...source,
+        content: (source.content as BinaryNode[]).map((child) =>
+            child.tag === 'te2'
+                ? {
+                      ...child,
+                      attrs: {
+                          ...child.attrs,
+                          relay_name: relayName,
+                          relay_id: String(relayId)
+                      },
+                      content: address
+                  }
+                : child
+        )
+    }
+}
+
 function withVoipSettings(
     node: BinaryNode,
     useMlowCodecV1: boolean,
@@ -436,7 +461,7 @@ test('outgoing media relay preparation opens exactly one selected UDP candidate'
     assert.deepEqual(startupFanoutModes, [])
 })
 
-test('incoming media relay preparation opens only the selected candidate', async () => {
+test('incoming media relay preparation preconnects candidates without media fanout', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = 'INCOMING-MULTI-RELAY'
@@ -488,10 +513,10 @@ test('incoming media relay preparation opens only the selected candidate', async
 
     assert.deepEqual(
         configuredRelays.map((relay: any) => relay.name),
-        ['gru1c02']
+        ['gru1c02', 'bsb1c01']
     )
     assert.deepEqual(selectedRelayIds, [1])
-    assert.deepEqual(startupFanoutModes, [])
+    assert.deepEqual(startupFanoutModes, [false])
     session.handleCallTerminate()
 })
 
@@ -955,6 +980,138 @@ test('incoming relaylatency is answered per probe without destination routing', 
     assert.equal(responseChildren.some((child) => child.tag === 'destination'), false)
     assert.equal(responseChildren[0]?.attrs.relay_name, 'bsb1c01')
     assert.equal(responseChildren[0]?.attrs.latency, String(0x2000000 + 42))
+    const session = (manager as any).calls.get(callId)
+    assert.equal(session.info.relayData.endpoints[0].relayName, 'gru1c01')
+})
+
+test('incoming relaylatency applies a nested relay allocation before media starts', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-RELAYLATENCY-RELAY-PATCH'
+    const peer = '2222222222:28@lid'
+    const offerNode = buildOfferNode(callId, peer)
+    const initialRelay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(initialRelay)
+    await manager.handleCallOffer(offerNode, peer)
+    sent.length = 0
+
+    const relayPatch = buildRelayPatch(
+        callId,
+        'gig4c02',
+        2,
+        new Uint8Array([31, 13, 91, 133, 0x0d, 0x96])
+    )
+
+    await manager.handleCallRelaylatency(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'RELAYLATENCY-PATCH-MSG' },
+            content: [
+                {
+                    tag: 'relaylatency',
+                    attrs: { 'call-id': callId, 'call-creator': peer },
+                    content: [
+                        {
+                            tag: 'te',
+                            attrs: { relay_name: 'gig4c02', latency: String(0x2000000 + 30) },
+                            content: new Uint8Array([31, 13, 91, 133, 0x0d, 0x96])
+                        },
+                        relayPatch
+                    ]
+                }
+            ]
+        },
+        peer
+    )
+
+    const session = (manager as any).calls.get(callId)
+    assert.equal(session.info.relayData.endpoints.length, 1)
+    assert.equal(session.info.relayData.endpoints[0].relayName, 'gig4c02')
+    assert.equal(session.info.relayData.endpoints[0].relayId, 2)
+    assert.equal(session.info.relayData.endpoints[0].ip, '31.13.91.133')
+    assert.equal(sent.length, 1)
+})
+
+test('incoming transport understands a nested relay allocation', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-TRANSPORT-RELAY-PATCH'
+    const peer = '2222222222:28@lid'
+    const offerNode = buildOfferNode(callId, peer)
+    const initialRelay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(initialRelay)
+    await manager.handleCallOffer(offerNode, peer)
+
+    const relayPatch = buildRelayPatch(
+        callId,
+        'bsb1c01',
+        0,
+        new Uint8Array([57, 144, 137, 57, 0x0d, 0x96])
+    )
+
+    await manager.handleCallTransport(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'TRANSPORT-PATCH-MSG' },
+            content: [
+                {
+                    tag: 'transport',
+                    attrs: { 'call-id': callId, 'call-creator': peer },
+                    content: [relayPatch]
+                }
+            ]
+        },
+        peer
+    )
+
+    const session = (manager as any).calls.get(callId)
+    assert.equal(session.info.relayData.endpoints.length, 1)
+    assert.equal(session.info.relayData.endpoints[0].relayName, 'bsb1c01')
+    assert.equal(session.info.relayData.endpoints[0].relayId, 0)
+    assert.equal(session.info.relayData.endpoints[0].ip, '57.144.137.57')
+})
+
+test('relaylatency received before the inbound offer session is replayed after preaccept', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = 'INCOMING-EARLY-RELAYLATENCY'
+    const peer = '2222222222:28@lid'
+    const relaylatency: BinaryNode = {
+        tag: 'call',
+        attrs: { from: peer, id: 'EARLY-RELAYLATENCY-MSG' },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': callId, 'call-creator': peer },
+                content: [
+                    {
+                        tag: 'te',
+                        attrs: { relay_name: 'gru1c01', latency: String(0x2000000 + 18) },
+                        content: new Uint8Array([57, 144, 67, 57, 0x0d, 0x96])
+                    }
+                ]
+            }
+        ]
+    }
+
+    await manager.handleCallRelaylatency(relaylatency, peer)
+    assert.equal(sent.length, 0)
+
+    const offerNode = buildOfferNode(callId, peer)
+    const relay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(relay)
+    await manager.handleCallOffer(offerNode, peer)
+
+    const actions = sent.map((node) => (node.content as BinaryNode[])?.[0])
+    assert.deepEqual(actions.map((node) => node?.tag), ['preaccept', 'relaylatency'])
+    assert.equal(sent[1]?.attrs.to, peer)
+    const response = (sent[1]?.content as BinaryNode[])[0]
+    assert.equal(response.tag, 'relaylatency')
+    assert.equal(
+        (response.content as BinaryNode[]).some((child) => child.tag === 'destination'),
+        false
+    )
+    assert.equal((manager as any).pendingRelaylatency.size, 0)
 })
 
 test('relay election applies the announced relay id to media egress', async () => {

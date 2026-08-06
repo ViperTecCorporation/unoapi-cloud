@@ -1,5 +1,89 @@
 import { VOIP_SERVICE_TOKEN, VOIP_SERVICE_URL } from '../defaults'
 
+const DEFAULT_MAX_CONCURRENT_CALLS = 2
+const MAX_CONCURRENT_CALLS = 32
+
+const records = (value: unknown): Array<Record<string, any>> => Array.isArray(value) ? value : []
+const LEGACY_SLOT_FIELDS = new Set(['slots', 'slot', 'slotId', 'deviceSlotIds'])
+
+export const sanitizeVoipConsolePayload = <T>(value: T): T => {
+  if (Array.isArray(value)) return value.map(item => sanitizeVoipConsolePayload(item)) as T
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !LEGACY_SLOT_FIELDS.has(key))
+      .map(([key, item]) => [key, sanitizeVoipConsolePayload(item)]),
+  ) as T
+}
+
+export const normalizeVoipMaxConcurrentCalls = (value: unknown, fallback = DEFAULT_MAX_CONCURRENT_CALLS) => {
+  const parsed = Number(value)
+  const effective = Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback
+  return Math.min(MAX_CONCURRENT_CALLS, Math.max(1, effective))
+}
+
+const legacyLineConcurrency = (account: Record<string, any>) => {
+  const total = records(account.slots)
+    .filter(slot => slot.enabled !== false)
+    .reduce((sum, slot) => sum + normalizeVoipMaxConcurrentCalls(slot.maxActiveCalls, 1), 0)
+  return total > 0 ? total : undefined
+}
+
+export const normalizeVoipAdminState = (value: Record<string, any>) => {
+  const nestedConfig = value.config && typeof value.config === 'object' ? value.config as Record<string, any> : undefined
+  const sourceAccounts = records(value.accounts ?? nestedConfig?.accounts)
+  const sourceSessions = records(value.sessions ?? nestedConfig?.sessions)
+  const accountLimits = new Map<string, number>()
+
+  const accounts = sourceAccounts.map(account => {
+    const maxConcurrentCalls = normalizeVoipMaxConcurrentCalls(
+      account.maxConcurrentCalls,
+      legacyLineConcurrency(account) ?? DEFAULT_MAX_CONCURRENT_CALLS,
+    )
+    const normalized: Record<string, any> = { ...account, maxConcurrentCalls }
+    delete normalized.slots
+    for (const key of [account.id, account.phoneNumber]) {
+      if (key) accountLimits.set(`${key}`, maxConcurrentCalls)
+    }
+    return normalized
+  })
+
+  const sessions = sourceSessions.map(session => {
+    const fallback = accountLimits.get(`${session.accountId || ''}`)
+      ?? accountLimits.get(`${session.unoSession || ''}`)
+      ?? DEFAULT_MAX_CONCURRENT_CALLS
+    const normalized: Record<string, any> = {
+      ...session,
+      maxConcurrentCalls: normalizeVoipMaxConcurrentCalls(session.maxConcurrentCalls, fallback),
+    }
+    delete normalized.deviceSlotIds
+    return normalized
+  })
+
+  const zapoLines = records(value.zapoLines).map(line => {
+    const fallback = accountLimits.get(`${line.accountId || ''}`)
+      ?? accountLimits.get(`${line.session || ''}`)
+      ?? DEFAULT_MAX_CONCURRENT_CALLS
+    const normalized: Record<string, any> = {
+      ...line,
+      maxConcurrentCalls: normalizeVoipMaxConcurrentCalls(line.maxConcurrentCalls, fallback),
+    }
+    delete normalized.slotId
+    return normalized
+  })
+
+  const normalizedConfig = nestedConfig
+    ? { ...nestedConfig, accounts, sessions }
+    : undefined
+  return sanitizeVoipConsolePayload({
+    ...value,
+    ...(normalizedConfig ? { config: normalizedConfig } : {}),
+    accounts,
+    sessions,
+    zapoLines,
+  })
+}
+
 export class VoipServiceError extends Error {
   constructor(
     readonly status: number,
@@ -95,6 +179,13 @@ export class VoipService {
       this.request<any>('/v1/console/history?limit=20'),
       this.request<any>('/v1/console/recording/summary'),
     ])
-    return { ...consoleState, ...(consoleState.config || {}), ...bridges, ...calls, history, recordingSummary }
+    return normalizeVoipAdminState({
+      ...consoleState,
+      ...(consoleState.config || {}),
+      ...bridges,
+      ...calls,
+      history,
+      recordingSummary,
+    })
   }
 }

@@ -4,6 +4,18 @@ exports.parseRelayFromAck = parseRelayFromAck;
 const transport_1 = require("zapo-js/transport");
 const util_1 = require("zapo-js/util");
 const bytes_js_1 = require("../bytes.js");
+function getDescendantNodes(root) {
+    const nodes = [];
+    const pending = [root];
+    while (pending.length > 0) {
+        const current = pending.shift();
+        if (!current)
+            continue;
+        nodes.push(current);
+        pending.unshift(...(0, transport_1.getNodeChildren)(current));
+    }
+    return nodes;
+}
 function parseRelayFromAck(ackNode) {
     const relays = [];
     const participantJids = [];
@@ -14,12 +26,7 @@ function parseRelayFromAck(ackNode) {
     let selfParticipantJid;
     let peerParticipantJid;
     let hbhKey;
-    if (!ackNode.content || !Array.isArray(ackNode.content)) {
-        return { relays, participantJids, uuid };
-    }
-    for (const child of ackNode.content) {
-        if (typeof child !== 'object' || !('tag' in child))
-            continue;
+    for (const child of getDescendantNodes(ackNode)) {
         if (child.tag === 'user' && Array.isArray(child.content)) {
             for (const deviceNode of child.content) {
                 if (typeof deviceNode === 'object' &&

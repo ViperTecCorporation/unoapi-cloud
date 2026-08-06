@@ -82,6 +82,7 @@ NODE_ENV=production
 PORT=3097
 VOIP_SERVICE_TOKEN=GERE_UM_TOKEN_LONGO_E_ALEATORIO
 VOIP_BRIDGE_TOKEN=GERE_UM_TOKEN_LONGO_E_ALEATORIO
+VOIP_MAX_CONCURRENT_CALLS=2
 VOIP_CALL_ENGINE=zapo_native
 VOIP_NATIVE_LOG_LEVEL=info
 
@@ -132,6 +133,10 @@ VOIP_BRIDGE_URL=ws://host.docker.internal:3097/v1/bridge/zapo
 VOIP_SERVICE_TOKEN=GERE_UM_TOKEN_LONGO_E_ALEATORIO
 VOIP_MAX_CONCURRENT_CALLS=2
 ```
+
+`VOIP_MAX_CONCURRENT_CALLS` usa 2 por padrão e aceita valores de 1 a 32. Defina
+o mesmo teto no serviço nativo e no worker Zapo; cada linha pode usar um valor
+igual ou menor no Manager.
 
 Se a Uno estiver em Docker Linux, adicione no serviço web e no worker Zapo:
 

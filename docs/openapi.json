@@ -2256,7 +2256,7 @@
           "Telefonia"
         ],
         "summary": "Estado agregado da telefonia",
-        "description": "Retorna linhas Zapo conectadas ao bridge, chamadas ativas, ramais e configuração administrativa sem expor a URL ou o token interno do serviço VoIP.",
+        "description": "Retorna linhas e sessões Zapo, concorrência por linha, chamadas ativas, ramais e configuração administrativa sem expor a URL ou o token interno do serviço VoIP.",
         "responses": {
           "200": {
             "description": "Estado usado pela página Telefonia do Manager.",
@@ -2628,89 +2628,6 @@
         }
       }
     },
-    "/admin/voip/console/accounts/{accountId}/slots/{slotId}": {
-      "put": {
-        "tags": [
-          "Telefonia"
-        ],
-        "summary": "Criar ou atualizar slot bridge da linha",
-        "parameters": [
-          {
-            "name": "accountId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "slotId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoipBridgeSlotInput"
-              },
-              "example": {
-                "label": "Dispositivo A",
-                "enabled": true,
-                "maxActiveCalls": 2,
-                "mode": "bridge"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Slot bridge persistido.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoipConfigResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "Telefonia"
-        ],
-        "summary": "Excluir slot bridge da linha",
-        "parameters": [
-          {
-            "name": "accountId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "slotId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Slot removido sem alterar a sessão Zapo."
-          }
-        }
-      }
-    },
     "/admin/voip/console/zapo-lines": {
       "get": {
         "tags": [
@@ -2778,10 +2695,11 @@
                     "type": "string",
                     "description": "Nome da linha."
                   },
-                  "maxActiveCalls": {
+                  "maxConcurrentCalls": {
                     "type": "integer",
                     "minimum": 1,
-                    "default": 1
+                    "maximum": 32,
+                    "default": 2
                   },
                   "createBasicRoute": {
                     "type": "boolean",
@@ -3248,7 +3166,7 @@
         "summary": "Listar reservas ativas do roteador",
         "responses": {
           "200": {
-            "description": "Reservas atuais, isoladas por chamada e slot.",
+            "description": "Reservas atuais, isoladas por chamada e linha Zapo.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3608,92 +3526,6 @@
           }
         }
       },
-      "VoipBridgeSlot": {
-        "type": "object",
-        "required": [
-          "id",
-          "label",
-          "enabled",
-          "maxActiveCalls",
-          "mode"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "5566999554300-a"
-          },
-          "label": {
-            "type": "string",
-            "example": "Dispositivo A"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "maxActiveCalls": {
-            "type": "integer",
-            "minimum": 1,
-            "example": 2
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "bridge"
-            ]
-          },
-          "bridgeSoftware": {
-            "type": "string",
-            "readOnly": true
-          },
-          "bridgeInstanceId": {
-            "type": "string",
-            "readOnly": true
-          },
-          "bridgeCapabilities": {
-            "type": "object",
-            "readOnly": true,
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "bridgeConnectedAt": {
-            "type": "string",
-            "format": "date-time",
-            "readOnly": true
-          },
-          "bridgeLastSeenAt": {
-            "type": "string",
-            "format": "date-time",
-            "readOnly": true
-          }
-        }
-      },
-      "VoipBridgeSlotInput": {
-        "type": "object",
-        "required": [
-          "label",
-          "enabled",
-          "maxActiveCalls"
-        ],
-        "properties": {
-          "label": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "maxActiveCalls": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "bridge"
-            ],
-            "default": "bridge"
-          }
-        }
-      },
       "VoipAccount": {
         "type": "object",
         "required": [
@@ -3720,11 +3552,12 @@
             "type": "string",
             "example": "5566999554300"
           },
-          "slots": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VoipBridgeSlot"
-            }
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2,
+            "description": "Limite simultâneo da linha Zapo, sem cadastro de dispositivo adicional."
           },
           "chatwootRecording": {
             "$ref": "#/components/schemas/VoipChatwootRecording"
@@ -3837,6 +3670,12 @@
           "accountId": {
             "type": "string"
           },
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
+          },
           "lineGroupIds": {
             "type": "array",
             "items": {
@@ -3850,12 +3689,6 @@
             }
           },
           "outboundLineGroupIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "deviceSlotIds": {
             "type": "array",
             "items": {
               "type": "string"
@@ -4089,8 +3922,11 @@
           "sessionId": {
             "type": "string"
           },
-          "slotId": {
-            "type": "string"
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 2
           },
           "routingConfigured": {
             "type": "boolean"
@@ -4426,9 +4262,6 @@
           "accountId": {
             "type": "string"
           },
-          "slotId": {
-            "type": "string"
-          },
           "extensionId": {
             "type": "string"
           },
@@ -4468,9 +4301,6 @@
           },
           "account": {
             "$ref": "#/components/schemas/VoipAccount"
-          },
-          "slot": {
-            "$ref": "#/components/schemas/VoipBridgeSlot"
           },
           "normalizedTarget": {
             "type": "string"

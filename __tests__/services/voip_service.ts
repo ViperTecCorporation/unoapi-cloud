@@ -1,11 +1,29 @@
-import { VoipService, VoipServiceError } from '../../src/services/voip_service'
+import { normalizeVoipMaxConcurrentCalls, VoipService, VoipServiceError } from '../../src/services/voip_service'
 
 describe('VoipService', () => {
+  test('normalizes line concurrency to the supported range', () => {
+    expect(normalizeVoipMaxConcurrentCalls(undefined)).toBe(2)
+    expect(normalizeVoipMaxConcurrentCalls(0)).toBe(2)
+    expect(normalizeVoipMaxConcurrentCalls(1)).toBe(1)
+    expect(normalizeVoipMaxConcurrentCalls(99)).toBe(32)
+  })
+
   test('aggregates console, bridge and call state without exposing the internal token', async () => {
     const fetcher = jest.fn(async (url: string, init: RequestInit) => {
       expect(new Headers(init.headers).get('Authorization')).toBe('Bearer internal-secret')
       const payload = url.endsWith('/v1/console/bootstrap')
-        ? { config: { extensions: [{ id: '1001' }] } }
+        ? {
+          config: {
+            extensions: [{ id: '1001' }],
+            accounts: [{
+              id: 'line-1',
+              phoneNumber: '5566999554300',
+              slots: [{ id: 'legacy-slot', enabled: true, mode: 'standalone', maxActiveCalls: 3 }],
+            }],
+            sessions: [{ id: 'session-1', accountId: 'line-1', deviceSlotIds: ['legacy-slot'] }],
+          },
+          zapoLines: [{ session: '5566999554300', accountId: 'line-1', slotId: 'legacy-slot' }],
+        }
         : url.endsWith('/v1/zapo/bridges')
           ? { bridges: [{ session: '5566999554300', connected: true }] }
           : url.endsWith('/v1/zapo/calls')
@@ -16,11 +34,18 @@ describe('VoipService', () => {
       return new Response(JSON.stringify(payload), { status: 200 })
     })
     const service = new VoipService('http://voip.local:3097', 'internal-secret', 1_000, fetcher as any)
-    await expect(service.bootstrap()).resolves.toMatchObject({
+    const result = await service.bootstrap()
+    expect(result).toMatchObject({
       extensions: [{ id: '1001' }],
       bridges: [{ session: '5566999554300', connected: true }],
       calls: [],
+      accounts: [{ id: 'line-1', phoneNumber: '5566999554300', maxConcurrentCalls: 3 }],
+      sessions: [{ id: 'session-1', accountId: 'line-1', maxConcurrentCalls: 3 }],
+      zapoLines: [{ session: '5566999554300', accountId: 'line-1', maxConcurrentCalls: 3 }],
     })
+    expect(result.accounts[0]).not.toHaveProperty('slots')
+    expect(result.sessions[0]).not.toHaveProperty('deviceSlotIds')
+    expect(result.zapoLines[0]).not.toHaveProperty('slotId')
     expect(fetcher).toHaveBeenCalledTimes(5)
   })
 

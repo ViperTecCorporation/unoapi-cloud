@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.8-5ad21a7e';
+import { t } from './i18n.js?v=4.0.8-bc7f7dd8';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -194,16 +194,6 @@ export class ApiClient {
         const encodedQuery = query.toString();
         const suffix = encodedQuery ? `?${encodedQuery}` : '';
         return this.request(`/admin/voip/console/history${suffix}`);
-    }
-    voipSaveBridgeSlot(accountId, slotId, payload) {
-        return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'PUT', {
-            ...payload,
-            mode: 'bridge',
-            bridgeSoftware: 'zapo',
-        });
-    }
-    voipDeleteBridgeSlot(accountId, slotId) {
-        return this.voipConsole(`accounts/${encodeURIComponent(accountId)}/slots/${encodeURIComponent(slotId)}`, 'DELETE');
     }
     voipUploadTransferAudio(extensionGroupId, file) {
         return this.request(`/admin/voip/console/extensionGroups/${encodeURIComponent(extensionGroupId)}/transfer-audio`, {

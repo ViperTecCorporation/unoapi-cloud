@@ -81,6 +81,32 @@ test('parseRelayFromAck extracts relay metadata, participants and hbh key', () =
     assert.deepEqual([...(relay.addressBytes ?? [])], [192, 168, 1, 1, 0x0d, 0x96])
 })
 
+test('parseRelayFromAck finds a relay nested in call signaling', () => {
+    const relayAck = buildRelayAck()
+    const nested: BinaryNode = {
+        tag: 'call',
+        attrs: { from: '333:12@lid', id: 'RELAY-PATCH' },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': 'CALL-1', 'call-creator': '333:12@lid' },
+                content: relayAck.content
+            }
+        ]
+    }
+
+    const result = parseRelayFromAck(nested)
+    assert.equal(result.relays.length, 1)
+    assert.equal(result.relays[0].relayName, 'r1')
+    assert.equal(result.peerParticipantJid, '333:12@lid')
+    assert.deepEqual(result.participantJids, [
+        '111@lid',
+        '222@lid',
+        '333:12@lid',
+        '111:59@lid'
+    ])
+})
+
 test('parseRelayFromAck skips te2 entries with a short address', () => {
     const ack: BinaryNode = {
         tag: 'ack',

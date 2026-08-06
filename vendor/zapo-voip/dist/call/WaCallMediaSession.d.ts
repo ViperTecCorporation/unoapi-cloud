@@ -98,6 +98,7 @@ export declare class WaCallMediaSession implements AudioSender {
     handleCallTransport(_node: BinaryNode): Promise<void>;
     handleCallAck(node: BinaryNode): Promise<void>;
     handleCallRelaylatency(node: BinaryNode, peerJid: string): Promise<void>;
+    private ingestIncomingRelayUpdate;
     handleRelayElection(node: BinaryNode): void;
     handleCallMuteV2(node: BinaryNode, peerJid: string): Promise<void>;
     handleCallTerminate(): void;

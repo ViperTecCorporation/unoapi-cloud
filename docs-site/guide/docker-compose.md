@@ -82,6 +82,7 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 | --- | --- |
 | `VOIP_BRIDGE_URL` | Bridge autenticado do worker Zapo; use `wss://voip.seudominio.com.br/v1/bridge/zapo`. |
 | `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN` | Autenticam API interna e bridge; use o mesmo token longo nos dois campos. |
+| `VOIP_MAX_CONCURRENT_CALLS` | Capacidade anunciada por linha Zapo; padrão 2, mínimo 1 e máximo 32. Use o mesmo valor no worker e na telefonia. |
 | `VOIP_DOMAIN` | Domínio SIP canônico apresentado aos ramais. |
 | `VOIP_PUBLIC_WS_URL` | URL pública `wss://` usada por SIP/WebRTC. |
 | `VOIP_LAN_DOMAIN` | IP ou domínio acessível pelos ramais da rede local. |

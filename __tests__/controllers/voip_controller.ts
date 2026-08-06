@@ -56,6 +56,45 @@ describe('VoipController', () => {
     })
   })
 
+  test('forwards line concurrency without slot fields', async () => {
+    const service = { request: jest.fn().mockResolvedValue({ config: { accounts: [] } }) }
+    const controller = new VoipController(service as any)
+    const res = response()
+    await controller.console({
+      method: 'PUT',
+      params: { 0: 'accounts/line-1' },
+      originalUrl: '/admin/voip/console/accounts/line-1',
+      body: { id: 'line-1', label: 'Comercial', maxConcurrentCalls: 32 },
+    } as any, res)
+    expect(service.request).toHaveBeenCalledWith('/v1/console/accounts/line-1', {
+      method: 'PUT',
+      body: JSON.stringify({ id: 'line-1', label: 'Comercial', maxConcurrentCalls: 32 }),
+    })
+    expect(`${service.request.mock.calls[0][1].body}`).not.toContain('slot')
+  })
+
+  test('removes legacy slot details from generic console responses', async () => {
+    const service = { request: jest.fn().mockResolvedValue({
+      ok: true,
+      slot: { id: 'legacy-slot' },
+      lock: { id: 'lock-1', slotId: 'legacy-slot' },
+      session: { id: 'session-1', deviceSlotIds: ['legacy-slot'] },
+    }) }
+    const controller = new VoipController(service as any)
+    const res = response()
+    await controller.console({
+      method: 'POST',
+      params: { 0: 'router/resolve-outbound' },
+      originalUrl: '/admin/voip/console/router/resolve-outbound',
+      body: { extensionId: '1001', target: '5566996269251' },
+    } as any, res)
+    expect(res.json).toHaveBeenCalledWith({
+      ok: true,
+      lock: { id: 'lock-1' },
+      session: { id: 'session-1' },
+    })
+  })
+
   test('uses the generic console proxy to delete recordings for an account', async () => {
     const service = { request: jest.fn().mockResolvedValue({ deleted: 2, bytes: 1024 }) }
     const controller = new VoipController(service as any)

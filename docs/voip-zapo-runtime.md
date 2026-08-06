@@ -217,7 +217,8 @@ O contrato administrativo consolidado inclui:
 - empresas com fuso horario e transcricao/resumo por IA isolados por empresa;
 - contas com integracao opcional de gravacao no Chatwoot e controle de nota
   privada;
-- slots exclusivamente `bridge`, com `maxActiveCalls` e selecao por sessao;
+- linhas e sessoes Zapo com `maxConcurrentCalls` entre 1 e 32, padrao 2, sem
+  cadastro ou selecao de dispositivo no Manager;
 - ramais SIP/WebRTC com varios registros simultaneos e desconexao individual;
 - distancia por grupo de ramais, onde o menor numero possui maior prioridade;
 - historico com busca, periodo, pagina e `pageSize` limitado a 100;

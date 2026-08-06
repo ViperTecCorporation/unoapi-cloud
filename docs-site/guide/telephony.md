@@ -25,6 +25,7 @@ local sem TLS ela pode ser omitida; nesse caso a Uno deriva
 PORT=3097
 VOIP_SERVICE_TOKEN=gere-um-token-longo
 VOIP_BRIDGE_TOKEN=gere-um-token-longo
+VOIP_MAX_CONCURRENT_CALLS=2
 ```
 
 O valor de `VOIP_BRIDGE_TOKEN` deve ser igual ao `VOIP_SERVICE_TOKEN` usado pela
@@ -42,6 +43,7 @@ environment:
   VOIP_SERVICE_URL: http://host.docker.internal:3097
   VOIP_BRIDGE_URL: wss://voip.seudominio.com.br/v1/bridge/zapo
   VOIP_SERVICE_TOKEN: gere-um-token-longo
+  VOIP_MAX_CONCURRENT_CALLS: "2"
 ```
 
 Para executar a telefonia fora de container com pacote `.deb` e `systemd`, veja
@@ -87,12 +89,14 @@ autenticado.
 7. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
 
 Cada chamada é isolada por `session + callId`. O limite inicial recomendado é
-2; limite cheio retorna erro explícito, sem fallback.
+2 e pode ser ajustado por linha entre 1 e 32; limite cheio retorna erro
+explícito, sem fallback.
 
-O roteador cria uma reserva exclusiva para cada saída. Um mesmo slot aceita até
-`maxActiveCalls` chamadas e o encerramento de uma delas libera somente a própria
-reserva. Para manter os dois limites coerentes, não configure `maxActiveCalls`
-acima de `VOIP_MAX_CONCURRENT_CALLS`.
+O roteador cria uma reserva exclusiva para cada saída. `maxConcurrentCalls`
+define a concorrência da linha Zapo e o encerramento de uma chamada libera
+somente a própria reserva. O padrão é 2 e o limite aceito é 32. A variável
+`VOIP_MAX_CONCURRENT_CALLS` define a capacidade anunciada pelo worker; mantenha
+o valor igual ou acima do configurado nas linhas.
 
 Se o número chamado também estiver conectado como sessão Zapo nesta instalação,
 o WhatsApp gera uma perna recebida espelhada com o mesmo `callId`. Ela é
@@ -116,25 +120,22 @@ administrativa da API. O navegador não recebe `VOIP_SERVICE_TOKEN`.
 - `POST /admin/voip/console/calls/{callId}/transfer`: transfere uma chamada
   ativa para `targetExtensionId`.
 
-### Cadastro e slots bridge
+### Cadastro de linhas e sessões Zapo
 
 - `GET /admin/voip/console/{resource}`: lista `companies`, `accounts`,
   `lineGroups`, `extensionGroups`, `sessions`, `extensions` ou `users`;
 - `PUT /admin/voip/console/{resource}/{id}`: cria ou atualiza o recurso;
 - `DELETE /admin/voip/console/{resource}/{id}`: remove o recurso;
-- `PUT /admin/voip/console/accounts/{accountId}/slots/{slotId}`: cria ou atualiza
-  um slot bridge com `label`, `enabled` e `maxActiveCalls`;
-- `DELETE /admin/voip/console/accounts/{accountId}/slots/{slotId}`: remove um
-  slot sem abrir ou apagar a sessão Zapo;
 - `GET /admin/voip/console/zapo-lines`: lista as linhas descobertas pela bridge;
 - `POST /admin/voip/console/zapo-lines/{session}/assign`: atribui a linha a uma
-  empresa e, com `createBasicRoute=true`, cria conta, sessão, slot, grupos, rota
-  e ramal básicos.
+  empresa e, com `createBasicRoute=true`, cria linha, sessão, grupos, rota e
+  ramal básicos. O corpo aceita `maxConcurrentCalls` de 1 a 32, com padrão 2.
 
-Slots representam capacidade simultânea da bridge, não aparelhos adicionais.
-Cada slot pertence a uma linha e `maxActiveCalls` limita quantas chamadas ele
-pode possuir ao mesmo tempo. A sessão escolhe os slots permitidos em
-`deviceSlotIds`; não existe pareamento separado dentro da telefonia.
+A sessão Zapo já é a origem da telefonia e não exige cadastro de dispositivo,
+QR code ou seleção adicional. Cada linha possui `maxConcurrentCalls`; sessões e
+rotas apenas apontam para a linha Zapo correspondente. Configurações antigas com
+slots continuam sendo lidas durante a migração, mas o Manager não cria nem edita
+esses campos legados.
 
 ### Ramais, registros e roteamento
 

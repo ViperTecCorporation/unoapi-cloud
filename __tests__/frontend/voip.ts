@@ -1,6 +1,5 @@
 import {
   renderVoipAssignLineModal,
-  renderVoipBridgeSlotModal,
   renderVoipCredentialsModal,
   renderVoipPage,
   renderVoipRecordingSettingsModal,
@@ -89,6 +88,10 @@ describe('VoIP manager page', () => {
     const assignment = renderVoipAssignLineModal({ bridges: [], calls: [], companies: [] }, '5566996269251')
     expect(assignment).toContain('name="companyLabel"')
     expect(assignment).toContain('Empresa 5566996269251')
+    expect(assignment).toContain('name="maxConcurrentCalls"')
+    expect(assignment).toContain('value="2"')
+    expect(assignment).toContain('min="1" max="32"')
+    expect(assignment).not.toContain('maxActiveCalls')
     expect(assignment).toContain('Criar grupo, rota e ramal básicos automaticamente')
 
     const credentials = renderVoipCredentialsModal({
@@ -128,7 +131,7 @@ describe('VoIP manager page', () => {
     expect(html).not.toContain('Licença')
   })
 
-  test('manages bridge slots without exposing standalone or QR controls', () => {
+  test('shows line concurrency while keeping legacy slots read-only and invisible', () => {
     const state = {
       bridges: [],
       calls: [],
@@ -146,22 +149,45 @@ describe('VoIP manager page', () => {
       }],
     }
     const account = renderVoipResourceModal(state, 'accounts', 'line-1')
-    expect(account).toContain('data-action="new-voip-slot"')
-    expect(account).toContain('data-action="edit-voip-slot"')
-    expect(account).toContain('data-action="delete-voip-slot"')
-    expect(account).toContain('5566999554300-a')
+    expect(account).toContain('name="maxConcurrentCalls"')
+    expect(account).toContain('value="4"')
+    expect(account).toContain('min="1" max="32"')
+    expect(account).not.toContain('data-action="new-voip-slot"')
+    expect(account).not.toContain('data-action="edit-voip-slot"')
+    expect(account).not.toContain('data-action="delete-voip-slot"')
+    expect(account).not.toContain('5566999554300-a')
     expect(account).not.toContain('legacy-a')
-    expect(account).not.toContain('data-slot-register')
-    expect(account).not.toContain('data-slot-deregister')
+    expect(account).not.toContain('slot bridge')
+    expect(account).not.toContain('Dispositivo')
+    expect(account).not.toContain('maxActiveCalls')
     expect(account).toContain('name="chatwootPrivateNote"')
-
-    const slot = renderVoipBridgeSlotModal(state, 'line-1', '5566999554300-a')
-    expect(slot).toContain('name="slotId" type="text" value="5566999554300-a" required readonly')
-    expect(slot).toContain('name="maxActiveCalls"')
-    expect(slot).toContain('Slot bridge Zapo')
   })
 
-  test('preserves bridge slot selection and exposes extension group distance', () => {
+  test('renders each Zapo line only once on the lines tab', () => {
+    const html = renderVoipPage({
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'Empresa' }],
+      accounts: [{ id: 'line-1', label: 'Linha principal', phoneNumber: '5566999554300', companyId: 'company-1' }],
+      zapoLines: [{
+        sourceId: 'zapo:uno:5566999554300',
+        session: '5566999554300',
+        connected: true,
+        assignmentStatus: 'assigned',
+        accountId: 'line-1',
+        companyId: 'company-1',
+        companyLabel: 'Empresa',
+        routingConfigured: true,
+        maxConcurrentCalls: 2,
+      }],
+    }, false, '', { tab: 'lines' })
+
+    expect(html.match(/<h2>Linhas Zapo<\/h2>/g)).toHaveLength(1)
+    expect(html).toContain('data-resource="accounts" data-id="line-1"')
+    expect(html).not.toContain('data-action="new-voip-resource" data-resource="accounts"')
+  })
+
+  test('does not expose legacy device selection and keeps extension group distance', () => {
     const state = {
       bridges: [],
       calls: [],
@@ -173,8 +199,9 @@ describe('VoIP manager page', () => {
       sessions: [{ id: 'session-1', deviceSlotIds: ['slot-1'], routing: { extensions: [] } }],
     }
     const session = renderVoipResourceModal(state, 'sessions', 'session-1')
-    expect(session).toContain('name="deviceSlotIds"')
-    expect(session).toContain('value="slot-1" selected')
+    expect(session).not.toContain('name="deviceSlotIds"')
+    expect(session).not.toContain('slot-1')
+    expect(session).toContain('Linha Zapo')
 
     const extension = renderVoipResourceModal(state, 'extensions', 'ext-1')
     expect(extension).toContain('name="extensionGroupDistance:support"')

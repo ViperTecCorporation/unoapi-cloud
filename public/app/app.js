@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.8-5ad21a7e';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.8-5ad21a7e';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.8-5ad21a7e';
-import { SocketBridge } from './core/socket.js?v=4.0.8-5ad21a7e';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.8-5ad21a7e';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.8-5ad21a7e';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.8-5ad21a7e';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.8-5ad21a7e';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.8-5ad21a7e';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.8-5ad21a7e';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.8-5ad21a7e';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.8-5ad21a7e';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.8-5ad21a7e';
-import { renderSessionPage } from './pages/session.js?v=4.0.8-5ad21a7e';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.8-5ad21a7e';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.8-5ad21a7e';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.8-5ad21a7e';
-import { renderVoipAssignLineModal, renderVoipBridgeSlotModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.8-5ad21a7e';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.8-bc7f7dd8';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.8-bc7f7dd8';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.8-bc7f7dd8';
+import { SocketBridge } from './core/socket.js?v=4.0.8-bc7f7dd8';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.8-bc7f7dd8';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.8-bc7f7dd8';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.8-bc7f7dd8';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.8-bc7f7dd8';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.8-bc7f7dd8';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.8-bc7f7dd8';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.8-bc7f7dd8';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.8-bc7f7dd8';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.8-bc7f7dd8';
+import { renderSessionPage } from './pages/session.js?v=4.0.8-bc7f7dd8';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.8-bc7f7dd8';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.8-bc7f7dd8';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.8-bc7f7dd8';
+import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.8-2f35b649';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -209,33 +209,6 @@ export class ViperConnectApp {
         else if (action === 'edit-voip-resource') {
             this.modal = { type: 'voip-resource', resource: actionElement.dataset.resource, id: actionElement.dataset.id || '' };
             this.render();
-        }
-        else if (action === 'new-voip-slot' || action === 'edit-voip-slot') {
-            this.modal = {
-                type: 'voip-bridge-slot',
-                accountId: actionElement.dataset.accountId || '',
-                slotId: action === 'edit-voip-slot' ? actionElement.dataset.slotId || '' : '',
-            };
-            this.render();
-        }
-        else if (action === 'delete-voip-slot') {
-            const accountId = actionElement.dataset.accountId || '';
-            const slotId = actionElement.dataset.slotId || '';
-            const linkedSessions = (this.voip.sessions || []).filter(session => Array.isArray(session.deviceSlotIds) && session.deviceSlotIds.includes(slotId));
-            if (linkedSessions.length) {
-                this.showToast(`O slot está vinculado às sessões ${linkedSessions.map(item => item.label || item.id).join(', ')}. Remova o vínculo antes de excluir.`);
-            }
-            else if (accountId && slotId && window.confirm(`Excluir o slot bridge ${slotId}?`)) {
-                try {
-                    await this.api.voipDeleteBridgeSlot(accountId, slotId);
-                    this.showToast(t('Configuração removida.'));
-                    await this.loadVoip(true);
-                    this.render();
-                }
-                catch (error) {
-                    this.showToast(this.messageFor(error));
-                }
-            }
         }
         else if (action === 'assign-voip-line') {
             this.modal = { type: 'voip-line-assignment', session: actionElement.dataset.session || '' };
@@ -625,29 +598,6 @@ export class ViperConnectApp {
                 this.showToast(this.messageFor(error));
             }
         }
-        else if (form.dataset.form === 'voip-bridge-slot') {
-            try {
-                const editing = this.modal?.type === 'voip-bridge-slot' ? this.modal : undefined;
-                const accountId = editing?.accountId || `${data.get('accountId') || ''}`.trim();
-                const slotId = editing?.slotId || `${data.get('slotId') || ''}`.trim();
-                if (!accountId || !slotId)
-                    throw new Error('account_and_slot_required');
-                await this.api.voipSaveBridgeSlot(accountId, slotId, {
-                    enabled: data.has('enabled'),
-                    label: `${data.get('label') || slotId}`.trim(),
-                    maxActiveCalls: Math.max(1, Number(data.get('maxActiveCalls') || 1)),
-                    bridgeSoftware: 'zapo',
-                });
-                this.modal = undefined;
-                await this.loadVoip();
-                this.modal = { type: 'voip-resource', resource: 'accounts', id: accountId };
-                this.showToast(t('Configuração salva.'));
-                this.render();
-            }
-            catch (error) {
-                this.showToast(this.messageFor(error));
-            }
-        }
         else if (form.dataset.form === 'voip-line-assignment') {
             try {
                 const session = `${data.get('session') || ''}`;
@@ -655,7 +605,7 @@ export class ViperConnectApp {
                     companyId: `${data.get('companyId') || ''}`,
                     companyLabel: `${data.get('companyLabel') || ''}`,
                     label: `${data.get('label') || ''}`,
-                    maxActiveCalls: Number(data.get('maxActiveCalls') || 1),
+                    maxConcurrentCalls: this.voipConcurrentCallLimit(data.get('maxConcurrentCalls')),
                     createBasicRoute: data.has('createBasicRoute'),
                 });
                 await this.loadVoip();
@@ -716,6 +666,7 @@ export class ViperConnectApp {
         if (resource === 'accounts') {
             putEditable('label', 'companyId', 'phoneNumber', 'chatwootBaseUrl', 'chatwootAccountId', 'chatwootInboxId');
             put('chatwootApiAccessToken');
+            payload.maxConcurrentCalls = this.voipConcurrentCallLimit(data.get('maxConcurrentCalls'));
             payload.chatwootRecordingEnabled = data.has('chatwootRecordingEnabled');
             payload.chatwootPrivateNote = data.has('chatwootPrivateNote');
         }
@@ -734,7 +685,6 @@ export class ViperConnectApp {
             payload.lineGroupIds = values('lineGroupIds');
             payload.inboundLineGroupIds = values('inboundLineGroupIds');
             payload.outboundLineGroupIds = values('outboundLineGroupIds');
-            payload.deviceSlotIds = values('deviceSlotIds');
             payload.extensions = values('extensions');
             payload.ringTimeoutSeconds = Number(value('ringTimeoutSeconds') || 20);
         }
@@ -758,6 +708,10 @@ export class ViperConnectApp {
             payload.companyIds = values('companyIds');
         }
         return payload;
+    }
+    voipConcurrentCallLimit(value) {
+        const parsed = Number(value);
+        return Math.min(32, Math.max(1, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 2));
     }
     voipRecordingSettingsPayload(data) {
         const value = (name) => `${data.get(name) || ''}`.trim();
@@ -1637,8 +1591,6 @@ export class ViperConnectApp {
             return renderRedisDeleteModal(this.modal.prefix, true);
         if (this.modal.type === 'voip-resource')
             return renderVoipResourceModal(this.voip, this.modal.resource, this.modal.id);
-        if (this.modal.type === 'voip-bridge-slot')
-            return renderVoipBridgeSlotModal(this.voip, this.modal.accountId, this.modal.slotId);
         if (this.modal.type === 'voip-line-assignment')
             return renderVoipAssignLineModal(this.voip, this.modal.session);
         if (this.modal.type === 'voip-recording-settings')
