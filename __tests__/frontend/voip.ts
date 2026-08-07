@@ -1,5 +1,4 @@
 import {
-  renderVoipAssignLineModal,
   renderVoipCredentialsModal,
   renderVoipPage,
   renderVoipRecordingSettingsModal,
@@ -90,16 +89,7 @@ describe('VoIP manager page', () => {
     expect(html).toContain('data-registration-type="sip_rtp"')
   })
 
-  test('creates a company in the quick line flow and reveals admin credentials', () => {
-    const assignment = renderVoipAssignLineModal({ bridges: [], calls: [], companies: [] }, '5566996269251')
-    expect(assignment).toContain('name="companyLabel"')
-    expect(assignment).toContain('Empresa 5566996269251')
-    expect(assignment).toContain('name="maxConcurrentCalls"')
-    expect(assignment).toContain('value="2"')
-    expect(assignment).toContain('min="1" max="32"')
-    expect(assignment).not.toContain('maxActiveCalls')
-    expect(assignment).toContain('Criar grupo, rota e ramal básicos automaticamente')
-
+  test('reveals automatic extension credentials without a manual activation flow', () => {
     const credentials = renderVoipCredentialsModal({
       username: '5566996269251',
       password: 'secret',
@@ -137,6 +127,25 @@ describe('VoIP manager page', () => {
     expect(html).not.toContain('Licença')
   })
 
+  test('keeps the default company active while allowing its AI configuration', () => {
+    const html = renderVoipResourceModal({
+      bridges: [],
+      calls: [],
+      companies: [{
+        id: 'empresa-padrao',
+        label: 'Empresa padrão',
+        enabled: true,
+        provisioningSource: 'zapo_auto',
+        aiSummary: { enabled: false },
+      }],
+    }, 'companies', 'empresa-padrao')
+
+    expect(html).toContain('Ativo · estado gerenciado automaticamente pela sessão Zapo.')
+    expect(html).toContain('name="aiSummaryEnabled"')
+    expect(html).not.toContain('name="enabled" type="checkbox"')
+    expect(html).not.toContain('data-action="delete-voip-resource"')
+  })
+
   test('shows line concurrency while keeping legacy slots read-only and invisible', () => {
     const state = {
       bridges: [],
@@ -157,7 +166,7 @@ describe('VoIP manager page', () => {
     const account = renderVoipResourceModal(state, 'accounts', 'line-1')
     expect(account).toContain('name="maxConcurrentCalls"')
     expect(account).toContain('value="4"')
-    expect(account).toContain('min="1" max="32"')
+    expect(account).toContain('min="2" max="32"')
     expect(account).not.toContain('data-action="new-voip-slot"')
     expect(account).not.toContain('data-action="edit-voip-slot"')
     expect(account).not.toContain('data-action="delete-voip-slot"')
@@ -183,14 +192,111 @@ describe('VoIP manager page', () => {
         accountId: 'line-1',
         companyId: 'company-1',
         companyLabel: 'Empresa',
-        routingConfigured: true,
+        advancedRoutingConfigured: true,
+        automatic: {
+          extensionId: 'automatic-1',
+          username: '5566999554300',
+          status: 'active',
+          registrationCount: 2,
+          freeRegistrationCount: 1,
+          busyRegistrationCount: 1,
+          transports: ['sip', 'webrtc'],
+          basicInboundEnabled: true,
+        },
         maxConcurrentCalls: 2,
       }],
     }, false, '', { tab: 'lines' })
 
     expect(html.match(/<h2>Linhas Zapo<\/h2>/g)).toHaveLength(1)
     expect(html).toContain('data-resource="accounts" data-id="line-1"')
+    expect(html).toContain('5566999554300')
+    expect(html).toContain('1 livre(s) · 1 ocupado(s) · 2 total')
+    expect(html).toContain('SIP + WebRTC')
+    expect(html).toContain('Básico ativo')
+    expect(html).toContain('Avançado')
+    expect(html).not.toContain('Ativar linha')
+    expect(html).not.toContain('Aguardando empresa')
     expect(html).not.toContain('data-action="new-voip-resource" data-resource="accounts"')
+  })
+
+  test('labels automatic and advanced extensions and hides offline automatic ones by default', () => {
+    const state = {
+      bridges: [],
+      calls: [],
+      zapoLines: [{
+        sourceId: 'zapo:uno:5566999554300',
+        session: '5566999554300',
+        connected: false,
+        automatic: {
+          extensionId: 'automatic-1',
+          username: '5566999554300',
+          status: 'offline' as const,
+          registrationCount: 0,
+          freeRegistrationCount: 0,
+          busyRegistrationCount: 0,
+          transports: [] as Array<'sip' | 'webrtc'>,
+          basicInboundEnabled: true,
+        },
+      }],
+      extensions: [
+        { id: 'automatic-1', username: '5566999554300', displayName: 'Linha automática', enabled: false, provisioningSource: 'zapo_auto' },
+        { id: 'advanced-1', username: '1001', displayName: 'Recepção', enabled: true },
+      ],
+    }
+    const hidden = renderVoipPage(state, false, '', { tab: 'extensions' })
+    expect(hidden).toContain('Recepção')
+    expect(hidden).toContain('Avançado')
+    expect(hidden).not.toContain('Linha automática')
+    expect(hidden).toContain('Mostrar automáticos offline (1)')
+
+    const visible = renderVoipPage(state, false, '', { tab: 'extensions', showOfflineAutomaticExtensions: true })
+    expect(visible).toContain('Linha automática')
+    expect(visible).toContain('Automático')
+    expect(visible).toContain('Ocultar automáticos offline')
+  })
+
+  test('keeps structural fields of automatically managed resources read-only', () => {
+    const state = {
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'ViperTec' }],
+      accounts: [{ id: 'line-1', companyId: 'company-1', phoneNumber: '5566999554300', enabled: true }],
+      sessions: [{
+        id: 'session-1',
+        companyId: 'company-1',
+        accountId: 'line-1',
+        unoSession: '5566999554300',
+        automaticExtensionId: 'automatic-1',
+        routing: { extensions: [], basicInboundEnabled: true },
+        enabled: true,
+      }],
+      extensions: [{
+        id: 'automatic-1',
+        companyId: 'company-1',
+        username: '5566999554300',
+        type: 'both',
+        enabled: true,
+      }],
+      lineGroups: [],
+      extensionGroups: [],
+    }
+
+    const account = renderVoipResourceModal(state, 'accounts', 'line-1')
+    expect(account).toContain('Empresa (gerenciada)')
+    expect(account).toContain('name="phoneNumber" type="text" value="5566999554300" required readonly')
+    expect(account).not.toContain('data-action="delete-voip-resource"')
+
+    const session = renderVoipResourceModal(state, 'sessions', 'session-1')
+    expect(session).toContain('name="unoSession" type="text" value="5566999554300" required readonly')
+    expect(session).toContain('name="accountId" type="text" value="line-1" required readonly')
+    expect(session).toContain('Desativar atendimento básico')
+    expect(session).not.toContain('data-action="delete-voip-resource"')
+
+    const extension = renderVoipResourceModal(state, 'extensions', 'automatic-1')
+    expect(extension).toContain('name="username" type="text" value="5566999554300" required readonly')
+    expect(extension).toContain('name="type" value="both"')
+    expect(extension).toContain('Transportes (gerenciados)')
+    expect(extension).not.toContain('data-action="delete-voip-resource"')
   })
 
   test('does not expose legacy device selection and keeps extension group distance', () => {
@@ -219,7 +325,7 @@ describe('VoIP manager page', () => {
       bridges: [],
       calls: [],
       history: {
-        items: [{ id: 'record-1', callId: 'call-1', recordingStatus: 'available', recordingMime: 'audio/wav' }],
+        items: [{ id: 'record-1', callId: 'call-1', remoteName: 'João da Silva', remoteNumber: '5566996269251', remoteJid: '123@lid', recordingStatus: 'available', recordingMime: 'audio/wav' }],
         total: 31,
         page: 2,
         pageSize: 20,
@@ -228,11 +334,34 @@ describe('VoIP manager page', () => {
       recordingSummary: { accounts: [{ accountId: 'line-1', count: 1, sizeBytes: 1536 }] },
     }, false, '', { tab: 'calls', recordingUrls: { 'record-1': 'blob:recording' } })
     expect(html).toContain('data-form="voip-history-filter"')
+    expect(html).toContain('<th>Contato</th>')
+    expect(html).toContain('João da Silva · 5566996269251')
+    expect(html).toContain('Nome, número, ramal ou status')
     expect(html).toContain('data-action="voip-history-page"')
     expect(html).toContain('Armazenamento de gravações por linha')
     expect(html).toContain('data-recording-extension="wav"')
     expect(html).toContain('1.5 KB')
     expect(html).not.toContain('autoplay')
+  })
+
+  test('renders the basic inbound switch in advanced session settings', () => {
+    const html = renderVoipResourceModal({
+      bridges: [],
+      calls: [],
+      companies: [{ id: 'company-1', label: 'Empresa' }],
+      accounts: [{ id: 'line-1', label: 'Linha' }],
+      sessions: [{
+        id: 'session-1',
+        label: 'Principal',
+        unoSession: '5566999554300',
+        companyId: 'company-1',
+        accountId: 'line-1',
+        routing: { basicInboundEnabled: false },
+      }],
+    }, 'sessions', 'session-1')
+    expect(html).toContain('name="disableBasicInbound"')
+    expect(html).toContain('Desativar atendimento básico')
+    expect(html).toContain('name="disableBasicInbound" type="checkbox" checked')
   })
 
   test('renders every recording storage option and no license card', () => {

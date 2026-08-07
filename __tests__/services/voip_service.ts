@@ -4,7 +4,7 @@ describe('VoipService', () => {
   test('normalizes line concurrency to the supported range', () => {
     expect(normalizeVoipMaxConcurrentCalls(undefined)).toBe(2)
     expect(normalizeVoipMaxConcurrentCalls(0)).toBe(2)
-    expect(normalizeVoipMaxConcurrentCalls(1)).toBe(1)
+    expect(normalizeVoipMaxConcurrentCalls(1)).toBe(2)
     expect(normalizeVoipMaxConcurrentCalls(99)).toBe(32)
   })
 

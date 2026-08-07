@@ -24,13 +24,16 @@ export const sanitizeVoipConsolePayload = <T>(value: T): T => {
 export const normalizeVoipMaxConcurrentCalls = (value: unknown, fallback = DEFAULT_MAX_CONCURRENT_CALLS) => {
   const parsed = Number(value)
   const effective = Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback
-  return Math.min(MAX_CONCURRENT_CALLS, Math.max(1, effective))
+  return Math.min(MAX_CONCURRENT_CALLS, Math.max(2, effective))
 }
 
 const legacyLineConcurrency = (account: Record<string, any>) => {
   const total = records(account.slots)
     .filter(slot => slot.enabled !== false)
-    .reduce((sum, slot) => sum + normalizeVoipMaxConcurrentCalls(slot.maxActiveCalls, 1), 0)
+    .reduce((sum, slot) => {
+      const value = Number(slot.maxActiveCalls)
+      return sum + Math.min(MAX_CONCURRENT_CALLS, Math.max(1, Number.isFinite(value) ? Math.trunc(value) : 1))
+    }, 0)
   return total > 0 ? total : undefined
 }
 

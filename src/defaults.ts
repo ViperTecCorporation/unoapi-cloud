@@ -110,7 +110,10 @@ export const UNOAPI_SERVER_NAME = process.env.UNOAPI_SERVER_NAME || 'server_1'
 export const VOIP_SERVICE_URL = process.env.VOIP_SERVICE_URL || ''
 export const VOIP_SERVICE_TOKEN = process.env.VOIP_SERVICE_TOKEN || process.env.VOIP_BRIDGE_TOKEN || ''
 export const VOIP_BRIDGE_URL = process.env.VOIP_BRIDGE_URL || ''
-export const VOIP_MAX_CONCURRENT_CALLS = Math.max(1, Math.min(32, parseInt(process.env.VOIP_MAX_CONCURRENT_CALLS || '2')))
+const configuredVoipMaxConcurrentCalls = parseInt(process.env.VOIP_MAX_CONCURRENT_CALLS || '2')
+export const VOIP_MAX_CONCURRENT_CALLS = Number.isFinite(configuredVoipMaxConcurrentCalls)
+  ? Math.max(2, Math.min(32, configuredVoipMaxConcurrentCalls))
+  : 2
 export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_REQUEST_DELAY || process.env.UNOAPI_RETRY_REQUEST_DELAY_MS || '5000')
 // export const QR_TIMEOUT = parseInt(process.env.QR_TIMEOUT || '30000')
 // export const SLEEP_TIME = parseInt(process.env.SLEEP_TIME || '5000')

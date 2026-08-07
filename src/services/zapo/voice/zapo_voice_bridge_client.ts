@@ -2,6 +2,7 @@ import WebSocket from 'ws'
 import logger from '../../logger'
 import { decodeVoipBridgeAudioFrame, encodeVoipBridgeAudioFrame, encodeVoipBridgeControl, parseVoipBridgeControl } from './zapo_voice_bridge_codec'
 import type { VoipBridgeCallCommand, VoipBridgeControlMessage } from './zapo_voice_types'
+import { confirmedZapoVoicePhone, type ZapoVoiceCallerIdentity } from './zapo_voice_caller_identity'
 import { VOIP_BRIDGE_AUDIO_SAMPLE_RATE, VOIP_BRIDGE_AUDIO_SAMPLES_PER_FRAME } from './zapo_voice_types'
 import type { ZapoVoiceAdapter } from './zapo_voice_adapter'
 
@@ -70,7 +71,7 @@ export class ZapoVoiceBridgeClient {
     return this.ready && this.ws?.readyState === WebSocket.OPEN
   }
 
-  publishIncoming(call: any, resolvedCallerPn?: string) {
+  publishIncoming(call: any, callerIdentity: ZapoVoiceCallerIdentity = {}) {
     if (!this.isReady()) return false
     this.send({
       type: 'call.incoming',
@@ -78,7 +79,9 @@ export class ZapoVoiceBridgeClient {
       callId: call.callId,
       direction: 'incoming',
       peerJid: call.peerJid,
-      callerPn: resolvedCallerPn || call.callerPn,
+      callerPn: confirmedZapoVoicePhone(callerIdentity.callerPn) || confirmedZapoVoicePhone(call.callerPn),
+      callerName: callerIdentity.callerName,
+      callerNameSource: callerIdentity.callerNameSource,
       media: 'audio',
       canAccept: !!call.canAccept,
     })

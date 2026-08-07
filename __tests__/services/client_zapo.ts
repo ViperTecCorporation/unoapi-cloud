@@ -1040,6 +1040,35 @@ describe('ClientZapo', () => {
     })
   })
 
+  test('publishes the contact name and confirmed number with an incoming bridged call', async () => {
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '11343495192601@lid',
+      lid: '11343495192601@lid',
+      phoneNumber: '556699554300',
+      displayName: 'Joao da Silva',
+      pushName: 'Joao',
+    } as never)
+    session.contacts.getByPhoneNumber.mockResolvedValue(null)
+    await service.connect(1)
+    const voiceBridge = { publishIncoming: jest.fn().mockReturnValue(true) }
+    ;(service as any).voiceBridge = voiceBridge
+
+    const call = {
+      callId: 'call-with-name',
+      peerJid: '11343495192601@lid',
+      direction: 'incoming',
+      mediaType: 'audio',
+      canAccept: true,
+    }
+    await handlers.voip_call_incoming(call)
+
+    expect(voiceBridge.publishIncoming).toHaveBeenCalledWith(call, {
+      callerPn: '5566999554300',
+      callerName: 'Joao da Silva',
+      callerNameSource: 'display_name',
+    })
+  })
+
   test('downloads incoming media through the official Zapo coordinator as a raw storage buffer', async () => {
     client.message.downloadBytes.mockResolvedValue(Uint8Array.from([1, 2, 3]))
     let normalized: any

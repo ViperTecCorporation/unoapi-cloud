@@ -2256,7 +2256,7 @@
           "Telefonia"
         ],
         "summary": "Estado agregado da telefonia",
-        "description": "Retorna linhas e sessões Zapo, concorrência por linha, chamadas ativas, ramais e configuração administrativa sem expor a URL ou o token interno do serviço VoIP.",
+        "description": "Retorna linhas e sessões Zapo já reconciliadas com empresa, conta e ramal automático, além da concorrência por linha, chamadas ativas, ramais e configuração administrativa, sem expor a URL ou o token interno do serviço VoIP.",
         "responses": {
           "200": {
             "description": "Estado usado pela página Telefonia do Manager.",
@@ -2633,7 +2633,7 @@
         "summary": "Listar linhas descobertas pela bridge Zapo",
         "responses": {
           "200": {
-            "description": "Inventário de linhas atribuídas ou aguardando empresa.",
+            "description": "Inventário de linhas reconciliadas automaticamente com empresa, conta, sessão e ramal SIP/WebRTC.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2661,7 +2661,8 @@
         "tags": [
           "Telefonia"
         ],
-        "summary": "Atribuir linha Zapo a uma empresa",
+        "summary": "Alterar a empresa de uma linha Zapo provisionada",
+        "description": "O provisionamento inicial é automático. Esta operação permanece disponível somente para uma mudança administrativa posterior de empresa.",
         "parameters": [
           {
             "name": "session",
@@ -2679,14 +2680,18 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "companyId"
+                ],
                 "properties": {
                   "companyId": {
                     "type": "string",
-                    "description": "Obrigatório quando há mais de uma empresa ativa."
+                    "description": "Empresa de destino já cadastrada."
                   },
                   "companyLabel": {
                     "type": "string",
-                    "description": "Nome usado se for necessário criar a empresa básica."
+                    "deprecated": true,
+                    "description": "Mantido somente para compatibilidade com clientes antigos."
                   },
                   "label": {
                     "type": "string",
@@ -2694,13 +2699,14 @@
                   },
                   "maxConcurrentCalls": {
                     "type": "integer",
-                    "minimum": 1,
+                    "minimum": 2,
                     "maximum": 32,
                     "default": 2
                   },
                   "createBasicRoute": {
                     "type": "boolean",
-                    "default": true
+                    "deprecated": true,
+                    "description": "Ignorado; o ramal básico é gerenciado automaticamente pela sessão Zapo."
                   }
                 }
               }
@@ -2709,7 +2715,8 @@
         },
         "responses": {
           "200": {
-            "description": "Atribuição idempotente concluída e configuração devolvida."
+            "description": "Mudança idempotente de empresa concluída sem recriar o ramal nem sobrescrever Chatwoot",
+            "IA ou roteamento avançado.": null
           }
         }
       }
@@ -3382,6 +3389,26 @@
             "type": "string",
             "example": "5566996269251@s.whatsapp.net"
           },
+          "callerPn": {
+            "type": "string",
+            "example": "5566996269251",
+            "description": "Telefone confirmado, somente com dígitos. Um LID nunca é apresentado como telefone."
+          },
+          "callerName": {
+            "type": "string",
+            "maxLength": 128,
+            "example": "João da Silva",
+            "description": "Nome normalizado no diretório de contatos da própria sessão Zapo no início da chamada."
+          },
+          "callerNameSource": {
+            "type": "string",
+            "enum": [
+              "display_name",
+              "push_name",
+              "username"
+            ],
+            "description": "Origem do nome apresentado no SIP e no WebRTC."
+          },
           "extensionId": {
             "type": "string",
             "example": "1001"
@@ -3550,7 +3577,7 @@
           },
           "maxConcurrentCalls": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 2,
             "maximum": 32,
             "default": 2,
             "description": "Limite simultâneo da linha Zapo, sem cadastro de dispositivo adicional."
@@ -3668,7 +3695,7 @@
           },
           "maxConcurrentCalls": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 2,
             "maximum": 32,
             "default": 2
           },
@@ -3710,8 +3737,25 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "basicInboundEnabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Quando false, impede apenas o toque recebido no ramal automático e exige ao menos um destino avançado válido."
               }
             }
+          },
+          "automaticExtensionId": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Ramal SIP/WebRTC gerenciado automaticamente para esta sessão Zapo."
+          },
+          "provisioningSource": {
+            "type": "string",
+            "enum": [
+              "zapo_auto"
+            ],
+            "readOnly": true
           }
         }
       },
@@ -3768,6 +3812,14 @@
               "type": "integer",
               "minimum": 1
             }
+          },
+          "provisioningSource": {
+            "type": "string",
+            "enum": [
+              "zapo_auto"
+            ],
+            "readOnly": true,
+            "description": "Presente nos ramais criados e reconciliados automaticamente pela sessão Zapo."
           }
         }
       },
@@ -3844,7 +3896,9 @@
         "type": "object",
         "required": [
           "session",
-          "assignmentStatus"
+          "connected",
+          "automatic",
+          "advancedRoutingConfigured"
         ],
         "properties": {
           "session": {
@@ -3856,13 +3910,6 @@
           },
           "connected": {
             "type": "boolean"
-          },
-          "assignmentStatus": {
-            "type": "string",
-            "enum": [
-              "assigned",
-              "pending_company"
-            ]
           },
           "companyId": {
             "type": "string"
@@ -3878,15 +3925,75 @@
           },
           "maxConcurrentCalls": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 2,
             "maximum": 32,
             "default": 2
           },
-          "routingConfigured": {
-            "type": "boolean"
+          "automatic": {
+            "$ref": "#/components/schemas/VoipAutomaticExtension"
+          },
+          "advancedRoutingConfigured": {
+            "type": "boolean",
+            "description": "Indica se a linha também possui destinos no roteamento avançado."
           }
         },
         "additionalProperties": true
+      },
+      "VoipAutomaticExtension": {
+        "type": "object",
+        "required": [
+          "extensionId",
+          "username",
+          "status",
+          "registrationCount",
+          "freeRegistrationCount",
+          "busyRegistrationCount",
+          "transports",
+          "basicInboundEnabled"
+        ],
+        "properties": {
+          "extensionId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "offline"
+            ]
+          },
+          "registrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "freeRegistrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "busyRegistrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transports": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "sip",
+                "webrtc"
+              ]
+            }
+          },
+          "basicInboundEnabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
       },
       "VoipHistoryItem": {
         "type": "object",
@@ -3907,11 +4014,21 @@
             "type": "string",
             "enum": [
               "inbound",
-              "outbound"
+              "outbound",
+              "internal"
             ]
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "routing",
+              "ringing",
+              "active",
+              "completed",
+              "missed",
+              "failed",
+              "cancelled"
+            ]
           },
           "startedAt": {
             "type": "string",
@@ -3939,15 +4056,34 @@
           "extensionLabel": {
             "type": "string"
           },
+          "remoteName": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Fotografia do nome apresentado no começo da chamada; mudanças futuras no contato não alteram o histórico."
+          },
+          "remoteNameSource": {
+            "type": "string",
+            "enum": [
+              "display_name",
+              "push_name",
+              "username"
+            ]
+          },
           "remoteNumber": {
-            "type": "string"
+            "type": "string",
+            "description": "Telefone confirmado, somente com dígitos; nunca contém LID."
+          },
+          "remoteJid": {
+            "type": "string",
+            "description": "JID ou LID original preservado somente para auditoria."
           },
           "recordingStatus": {
             "type": "string",
             "enum": [
-              "pending",
+              "disabled",
+              "recording",
+              "processing",
               "available",
-              "unavailable",
               "failed"
             ]
           },
@@ -3959,10 +4095,20 @@
             "format": "int64",
             "minimum": 0
           },
-          "transcript": {
+          "aiSummaryStatus": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "queued",
+              "processing",
+              "completed",
+              "failed"
+            ]
+          },
+          "aiTranscriptText": {
             "type": "string"
           },
-          "summary": {
+          "aiSummaryText": {
             "type": "string"
           }
         },

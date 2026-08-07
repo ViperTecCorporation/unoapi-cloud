@@ -32,12 +32,10 @@ import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
 import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
 import { filterContacts, filterGroups } from './features/entities.js'
 import {
-  renderVoipAssignLineModal,
   renderVoipCredentialsModal,
   renderVoipPage,
   renderVoipRecordingSettingsModal,
   renderVoipResourceModal,
-  renderVoipSipCreatedModal,
   type VoipResourceName,
 } from './pages/voip.js'
 
@@ -64,9 +62,7 @@ type ModalState =
   | { type: 'redis-delete'; key: string }
   | { type: 'redis-delete-prefix'; prefix: string }
   | { type: 'voip-resource'; resource: VoipResourceName; id: string }
-  | { type: 'voip-line-assignment'; session: string }
   | { type: 'voip-recording-settings' }
-  | { type: 'voip-sip-created'; username: string; password: string }
   | { type: 'voip-credentials'; value: Record<string, any> }
 
 const emptyContactState = () => ({
@@ -104,6 +100,7 @@ export class ViperConnectApp {
   private voipLoading = false
   private voipError = ''
   private voipTab: VoipTab = 'overview'
+  private showOfflineAutomaticExtensions = false
   private voipRecordingUrls: Record<string, string> = {}
   private voipTransferAudioUrls: Record<string, string> = {}
   private voipRouterResult?: Record<string, unknown>
@@ -258,8 +255,8 @@ export class ViperConnectApp {
     } else if (action === 'edit-voip-resource') {
       this.modal = { type: 'voip-resource', resource: actionElement.dataset.resource as VoipResourceName, id: actionElement.dataset.id || '' }
       this.render()
-    } else if (action === 'assign-voip-line') {
-      this.modal = { type: 'voip-line-assignment', session: actionElement.dataset.session || '' }
+    } else if (action === 'toggle-voip-offline-automatic') {
+      this.showOfflineAutomaticExtensions = !this.showOfflineAutomaticExtensions
       this.render()
     } else if (action === 'show-voip-credentials') {
       try {
@@ -556,23 +553,6 @@ export class ViperConnectApp {
         this.showToast(t('Configuração salva.'))
         await this.loadVoip()
       } catch (error) { this.showToast(this.messageFor(error)) }
-    } else if (form.dataset.form === 'voip-line-assignment') {
-      try {
-        const session = `${data.get('session') || ''}`
-        const result = await this.api.voipConsole(`zapo-lines/${encodeURIComponent(session)}/assign`, 'POST', {
-          companyId: `${data.get('companyId') || ''}`,
-          companyLabel: `${data.get('companyLabel') || ''}`,
-          label: `${data.get('label') || ''}`,
-          maxConcurrentCalls: this.voipConcurrentCallLimit(data.get('maxConcurrentCalls')),
-          createBasicRoute: data.has('createBasicRoute'),
-        })
-        await this.loadVoip()
-        this.modal = result?.sip
-          ? { type: 'voip-sip-created', username: `${result.sip.username}`, password: `${result.sip.password}` }
-          : undefined
-        this.showToast('Linha ativada e disponível no roteamento.')
-        this.render()
-      } catch (error) { this.showToast(this.messageFor(error)) }
     } else if (form.dataset.form === 'voip-recording-settings') {
       try {
         await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data))
@@ -644,6 +624,7 @@ export class ViperConnectApp {
       payload.outboundLineGroupIds = values('outboundLineGroupIds')
       payload.extensions = values('extensions')
       payload.ringTimeoutSeconds = Number(value('ringTimeoutSeconds') || 20)
+      payload.basicInboundEnabled = !data.has('disableBasicInbound')
     }
     if (resource === 'extensions') {
       put('displayName', 'username', 'password', 'companyId', 'type')
@@ -665,7 +646,7 @@ export class ViperConnectApp {
 
   private voipConcurrentCallLimit(value: FormDataEntryValue | null) {
     const parsed = Number(value)
-    return Math.min(32, Math.max(1, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 2))
+    return Math.min(32, Math.max(2, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 2))
   }
 
   private voipRecordingSettingsPayload(data: FormData): Record<string, unknown> {
@@ -1395,6 +1376,7 @@ export class ViperConnectApp {
         : this.view === 'voip'
           ? renderVoipPage(this.voip, this.voipLoading, this.voipError, {
               tab: this.voipTab,
+              showOfflineAutomaticExtensions: this.showOfflineAutomaticExtensions,
               recordingUrls: this.voipRecordingUrls,
               transferAudioUrls: this.voipTransferAudioUrls,
               routerResult: this.voipRouterResult,
@@ -1474,9 +1456,7 @@ export class ViperConnectApp {
     if (this.modal.type === 'redis-delete') return renderRedisDeleteModal(this.modal.key)
     if (this.modal.type === 'redis-delete-prefix') return renderRedisDeleteModal(this.modal.prefix, true)
     if (this.modal.type === 'voip-resource') return renderVoipResourceModal(this.voip, this.modal.resource, this.modal.id)
-    if (this.modal.type === 'voip-line-assignment') return renderVoipAssignLineModal(this.voip, this.modal.session)
     if (this.modal.type === 'voip-recording-settings') return renderVoipRecordingSettingsModal(this.voip)
-    if (this.modal.type === 'voip-sip-created') return renderVoipSipCreatedModal(this.modal.username, this.modal.password)
     if (this.modal.type === 'voip-credentials') return renderVoipCredentialsModal(this.modal.value)
     const session = this.findSession(this.modal.phone)
     if (!session) return ''

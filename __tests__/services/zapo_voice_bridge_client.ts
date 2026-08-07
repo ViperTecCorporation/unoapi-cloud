@@ -1,5 +1,5 @@
 import { once } from 'node:events'
-import { WebSocketServer } from 'ws'
+import WebSocket, { WebSocketServer } from 'ws'
 import { encodeVoipBridgeAudioFrame } from '../../src/services/zapo/voice/zapo_voice_bridge_codec'
 import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from '../../src/services/zapo/voice/zapo_voice_bridge_client'
 
@@ -7,6 +7,39 @@ describe('ZapoVoiceBridgeClient', () => {
   test('derives the bridge websocket URL from the service URL', () => {
     expect(resolveZapoVoiceBridgeUrl('https://voip.example.com/base')).toBe('wss://voip.example.com/v1/bridge/zapo')
     expect(resolveZapoVoiceBridgeUrl('http://voip:3097')).toBe('ws://voip:3097/v1/bridge/zapo')
+  })
+
+  test('normalizes the confirmed caller PN before publishing an incoming call', () => {
+    const adapter = { getCalls: jest.fn().mockReturnValue([]) }
+    const send = jest.fn()
+    const client = new ZapoVoiceBridgeClient({
+      session: '5566999554300',
+      url: 'ws://127.0.0.1/unused',
+      token: 'secret',
+      serverId: 'server_1',
+      workerId: 'worker_1',
+      generation: 1,
+      maxConcurrentCalls: 2,
+      adapter: adapter as any,
+    })
+    ;(client as any).ready = true
+    ;(client as any).ws = { readyState: WebSocket.OPEN, send }
+
+    expect(client.publishIncoming({
+      callId: 'call-old-mobile',
+      peerJid: '123@lid',
+      canAccept: true,
+    }, {
+      callerPn: '556699554300@s.whatsapp.net',
+      callerName: 'Contato salvo',
+      callerNameSource: 'display_name',
+    })).toBe(true)
+
+    expect(JSON.parse(send.mock.calls[0][0])).toMatchObject({
+      type: 'call.incoming',
+      callerPn: '5566999554300',
+      callerName: 'Contato salvo',
+    })
   })
 
   test('handshakes, executes a start command and routes binary audio by stream', async () => {

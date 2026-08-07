@@ -81,12 +81,20 @@ autenticado.
 ## Fluxo de chamada
 
 1. A sessão Zapo abre o bridge autenticado após ficar online.
-2. Uma chamada recebida gera `call.incoming`, mas não é atendida automaticamente.
-3. O serviço toca os ramais SIP/WebRTC ou SIP/RTP configurados.
-4. Somente o primeiro ramal que atende dispara `call.command: accept`.
-5. A Zapo conclui a sinalização e abre a mídia da chamada atendida.
-6. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
-7. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
+2. A Uno consulta primeiro o contato por `peerJid` e depois pelo telefone confirmado no diretório da própria sessão.
+3. Uma chamada recebida gera `call.incoming` com `callerPn`, `callerName` e `callerNameSource` quando disponíveis, mas não é atendida automaticamente.
+4. O serviço toca todos os registros livres do ramal automático e os destinos imediatos do roteamento avançado.
+5. Somente o primeiro registro ou destino que atende dispara `call.command: accept`; as outras pernas são canceladas com `answered_elsewhere`.
+6. A Zapo conclui a sinalização e abre a mídia da chamada atendida.
+7. Áudio usa frames binários PCM Float32 mono a 16 kHz; nunca JSON, base64 ou RabbitMQ.
+8. Encerramento em qualquer perna fecha WhatsApp, SIP e o stream daquela chamada.
+
+O nome segue a prioridade `displayName`, `pushName`, `username` e, por último,
+o telefone confirmado. A resolução nunca cruza empresas ou sessões. O
+`display-name` SIP e o `remote_identity.display_name` do WebRTC recebem o nome
+normalizado; a URI SIP continua usando o número. CR/LF e caracteres de controle
+são removidos, e aspas são escapadas com segurança. Sem telefone confirmado, o LID fica
+somente em `remoteJid` para auditoria e não é apresentado como número.
 
 Se o WhatsApp entregar um `<reject>` estranho para uma chamada recebida, o
 worker o ignora porque a sessão não foi a iniciadora. Rejeição de uma chamada
@@ -98,7 +106,7 @@ dispositivo no roteamento ativo. `maxConcurrentCalls` é a capacidade única da
 linha Zapo, compartilhada por locks de entrada (`inbound_call`) e saída
 (`outbound_line`). O encerramento libera somente o lock da própria chamada.
 
-O padrão é 2 e o valor pode ser ajustado entre 1 e 32. Capacidade cheia
+O padrão é 2 e o valor pode ser ajustado entre 2 e 32. Capacidade cheia
 retorna `line_capacity_exhausted`, sem fallback. A variável
 `VOIP_MAX_CONCURRENT_CALLS` define a capacidade anunciada pelo worker; mantenha
 o valor igual ou acima do configurado nas linhas.
@@ -136,15 +144,42 @@ administrativa da API. O navegador não recebe `VOIP_SERVICE_TOKEN`.
 - `PUT /admin/voip/console/{resource}/{id}`: cria ou atualiza o recurso;
 - `DELETE /admin/voip/console/{resource}/{id}`: remove o recurso;
 - `GET /admin/voip/console/zapo-lines`: lista as linhas descobertas pela bridge;
-- `POST /admin/voip/console/zapo-lines/{session}/assign`: atribui a linha a uma
-  empresa e, com `createBasicRoute=true`, cria linha, sessão, grupos, rota e
-  ramal básicos. O corpo aceita `maxConcurrentCalls` de 1 a 32, com padrão 2.
+- `POST /admin/voip/console/zapo-lines/{session}/assign`: altera posteriormente
+  a empresa de uma linha já provisionada. `createBasicRoute` está depreciado e
+  não controla mais a criação do ramal.
 
 A sessão Zapo já é a origem da telefonia e não exige cadastro de dispositivo,
-QR code ou seleção adicional. Cada linha possui `maxConcurrentCalls`; sessões e
-rotas apenas apontam para a linha Zapo correspondente. Configurações antigas com
-slots podem ser lidas uma vez para migrar a capacidade, mas esses campos não
-participam do roteador ativo e o Manager não os cria nem edita.
+QR code, ativação manual ou seleção adicional. No bootstrap, conexão,
+`session.status` e reconexão, a Uno garante automaticamente empresa, linha,
+sessão de telefonia e ramal com usuário igual ao número da sessão. A empresa já
+vinculada é preservada; depois é considerada a empresa da conta/linha e, por
+último, `empresa-padrao`, criada quando necessário. Recursos gerenciados usam
+`provisioningSource=zapo_auto`.
+
+O bootstrap expõe em cada linha:
+
+```json
+{
+  "automatic": {
+    "extensionId": "ext_5566999554300",
+    "username": "5566999554300",
+    "status": "active",
+    "registrationCount": 3,
+    "freeRegistrationCount": 2,
+    "busyRegistrationCount": 1,
+    "transports": ["sip", "webrtc"],
+    "basicInboundEnabled": true
+  },
+  "advancedRoutingConfigured": true
+}
+```
+
+Após 60 segundos offline, o ramal automático é desativado, ocultado e seus
+registros são encerrados. A reconexão reativa o mesmo ID, usuário e senha. Cada
+linha possui `maxConcurrentCalls` de 2 a 32, compartilhado entre entrada e
+saída. Configurações antigas com slots podem ser lidas uma vez para migrar a
+capacidade, mas esses campos não participam do roteador ativo e o Manager não os
+cria nem edita.
 
 ### Ramais, registros e roteamento
 
@@ -170,10 +205,17 @@ Ramais podem pertencer a vários grupos. `extensionGroupDistances` define a
 prioridade numérica de cada grupo no roteamento: menor distância toca primeiro.
 O simulador aplica as mesmas regras reais, mas não abre a chamada.
 
+Por padrão, o ramal automático toca junto com os destinos avançados imediatos;
+regras com atraso mantêm seu tempo e um ramal repetido é deduplicado. Em uma
+sessão avançada, `routing.basicInboundEnabled=false` corresponde a **Desativar
+atendimento básico**: somente a entrada automática deixa de tocar, enquanto o
+ramal continua registrado e pode originar chamadas. A opção exige um destino
+avançado válido; ao remover o último destino, o básico é reativado.
+
 ### Histórico, gravações e IA
 
 - `GET /admin/voip/console/history`: filtra por `page`, `pageSize` (máximo 100),
-  `search`, `startDate` e `endDate`;
+  `search`, `startDate` e `endDate`; a busca inclui nome e número do contato;
 - `GET /admin/voip/recordings/{recordId}`: reproduz ou baixa uma gravação pela
   fachada autenticada da Uno;
 - `GET /admin/voip/console/recording/summary`: resume arquivos e bytes por linha;
@@ -185,7 +227,9 @@ O simulador aplica as mesmas regras reais, mas não abre a chamada.
   gravações armazenadas da linha e retorna `deleted` e `bytes`.
 
 A página **Telefonia** do Manager usa abas, grids e modais para empresas,
-linhas, ramais, grupos, sessões e telefonia. **Chamadas e gravações** ficam numa
+linhas, ramais e **Roteamento avançado**. O grid de ramais distingue
+**Automático** de **Avançado** e oculta automáticos offline por padrão.
+**Chamadas e gravações** ficam numa
 única aba: chamadas ativas, histórico, player, download, configuração e resumo
 de armazenamento usam o mesmo fluxo, sem repetir filtros ou registros. O serviço
 VoIP não possui frontend nem usuários administrativos próprios; a Uno é a
@@ -193,12 +237,9 @@ interface única. O JSON interno não é exposto como editor de configuração.
 Segredos já configurados aparecem apenas como indicadores e são preservados
 quando o campo secreto não é reenviado.
 
-Uma sessão Zapo recém-conectada aparece primeiro como **Aguardando empresa**.
-Ela não entra no roteamento até a ativação administrativa. Se existir uma única
-empresa ativa, ela é usada; se não existir nenhuma, a ativação cria uma empresa
-básica; com várias empresas, a escolha continua obrigatória. A operação é
-idempotente. A rota básica cria os recursos mínimos, usa o número da sessão como
-usuário do ramal e mostra a senha. Depois, o administrador pode usar o botão
+Não existe estado **Aguardando empresa** nem botão **Ativar linha**. O
+provisionamento é idempotente, preserva empresa, senha, Chatwoot, IA, grupos e
+rotas existentes e usa o número da sessão como usuário. O administrador usa
 **Credenciais** no grid de ramais para recuperar SIP e WebRTC.
 
 O mesmo ramal pode ser registrado em vários telefones SIP e navegadores WebRTC.
@@ -217,7 +258,13 @@ o token salvo segue a mesma regra de preservação de segredo.
 
 No histórico, gravações com estado `available` possuem os botões **Reproduzir**
 e **Baixar**. A reprodução acontece em um player de áudio dentro do próprio
-grid; o histórico possui busca, período e paginação. O navegador recebe o áudio
+grid; a coluna **Contato** mostra `remoteName · remoteNumber`, e `remoteJid` e
+`remoteNameSource` preservam a fotografia auditável do início da chamada. O
+Chatwoot continua procurando conversas pelo número, nunca pelo nome, e a IA
+recebe nome e número como contexto quando disponíveis. O processamento da IA é
+configurado por empresa e independe do Chatwoot; quando ambos estão ativos, a
+publicação da nota é opcional e não bloqueia a transcrição nem o resumo. O
+histórico possui busca, período e paginação. O navegador recebe o áudio
 pela fachada autenticada da Uno e nunca conhece o token interno do serviço VoIP.
 O Manager também mostra quantidade e tamanho por linha e exige confirmação
 antes da limpeza em lote.

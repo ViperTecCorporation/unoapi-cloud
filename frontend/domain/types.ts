@@ -181,6 +181,8 @@ export interface VoipCallStatus {
   direction: 'incoming' | 'outgoing'
   peerJid?: string
   callerPn?: string
+  callerName?: string
+  callerNameSource?: 'display_name' | 'push_name' | 'username'
   streamId?: number
 }
 
@@ -188,12 +190,25 @@ export type VoipTab = 'overview' | 'lines' | 'extensions' | 'routing' | 'calls' 
 
 export interface VoipLineInventoryItem extends VoipBridgeStatus {
   sourceId: string
-  assignmentStatus: 'assigned' | 'pending_company'
+  /** @deprecated Automatic provisioning means every line is assigned. */
+  assignmentStatus?: 'assigned'
   companyId?: string
   companyLabel?: string
   accountId?: string
   sessionId?: string
-  routingConfigured: boolean
+  automatic?: {
+    extensionId: string
+    username: string
+    status: 'active' | 'offline'
+    registrationCount: number
+    freeRegistrationCount: number
+    busyRegistrationCount: number
+    transports: Array<'sip' | 'webrtc'>
+    basicInboundEnabled: boolean
+  }
+  advancedRoutingConfigured?: boolean
+  /** @deprecated Use advancedRoutingConfigured. */
+  routingConfigured?: boolean
 }
 
 export interface VoipLineAccount {
@@ -218,7 +233,9 @@ export interface VoipRoutingSession {
   lineGroupIds?: string[]
   inboundLineGroupIds?: string[]
   outboundLineGroupIds?: string[]
-  routing?: Record<string, any>
+  automaticExtensionId?: string
+  provisioningSource?: 'zapo_auto' | string
+  routing?: Record<string, any> & { basicInboundEnabled?: boolean }
   [key: string]: unknown
 }
 
@@ -244,7 +261,16 @@ export interface VoipHistoryPage {
 export interface VoipBootstrap {
   bridges: VoipBridgeStatus[]
   calls: VoipCallStatus[]
-  extensions?: Array<{ id: string; username?: string; displayName?: string; enabled?: boolean }>
+  extensions?: Array<{
+    id: string
+    username?: string
+    displayName?: string
+    enabled?: boolean
+    provisioningSource?: 'zapo_auto' | string
+    status?: 'active' | 'offline' | string
+    companyId?: string
+    [key: string]: unknown
+  }>
   sessions?: VoipRoutingSession[]
   companies?: Array<Record<string, any>>
   accounts?: VoipLineAccount[]
@@ -254,7 +280,6 @@ export interface VoipBootstrap {
   recordingSummary?: Record<string, any>
   recording?: Record<string, any>
   registrations?: { total?: number; webrtc?: Array<Record<string, any>>; sipRtp?: Array<Record<string, any>> }
-  autoUpdate?: Record<string, any>
   zapoLines?: VoipLineInventoryItem[]
   [key: string]: unknown
 }

@@ -65,13 +65,13 @@ COPY ./_build/voip-service/package-lock.json ./package-lock.json
 RUN npm ci
 COPY ./_build/voip-service/src ./src
 COPY ./_build/voip-service/assets ./assets
-COPY ./_build/voip-service/public ./public
 COPY ./_build/voip-service/scripts ./scripts
 COPY ./_build/voip-service/tsconfig.json ./tsconfig.json
 COPY ./_build/voip-service/.env.example ./.env.example
 COPY ./scripts/assert-voip-slotless-runtime.mjs /usr/local/bin/assert-voip-slotless-runtime.mjs
 RUN npm run build \
-    && node /usr/local/bin/assert-voip-slotless-runtime.mjs /app/dist/services/voice_router.js
+    && node /usr/local/bin/assert-voip-slotless-runtime.mjs /app/dist/services/voice_router.js \
+    && npm prune --omit=dev
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS voip-updater
 ARG TARGETARCH

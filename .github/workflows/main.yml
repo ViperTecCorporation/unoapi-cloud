@@ -63,6 +63,20 @@ jobs:
           echo "sha=${voip_sha}" >> "${GITHUB_OUTPUT}"
           echo "VoIP source revision: ${voip_sha}" >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Set up Node.js for telephony validation
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: _build/voip-service/package-lock.json
+
+      - name: Validate exact telephony source
+        working-directory: _build/voip-service
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5

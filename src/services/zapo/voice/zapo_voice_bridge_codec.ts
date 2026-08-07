@@ -9,6 +9,7 @@ import {
   type VoipBridgeAudioDirection,
   type VoipBridgeAudioFrame,
   type VoipBridgeCapability,
+  type VoipBridgeCallerNameSource,
   type VoipBridgeCommandName,
   type VoipBridgeControlMessage,
 } from './zapo_voice_types'
@@ -34,6 +35,7 @@ const CONTROL_MESSAGE_TYPES = new Set([
 const CAPABILITIES = new Set<VoipBridgeCapability>(['incoming_call', 'outgoing_call', 'live_audio', 'mute'])
 
 const COMMANDS = new Set<VoipBridgeCommandName>(['start', 'accept', 'reject', 'end', 'mute'])
+const CALLER_NAME_SOURCES = new Set<VoipBridgeCallerNameSource>(['display_name', 'push_name', 'username'])
 
 const AUDIO_DIRECTION_TO_BYTE: Record<VoipBridgeAudioDirection, number> = {
   uno_to_voip: 0,
@@ -61,13 +63,18 @@ const protocolError = (code: string, message: string): never => {
 
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const requireString = (value: unknown, field: string, options: { optional?: boolean; maxLength?: number } = {}): string | undefined => {
+const requireString = (
+  value: unknown,
+  field: string,
+  options: { optional?: boolean; maxLength?: number; codePointLength?: boolean } = {},
+): string | undefined => {
   if (value === undefined && options.optional) return undefined
   if (typeof value !== 'string' || value.trim().length === 0) {
     return protocolError('invalid_control_field', `${field} must be a non-empty string`)
   }
   const normalized = value.trim()
-  if (normalized.length > (options.maxLength ?? 256)) {
+  const length = options.codePointLength ? Array.from(normalized).length : normalized.length
+  if (length > (options.maxLength ?? 256)) {
     return protocolError('invalid_control_field', `${field} exceeds the maximum length`)
   }
   return normalized
@@ -137,7 +144,7 @@ const validateControlMessage = (message: UnknownRecord): VoipBridgeControlMessag
         serverId: requireString(message.serverId, 'serverId', { maxLength: 128 })!,
         workerId: requireString(message.workerId, 'workerId', { maxLength: 128 })!,
         generation: requireInteger(message.generation, 'generation'),
-        maxConcurrentCalls: requireInteger(message.maxConcurrentCalls, 'maxConcurrentCalls', { min: 1, max: 32 }),
+        maxConcurrentCalls: requireInteger(message.maxConcurrentCalls, 'maxConcurrentCalls', { min: 2, max: 32 }),
         capabilities: capabilities as VoipBridgeCapability[],
       }
     }
@@ -172,6 +179,13 @@ const validateControlMessage = (message: UnknownRecord): VoipBridgeControlMessag
       if (message.direction !== 'incoming' || message.media !== 'audio') {
         protocolError('invalid_control_field', 'incoming calls must use direction incoming and media audio')
       }
+      if (typeof message.callerName === 'string' && /[\u0000-\u001f\u007f-\u009f]/.test(message.callerName)) {
+        protocolError('invalid_control_field', 'callerName must not contain control characters')
+      }
+      const callerNameSource = requireString(message.callerNameSource, 'callerNameSource', { optional: true, maxLength: 32 }) as VoipBridgeCallerNameSource | undefined
+      if (callerNameSource && !CALLER_NAME_SOURCES.has(callerNameSource)) {
+        protocolError('invalid_control_field', 'callerNameSource is unsupported')
+      }
       return {
         type,
         session: requireSession(message.session),
@@ -179,6 +193,8 @@ const validateControlMessage = (message: UnknownRecord): VoipBridgeControlMessag
         direction: 'incoming',
         peerJid: requireString(message.peerJid, 'peerJid', { maxLength: 256 })!,
         callerPn: requireString(message.callerPn, 'callerPn', { optional: true, maxLength: 32 }),
+        callerName: requireString(message.callerName, 'callerName', { optional: true, maxLength: 128, codePointLength: true }),
+        callerNameSource,
         media: 'audio',
         canAccept: requireBoolean(message.canAccept, 'canAccept'),
       }

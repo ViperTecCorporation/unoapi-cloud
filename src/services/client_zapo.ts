@@ -50,6 +50,7 @@ import { ZapoCatalog } from './zapo/zapo_catalog'
 import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
 import { ZapoVoiceAdapter } from './zapo/voice/zapo_voice_adapter'
 import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/zapo_voice_bridge_client'
+import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -665,35 +666,32 @@ export class ClientZapo implements Client {
   }
 
   private async handleIncomingCall(client: ZapoClient, call: CallInfo) {
-    const callerPn = await this.resolveIncomingCallPhone(call)
+    const callerIdentity = await new ZapoVoiceCallerIdentityResolver(
+      this.phone,
+      this.zapoSession?.contacts,
+      (session, lidJid) => zapoUsernameIndex.resolveByLid(session, lidJid),
+      async (session, peerJid) => this.unoStore?.dataStore.getPnForLid?.(session, peerJid),
+      { attempts: 4, delayMs: 100 },
+    ).resolve(call.peerJid, call.callerPn)
+    const callerJid = callerIdentity.callerPn
+      ? `${callerIdentity.callerPn}@s.whatsapp.net`
+      : normalizeZapoPhoneJid(`${call.callerPn || ''}`)
     const rejectionMessage = this.config.rejectCalls.trim()
     if (rejectionMessage) {
       await client.voip.rejectCall(call.callId)
-      await client.message.send(callerPn || call.peerJid, {
+      await client.message.send(callerJid || call.peerJid, {
         type: 'text',
         text: rejectionMessage,
       })
-      logger.info('Zapo incoming call rejected phone=%s call=%s peer=%s', this.phone, call.callId, callerPn || call.peerJid)
-      await this.emitCallWebhook(call, callerPn)
+      logger.info('Zapo incoming call rejected phone=%s call=%s peer=%s', this.phone, call.callId, callerJid || call.peerJid)
+      await this.emitCallWebhook(call, callerJid)
       return
     }
-    if (this.voiceBridge?.publishIncoming(call, callerPn)) {
-      await this.emitCallWebhook(call, callerPn)
+    if (this.voiceBridge?.publishIncoming(call, callerIdentity)) {
+      await this.emitCallWebhook(call, callerJid)
       return
     }
-    await this.emitCallWebhook(call, callerPn)
-  }
-
-  private async resolveIncomingCallPhone(call: CallInfo): Promise<string | undefined> {
-    const explicitPn = normalizeZapoPhoneJid(`${call.callerPn || ''}`)
-    if (explicitPn) return explicitPn
-
-    const storePn = await resolveZapoPhoneJid(this.zapoSession?.contacts, call.peerJid, {
-      attempts: 4,
-      delayMs: 100,
-    }).catch(() => undefined)
-    const cachedPn = storePn || await this.unoStore?.dataStore.getPnForLid?.(this.phone, call.peerJid)
-    return normalizeZapoPhoneJid(`${cachedPn || ''}`)
+    await this.emitCallWebhook(call, callerJid)
   }
 
   private async emitCallWebhook(call: CallInfo, resolvedCallerPn?: string) {

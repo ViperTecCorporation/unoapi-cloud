@@ -13,6 +13,7 @@ export type VoipBridgeCapability = 'incoming_call' | 'outgoing_call' | 'live_aud
 export type VoipBridgeCallDirection = 'incoming' | 'outgoing'
 export type VoipBridgeAudioDirection = 'uno_to_voip' | 'voip_to_uno'
 export type VoipBridgeCommandName = 'start' | 'accept' | 'reject' | 'end' | 'mute'
+export type VoipBridgeCallerNameSource = 'display_name' | 'push_name' | 'username'
 
 export interface VoipBridgeHello {
   type: 'bridge.hello'
@@ -53,6 +54,8 @@ export interface VoipBridgeCallIncoming {
   direction: 'incoming'
   peerJid: string
   callerPn?: string
+  callerName?: string
+  callerNameSource?: VoipBridgeCallerNameSource
   media: 'audio'
   canAccept: boolean
 }

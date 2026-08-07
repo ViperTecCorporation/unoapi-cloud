@@ -61,6 +61,8 @@ describe('Zapo voip bridge control codec', () => {
       direction: 'incoming',
       peerJid: '94047083475061@lid',
       callerPn: '5566996269251',
+      callerName: 'Joao da Silva',
+      callerNameSource: 'display_name',
       media: 'audio',
       canAccept: true,
     },
@@ -180,6 +182,48 @@ describe('Zapo voip bridge control codec', () => {
         }),
       ),
     ).toMatchObject({ ok: false, error: { code: 'call_not_found' } })
+  })
+
+  test('counts incoming callerName limits by Unicode code points', () => {
+    const callerName = '😀'.repeat(128)
+    const incoming: VoipBridgeControlMessage = {
+      type: 'call.incoming',
+      session: hello.session,
+      callId: 'call_in_unicode',
+      direction: 'incoming',
+      peerJid: '94047083475061@lid',
+      callerName,
+      callerNameSource: 'display_name',
+      media: 'audio',
+      canAccept: true,
+    }
+
+    expect(parseVoipBridgeControl(encodeVoipBridgeControl(incoming))).toMatchObject({ callerName })
+    expectProtocolError(
+      () => parseVoipBridgeControl(JSON.stringify({ ...incoming, callerName: `${callerName}😀` })),
+      'invalid_control_field',
+    )
+  })
+
+  test.each([
+    ['Joao\r\nX-Injected: yes', 'display_name'],
+    ['Joao', 'unknown'],
+  ])('rejects unsafe incoming caller identity name=%s source=%s', (callerName, callerNameSource) => {
+    expectProtocolError(
+      () => parseVoipBridgeControl(JSON.stringify({
+        type: 'call.incoming',
+        session: hello.session,
+        callId: 'call_in_unsafe',
+        direction: 'incoming',
+        peerJid: '94047083475061@lid',
+        callerPn: '5566996269251',
+        callerName,
+        callerNameSource,
+        media: 'audio',
+        canAccept: true,
+      })),
+      'invalid_control_field',
+    )
   })
 
   test.each([

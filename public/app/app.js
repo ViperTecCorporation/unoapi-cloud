@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.8-c5975654';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.8-c5975654';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.8-c5975654';
-import { SocketBridge } from './core/socket.js?v=4.0.8-c5975654';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.8-c5975654';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.8-c5975654';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.8-c5975654';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.8-c5975654';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.8-c5975654';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.8-c5975654';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.8-c5975654';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.8-c5975654';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.8-c5975654';
-import { renderSessionPage } from './pages/session.js?v=4.0.8-c5975654';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.8-c5975654';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.8-c5975654';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.8-c5975654';
-import { renderVoipAssignLineModal, renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, renderVoipSipCreatedModal, } from './pages/voip.js?v=4.0.8-c5975654';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.9-cc5052ec';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.9-cc5052ec';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.9-cc5052ec';
+import { SocketBridge } from './core/socket.js?v=4.0.9-cc5052ec';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.9-cc5052ec';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.9-cc5052ec';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.9-cc5052ec';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.9-cc5052ec';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.9-cc5052ec';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.9-cc5052ec';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.9-cc5052ec';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.9-cc5052ec';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.9-cc5052ec';
+import { renderSessionPage } from './pages/session.js?v=4.0.9-cc5052ec';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.9-cc5052ec';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.9-cc5052ec';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.9-cc5052ec';
+import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.9-cc5052ec';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -60,6 +60,7 @@ export class ViperConnectApp {
         this.voipLoading = false;
         this.voipError = '';
         this.voipTab = 'overview';
+        this.showOfflineAutomaticExtensions = false;
         this.voipRecordingUrls = {};
         this.voipTransferAudioUrls = {};
         this.voipRefreshIn = VOIP_REFRESH_SECONDS;
@@ -210,8 +211,8 @@ export class ViperConnectApp {
             this.modal = { type: 'voip-resource', resource: actionElement.dataset.resource, id: actionElement.dataset.id || '' };
             this.render();
         }
-        else if (action === 'assign-voip-line') {
-            this.modal = { type: 'voip-line-assignment', session: actionElement.dataset.session || '' };
+        else if (action === 'toggle-voip-offline-automatic') {
+            this.showOfflineAutomaticExtensions = !this.showOfflineAutomaticExtensions;
             this.render();
         }
         else if (action === 'show-voip-credentials') {
@@ -598,27 +599,6 @@ export class ViperConnectApp {
                 this.showToast(this.messageFor(error));
             }
         }
-        else if (form.dataset.form === 'voip-line-assignment') {
-            try {
-                const session = `${data.get('session') || ''}`;
-                const result = await this.api.voipConsole(`zapo-lines/${encodeURIComponent(session)}/assign`, 'POST', {
-                    companyId: `${data.get('companyId') || ''}`,
-                    companyLabel: `${data.get('companyLabel') || ''}`,
-                    label: `${data.get('label') || ''}`,
-                    maxConcurrentCalls: this.voipConcurrentCallLimit(data.get('maxConcurrentCalls')),
-                    createBasicRoute: data.has('createBasicRoute'),
-                });
-                await this.loadVoip();
-                this.modal = result?.sip
-                    ? { type: 'voip-sip-created', username: `${result.sip.username}`, password: `${result.sip.password}` }
-                    : undefined;
-                this.showToast('Linha ativada e disponível no roteamento.');
-                this.render();
-            }
-            catch (error) {
-                this.showToast(this.messageFor(error));
-            }
-        }
         else if (form.dataset.form === 'voip-recording-settings') {
             try {
                 await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data));
@@ -687,6 +667,7 @@ export class ViperConnectApp {
             payload.outboundLineGroupIds = values('outboundLineGroupIds');
             payload.extensions = values('extensions');
             payload.ringTimeoutSeconds = Number(value('ringTimeoutSeconds') || 20);
+            payload.basicInboundEnabled = !data.has('disableBasicInbound');
         }
         if (resource === 'extensions') {
             put('displayName', 'username', 'password', 'companyId', 'type');
@@ -707,7 +688,7 @@ export class ViperConnectApp {
     }
     voipConcurrentCallLimit(value) {
         const parsed = Number(value);
-        return Math.min(32, Math.max(1, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 2));
+        return Math.min(32, Math.max(2, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 2));
     }
     voipRecordingSettingsPayload(data) {
         const value = (name) => `${data.get(name) || ''}`.trim();
@@ -1504,6 +1485,7 @@ export class ViperConnectApp {
             : this.view === 'voip'
                 ? renderVoipPage(this.voip, this.voipLoading, this.voipError, {
                     tab: this.voipTab,
+                    showOfflineAutomaticExtensions: this.showOfflineAutomaticExtensions,
                     recordingUrls: this.voipRecordingUrls,
                     transferAudioUrls: this.voipTransferAudioUrls,
                     routerResult: this.voipRouterResult,
@@ -1587,12 +1569,8 @@ export class ViperConnectApp {
             return renderRedisDeleteModal(this.modal.prefix, true);
         if (this.modal.type === 'voip-resource')
             return renderVoipResourceModal(this.voip, this.modal.resource, this.modal.id);
-        if (this.modal.type === 'voip-line-assignment')
-            return renderVoipAssignLineModal(this.voip, this.modal.session);
         if (this.modal.type === 'voip-recording-settings')
             return renderVoipRecordingSettingsModal(this.voip);
-        if (this.modal.type === 'voip-sip-created')
-            return renderVoipSipCreatedModal(this.modal.username, this.modal.password);
         if (this.modal.type === 'voip-credentials')
             return renderVoipCredentialsModal(this.modal.value);
         const session = this.findSession(this.modal.phone);
