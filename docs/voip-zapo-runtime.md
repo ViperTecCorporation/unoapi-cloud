@@ -45,15 +45,14 @@ no label `io.vipertec.viperconnect.voip.revision` e em
 em `voip_ref`; usar apenas uma branch movel nao e suficiente para reproduzir uma
 imagem antiga.
 
-Tags `v*` do repositório VoIP disparam o evento `voip-release` neste
-repositório, levando `voip_sha` e `voip_version`. O build usa esse SHA imutável,
-executa os testes do VoIP e, após sucesso, atualiza `latest` e a tag auxiliar
-`voip-<versão>`. O repositório VoIP precisa do secret
-`UNIFIED_IMAGE_DISPATCH_TOKEN` com permissão **Contents: write** no
-ViperConnect (ou escopo `repo` em um PAT clássico); sem ele, a release VoIP
-falha em vez de deixar a imagem defasada. Se o repositório VoIP for privado,
-configure também `VOIP_REPOSITORY_TOKEN` no ViperConnect para o checkout do SHA
-exato.
+Tags `v*` do repositório VoIP validam o código e geram os pacotes nativos, mas
+não disparam a imagem unificada. Para publicar a imagem, primeiro envie a branch
+VoIP `codex/zapo-uno-voice-bridge` e depois publique a tag correspondente neste
+repositório. O workflow do ViperConnect resolve a branch para um SHA imutável,
+executa os testes do VoIP e publica as tags semânticas e `latest`. O workflow
+atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
+repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
+para o checkout do SHA exato.
 
 O estágio `voip-builder` também valida o JavaScript compilado antes de permitir
 a imagem: `voice_router.js` deve usar `outbound_line`, `maxConcurrentCalls` e os

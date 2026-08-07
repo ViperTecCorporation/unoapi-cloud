@@ -165,10 +165,13 @@ configuração e armazenamento sem repetir o grid. Empresas, linhas, grupos de
 linhas, grupos de ramais, sessões, ramais e gravação possuem formulários de CRUD,
 sem editor JSON como interface principal. A gestão de usuários e o frontend
 administrativo próprio do serviço VoIP foram removidos; a Uno é a interface
-única. Linhas descobertas pela bridge ficam pendentes até a ativação administrativa. Uma
-empresa única é selecionada automaticamente, nenhuma empresa gera um cadastro
-básico e várias empresas exigem escolha explícita. A ativação provisiona rota e
-ramal idempotentes; as credenciais SIP/WebRTC ficam recuperáveis por administrador.
+única. Toda sessão Zapo conectada ou sincronizada é reconciliada automaticamente
+com empresa, linha, sessão de telefonia e ramal SIP/WebRTC cujo usuário é o
+número da sessão. A empresa atual é preservada; quando não existe vínculo, a
+`empresa-padrao` é criada ou reutilizada. Não existe estado pendente nem etapa de
+ativação manual. O ramal automático aceita vários registros simultâneos, convive
+com o roteamento avançado e o primeiro destino que atender assume a chamada. As
+credenciais SIP/WebRTC ficam recuperáveis por administrador.
 Gravações disponíveis podem ser reproduzidas no grid ou baixadas pela fachada
 autenticada da Uno. Chamadas ativas também podem ser transferidas sem o navegador
 conhecer o token ou a URL interna do processo VoIP.

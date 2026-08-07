@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js?v=4.0.10-cc5052ec';
-import { renderModal } from '../components/modal.js?v=4.0.10-cc5052ec';
-import { renderStatus } from '../components/status.js?v=4.0.10-cc5052ec';
-import { escapeHtml } from '../core/html.js?v=4.0.10-cc5052ec';
+import { icon } from '../components/icons.js?v=4.0.11-02421e46';
+import { renderModal } from '../components/modal.js?v=4.0.11-02421e46';
+import { renderStatus } from '../components/status.js?v=4.0.11-02421e46';
+import { escapeHtml } from '../core/html.js?v=4.0.11-02421e46';
 const labels = {
     companies: 'Empresas',
     accounts: 'Linhas Zapo',
@@ -23,6 +23,19 @@ const asItems = (value) => Array.isArray(value) ? value : [];
 const checked = (value) => value !== false ? 'checked' : '';
 const selected = (current, value) => `${current ?? ''}` === `${value ?? ''}` ? 'selected' : '';
 const selectedMany = (current, value) => Array.isArray(current) && current.map(String).includes(String(value)) ? 'selected' : '';
+const normalizeSearch = (value) => `${value ?? ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+const matchesSearch = (query, ...values) => {
+    const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
+    if (!terms.length)
+        return true;
+    const haystack = normalizeSearch(values.flatMap(value => Array.isArray(value) ? value : [value]).join(' '));
+    return terms.every(term => haystack.includes(term));
+};
+const quantity = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
 const maxConcurrentCalls = (value, fallback = 2) => {
     const parsed = Number(value);
     return Math.min(32, Math.max(2, Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback));
@@ -67,10 +80,13 @@ const lineConcurrency = (state, account) => {
 };
 const sectionHeading = (title, description, action = '') => `
   <div class="section__heading"><div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(description)}</p></div>${action}</div>`;
+const tabSearch = (query, placeholder) => `<div class="filters voip-search" role="search">
+  <label class="field"><span>Buscar</span><input type="search" data-filter="voip-query" value="${escapeHtml(query)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off"></label>
+</div>`;
 const emptyRow = (columns, text) => `<tr><td colspan="${columns}"><div class="empty-state">${escapeHtml(text)}</div></td></tr>`;
 const editButton = (resource, id) => `<button class="btn btn--ghost" type="button" data-action="edit-voip-resource" data-resource="${resource}" data-id="${escapeHtml(id)}">${icon('edit')}Editar</button>`;
-const resourceGrid = (state, resource, columns, extraActions) => {
-    const items = asItems(state[resource]);
+const resourceGrid = (state, resource, columns, extraActions, filteredItems) => {
+    const items = filteredItems ?? asItems(state[resource]);
     return `<section class="section">
     ${sectionHeading(labels[resource], `Gerencie ${labels[resource].toLowerCase()} sem editar JSON.`, `<button class="btn" type="button" data-action="new-voip-resource" data-resource="${resource}">${icon('plus')}Adicionar</button>`)}
     <div class="table-wrap"><table><thead><tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join('')}<th class="table-actions">Ações</th></tr></thead><tbody>
@@ -79,6 +95,26 @@ const resourceGrid = (state, resource, columns, extraActions) => {
   </section>`;
 };
 const companyName = (state, id) => asItems(state.companies).find(item => item.id === id)?.label || id || '—';
+const includesAnyId = (values, candidates) => Array.isArray(values)
+    && values.some(value => candidates.some(candidate => `${value ?? ''}` === `${candidate ?? ''}`));
+const extensionLinkedToGroup = (extension, group) => includesAnyId(extension.extensionGroupIds, [group.id]) || includesAnyId(group.extensionIds, [extension.id]);
+const sessionLinkedToLineGroup = (session, group) => {
+    const sessionIds = [session.id, session.unoSession, session.accountId].filter(Boolean);
+    return includesAnyId([
+        ...(session.lineGroupIds || []),
+        ...(session.inboundLineGroupIds || []),
+        ...(session.outboundLineGroupIds || []),
+    ], [group.id])
+        || includesAnyId(group.inboundSessionIds, sessionIds)
+        || includesAnyId(group.outboundPrioritySessionIds, sessionIds);
+};
+const extensionTransportTerms = (type) => {
+    if (!type || type === 'both')
+        return 'both sip sip/rtp webrtc';
+    if (type === 'sip')
+        return 'sip sip/rtp';
+    return `${type}`;
+};
 const automaticLineForExtension = (state, extension) => (state.zapoLines || []).find(line => `${line.automatic?.extensionId || ''}` === `${extension.id || ''}`
     || (`${line.automatic?.username || ''}` && `${line.automatic?.username}` === `${extension.username || ''}`));
 const isAutomaticExtension = (state, extension) => extension.provisioningSource === 'zapo_auto' || Boolean(automaticLineForExtension(state, extension));
@@ -105,7 +141,7 @@ const registrationStatus = (state, extension) => {
     if (!registrations.length)
         return `<div class="stack stack--compact">${badge('Sem registro')}<span class="muted">Nenhum endpoint conectado</span></div>`;
     const transports = [...new Set(registrations.map(registrationTransport))].join(' + ');
-    return `<div class="stack stack--compact">${badge('Registrado', 'success')}<span class="muted">${registrations.length} conexão(ões) · ${escapeHtml(transports)}</span></div>`;
+    return `<div class="stack stack--compact">${badge('Registrado', 'success')}<span class="muted">${quantity(registrations.length, 'conexão', 'conexões')} · ${escapeHtml(transports)}</span></div>`;
 };
 const renderOverview = (state) => {
     const lines = state.zapoLines || [];
@@ -131,10 +167,12 @@ const automaticRegistrationStatus = (line) => {
     const transports = automatic.transports?.length
         ? automatic.transports.map(item => item === 'sip' ? 'SIP' : 'WebRTC').join(' + ')
         : 'Sem transporte';
-    return `<div class="stack stack--compact"><span>${automatic.freeRegistrationCount || 0} livre(s) · ${automatic.busyRegistrationCount || 0} ocupado(s) · ${automatic.registrationCount || 0} total</span><span class="muted">${escapeHtml(transports)}</span></div>`;
+    const free = automatic.freeRegistrationCount || 0;
+    const busy = automatic.busyRegistrationCount || 0;
+    return `<div class="stack stack--compact"><span>${quantity(free, 'livre', 'livres')} · ${quantity(busy, 'ocupado', 'ocupados')} · ${automatic.registrationCount || 0} total</span><span class="muted">${escapeHtml(transports)}</span></div>`;
 };
-const renderLines = (state) => {
-    const lines = state.zapoLines || [];
+const renderLines = (state, query = '') => {
+    const lines = (state.zapoLines || []).filter(line => matchesSearch(query, line.session, line.sourceId, line.workerId, line.serverId, line.companyId, line.companyLabel, line.accountId, line.sessionId, line.connected ? 'online conectada' : 'offline desconectada', line.automatic?.username, line.automatic?.status, line.automatic?.transports, line.automatic?.basicInboundEnabled === false ? 'básico desativado' : 'básico ativo', (line.advancedRoutingConfigured ?? line.routingConfigured) ? 'avançado' : 'sem avançado'));
     return `<section class="section">${sectionHeading('Linhas Zapo', 'Empresa, linha, sessão e ramal são provisionados automaticamente pela bridge.')}
     <div class="table-wrap"><table><thead><tr><th>Sessão</th><th>Status</th><th>Empresa</th><th>Ramal automático</th><th>Registros</th><th>Atendimento</th><th>Concorrência</th><th class="table-actions">Ações</th></tr></thead><tbody>
       ${lines.length ? lines.map(line => `<tr>
@@ -148,12 +186,16 @@ const renderLines = (state) => {
         <td class="table-actions"><div class="row-actions">
           ${editButton('accounts', line.accountId || line.session)}
         </div></td>
-      </tr>`).join('') : emptyRow(8, 'Nenhuma sessão Zapo foi descoberta.')}
+      </tr>`).join('') : emptyRow(8, query ? 'Nenhuma linha encontrada para a busca.' : 'Nenhuma sessão Zapo foi descoberta.')}
     </tbody></table></div>
   </section>`;
 };
-const renderActiveRegistrations = (state) => {
-    const registrations = activeRegistrations(state);
+const renderActiveRegistrations = (state, query = '') => {
+    const registrations = activeRegistrations(state).filter(registration => {
+        const extension = asItems(state.extensions).find(item => `${item.id || ''}` === `${registration.id || ''}`
+            || `${item.username || ''}` === `${registration.username || ''}`);
+        return matchesSearch(query, registration.id, registration.registrationId, registration.username, registration.extensionLabel, registration.displayName, registrationTransport(registration), registrationContact(registration), registration.userAgent, extension?.displayName, extension?.username, companyName(state, extension?.companyId));
+    });
     return `<section class="section">${sectionHeading('Registros ativos', 'Endpoints SIP e WebRTC conectados neste momento.')}
     <div class="table-wrap"><table><thead><tr><th>Ramal</th><th>Transporte</th><th>Contato</th><th>Cliente</th><th>Expira em</th><th class="table-actions">Ações</th></tr></thead><tbody>
       ${registrations.length ? registrations.map(registration => `<tr>
@@ -163,7 +205,7 @@ const renderActiveRegistrations = (state) => {
         <td>${escapeHtml(registration.userAgent || '—')}</td>
         <td>${Number.isFinite(Number(registration.expiresIn)) ? `${Math.max(0, Number(registration.expiresIn))}s` : '—'}</td>
         <td class="table-actions"><button class="btn btn--danger" type="button" data-action="drop-voip-registration" data-extension-id="${escapeHtml(`${registration.id || registration.username || ''}`)}" data-registration-id="${escapeHtml(`${registration.registrationId || ''}`)}" data-registration-type="${registration.transport}">${icon('trash')}Desconectar</button></td>
-      </tr>`).join('') : emptyRow(6, 'Nenhum ramal registrado neste momento.')}
+      </tr>`).join('') : emptyRow(6, query ? 'Nenhum registro encontrado para a busca.' : 'Nenhum ramal registrado neste momento.')}
     </tbody></table></div>
   </section>`;
 };
@@ -172,12 +214,20 @@ const transferAudioActions = (item, urls) => {
         return '';
     const id = `${item.id || ''}`;
     const player = urls[id] ? `<audio class="voip-audio" data-transfer-player="${escapeHtml(id)}" controls preload="metadata" src="${escapeHtml(urls[id])}"></audio>` : '';
-    return `${player}<button class="btn btn--ghost" type="button" data-action="play-voip-transfer-audio" data-id="${escapeHtml(id)}">${icon('phone')}Ouvir espera</button>`;
+    return `${player}<button class="btn btn--ghost" type="button" data-action="play-voip-transfer-audio" data-id="${escapeHtml(id)}">${icon('phone')}Ouvir áudio de espera</button>`;
 };
-const renderExtensions = (state, transferAudioUrls, showOfflineAutomatic = false) => {
+const renderExtensions = (state, transferAudioUrls, showOfflineAutomatic = false, query = '') => {
     const extensions = asItems(state.extensions);
-    const visibleExtensions = extensions.filter(item => showOfflineAutomatic || !isAutomaticExtension(state, item) || !automaticExtensionOffline(state, item));
-    const hiddenOffline = extensions.length - visibleExtensions.length;
+    const extensionsAllowedByVisibility = extensions.filter(item => showOfflineAutomatic || !isAutomaticExtension(state, item) || !automaticExtensionOffline(state, item));
+    const hiddenOffline = extensions.length - extensionsAllowedByVisibility.length;
+    const visibleExtensions = extensionsAllowedByVisibility.filter(item => {
+        const automatic = isAutomaticExtension(state, item);
+        const groups = asItems(state.extensionGroups).filter(group => extensionLinkedToGroup(item, group));
+        const registrations = registrationsForExtension(state, item);
+        return matchesSearch(query, item.id, item.username, item.displayName, extensionTransportTerms(item.type), companyName(state, item.companyId), automatic ? 'automático' : 'avançado', item.enabled ? 'ativo' : 'inativo', item.extensionGroupIds, groups.map(group => group.label || group.id), registrations.flatMap(registration => [registrationTransport(registration), registrationContact(registration), registration.userAgent]), registrations.length ? 'registrado' : 'sem registro');
+    });
+    const visibleExtensionIds = new Set(visibleExtensions.map(item => `${item.id}`));
+    const visibleExtensionGroups = asItems(state.extensionGroups).filter(group => matchesSearch(query, group.id, group.label, companyName(state, group.companyId), group.enabled ? 'ativo' : 'inativo', group.extensionIds, extensions.filter(extension => extensionLinkedToGroup(extension, group)).flatMap(extension => [extension.displayName, extension.username])) || extensions.some(extension => visibleExtensionIds.has(`${extension.id}`) && extensionLinkedToGroup(extension, group)));
     const toggleLabel = showOfflineAutomatic ? 'Ocultar automáticos offline' : `Mostrar automáticos offline${hiddenOffline ? ` (${hiddenOffline})` : ''}`;
     const grid = `<section class="section">
     ${sectionHeading('Ramais', 'Ramais automáticos e avançados no mesmo cadastro.', `<div class="row-actions"><button class="btn btn--ghost" type="button" data-action="toggle-voip-offline-automatic">${escapeHtml(toggleLabel)}</button><button class="btn" type="button" data-action="new-voip-resource" data-resource="extensions">${icon('plus')}Adicionar avançado</button></div>`)}
@@ -185,16 +235,16 @@ const renderExtensions = (state, transferAudioUrls, showOfflineAutomatic = false
       ${visibleExtensions.length ? visibleExtensions.map(item => {
         const automatic = isAutomaticExtension(state, item);
         return `<tr><td><strong>${escapeHtml(item.displayName || item.id)}</strong><br><span class="muted">${escapeHtml(item.username || item.id)}</span><br>${badge(automatic ? 'Automático' : 'Avançado', automatic ? 'success' : 'muted')}</td><td>${escapeHtml(`${companyName(state, item.companyId)}`)}</td><td>${escapeHtml(item.type || 'both')}</td><td>${item.extensionGroupIds?.length || 0}</td><td>${item.enabled ? badge('Ativo', 'success') : badge('Inativo')}</td><td>${registrationStatus(state, item)}</td><td class="table-actions"><div class="row-actions"><button class="btn btn--ghost" type="button" data-action="show-voip-credentials" data-id="${escapeHtml(`${item.id}`)}">${icon('eye')}Credenciais</button>${automatic ? '' : editButton('extensions', `${item.id}`)}</div></td></tr>`;
-    }).join('') : emptyRow(7, hiddenOffline ? 'Os ramais automáticos offline estão ocultos.' : 'Nenhum ramal configurado.')}
+    }).join('') : emptyRow(7, query ? 'Nenhum ramal encontrado para a busca.' : hiddenOffline ? 'Os ramais automáticos offline estão ocultos.' : 'Nenhum ramal configurado.')}
     </tbody></table></div>
   </section>`;
-    return grid + renderActiveRegistrations(state) + resourceGrid(state, 'extensionGroups', [
+    return grid + renderActiveRegistrations(state, query) + resourceGrid(state, 'extensionGroups', [
         ['Grupo', item => `<strong>${escapeHtml(item.label || item.id)}</strong>`],
         ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
         ['Ramais', item => `${item.extensionIds?.length || 0}`],
         ['Áudio de transferência', item => item.transferAudioSource ? badge(item.transferAudioFilename || 'Configurado', 'success') : badge('Não configurado')],
         ['Status', item => item.enabled ? badge('Ativo', 'success') : badge('Inativo')],
-    ], item => transferAudioActions(item, transferAudioUrls));
+    ], item => transferAudioActions(item, transferAudioUrls), visibleExtensionGroups);
 };
 const renderRouterSimulator = (state, result) => {
     const locks = asItems(state.router?.locks);
@@ -208,18 +258,22 @@ const renderRouterSimulator = (state, result) => {
   <div class="table-wrap"><table><thead><tr><th>Reserva</th><th>Escopo</th><th>Dono</th><th>Destino</th><th class="table-actions">Ações</th></tr></thead><tbody>${locks.length ? locks.map(lock => `<tr><td><code>${escapeHtml(lock.id || '—')}</code></td><td>${escapeHtml(lock.scope || '—')}</td><td>${escapeHtml(lock.extensionId || lock.owner || '—')}</td><td>${escapeHtml(lock.targetNumber || lock.accountId || '—')}</td><td class="table-actions"><button class="btn btn--danger" type="button" data-action="release-voip-router-lock" data-lock-id="${escapeHtml(lock.id || '')}">${icon('trash')}Liberar</button></td></tr>`).join('') : emptyRow(5, 'Nenhuma reserva ativa.')}</tbody></table></div>
 </section>`;
 };
-const renderRouting = (state, routerResult) => resourceGrid(state, 'lineGroups', [
-    ['Grupo', item => `<strong>${escapeHtml(item.label || item.id)}</strong>`],
-    ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
-    ['Entrada', item => `${item.inboundSessionIds?.length || 0} linha(s)`],
-    ['Saída', item => `${item.outboundPrioritySessionIds?.length || 0} linha(s)`],
-    ['Destinos', item => `${item.targetExtensionGroupIds?.length || 0} grupo(s)`],
-]) + resourceGrid(state, 'sessions', [
-    ['Sessão', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.unoSession || item.id)}</span>`],
-    ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
-    ['Conta', item => escapeHtml(item.accountId || '—')],
-    ['Grupos', item => `${item.lineGroupIds?.length || 0}`],
-]) + renderRouterSimulator(state, routerResult);
+const renderRouting = (state, routerResult, query = '') => {
+    const lineGroups = asItems(state.lineGroups).filter(item => matchesSearch(query, item.id, item.label, companyName(state, item.companyId), item.inboundSessionIds, item.outboundPrioritySessionIds, item.targetExtensionGroupIds, asItems(state.sessions).filter(session => sessionLinkedToLineGroup(session, item)).flatMap(session => [session.label, session.unoSession, session.accountId]), asItems(state.extensionGroups).filter(group => item.targetExtensionGroupIds?.includes(group.id)).map(group => group.label || group.id)));
+    const sessions = asItems(state.sessions).filter(item => matchesSearch(query, item.id, item.label, item.unoSession, item.accountId, companyName(state, item.companyId), item.lineGroupIds, item.inboundLineGroupIds, item.outboundLineGroupIds, item.routing?.basicInboundEnabled === false ? 'básico desativado' : 'básico ativo', asItems(state.lineGroups).filter(group => sessionLinkedToLineGroup(item, group)).map(group => group.label || group.id)));
+    return resourceGrid(state, 'lineGroups', [
+        ['Grupo', item => `<strong>${escapeHtml(item.label || item.id)}</strong>`],
+        ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
+        ['Entrada', item => quantity(item.inboundSessionIds?.length || 0, 'linha', 'linhas')],
+        ['Saída', item => quantity(item.outboundPrioritySessionIds?.length || 0, 'linha', 'linhas')],
+        ['Destinos', item => quantity(item.targetExtensionGroupIds?.length || 0, 'grupo', 'grupos')],
+    ], undefined, lineGroups) + resourceGrid(state, 'sessions', [
+        ['Sessão', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.unoSession || item.id)}</span>`],
+        ['Empresa', item => escapeHtml(`${companyName(state, item.companyId)}`)],
+        ['Conta', item => escapeHtml(item.accountId || '—')],
+        ['Grupos', item => `${item.lineGroupIds?.length || 0}`],
+    ], undefined, sessions) + renderRouterSimulator(state, routerResult);
+};
 const recordingCell = (item, urls) => {
     if (item.recordingStatus !== 'available')
         return escapeHtml(`${item.recordingStatus || '—'}`);
@@ -253,7 +307,7 @@ const historyControls = (state) => {
     <label class="field"><span>Início</span><input name="startDate" type="date" value="${escapeHtml(`${history.startDate || ''}`)}"></label>
     <label class="field"><span>Fim</span><input name="endDate" type="date" value="${escapeHtml(`${history.endDate || ''}`)}"></label>
     <button class="btn" type="submit">Filtrar</button><button class="btn btn--ghost" type="button" data-action="reset-voip-history">Limpar</button>
-  </form><div class="section__heading"><p class="muted">${total} registro(s) · página ${page} de ${totalPages}</p><div class="row-actions"><button class="btn btn--ghost" type="button" data-action="voip-history-page" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Anterior</button><button class="btn btn--ghost" type="button" data-action="voip-history-page" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Próxima</button></div></div>`;
+  </form><div class="section__heading"><p class="muted">${quantity(total, 'registro', 'registros')} · página ${page} de ${totalPages}</p><div class="row-actions"><button class="btn btn--ghost" type="button" data-action="voip-history-page" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Anterior</button><button class="btn btn--ghost" type="button" data-action="voip-history-page" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Próxima</button></div></div>`;
 };
 const renderCalls = (state, urls) => `<section class="section">${sectionHeading('Nova chamada', 'Origine pela sessão Zapo e conecte ao ramal selecionado.')}
   <form class="filters" data-form="voip-call"><label class="field"><span>Sessão</span><select name="session" required><option value="">Selecione</option>${(state.zapoLines || []).filter(item => item.connected).map(item => `<option value="${escapeHtml(item.session)}">${escapeHtml(item.session)} · ${escapeHtml(item.companyLabel || 'Empresa padrão')}</option>`).join('')}</select></label><label class="field"><span>Ramal</span><select name="extensionId" required><option value="">Selecione</option>${options(asItems(state.extensions))}</select></label><label class="field"><span>Destino</span><input name="peerJid" placeholder="5566999999999" required></label><button class="btn" type="submit">${icon('phone')}Ligar</button></form></section>
@@ -268,16 +322,24 @@ const renderSettings = (state) => `<section class="section">${sectionHeading('Co
   </section>`;
 export const renderVoipPage = (state, loading, error = '', renderOptions = {}) => {
     const tab = renderOptions.tab || 'overview';
+    const query = renderOptions.query || '';
+    const search = tab === 'lines'
+        ? tabSearch(query, 'Sessão, empresa, ramal, worker ou status')
+        : tab === 'extensions'
+            ? tabSearch(query, 'Ramal, usuário, empresa, grupo, transporte ou registro')
+            : tab === 'routing'
+                ? tabSearch(query, 'Sessão, grupo, linha, empresa ou destino')
+                : '';
     const body = tab === 'overview' ? renderOverview(state)
-        : tab === 'lines' ? renderLines(state)
-            : tab === 'extensions' ? renderExtensions(state, renderOptions.transferAudioUrls || {}, renderOptions.showOfflineAutomaticExtensions)
-                : tab === 'routing' ? renderRouting(state, renderOptions.routerResult)
+        : tab === 'lines' ? renderLines(state, query)
+            : tab === 'extensions' ? renderExtensions(state, renderOptions.transferAudioUrls || {}, renderOptions.showOfflineAutomaticExtensions, query)
+                : tab === 'routing' ? renderRouting(state, renderOptions.routerResult, query)
                     : tab === 'calls' ? renderCalls(state, renderOptions.recordingUrls || {})
                         : tab === 'companies' ? resourceGrid(state, 'companies', [['Empresa', item => `<strong>${escapeHtml(item.label || item.id)}</strong><br><span class="muted">${escapeHtml(item.id)}</span>`], ['Fuso horário', item => escapeHtml(item.timeZone || '—')], ['IA pós-chamada', item => item.aiSummary?.enabled ? badge('Ativa', 'success') : badge('Inativa')], ['Status', item => item.enabled ? badge('Ativa', 'success') : badge('Inativa')]])
                             : renderSettings(state);
     return `<header class="page-header"><div><span class="eyebrow">Telefonia</span><h1>Manager VoIP</h1><p class="muted">Linhas Zapo, empresas, roteamento, ramais, chamadas e gravações.</p></div><button class="btn btn--ghost" type="button" data-action="refresh-voip">${icon('refresh')}${loading ? 'Atualizando…' : 'Atualizar'}</button></header>
     ${error ? `<div class="form-error" role="alert">${escapeHtml(error)}</div>` : ''}
-    <nav class="tabs" aria-label="Áreas da telefonia">${tabs.map(([value, label]) => `<button class="tab ${tab === value ? 'tab--active' : ''}" type="button" data-action="voip-tab" data-tab="${value}" aria-selected="${tab === value}">${escapeHtml(label)}</button>`).join('')}</nav>${body}`;
+    <nav class="tabs" aria-label="Áreas da telefonia">${tabs.map(([value, label]) => `<button class="tab ${tab === value ? 'tab--active' : ''}" type="button" data-action="voip-tab" data-tab="${value}" aria-selected="${tab === value}">${escapeHtml(label)}</button>`).join('')}</nav>${search}${body}`;
 };
 const field = (name, label, value = '', type = 'text', required = false, readonly = false, attributes = '') => `<label class="field"><span>${escapeHtml(label)}</span><input name="${name}" type="${type}" value="${escapeHtml(`${value ?? ''}`)}" ${required ? 'required' : ''} ${readonly ? 'readonly' : ''} ${attributes}></label>`;
 const switchField = (name, label, value) => `<label class="voip-check"><input name="${name}" type="checkbox" ${checked(value)}> ${escapeHtml(label)}</label>`;
@@ -305,13 +367,13 @@ export const renderVoipResourceModal = (state, resource, id = '') => {
     let fields = `${field('id', 'ID', item.id, 'text', true, !isNew)}${managedAutomatic ? managedEnabled : switchField('enabled', 'Ativo', item.enabled)}`;
     if (resource === 'companies') {
         const ai = item.aiSummary || {};
-        fields += `${field('label', 'Nome da empresa', item.label, 'text', true)}${field('timeZone', 'Fuso horário', item.timeZone || 'America/Cuiaba', 'text', true)}<h3 class="wide">IA pós-chamada</h3>${switchField('aiSummaryEnabled', 'Gerar transcrição e resumo', ai.enabled === true)}${switchField('aiIncludeTranscript', 'Incluir transcrição junto ao resumo', ai.includeTranscript !== false)}${field('aiTranscriptionBaseUrl', 'URL da transcrição', ai.transcriptionBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiTranscriptionApiKey', 'Chave da transcrição (vazio mantém)', '', 'password')}${configuredSecret(ai.hasTranscriptionApiKey)}${field('aiTranscriptionModel', 'Modelo de transcrição', ai.transcriptionModel || 'whisper-large-v3')}${field('aiTranscriptionLanguage', 'Idioma', ai.transcriptionLanguage || 'pt')}${field('aiSummaryBaseUrl', 'URL do resumo', ai.summaryBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiSummaryApiKey', 'Chave do resumo (vazio mantém)', '', 'password')}${configuredSecret(ai.hasSummaryApiKey)}${field('aiSummaryModel', 'Modelo de resumo', ai.summaryModel || 'openai/gpt-oss-20b')}${textareaField('aiSummaryPrompt', 'Prompt do resumo', ai.summaryPrompt)}`;
+        fields += `${field('label', 'Nome da empresa', item.label, 'text', true)}${field('timeZone', 'Fuso horário', item.timeZone || 'America/Cuiaba', 'text', true)}<h3 class="wide">IA pós-chamada</h3>${switchField('aiSummaryEnabled', 'Gerar transcrição e resumo', ai.enabled === true)}${switchField('aiIncludeTranscript', 'Incluir transcrição junto ao resumo', ai.includeTranscript !== false)}${field('aiTranscriptionBaseUrl', 'URL da transcrição', ai.transcriptionBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiTranscriptionApiKey', 'Chave da transcrição (deixe vazio para manter)', '', 'password')}${configuredSecret(ai.hasTranscriptionApiKey)}${field('aiTranscriptionModel', 'Modelo de transcrição', ai.transcriptionModel || 'whisper-large-v3')}${field('aiTranscriptionLanguage', 'Idioma', ai.transcriptionLanguage || 'pt')}${field('aiSummaryBaseUrl', 'URL do resumo', ai.summaryBaseUrl || 'https://api.groq.com/openai/v1')}${field('aiSummaryApiKey', 'Chave do resumo (deixe vazio para manter)', '', 'password')}${configuredSecret(ai.hasSummaryApiKey)}${field('aiSummaryModel', 'Modelo de resumo', ai.summaryModel || 'openai/gpt-oss-20b')}${textareaField('aiSummaryPrompt', 'Prompt do resumo', ai.summaryPrompt)}`;
     }
     if (resource === 'accounts') {
         const companyField = managedAutomatic
             ? `<input type="hidden" name="companyId" value="${escapeHtml(`${item.companyId || ''}`)}">${field('_companyLabel', 'Empresa (gerenciada)', companyName(state, item.companyId), 'text', false, true)}`
             : selectField('companyId', 'Empresa', companies, item.companyId, true);
-        fields += `${field('label', 'Nome da linha', item.label, 'text', true)}${companyField}${field('phoneNumber', 'Número da sessão Zapo', item.phoneNumber, 'text', true, managedAutomatic)}${field('maxConcurrentCalls', 'Chamadas simultâneas', lineConcurrency(state, item), 'number', true, false, 'min="2" max="32" step="1"')}<p class="muted wide">A linha usa a sessão Zapo conectada. Configure entre 2 e 32 chamadas simultâneas.</p><h3 class="wide">Gravações no Chatwoot</h3>${field('chatwootBaseUrl', 'Chatwoot URL', item.chatwootRecording?.baseUrl)}${field('chatwootAccountId', 'Chatwoot account ID', item.chatwootRecording?.accountId)}${field('chatwootInboxId', 'Chatwoot inbox ID', item.chatwootRecording?.inboxId)}${field('chatwootApiAccessToken', 'Chatwoot token (vazio mantém)', '', 'password')}${configuredSecret(item.chatwootRecording?.hasApiAccessToken)}${switchField('chatwootRecordingEnabled', 'Enviar gravações ao Chatwoot', item.chatwootRecording?.enabled === true)}${switchField('chatwootPrivateNote', 'Enviar como nota privada', item.chatwootRecording?.privateNote !== false)}`;
+        fields += `${field('label', 'Nome da linha', item.label, 'text', true)}${companyField}${field('phoneNumber', 'Número da sessão Zapo', item.phoneNumber, 'text', true, managedAutomatic)}${field('maxConcurrentCalls', 'Chamadas simultâneas', lineConcurrency(state, item), 'number', true, false, 'min="2" max="32" step="1"')}<p class="muted wide">A linha usa a sessão Zapo conectada. Configure entre 2 e 32 chamadas simultâneas.</p><h3 class="wide">Gravações no Chatwoot</h3>${field('chatwootBaseUrl', 'URL do Chatwoot', item.chatwootRecording?.baseUrl)}${field('chatwootAccountId', 'ID da conta no Chatwoot', item.chatwootRecording?.accountId)}${field('chatwootInboxId', 'ID da caixa de entrada no Chatwoot', item.chatwootRecording?.inboxId)}${field('chatwootApiAccessToken', 'Token do Chatwoot (deixe vazio para manter)', '', 'password')}${configuredSecret(item.chatwootRecording?.hasApiAccessToken)}${switchField('chatwootRecordingEnabled', 'Enviar gravações ao Chatwoot', item.chatwootRecording?.enabled === true)}${switchField('chatwootPrivateNote', 'Enviar como nota privada', item.chatwootRecording?.privateNote !== false)}`;
     }
     if (resource === 'lineGroups')
         fields += `${field('label', 'Nome do grupo', item.label, 'text', true)}${selectField('companyId', 'Empresa', companies, item.companyId, true)}${selectField('inboundSessionIds', 'Linhas de entrada', accounts, item.inboundSessionIds, false, true)}${selectField('outboundPrioritySessionIds', 'Prioridade de saída', accounts, item.outboundPrioritySessionIds, false, true)}${selectField('targetExtensionGroupIds', 'Grupos de ramais de destino', extensionGroups, item.targetExtensionGroupIds, false, true)}`;

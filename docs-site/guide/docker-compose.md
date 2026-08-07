@@ -6,7 +6,7 @@ Estes são os dois modelos do próprio projeto e usam a imagem
 web, broker e worker Zapo separados, com Valkey e RabbitMQ persistentes.
 
 Cada tag Git de release no formato `v*` publica duas referências da mesma
-imagem: a versão imutável, por exemplo `4.0.10`, e `latest`. Use `latest` para
+imagem: a versão imutável, por exemplo `4.0.11`, e `latest`. Use `latest` para
 acompanhar o canal estável automaticamente ou fixe a versão semântica quando
 precisar controlar a janela de atualização.
 

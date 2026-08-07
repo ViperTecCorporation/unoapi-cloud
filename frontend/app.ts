@@ -100,6 +100,7 @@ export class ViperConnectApp {
   private voipLoading = false
   private voipError = ''
   private voipTab: VoipTab = 'overview'
+  private voipQueries: Partial<Record<VoipTab, string>> = {}
   private showOfflineAutomaticExtensions = false
   private voipRecordingUrls: Record<string, string> = {}
   private voipTransferAudioUrls: Record<string, string> = {}
@@ -698,6 +699,9 @@ export class ViperConnectApp {
       this.groupSearchTimer = window.setTimeout(() => {
         void this.loadGroups(true)
       }, 300)
+    } else if (input.dataset.filter === 'voip-query') {
+      this.voipQueries[this.voipTab] = input.value
+      this.renderAndRestoreFilter('voip-query')
     } else if (input.dataset.filter === 'queues-query') {
       this.queueQuery = input.value
       this.queueVisibleLimit = PAGE_SIZE
@@ -1376,6 +1380,7 @@ export class ViperConnectApp {
         : this.view === 'voip'
           ? renderVoipPage(this.voip, this.voipLoading, this.voipError, {
               tab: this.voipTab,
+              query: this.voipQueries[this.voipTab] || '',
               showOfflineAutomaticExtensions: this.showOfflineAutomaticExtensions,
               recordingUrls: this.voipRecordingUrls,
               transferAudioUrls: this.voipTransferAudioUrls,

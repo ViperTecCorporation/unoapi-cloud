@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.10-cc5052ec';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.10-cc5052ec';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.10-cc5052ec';
-import { SocketBridge } from './core/socket.js?v=4.0.10-cc5052ec';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.10-cc5052ec';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.10-cc5052ec';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.10-cc5052ec';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.10-cc5052ec';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.10-cc5052ec';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.10-cc5052ec';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.10-cc5052ec';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.10-cc5052ec';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.10-cc5052ec';
-import { renderSessionPage } from './pages/session.js?v=4.0.10-cc5052ec';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.10-cc5052ec';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.10-cc5052ec';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.10-cc5052ec';
-import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.10-cc5052ec';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.11-02421e46';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.11-02421e46';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.11-02421e46';
+import { SocketBridge } from './core/socket.js?v=4.0.11-02421e46';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.11-02421e46';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.11-02421e46';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.11-02421e46';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.11-02421e46';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.11-02421e46';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.11-02421e46';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.11-02421e46';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.11-02421e46';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.11-02421e46';
+import { renderSessionPage } from './pages/session.js?v=4.0.11-02421e46';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.11-02421e46';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.11-02421e46';
+import { filterContacts, filterGroups } from './features/entities.js?v=4.0.11-02421e46';
+import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.11-02421e46';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -60,6 +60,7 @@ export class ViperConnectApp {
         this.voipLoading = false;
         this.voipError = '';
         this.voipTab = 'overview';
+        this.voipQueries = {};
         this.showOfflineAutomaticExtensions = false;
         this.voipRecordingUrls = {};
         this.voipTransferAudioUrls = {};
@@ -744,6 +745,10 @@ export class ViperConnectApp {
             this.groupSearchTimer = window.setTimeout(() => {
                 void this.loadGroups(true);
             }, 300);
+        }
+        else if (input.dataset.filter === 'voip-query') {
+            this.voipQueries[this.voipTab] = input.value;
+            this.renderAndRestoreFilter('voip-query');
         }
         else if (input.dataset.filter === 'queues-query') {
             this.queueQuery = input.value;
@@ -1485,6 +1490,7 @@ export class ViperConnectApp {
             : this.view === 'voip'
                 ? renderVoipPage(this.voip, this.voipLoading, this.voipError, {
                     tab: this.voipTab,
+                    query: this.voipQueries[this.voipTab] || '',
                     showOfflineAutomaticExtensions: this.showOfflineAutomaticExtensions,
                     recordingUrls: this.voipRecordingUrls,
                     transferAudioUrls: this.voipTransferAudioUrls,

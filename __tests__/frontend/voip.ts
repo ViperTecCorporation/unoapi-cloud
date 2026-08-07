@@ -81,7 +81,7 @@ describe('VoIP manager page', () => {
 
     expect(html).toContain('Registros ativos')
     expect(html).toContain('Registrado')
-    expect(html).toContain('2 conexão(ões) · WebRTC + SIP/RTP')
+    expect(html).toContain('2 conexões · WebRTC + SIP/RTP')
     expect(html).toContain('Sem registro')
     expect(html).toContain('MicroSIP')
     expect(html).toContain('data-action="drop-voip-registration"')
@@ -210,7 +210,7 @@ describe('VoIP manager page', () => {
     expect(html.match(/<h2>Linhas Zapo<\/h2>/g)).toHaveLength(1)
     expect(html).toContain('data-resource="accounts" data-id="line-1"')
     expect(html).toContain('5566999554300')
-    expect(html).toContain('1 livre(s) · 1 ocupado(s) · 2 total')
+    expect(html).toContain('1 livre · 1 ocupado · 2 total')
     expect(html).toContain('SIP + WebRTC')
     expect(html).toContain('Básico ativo')
     expect(html).toContain('Avançado')
@@ -253,6 +253,115 @@ describe('VoIP manager page', () => {
     expect(visible).toContain('Linha automática')
     expect(visible).toContain('Automático')
     expect(visible).toContain('Ocultar automáticos offline')
+  })
+
+  test('filters lines, extensions and advanced routing with accent-insensitive searches', () => {
+    const state = {
+      bridges: [],
+      calls: [],
+      companies: [
+        { id: 'company-reception', label: 'Recepção Norte' },
+        { id: 'company-finance', label: 'Financeiro Sul' },
+      ],
+      zapoLines: [
+        {
+          sourceId: 'zapo:uno:5566999554300',
+          session: '5566999554300',
+          connected: true,
+          companyId: 'company-reception',
+          companyLabel: 'Recepção Norte',
+          accountId: 'account-reception',
+          workerId: 'worker-reception',
+          automatic: {
+            extensionId: 'extension-auto',
+            username: '5566999554300',
+            status: 'active' as const,
+            registrationCount: 1,
+            freeRegistrationCount: 1,
+            busyRegistrationCount: 0,
+            transports: ['sip' as const],
+            basicInboundEnabled: true,
+          },
+        },
+        {
+          sourceId: 'zapo:uno:5566996222471',
+          session: '5566996222471',
+          connected: true,
+          companyId: 'company-finance',
+          companyLabel: 'Financeiro Sul',
+          accountId: 'account-finance',
+        },
+      ],
+      extensions: [
+        { id: 'extension-reception', username: '1001', displayName: 'Recepção', companyId: 'company-reception', extensionGroupIds: ['group-support'], type: 'both', enabled: true },
+        { id: 'extension-finance', username: '1002', displayName: 'Financeiro', companyId: 'company-finance', extensionGroupIds: [], type: 'sip', enabled: true },
+      ],
+      registrations: {
+        total: 1,
+        sipRtp: [{ id: 'extension-reception', username: '1001', extensionLabel: 'Recepção', contact: 'sip:1001@192.168.0.101:5060', userAgent: 'MicroSIP' }],
+      },
+      extensionGroups: [
+        { id: 'group-support', label: 'Atendimento Principal', companyId: 'company-reception', extensionIds: [], enabled: true },
+        { id: 'group-finance', label: 'Cobrança', companyId: 'company-finance', extensionIds: ['extension-finance'], enabled: true },
+      ],
+      lineGroups: [
+        { id: 'line-group-support', label: 'Suporte avançado', companyId: 'company-reception', inboundSessionIds: ['account-reception'], targetExtensionGroupIds: ['group-support'] },
+        { id: 'line-group-sales', label: 'Comercial', companyId: 'company-finance', inboundSessionIds: [], targetExtensionGroupIds: ['group-finance'] },
+      ],
+      sessions: [
+        { id: 'session-reception', label: 'Linha Recepção', unoSession: '5566999554300', companyId: 'company-reception', accountId: 'account-reception', lineGroupIds: [] },
+        { id: 'session-finance', label: 'Linha Financeiro', unoSession: '5566996222471', companyId: 'company-finance', accountId: 'account-finance', inboundLineGroupIds: ['line-group-sales'] },
+      ],
+    }
+
+    const lines = renderVoipPage(state, false, '', { tab: 'lines', query: 'recepcao norte' })
+    expect(lines).toContain('data-filter="voip-query"')
+    expect(lines).toContain('value="recepcao norte"')
+    expect(lines).toContain('5566999554300')
+    expect(lines).not.toContain('5566996222471')
+
+    const extensions = renderVoipPage(state, false, '', { tab: 'extensions', query: 'recepcao' })
+    expect(extensions).toContain('Recepção')
+    expect(extensions).toContain('MicroSIP')
+    expect(extensions).toContain('Atendimento Principal')
+    expect(extensions).not.toContain('Financeiro Sul')
+    expect(extensions).not.toContain('Cobrança')
+
+    const extensionsByGroup = renderVoipPage(state, false, '', { tab: 'extensions', query: 'cobranca' })
+    expect(extensionsByGroup).toContain('Financeiro')
+    expect(extensionsByGroup).toContain('Cobrança')
+
+    const extensionsByTransport = renderVoipPage(state, false, '', { tab: 'extensions', query: 'webrtc' })
+    expect(extensionsByTransport).toContain('Recepção')
+    expect(extensionsByTransport).not.toContain('Financeiro Sul')
+
+    const routing = renderVoipPage(state, false, '', { tab: 'routing', query: 'suporte avancado' })
+    expect(routing).toContain('Suporte avançado')
+    expect(routing).toContain('Linha Recepção')
+    expect(routing).not.toContain('Comercial')
+    expect(routing.match(/Linha Financeiro/g)).toHaveLength(1)
+    expect(routing).toContain('Simulador de roteamento')
+
+    const routingBySession = renderVoipPage(state, false, '', { tab: 'routing', query: 'linha financeiro' })
+    expect(routingBySession).toContain('Comercial')
+    expect(routingBySession).toContain('Linha Financeiro')
+  })
+
+  test('uses natural Portuguese plurals and consistent configuration labels', () => {
+    const routing = renderVoipPage({
+      bridges: [],
+      calls: [],
+      lineGroups: [{ id: 'group-1', inboundSessionIds: ['line-1', 'line-2'], outboundPrioritySessionIds: ['line-1'], targetExtensionGroupIds: [] }],
+      sessions: [],
+    }, false, '', { tab: 'routing' })
+    expect(routing).toContain('2 linhas')
+    expect(routing).toContain('1 linha')
+    expect(routing).toContain('0 grupos')
+    expect(routing).not.toContain('linha(s)')
+
+    const company = renderVoipResourceModal({ bridges: [], calls: [], companies: [{ id: 'company-1', label: 'Empresa' }] }, 'companies', 'company-1')
+    expect(company).toContain('deixe vazio para manter')
+    expect(company).not.toContain('vazio mantém')
   })
 
   test('keeps structural fields of automatically managed resources read-only', () => {
