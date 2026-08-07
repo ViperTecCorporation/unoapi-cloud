@@ -1,6 +1,6 @@
-import { icon } from './icons.js?v=4.0.9-cc5052ec';
-import { escapeHtml } from '../core/html.js?v=4.0.9-cc5052ec';
-import { getLocale, t } from '../core/i18n.js?v=4.0.9-cc5052ec';
+import { icon } from './icons.js?v=4.0.10-cc5052ec';
+import { escapeHtml } from '../core/html.js?v=4.0.10-cc5052ec';
+import { getLocale, t } from '../core/i18n.js?v=4.0.10-cc5052ec';
 const renderVersionStatus = (status) => {
     const installed = status.installed_version ? `v${status.installed_version.replace(/^v/i, '')}` : t('Versão');
     if (status.status === 'update_available') {

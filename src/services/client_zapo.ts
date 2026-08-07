@@ -669,7 +669,12 @@ export class ClientZapo implements Client {
     const callerIdentity = await new ZapoVoiceCallerIdentityResolver(
       this.phone,
       this.zapoSession?.contacts,
-      (session, lidJid) => zapoUsernameIndex.resolveByLid(session, lidJid),
+      (session, lidJid) => zapoUsernameIndex.resolveByLid(
+        session,
+        lidJid,
+        Date.now(),
+        !this.config.useRedis,
+      ),
       async (session, peerJid) => this.unoStore?.dataStore.getPnForLid?.(session, peerJid),
       { attempts: 4, delayMs: 100 },
     ).resolve(call.peerJid, call.callerPn)
