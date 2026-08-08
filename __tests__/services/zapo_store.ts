@@ -53,7 +53,7 @@ describe('zapo store', () => {
     }))
     expect(createStore).toHaveBeenCalledWith(expect.objectContaining({
       providers: expect.objectContaining({ auth: 'redis', session: 'redis', messages: 'redis' }),
-      cacheProviders: expect.objectContaining({ retry: 'redis', groupMetadata: 'redis' }),
+      cacheProviders: expect.objectContaining({ retry: 'redis', groupMetadata: 'redis', chatMetadata: 'redis' }),
     }))
     expect(store).toBeDefined()
   })

@@ -39,7 +39,7 @@ import { ZapoContactDirectory } from './services/zapo/zapo_contact_directory'
 import { QueuesController } from './controllers/queues_controller'
 import { RedisAdminController } from './controllers/redis_admin_controller'
 import { ContactBookIncoming } from './services/contacts/contact_book_incoming'
-
+import { VoipController } from './controllers/voip_controller'
 
 export const router = (
   incoming: Incoming,
@@ -77,7 +77,7 @@ export const router = (
   const timerController = new TimerController()
   const queuesController = new QueuesController()
   const redisAdminController = new RedisAdminController()
-
+  const voipController = new VoipController()
 
   // Webhook (Cloud API) roteado por phone_number_id
   router.post('/webhooks/whatsapp', webhookController.whatsappNoParam.bind(webhookController))
@@ -131,6 +131,26 @@ export const router = (
   router.put('/admin/redis/keys/:key', middleware, redisAdminController.save.bind(redisAdminController))
   router.delete('/admin/redis/keys/:key', middleware, redisAdminController.remove.bind(redisAdminController))
   router.post('/admin/redis/query', middleware, redisAdminController.query.bind(redisAdminController))
+  router.get('/admin/voip/bootstrap', middleware, voipController.bootstrap.bind(voipController))
+  router.get('/admin/voip/calls', middleware, voipController.calls.bind(voipController))
+  router.post('/admin/voip/calls', middleware, voipController.calls.bind(voipController))
+  router.post('/admin/voip/calls/:callId/:command', middleware, voipController.command.bind(voipController))
+  router.get('/admin/voip/recordings/:recordId', middleware, voipController.recording.bind(voipController))
+  router.get(
+    '/admin/voip/console/extensionGroups/:extensionGroupId/transfer-audio',
+    middleware,
+    voipController.transferAudio.bind(voipController),
+  )
+  router.put(
+    '/admin/voip/console/extensionGroups/:extensionGroupId/transfer-audio',
+    middleware,
+    express.raw({
+      type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav', 'application/octet-stream'],
+      limit: process.env.VOIP_TRANSFER_AUDIO_UPLOAD_LIMIT || '15mb',
+    }),
+    voipController.transferAudio.bind(voipController),
+  )
+  router.all('/admin/voip/console/*', middleware, voipController.console.bind(voipController))
   router.get('/:version/debug_token', phoneNumberController.debugToken.bind(phoneNumberController))
   router.get('/:version/me/whatsapp_business_accounts', middleware, phoneNumberController.whatsappBusinessAccounts.bind(phoneNumberController))
   // Meta-like endpoint para Typebot: /v17.0/{phone}-{mediaId} (colocado antes de /:version/:phone para evitar conflito)
@@ -170,7 +190,11 @@ export const router = (
   router.get('/:version/:phone/jidmap/:contact', middleware, jidmap.lookup.bind(jidmap))
   router.post('/:version/:phone/templates', middleware, templatesController.templates.bind(templatesController))
   router.delete('/:version/:phone/templates/:templateId', middleware, templatesController.destroy.bind(templatesController))
-  router.post('/:version/:phone_number_id/messages/:messageId/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))
+  router.post(
+    '/:version/:phone_number_id/messages/:messageId/recover_delivery',
+    middleware,
+    messagesController.recoverDelivery.bind(messagesController),
+  )
   router.post('/:version/:phone/messages/:messageId/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))
   router.post('/:version/:phone_number_id/messages/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))
   router.post('/:version/:phone/messages/recover_delivery', middleware, messagesController.recoverDelivery.bind(messagesController))

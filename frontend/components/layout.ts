@@ -8,7 +8,7 @@ interface LayoutOptions {
   collapsed: boolean
   mobileOpen: boolean
   versionStatus: VersionStatus
-  activeView?: 'dashboard' | 'queues' | 'redis' | 'documentation'
+  activeView?: 'dashboard' | 'queues' | 'redis' | 'voip' | 'documentation'
 }
 
 const renderVersionStatus = (status: VersionStatus): string => {
@@ -42,6 +42,9 @@ export const renderLayout = ({ content, collapsed, mobileOpen, versionStatus, ac
         </button>
         <button class="nav-item ${activeView === 'redis' ? 'nav-item--active' : ''}" type="button" data-action="open-redis" title="Redis">
           ${icon('database')}<span>Redis</span>
+        </button>
+        <button class="nav-item ${activeView === 'voip' ? 'nav-item--active' : ''}" type="button" data-action="open-voip" title="${t('Telefonia')}">
+          ${icon('phone')}<span>${t('Telefonia')}</span>
         </button>
         <button class="nav-item ${activeView === 'documentation' ? 'nav-item--active' : ''}" type="button" data-action="open-documentation" title="${t('Documentação')}">
           ${icon('docs')}<span>${t('Documentação')}</span>

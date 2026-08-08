@@ -1,0 +1,11 @@
+import { base64ToBytes, bytesToBase64, bytesToHex, concatBytes, EMPTY_BYTES, TEXT_DECODER, TEXT_ENCODER, toBytesView } from 'zapo-js/util';
+export { base64ToBytes, bytesToBase64, bytesToHex, concatBytes, EMPTY_BYTES, TEXT_DECODER, TEXT_ENCODER, toBytesView };
+export declare function readUInt16BE(buf: Uint8Array, offset: number): number;
+export declare function readUInt32BE(buf: Uint8Array, offset: number): number;
+export declare function readUInt32LE(buf: Uint8Array, offset: number): number;
+export declare function readBigUInt64BE(buf: Uint8Array, offset: number): bigint;
+export declare function writeUInt16BE(buf: Uint8Array, value: number, offset: number): void;
+export declare function writeUInt32BE(buf: Uint8Array, value: number, offset: number): void;
+export declare function writeUInt32LE(buf: Uint8Array, value: number, offset: number): void;
+export declare function writeBigUInt64BE(buf: Uint8Array, value: bigint, offset: number): void;
+export declare function toArrayBuffer(bytes: Uint8Array): ArrayBuffer;

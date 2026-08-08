@@ -27,7 +27,7 @@ const curlExample = `curl --request POST \\
         </div>
         <div class="docs-meta">
           <span><i /> API operacional</span>
-          <span>92 operações</span>
+          <span>67 operações</span>
           <span>Runtime Zapo</span>
         </div>
       </div>
@@ -63,7 +63,11 @@ const curlExample = `curl --request POST \\
         </a>
         <a class="docs-card" href="/api-reference">
           <span>03</span><h3>Referência interativa</h3>
-          <p>69 caminhos, 92 operações e playground alimentado pelo OpenAPI.</p><strong>Ver endpoints →</strong>
+          <p>49 caminhos, 67 operações e playground alimentado pelo OpenAPI.</p><strong>Ver endpoints →</strong>
+        </a>
+        <a class="docs-card docs-card--featured" href="/guide/telephony">
+          <span>04</span><h3>Telefonia Zapo</h3>
+          <p>Imagem única, SIP/WebRTC/RTP, ramais, transferência, gravações e modo avançado.</p><strong>Abrir Telefonia →</strong>
         </a>
       </div>
     </section>
@@ -71,7 +75,7 @@ const curlExample = `curl --request POST \\
     <section class="docs-callout">
       <div>
         <span class="docs-eyebrow">Fonte verificada</span>
-        <h2>Documentação fiel ao runtime Zapo / CloudApi</h2>
+        <h2>Documentação fiel ao runtime Zapo</h2>
         <p>O build compara o OpenAPI com router e controllers e falha se uma rota pública ficar de fora.</p>
       </div>
       <div><span>VitePress</span><span>Scalar</span><span>Docker</span><span>Socket.IO</span></div>

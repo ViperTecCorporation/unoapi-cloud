@@ -162,4 +162,126 @@ export interface RedisKeyDetails {
   value: unknown
 }
 
+export interface VoipBridgeStatus {
+  session: string
+  connected: boolean
+  generation?: number
+  serverId?: string
+  workerId?: string
+  connectionId?: string
+  connectedAt?: string
+  lastSeenAt?: string
+  maxConcurrentCalls?: number
+  capabilities?: string[]
+}
+
+export interface VoipCallStatus {
+  session: string
+  callId: string
+  direction: 'incoming' | 'outgoing'
+  peerJid?: string
+  callerPn?: string
+  callerName?: string
+  callerNameSource?: 'display_name' | 'push_name' | 'username'
+  streamId?: number
+}
+
+export type VoipTab = 'overview' | 'lines' | 'extensions' | 'routing' | 'calls' | 'companies' | 'settings'
+
+export interface VoipLineInventoryItem extends VoipBridgeStatus {
+  sourceId: string
+  /** @deprecated Automatic provisioning means every line is assigned. */
+  assignmentStatus?: 'assigned'
+  companyId?: string
+  companyLabel?: string
+  accountId?: string
+  sessionId?: string
+  automatic?: {
+    extensionId: string
+    username: string
+    status: 'active' | 'offline'
+    registrationCount: number
+    freeRegistrationCount: number
+    busyRegistrationCount: number
+    transports: Array<'sip' | 'webrtc'>
+    basicInboundEnabled: boolean
+  }
+  advancedRoutingConfigured?: boolean
+  /** @deprecated Use advancedRoutingConfigured. */
+  routingConfigured?: boolean
+}
+
+export interface VoipLineAccount {
+  id: string
+  enabled?: boolean
+  label?: string
+  companyId?: string
+  phoneNumber?: string
+  maxConcurrentCalls?: number
+  chatwootRecording?: Record<string, any>
+  [key: string]: unknown
+}
+
+export interface VoipRoutingSession {
+  id: string
+  enabled?: boolean
+  label?: string
+  unoSession?: string
+  companyId?: string
+  accountId?: string
+  maxConcurrentCalls?: number
+  lineGroupIds?: string[]
+  inboundLineGroupIds?: string[]
+  outboundLineGroupIds?: string[]
+  automaticExtensionId?: string
+  provisioningSource?: 'zapo_auto' | string
+  routing?: Record<string, any> & { basicInboundEnabled?: boolean }
+  [key: string]: unknown
+}
+
+export interface VoipHistoryQuery {
+  page?: number
+  pageSize?: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface VoipHistoryPage {
+  items: Array<Record<string, any>>
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface VoipBootstrap {
+  bridges: VoipBridgeStatus[]
+  calls: VoipCallStatus[]
+  extensions?: Array<{
+    id: string
+    username?: string
+    displayName?: string
+    enabled?: boolean
+    provisioningSource?: 'zapo_auto' | string
+    status?: 'active' | 'offline' | string
+    companyId?: string
+    [key: string]: unknown
+  }>
+  sessions?: VoipRoutingSession[]
+  companies?: Array<Record<string, any>>
+  accounts?: VoipLineAccount[]
+  lineGroups?: Array<Record<string, any>>
+  extensionGroups?: Array<Record<string, any>>
+  history?: Partial<VoipHistoryPage>
+  recordingSummary?: Record<string, any>
+  recording?: Record<string, any>
+  registrations?: { total?: number; webrtc?: Array<Record<string, any>>; sipRtp?: Array<Record<string, any>> }
+  zapoLines?: VoipLineInventoryItem[]
+  [key: string]: unknown
+}
+
 export type SessionTab = 'overview' | 'config' | 'contacts' | 'webhooks' | 'groups'

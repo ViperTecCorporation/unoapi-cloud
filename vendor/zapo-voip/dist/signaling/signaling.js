@@ -1,0 +1,505 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ENCRYPTED_TAGS = exports.buildPreacceptStanza = void 0;
+exports.encodeWAMessage = encodeWAMessage;
+exports.generateCallId = generateCallId;
+exports.generateCallStanzaId = generateCallStanzaId;
+exports.extractNodeInfo = extractNodeInfo;
+exports.extractRelayEndpoints = extractRelayEndpoints;
+exports.decryptCallKey = decryptCallKey;
+exports.buildCallParticipantNodes = buildCallParticipantNodes;
+exports.buildOfferStanza = buildOfferStanza;
+exports.buildAcceptStanza = buildAcceptStanza;
+exports.buildDirectAcceptStanza = buildDirectAcceptStanza;
+exports.buildTerminateStanza = buildTerminateStanza;
+exports.buildRelaylatencyForwardStanza = buildRelaylatencyForwardStanza;
+exports.buildRejectStanza = buildRejectStanza;
+exports.buildIncomingPreacceptStanza = buildIncomingPreacceptStanza;
+exports.buildOutgoingPreacceptStanza = buildOutgoingPreacceptStanza;
+exports.buildRelayLatencyStanza = buildRelayLatencyStanza;
+exports.buildTransportStanza = buildTransportStanza;
+exports.buildMuteV2Stanza = buildMuteV2Stanza;
+exports.buildAcceptReceiptStanza = buildAcceptReceiptStanza;
+exports.needsDecryption = needsDecryption;
+const zapo_js_1 = require("zapo-js");
+const proto_1 = require("zapo-js/proto");
+const protocol_1 = require("zapo-js/protocol");
+const transport_1 = require("zapo-js/transport");
+const util_1 = require("zapo-js/util");
+const primitives_js_1 = require("../crypto/primitives.js");
+async function encodeWAMessage(message) {
+    return (0, zapo_js_1.writeRandomPadMax16)(proto_1.proto.Message.encode(message).finish());
+}
+function encodeSignedDeviceIdentity(account) {
+    return proto_1.proto.ADVSignedDeviceIdentity.encode(account).finish();
+}
+function generateCallId() {
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        bytes[i] = Math.floor(Math.random() * 256);
+    }
+    return (0, util_1.bytesToHex)(bytes).toUpperCase();
+}
+function generateCallStanzaId() {
+    return (0, util_1.bytesToHex)((0, primitives_js_1.randomBytes)(16)).toUpperCase();
+}
+function extractNodeInfo(node) {
+    const innerNode = (0, transport_1.getFirstNodeChild)(node);
+    if (!innerNode) {
+        return null;
+    }
+    return {
+        tag: innerNode.tag,
+        peerJid: node.attrs.from,
+        callId: innerNode.attrs?.['call-id'] || '',
+        peerPlatform: node.attrs.platform || '',
+        peerAppVersion: node.attrs.version || '',
+        epochId: innerNode.attrs?.e,
+        timestamp: innerNode.attrs?.t,
+        innerNode
+    };
+}
+function toRelayEndpoint(node) {
+    const relay = {
+        ip: node.attrs?.ip || '',
+        port: parseInt(node.attrs?.port || '3480', 10),
+        token: node.attrs?.token || '',
+        key: node.attrs?.['relay-key'] || node.attrs?.key || '',
+        relayId: parseInt(node.attrs?.['relay-id'] || '0', 10),
+        c2rRtt: node.attrs?.['c2r-rtt'] ? parseInt(node.attrs['c2r-rtt'], 10) : undefined
+    };
+    return relay.ip && relay.token ? relay : null;
+}
+function extractRelayEndpoints(node) {
+    const relayNodes = [...(0, transport_1.getNodeChildrenByTag)(node, 'relay')];
+    for (const wrapper of (0, transport_1.getNodeChildrenByTag)(node, 'relays')) {
+        relayNodes.push(...(0, transport_1.getNodeChildrenByTag)(wrapper, 'relay'));
+    }
+    const relays = [];
+    for (const relayNode of relayNodes) {
+        const relay = toRelayEndpoint(relayNode);
+        if (relay) {
+            relays.push(relay);
+        }
+    }
+    relays.sort((a, b) => (a.c2rRtt ?? Infinity) - (b.c2rRtt ?? Infinity));
+    return relays;
+}
+async function decryptCallKey(deps, node, peerJid, logger) {
+    const log = logger ?? (0, zapo_js_1.createNoopLogger)();
+    const isEnc = (child) => child.tag === 'enc' && !!child.attrs?.type;
+    const encNodes = (0, transport_1.getNodeChildren)(node).filter(isEnc);
+    const destinationNode = (0, transport_1.findNodeChild)(node, 'destination');
+    if (destinationNode) {
+        for (const toNode of (0, transport_1.getNodeChildren)(destinationNode)) {
+            if (toNode.tag === 'to') {
+                encNodes.push(...(0, transport_1.getNodeChildren)(toNode).filter(isEnc));
+            }
+        }
+    }
+    const address = (0, protocol_1.parseSignalAddressFromJid)(peerJid);
+    for (const encNode of encNodes) {
+        if (!(encNode.content instanceof Uint8Array)) {
+            continue;
+        }
+        try {
+            const decrypted = await deps.signalProtocol.decryptMessage(address, {
+                type: encNode.attrs.type,
+                ciphertext: encNode.content
+            });
+            const message = proto_1.proto.Message.decode((0, zapo_js_1.unpadPkcs7)(decrypted));
+            const callKey = message.call?.callKey;
+            if (callKey && callKey.length === 32) {
+                return callKey;
+            }
+        }
+        catch (err) {
+            log.trace('call key decrypt candidate failed', { message: (0, util_1.toError)(err).message });
+        }
+    }
+    return undefined;
+}
+const CAPABILITY_OFFER = new Uint8Array([0x01, 0x05, 0xf7, 0x09, 0xe4, 0xbb, 0x07]);
+const CAPABILITY_INCOMING_PREACCEPT = new Uint8Array([
+    0x01, 0x05, 0xf7, 0x09, 0xe0, 0xbb, 0x07
+]);
+const CAPABILITY_OUTGOING_PREACCEPT = new Uint8Array([
+    0x01, 0x05, 0xff, 0x09, 0xe4, 0xbb, 0x07
+]);
+async function buildCallParticipantNodes(deps, devices, callKey) {
+    const resolved = await deps.sessionResolver.ensureSessionsBatch(devices);
+    const plaintext = await encodeWAMessage({ call: { callKey } });
+    const encrypted = await deps.signalProtocol.encryptMessagesBatch(devices.map((jid) => ({ address: (0, protocol_1.parseSignalAddressFromJid)(jid), plaintext })), resolved.map((target) => ({ address: target.address, session: target.session })));
+    const nodes = devices.map((jid, index) => ({
+        tag: 'to',
+        attrs: { jid },
+        content: [
+            {
+                tag: 'enc',
+                attrs: { v: '2', type: encrypted[index].type, count: '0' },
+                content: encrypted[index].ciphertext
+            }
+        ]
+    }));
+    return {
+        nodes,
+        shouldIncludeDeviceIdentity: encrypted.some((entry) => entry.type === 'pkmsg')
+    };
+}
+async function buildOfferStanza(deps, stores, callId, callKey, peerJid, isVideo, logger, peerDevices) {
+    const log = logger ?? (0, zapo_js_1.createNoopLogger)();
+    const creds = deps.authClient.getCurrentCredentials();
+    const callCreator = creds?.meLid || creds?.meJid || '';
+    const peerUserJid = (0, protocol_1.toUserJid)(peerJid);
+    const explicitDevices = [...new Set((peerDevices ?? []).map((jid) => jid.trim()))].filter((jid) => jid.length > 0 && (0, protocol_1.toUserJid)(jid) === peerUserJid);
+    if (peerDevices?.length && explicitDevices.length === 0) {
+        throw new Error(`no explicit peer devices match ${peerJid}`);
+    }
+    const devices = explicitDevices.length
+        ? explicitDevices
+        : (await deps.signalDeviceSync.syncDeviceList([peerJid])).flatMap((entry) => entry.deviceJids);
+    if (devices.length === 0) {
+        throw new Error(`no device sessions to encrypt the call offer for ${peerJid}`);
+    }
+    const { nodes: destinations, shouldIncludeDeviceIdentity } = await buildCallParticipantNodes(deps, devices, callKey);
+    const offerContent = [];
+    try {
+        const peerJidNormalized = (0, protocol_1.toUserJid)(peerJid);
+        const tcTokenRecord = await stores.privacyToken.getByJid(peerJidNormalized);
+        const tctoken = tcTokenRecord?.tcToken;
+        if (tctoken) {
+            offerContent.push({
+                tag: 'privacy',
+                attrs: {},
+                content: tctoken instanceof Uint8Array ? tctoken : new Uint8Array(tctoken)
+            });
+        }
+    }
+    catch (err) {
+        log.trace('tctoken lookup failed', { message: (0, util_1.toError)(err).message });
+    }
+    offerContent.push({ tag: 'audio', attrs: { enc: 'opus', rate: '8000' }, content: undefined }, { tag: 'audio', attrs: { enc: 'opus', rate: '16000' }, content: undefined });
+    if (isVideo) {
+        offerContent.push({
+            tag: 'video',
+            attrs: {
+                enc: 'vp8',
+                dec: 'vp8',
+                orientation: '0',
+                screen_width: '1920',
+                screen_height: '1080',
+                device_orientation: '0'
+            },
+            content: undefined
+        });
+    }
+    offerContent.push({ tag: 'net', attrs: { medium: '3' }, content: undefined });
+    offerContent.push({
+        tag: 'capability',
+        attrs: { ver: '1' },
+        content: CAPABILITY_OFFER
+    });
+    if (destinations.length === 1) {
+        const encryptedCallKey = (0, transport_1.getNodeChildren)(destinations[0]).find((child) => child.tag === 'enc');
+        if (!encryptedCallKey) {
+            throw new Error(`encrypted call key missing for ${devices[0]}`);
+        }
+        offerContent.push(encryptedCallKey);
+    }
+    else {
+        offerContent.push({ tag: 'destination', attrs: {}, content: destinations });
+    }
+    offerContent.push({
+        tag: 'encopt',
+        attrs: { keygen: '2' },
+        content: undefined
+    });
+    if (shouldIncludeDeviceIdentity && creds?.signedIdentity) {
+        offerContent.push({
+            tag: 'device-identity',
+            attrs: {},
+            content: encodeSignedDeviceIdentity(creds.signedIdentity)
+        });
+    }
+    log.debug('voip_diag offer_stanza_shape', {
+        callId,
+        to: peerJid,
+        callCreator,
+        devices,
+        childTags: offerContent.map((child) => child.tag),
+        destinationCount: destinations.length,
+        inlineEnc: destinations.length === 1,
+        hasPrivacy: offerContent.some((child) => child.tag === 'privacy'),
+        hasDeviceIdentity: offerContent.some((child) => child.tag === 'device-identity'),
+        includeVideo: isVideo
+    });
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'offer',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: offerContent
+            }
+        ]
+    };
+}
+async function buildAcceptStanza(deps, callId, callKey, peerJid, callCreator, isVideo) {
+    await deps.messageDispatch.syncSignalSession(callCreator);
+    const bytes = await encodeWAMessage({ call: { callKey } });
+    let encNode;
+    let shouldIncludeDeviceIdentity = false;
+    try {
+        const { type, ciphertext } = await deps.signalProtocol.encryptMessage((0, protocol_1.parseSignalAddressFromJid)(callCreator), bytes);
+        if (type === 'pkmsg') {
+            shouldIncludeDeviceIdentity = true;
+        }
+        encNode = {
+            tag: 'enc',
+            attrs: { v: '2', type, count: '0' },
+            content: ciphertext
+        };
+    }
+    catch (err) {
+        throw new Error(`Failed to encrypt accept for ${callCreator}: ${err.message}`);
+    }
+    const acceptContent = [
+        { tag: 'audio', attrs: { enc: 'opus', rate: '16000' } },
+        { tag: 'net', attrs: { medium: '3' } },
+        encNode,
+        { tag: 'encopt', attrs: { keygen: '2' } }
+    ];
+    const acceptSignedIdentity = deps.authClient.getCurrentCredentials()?.signedIdentity;
+    if (shouldIncludeDeviceIdentity && acceptSignedIdentity) {
+        acceptContent.push({
+            tag: 'device-identity',
+            attrs: {},
+            content: encodeSignedDeviceIdentity(acceptSignedIdentity)
+        });
+    }
+    if (isVideo) {
+        acceptContent.push({ tag: 'video', attrs: { enc: 'vp8' } });
+    }
+    const toJidClean = (0, protocol_1.toUserJid)(peerJid);
+    return {
+        tag: 'call',
+        attrs: { to: toJidClean, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'accept',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: acceptContent
+            }
+        ]
+    };
+}
+/**
+ * Builds the direct-call callee accept used by the MeowCaller 1:1 state machine.
+ * It is intentionally sent only after the caller's first mute_v2 stanza.
+ *
+ * Source of truth:
+ * https://github.com/purpshell/meowcaller/blob/6d9b7b2c18072155a4581ab8c7fccc51b4fd0a73/signaling/stanza.go#L113-L166
+ */
+function buildDirectAcceptStanza(callId, peerJid, callCreator, isVideo, audioRate = '16000') {
+    const acceptContent = [
+        { tag: 'audio', attrs: { enc: 'opus', rate: audioRate } }
+    ];
+    if (isVideo) {
+        acceptContent.push({ tag: 'video', attrs: { enc: 'vp8' } });
+    }
+    acceptContent.push({ tag: 'net', attrs: { medium: '2' } }, { tag: 'encopt', attrs: { keygen: '2' } }, {
+        tag: 'metadata',
+        attrs: { peer_abtest_bucket_id_list: '125208,94276' },
+        content: undefined
+    });
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'accept',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: acceptContent
+            }
+        ]
+    };
+}
+function buildTerminateStanza(peerJid, callId, callCreator, audioDurationMs, reason) {
+    const attrs = {
+        'call-id': callId,
+        'call-creator': callCreator
+    };
+    if (audioDurationMs !== undefined && audioDurationMs >= 0) {
+        const ms = String(Math.floor(audioDurationMs));
+        attrs.duration = ms;
+        attrs.audio_duration = ms;
+    }
+    if (reason !== undefined) {
+        attrs.reason = reason;
+    }
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'terminate',
+                attrs,
+                content: undefined
+            }
+        ]
+    };
+}
+function buildRelaylatencyForwardStanza(peerJid, callId, callCreator, teNodes, destinationJids) {
+    const destinationContent = destinationJids.map((jid) => ({
+        tag: 'to',
+        attrs: { jid },
+        content: undefined
+    }));
+    return {
+        tag: 'call',
+        attrs: { to: (0, protocol_1.toUserJid)(peerJid), id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: [
+                    ...teNodes,
+                    { tag: 'destination', attrs: {}, content: destinationContent }
+                ]
+            }
+        ]
+    };
+}
+function buildRejectStanza(peerJid, callId, callCreator) {
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'reject',
+                attrs: { 'call-id': callId, 'call-creator': callCreator }
+            }
+        ]
+    };
+}
+function buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, capability, audioRate) {
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'preaccept',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: [
+                    { tag: 'audio', attrs: { enc: 'opus', rate: audioRate } },
+                    { tag: 'encopt', attrs: { keygen: '2' } },
+                    { tag: 'capability', attrs: { ver: '1' }, content: capability }
+                ]
+            }
+        ]
+    };
+}
+/** MeowCaller callee capability used for an inbound offer. */
+function buildIncomingPreacceptStanza(peerJid, callId, callCreator, audioRate = '16000') {
+    return buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, CAPABILITY_INCOMING_PREACCEPT, audioRate);
+}
+/** ViperConnect caller-side capability preserved from the live outbound success. */
+function buildOutgoingPreacceptStanza(peerJid, callId, callCreator, audioRate = '16000') {
+    return buildPreacceptStanzaWithCapability(peerJid, callId, callCreator, CAPABILITY_OUTGOING_PREACCEPT, audioRate);
+}
+/** @deprecated Use the direction-specific preaccept builder. */
+exports.buildPreacceptStanza = buildIncomingPreacceptStanza;
+function buildRelayLatencyStanza(peerJid, callId, callCreator, relays, destinationJids) {
+    const seenRelays = new Set();
+    const teNodes = [];
+    for (const relay of relays) {
+        if (!relay.relayName || seenRelays.has(relay.relayName))
+            continue;
+        seenRelays.add(relay.relayName);
+        const encodedLatency = 0x2000000 + (relay.latency || 0);
+        teNodes.push({
+            tag: 'te',
+            attrs: {
+                latency: String(encodedLatency),
+                relay_name: relay.relayName
+            },
+            content: relay.addressBytes || undefined
+        });
+    }
+    const destinationContent = destinationJids.map((jid) => ({
+        tag: 'to',
+        attrs: { jid },
+        content: undefined
+    }));
+    const relayLatencyContent = [...teNodes];
+    if (destinationContent.length > 0) {
+        relayLatencyContent.push({
+            tag: 'destination',
+            attrs: {},
+            content: destinationContent
+        });
+    }
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': callId, 'call-creator': callCreator },
+                content: relayLatencyContent
+            }
+        ]
+    };
+}
+function buildTransportStanza(peerJid, callId, callCreator, meId, messageType = '0', p2pCandRound = '0') {
+    return {
+        tag: 'call',
+        attrs: { to: peerJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'transport',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': callCreator,
+                    'transport-message-type': messageType,
+                    'p2p-cand-round': p2pCandRound
+                },
+                content: [
+                    {
+                        tag: 'net',
+                        attrs: { medium: '2', protocol: '0' },
+                        content: undefined
+                    }
+                ]
+            }
+        ]
+    };
+}
+function buildMuteV2Stanza(peerDeviceJid, callId, callCreator, muteState, meId) {
+    return {
+        tag: 'call',
+        attrs: { to: peerDeviceJid, id: generateCallStanzaId() },
+        content: [
+            {
+                tag: 'mute_v2',
+                attrs: {
+                    'call-id': callId,
+                    'call-creator': callCreator,
+                    'mute-state': String(muteState)
+                }
+            }
+        ]
+    };
+}
+function buildAcceptReceiptStanza(peerDeviceJid, acceptMsgId, callId, callCreator, ourJid) {
+    return (0, transport_1.buildReceiptNode)({
+        kind: 'custom',
+        attrs: { to: peerDeviceJid, id: acceptMsgId, from: ourJid },
+        content: [{ tag: 'accept', attrs: { 'call-id': callId, 'call-creator': callCreator } }]
+    });
+}
+exports.ENCRYPTED_TAGS = ['preaccept', 'accept'];
+function needsDecryption(tag) {
+    return exports.ENCRYPTED_TAGS.includes(tag);
+}

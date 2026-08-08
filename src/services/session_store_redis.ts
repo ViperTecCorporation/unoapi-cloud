@@ -95,11 +95,19 @@ export class SessionStoreRedis extends SessionStore {
       logger.info(`Is not lost connection, status is ${currentStatus} for ${phone}`)
       return
     }
-    const authCount = await getAuthKeyCount(phone)
-    logger.info(`Found auth ${authCount.exact ? '' : 'at least '}${authCount.count} keys for session ${phone}`)
-    if (authCount.exact && authCount.count == 1 && await redisGet(authKey(`${phone}:creds`))) {
-      await delAuth(phone)
-      await this.setStatus(phone, 'disconnected')
+    let provider = ''
+    try {
+      provider = `${JSON.parse(await redisGet(configKey(phone)) || '{}')?.provider || ''}`.trim().toLowerCase()
+    } catch {}
+    if (provider === 'zapo') {
+      logger.info(`Skipping legacy auth scan for Zapo session ${phone}`)
+    } else {
+      const authCount = await getAuthKeyCount(phone)
+      logger.info(`Found auth ${authCount.exact ? '' : 'at least '}${authCount.count} keys for session ${phone}`)
+      if (authCount.exact && authCount.count == 1 && await redisGet(authKey(`${phone}:creds`))) {
+        await delAuth(phone)
+        await this.setStatus(phone, 'disconnected')
+      }
     }
     if (await getSessionStatus(phone) == 'standby' && await this.getConnectCount(phone) < MAX_CONNECT_RETRY) {
       logger.info(`Sync ${phone} standby!`)

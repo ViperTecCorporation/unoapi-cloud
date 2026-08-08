@@ -17,6 +17,7 @@ describe('Zapo session cleanup', () => {
     expect(session.appState.clear).toHaveBeenCalledTimes(1)
     expect(session.retry.clear).toHaveBeenCalledTimes(1)
     expect(session.groupMetadata.clear).toHaveBeenCalledTimes(1)
+    expect(session.chatMetadata.clear).toHaveBeenCalledTimes(1)
     expect(session.deviceList.clear).toHaveBeenCalledTimes(1)
     expect(session.messages.clear).toHaveBeenCalledTimes(1)
     expect(session.messageSecret.clear).toHaveBeenCalledTimes(1)
@@ -53,6 +54,7 @@ describe('Zapo session cleanup', () => {
     const session = mockDeep<WaStoreSession>()
     session.retry.clear.mockRejectedValue(new Error('shared-exclusive gate is closed'))
     session.groupMetadata.clear.mockRejectedValue(new Error('shared-exclusive gate is closed'))
+    session.chatMetadata.clear.mockRejectedValue(new Error('shared-exclusive gate is closed'))
 
     await expect(clearZapoSession(session)).resolves.toEqual({ cacheFailures: [] })
 

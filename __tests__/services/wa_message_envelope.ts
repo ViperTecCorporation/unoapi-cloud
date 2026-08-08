@@ -61,6 +61,22 @@ describe('WA message AMQP envelope', () => {
     expect(unpacked.key).toEqual(expect.objectContaining(original.key))
   })
 
+  test('preserves the internal Typebot exclusion marker across AMQP', () => {
+    const original = {
+      key: {
+        remoteJid: '5566991112222@s.whatsapp.net',
+        id: 'call-webhook-1',
+        fromMe: false,
+        __unoapiSkipTypebot: true,
+      },
+      message: { conversation: 'Tentou ligar no WhatsApp' },
+    }
+
+    const unpacked = unpackWaMessage(packWaMessage(original))
+
+    expect(unpacked.key.__unoapiSkipTypebot).toBe(true)
+  })
+
   test('leaves non-message payloads unchanged', () => {
     const update = { update: { status: 'READ' } }
 

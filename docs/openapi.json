@@ -3,7 +3,7 @@
   "info": {
     "title": "ViperConnect API",
     "version": "2.5.2",
-    "description": "API compatível com WhatsApp Cloud (formato de payload), utilizando Baileys como transporte.\n- Endpoints espelham em grande parte a estrutura do Cloud API (ex.: `v15.0/{phone}/messages`).\n- Suporta envios de texto, mídia (imagem/áudio/documento/vídeo), contatos e mensagens interativas (botões/listas).\n"
+    "description": "API ViperConnect para sessões Zapo, com rotas de compatibilidade de payload.\n- Endpoints versionados aceitam prefixos como `v15`, `v22` ou `v25` (ex.: `v25/{phone}/messages`).\n- Suporta envios de texto, mídia (imagem/áudio/documento/vídeo), contatos e mensagens interativas (botões/listas).\n"
   },
   "servers": [
     {
@@ -2099,7 +2099,7 @@
     },
     "/webhooks/whatsapp/{phone}": {
       "get": {
-        "summary": "Verificação do Webhook (Facebook/Meta)",
+        "summary": "Verificar assinatura do webhook",
         "security": [],
         "parameters": [
           {
@@ -2249,6 +2249,1032 @@
           }
         }
       }
+    },
+    "/admin/voip/bootstrap": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Estado agregado da telefonia",
+        "description": "Retorna linhas e sessões Zapo já reconciliadas com empresa, conta e ramal automático, além da concorrência por linha, chamadas ativas, ramais e configuração administrativa, sem expor a URL ou o token interno do serviço VoIP.",
+        "responses": {
+          "200": {
+            "description": "Estado usado pela página Telefonia do Manager.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipBootstrap"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Serviço VoIP não configurado."
+          }
+        }
+      }
+    },
+    "/admin/voip/calls": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Listar chamadas ativas",
+        "responses": {
+          "200": {
+            "description": "Chamadas isoladas por sessão e callId.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "calls": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VoipCall"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Iniciar chamada pela sessão Zapo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoipStartCallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Chamada iniciada; retorna session e callId.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipCall"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bridge da sessão indisponível."
+          }
+        }
+      }
+    },
+    "/admin/voip/calls/{callId}/{command}": {
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Controlar uma chamada Zapo",
+        "parameters": [
+          {
+            "name": "callId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "accept",
+                "reject",
+                "end",
+                "mute"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session"
+                ],
+                "properties": {
+                  "session": {
+                    "type": "string"
+                  },
+                  "muted": {
+                    "type": "boolean",
+                    "description": "Obrigatório para o comando mute."
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado correlacionado do worker dono da sessão.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/recordings/{recordId}": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Reproduzir ou baixar gravação de chamada",
+        "description": "A Uno busca o arquivo no serviço VoIP sem expor o token interno ao navegador.",
+        "parameters": [
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conteúdo binário da gravação.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/gsm": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gravação indisponível ou arquivo não encontrado."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/calls/{callId}/transfer": {
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Transferir chamada para outro ramal",
+        "parameters": [
+          {
+            "name": "callId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "targetExtensionId"
+                ],
+                "properties": {
+                  "targetExtensionId": {
+                    "type": "string",
+                    "example": "1002"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transferência iniciada para o ramal de destino."
+          },
+          "404": {
+            "description": "Chamada ou ramal não encontrado."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/{resource}": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Listar recursos administrativos de telefonia",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VoipResourcePath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recursos administrativos configurados no serviço de telefonia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/{resource}/{id}": {
+      "put": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Criar ou atualizar recurso avançado de telefonia",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VoipResourcePath"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VoipCompany"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoipAccount"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoipLineGroup"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoipExtensionGroup"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoipSession"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoipExtension"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuração validada, persistida e devolvida com segredos omitidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Excluir recurso avançado de telefonia",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VoipResourcePath"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recurso removido e configuração persistida."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/zapo-lines": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Listar linhas descobertas pela bridge Zapo",
+        "responses": {
+          "200": {
+            "description": "Inventário de linhas reconciliadas automaticamente com empresa, conta, sessão e ramal SIP/WebRTC.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "lines"
+                  ],
+                  "properties": {
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VoipZapoLine"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/zapo-lines/{session}/assign": {
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Alterar a empresa de uma linha Zapo provisionada",
+        "description": "O provisionamento inicial é automático. Esta operação permanece disponível somente para uma mudança administrativa posterior de empresa.",
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "5566999554300"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "companyId"
+                ],
+                "properties": {
+                  "companyId": {
+                    "type": "string",
+                    "description": "Empresa de destino já cadastrada."
+                  },
+                  "companyLabel": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "Mantido somente para compatibilidade com clientes antigos."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Nome da linha."
+                  },
+                  "maxConcurrentCalls": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 32,
+                    "default": 2
+                  },
+                  "createBasicRoute": {
+                    "type": "boolean",
+                    "deprecated": true,
+                    "description": "Ignorado; o ramal básico é gerenciado automaticamente pela sessão Zapo."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mudança idempotente de empresa concluída sem recriar o ramal nem sobrescrever Chatwoot",
+            "IA ou roteamento avançado.": null
+          }
+        }
+      }
+    },
+    "/admin/voip/console/history": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Consultar histórico de chamadas e gravações",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Alias de pageSize.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Histórico filtrado conforme a autenticação administrativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipHistoryPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/recording/settings": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Consultar configuração de gravações",
+        "responses": {
+          "200": {
+            "description": "Configuração com segredos omitidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recording": {
+                      "$ref": "#/components/schemas/VoipRecordingSettings"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Atualizar configuração de gravações",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoipRecordingSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuração de gravação atualizada."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/recording/summary": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Resumir armazenamento de gravações por linha",
+        "responses": {
+          "200": {
+            "description": "Quantidade e bytes armazenados por conta de telefonia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipRecordingSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/recording/accounts/{accountId}": {
+      "delete": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Limpar gravações armazenadas de uma linha",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Total de arquivos e bytes removidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "deleted",
+                    "bytes"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "format": "int64",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/extensions/{extensionId}/credentials": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Consultar credenciais SIP e WebRTC do ramal",
+        "parameters": [
+          {
+            "name": "extensionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contrato de conexão disponível somente ao administrador.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipExtensionCredentials"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ramal não encontrado."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/extensions/{extensionId}/registrations/{registrationId}": {
+      "delete": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Desconectar registro ativo de um ramal",
+        "parameters": [
+          {
+            "name": "extensionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "registrationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "webrtc",
+                "sip_rtp"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registro desconectado e lista ativa atualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dropped": {
+                      "type": "boolean"
+                    },
+                    "registrationId": {
+                      "type": "string"
+                    },
+                    "registrations": {
+                      "$ref": "#/components/schemas/VoipRegistrations"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ramal ou registro não encontrado."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/extensionGroups/{extensionGroupId}/transfer-audio": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Reproduzir áudio de transferência do grupo",
+        "parameters": [
+          {
+            "name": "extensionGroupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Arquivo de áudio configurado.",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Substituir áudio de transferência do grupo",
+        "parameters": [
+          {
+            "name": "extensionGroupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-File-Name",
+            "in": "header",
+            "required": false,
+            "description": "Nome original codificado com encodeURIComponent.",
+            "schema": {
+              "type": "string",
+              "example": "transferencia.mp3"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "audio/mpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Áudio validado e persistido."
+          },
+          "400": {
+            "description": "Arquivo vazio."
+          },
+          "413": {
+            "description": "Arquivo acima do limite padrão de 15 MB."
+          },
+          "415": {
+            "description": "Tipo diferente de MP3 ou WAV."
+          }
+        }
+      }
+    },
+    "/admin/voip/console/router/resolve-inbound": {
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Simular roteamento de entrada",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoipResolveInboundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da simulação, sem abrir chamada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipRouterResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/router/resolve-outbound": {
+      "post": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Simular roteamento de saída",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoipResolveOutboundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado da simulação, sem abrir chamada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoipRouterResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/router/locks": {
+      "get": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Listar reservas ativas do roteador",
+        "responses": {
+          "200": {
+            "description": "Reservas atuais, isoladas por chamada e linha Zapo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "locks"
+                  ],
+                  "properties": {
+                    "locks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VoipRouterLock"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/router/locks/{lockId}": {
+      "delete": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Liberar uma reserva do roteador",
+        "parameters": [
+          {
+            "name": "lockId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado da liberação e reservas restantes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "released": {
+                      "type": "boolean"
+                    },
+                    "locks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VoipRouterLock"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/voip/console/router/calls/{callId}/locks": {
+      "delete": {
+        "tags": [
+          "Telefonia"
+        ],
+        "summary": "Liberar todas as reservas de uma chamada",
+        "parameters": [
+          {
+            "name": "callId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quantidade liberada e reservas restantes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "released": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "locks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VoipRouterLock"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2278,6 +3304,23 @@
           "type": "string"
         },
         "description": "JID do grupo, ex.: 120363040468224422@g.us"
+      },
+      "VoipResourcePath": {
+        "name": "resource",
+        "in": "path",
+        "required": true,
+        "description": "Coleção administrativa da telefonia.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "companies",
+            "accounts",
+            "lineGroups",
+            "extensionGroups",
+            "sessions",
+            "extensions"
+          ]
+        }
       }
     },
     "schemas": {
@@ -2292,11 +3335,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.2"
+            "example": "4.0.11"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.2"
+            "example": "4.0.11"
           },
           "update_available": {
             "type": "boolean"
@@ -2318,6 +3361,1136 @@
             "format": "uri"
           }
         }
+      },
+      "VoipCall": {
+        "type": "object",
+        "required": [
+          "callId",
+          "session"
+        ],
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "session": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "incoming",
+              "outgoing",
+              "inbound",
+              "outbound"
+            ]
+          },
+          "peerJid": {
+            "type": "string",
+            "example": "5566996269251@s.whatsapp.net"
+          },
+          "callerPn": {
+            "type": "string",
+            "example": "5566996269251",
+            "description": "Telefone confirmado, somente com dígitos. Um LID nunca é apresentado como telefone."
+          },
+          "callerName": {
+            "type": "string",
+            "maxLength": 128,
+            "example": "João da Silva",
+            "description": "Nome normalizado no diretório de contatos da própria sessão Zapo no início da chamada."
+          },
+          "callerNameSource": {
+            "type": "string",
+            "enum": [
+              "display_name",
+              "push_name",
+              "username"
+            ],
+            "description": "Origem do nome apresentado no SIP e no WebRTC."
+          },
+          "extensionId": {
+            "type": "string",
+            "example": "1001"
+          },
+          "state": {
+            "type": "string"
+          },
+          "streamId": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipStartCallRequest": {
+        "type": "object",
+        "required": [
+          "session",
+          "peerJid",
+          "extensionId"
+        ],
+        "properties": {
+          "session": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "peerJid": {
+            "type": "string",
+            "example": "5566996269251@s.whatsapp.net"
+          },
+          "extensionId": {
+            "type": "string",
+            "example": "1001",
+            "description": "Ramal registrado que receberá a perna SIP da chamada."
+          }
+        }
+      },
+      "VoipAiSummary": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "transcriptionBaseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "transcriptionApiKey": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "description": "Valor vazio preserva o segredo já salvo."
+          },
+          "transcriptionModel": {
+            "type": "string",
+            "example": "whisper-large-v3"
+          },
+          "transcriptionLanguage": {
+            "type": "string",
+            "example": "pt"
+          },
+          "summaryBaseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "summaryApiKey": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "description": "Valor vazio preserva o segredo já salvo."
+          },
+          "summaryModel": {
+            "type": "string",
+            "example": "openai/gpt-oss-20b"
+          },
+          "summaryPrompt": {
+            "type": "string"
+          },
+          "includeTranscript": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VoipCompany": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "label": {
+            "type": "string",
+            "example": "Matriz"
+          },
+          "timeZone": {
+            "type": "string",
+            "example": "America/Cuiaba"
+          },
+          "aiSummary": {
+            "$ref": "#/components/schemas/VoipAiSummary"
+          }
+        }
+      },
+      "VoipChatwootRecording": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "inboxId": {
+            "type": "string"
+          },
+          "apiAccessToken": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "description": "Valor vazio preserva o segredo já salvo."
+          },
+          "privateNote": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VoipAccount": {
+        "type": "object",
+        "required": [
+          "label",
+          "companyId",
+          "phoneNumber"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 32,
+            "default": 2,
+            "description": "Limite simultâneo da linha Zapo, sem cadastro de dispositivo adicional."
+          },
+          "chatwootRecording": {
+            "$ref": "#/components/schemas/VoipChatwootRecording"
+          }
+        }
+      },
+      "VoipLineGroup": {
+        "type": "object",
+        "required": [
+          "label",
+          "companyId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "inboundSessionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outboundPrioritySessionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetExtensionGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "VoipExtensionGroup": {
+        "type": "object",
+        "required": [
+          "label",
+          "companyId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "extensionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "transferAudioFilename": {
+            "type": "string",
+            "readOnly": true
+          },
+          "transferAudioMime": {
+            "type": "string",
+            "readOnly": true
+          }
+        }
+      },
+      "VoipSession": {
+        "type": "object",
+        "required": [
+          "label",
+          "unoSession"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "unoSession": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 32,
+            "default": 2
+          },
+          "lineGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inboundLineGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outboundLineGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routing": {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "sequential"
+                ],
+                "default": "sequential"
+              },
+              "ringTimeoutSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 20
+              },
+              "extensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "basicInboundEnabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Quando false, impede apenas o toque recebido no ramal automático e exige ao menos um destino avançado válido."
+              }
+            }
+          },
+          "automaticExtensionId": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Ramal SIP/WebRTC gerenciado automaticamente para esta sessão Zapo."
+          },
+          "provisioningSource": {
+            "type": "string",
+            "enum": [
+              "zapo_auto"
+            ],
+            "readOnly": true
+          }
+        }
+      },
+      "VoipExtension": {
+        "type": "object",
+        "required": [
+          "displayName",
+          "username"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "webrtc",
+              "sip",
+              "both"
+            ],
+            "default": "both"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "example": "1001"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "description": "Valor vazio preserva a senha já salva."
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "extensionGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extensionGroupDistances": {
+            "type": "object",
+            "description": "Prioridade por grupo; o menor valor toca primeiro.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "provisioningSource": {
+            "type": "string",
+            "enum": [
+              "zapo_auto"
+            ],
+            "readOnly": true,
+            "description": "Presente nos ramais criados e reconciliados automaticamente pela sessão Zapo."
+          }
+        }
+      },
+      "VoipConfigResponse": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "VoipRegistration": {
+        "type": "object",
+        "required": [
+          "registrationId"
+        ],
+        "properties": {
+          "registrationId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID do ramal associado."
+          },
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "webrtc",
+              "sip_rtp"
+            ]
+          },
+          "contact": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipRegistrations": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "webrtc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipRegistration"
+            }
+          },
+          "sipRtp": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipRegistration"
+            }
+          }
+        }
+      },
+      "VoipZapoLine": {
+        "type": "object",
+        "required": [
+          "session",
+          "connected",
+          "automatic",
+          "advancedRoutingConfigured"
+        ],
+        "properties": {
+          "session": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "companyLabel": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "maxConcurrentCalls": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 32,
+            "default": 2
+          },
+          "automatic": {
+            "$ref": "#/components/schemas/VoipAutomaticExtension"
+          },
+          "advancedRoutingConfigured": {
+            "type": "boolean",
+            "description": "Indica se a linha também possui destinos no roteamento avançado."
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipAutomaticExtension": {
+        "type": "object",
+        "required": [
+          "extensionId",
+          "username",
+          "status",
+          "registrationCount",
+          "freeRegistrationCount",
+          "busyRegistrationCount",
+          "transports",
+          "basicInboundEnabled"
+        ],
+        "properties": {
+          "extensionId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "offline"
+            ]
+          },
+          "registrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "freeRegistrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "busyRegistrationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transports": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "sip",
+                "webrtc"
+              ]
+            }
+          },
+          "basicInboundEnabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VoipHistoryItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "callId",
+          "direction",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "callId": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound",
+              "internal"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "routing",
+              "ringing",
+              "active",
+              "completed",
+              "missed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "companyLabel": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountLabel": {
+            "type": "string"
+          },
+          "extensionId": {
+            "type": "string"
+          },
+          "extensionLabel": {
+            "type": "string"
+          },
+          "remoteName": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Fotografia do nome apresentado no começo da chamada; mudanças futuras no contato não alteram o histórico."
+          },
+          "remoteNameSource": {
+            "type": "string",
+            "enum": [
+              "display_name",
+              "push_name",
+              "username"
+            ]
+          },
+          "remoteNumber": {
+            "type": "string",
+            "description": "Telefone confirmado, somente com dígitos; nunca contém LID."
+          },
+          "remoteJid": {
+            "type": "string",
+            "description": "JID ou LID original preservado somente para auditoria."
+          },
+          "recordingStatus": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "recording",
+              "processing",
+              "available",
+              "failed"
+            ]
+          },
+          "recordingMime": {
+            "type": "string"
+          },
+          "recordingSizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "aiSummaryStatus": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "queued",
+              "processing",
+              "completed",
+              "failed"
+            ]
+          },
+          "aiTranscriptText": {
+            "type": "string"
+          },
+          "aiSummaryText": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipHistoryPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize",
+          "totalPages"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipHistoryItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "search": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "VoipRecordingSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "local",
+              "s3"
+            ]
+          },
+          "localDir": {
+            "type": "string",
+            "example": "/home/u/app/data/recordings"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "wav",
+              "mp3",
+              "gsm"
+            ]
+          },
+          "stereo": {
+            "type": "boolean"
+          },
+          "deleteLocalAfterUpload": {
+            "type": "boolean"
+          },
+          "s3Endpoint": {
+            "type": "string"
+          },
+          "s3Region": {
+            "type": "string",
+            "default": "auto"
+          },
+          "s3Bucket": {
+            "type": "string"
+          },
+          "s3AccessKeyId": {
+            "type": "string"
+          },
+          "s3SecretAccessKey": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "description": "Valor vazio preserva o segredo já salvo."
+          },
+          "s3ForcePathStyle": {
+            "type": "boolean"
+          },
+          "s3PublicBaseUrl": {
+            "type": "string"
+          },
+          "s3PresignTtlSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3600
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      },
+      "VoipRecordingSummary": {
+        "type": "object",
+        "properties": {
+          "recording": {
+            "$ref": "#/components/schemas/VoipRecordingSettings"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "accountLabel": {
+                  "type": "string"
+                },
+                "companyLabel": {
+                  "type": "string"
+                },
+                "phoneNumber": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "VoipExtensionCredentials": {
+        "type": "object",
+        "properties": {
+          "extensionId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "webrtc",
+              "sip",
+              "both"
+            ]
+          },
+          "sipUri": {
+            "type": "string",
+            "example": "sip:1001@sip.seudominio.com.br"
+          },
+          "sip": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "webrtc": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "VoipResolveInboundRequest": {
+        "type": "object",
+        "required": [
+          "sessionId"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "example": "5566999554300"
+          },
+          "callId": {
+            "type": "string",
+            "description": "Se omitido",
+            "o serviço gera um ID de simulação.": null
+          }
+        }
+      },
+      "VoipResolveOutboundRequest": {
+        "type": "object",
+        "required": [
+          "extensionId",
+          "target"
+        ],
+        "properties": {
+          "extensionId": {
+            "type": "string",
+            "example": "1001"
+          },
+          "target": {
+            "type": "string",
+            "example": "5566996269251"
+          },
+          "callId": {
+            "type": "string",
+            "description": "ID opcional usado somente no histórico da simulação."
+          }
+        }
+      },
+      "VoipRouterLock": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "callId": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "extensionId": {
+            "type": "string"
+          },
+          "targetNumber": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipRouterResult": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "lock": {
+            "$ref": "#/components/schemas/VoipRouterLock"
+          },
+          "session": {
+            "$ref": "#/components/schemas/VoipSession"
+          },
+          "extension": {
+            "$ref": "#/components/schemas/VoipExtension"
+          },
+          "account": {
+            "$ref": "#/components/schemas/VoipAccount"
+          },
+          "normalizedTarget": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoipBootstrap": {
+        "type": "object",
+        "properties": {
+          "bridges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipCall"
+            }
+          },
+          "companies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipCompany"
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipAccount"
+            }
+          },
+          "lineGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipLineGroup"
+            }
+          },
+          "extensionGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipExtensionGroup"
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipSession"
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipExtension"
+            }
+          },
+          "registrations": {
+            "$ref": "#/components/schemas/VoipRegistrations"
+          },
+          "zapoLines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoipZapoLine"
+            }
+          },
+          "history": {
+            "$ref": "#/components/schemas/VoipHistoryPage"
+          },
+          "recording": {
+            "$ref": "#/components/schemas/VoipRecordingSettings"
+          },
+          "recordingSummary": {
+            "$ref": "#/components/schemas/VoipRecordingSummary"
+          },
+          "router": {
+            "type": "object",
+            "properties": {
+              "locks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/VoipRouterLock"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": true
       },
       "Error400": {
         "type": "object",
@@ -2374,11 +4547,10 @@
           "provider": {
             "type": "string",
             "enum": [
-              "baileys",
               "zapo"
             ],
             "default": "zapo",
-            "description": "Motor WhatsApp da sessão. Zapo é o padrão para novas sessões. Baileys permanece aceito somente para sessões legadas; ao migrar para Zapo, um novo pareamento é obrigatório e credenciais Baileys não são importadas."
+            "description": "Motor WhatsApp da sessão. O caminho documentado e suportado é Zapo."
           },
           "connectionType": {
             "type": "string",

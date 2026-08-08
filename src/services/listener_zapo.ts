@@ -155,6 +155,8 @@ export class ListenerZapo implements Listener {
       key: { ...(source?.key || {}) },
       ...(source?.update ? { update: { ...source.update } } : {}),
     }
+    const skipTypebot = message?.key?.__unoapiSkipTypebot === true
+    if (skipTypebot) delete message.key.__unoapiSkipTypebot
     const providerIncomingKey = message?.key?.id && !message?.key?.fromMe
       ? { ...message.key }
       : undefined
@@ -175,6 +177,7 @@ export class ListenerZapo implements Listener {
 
     const [payload] = fromBaileysMessageContent(phone, normalized, config)
     if (!payload || !(await this.shouldForwardStatus(store, payload))) return
+    if (skipTypebot) (payload as any).__unoapiSkipTypebot = true
     await this.outgoing.send(phone, payload)
   }
 }

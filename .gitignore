@@ -11,3 +11,6 @@ data/logs/*
 .yarn/*
 .yarnrc.yml
 .tools/*
+_build/
+.codex-tmp/
+NUL

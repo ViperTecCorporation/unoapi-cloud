@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-jest.mock('@zapo-js/voip', () => ({
+jest.mock('@vipertec/zapo-voip', () => ({
   voipPlugin: jest.fn().mockReturnValue({ name: 'voip' }),
 }))
 jest.mock('@zapo-js/media-utils', () => ({
@@ -26,6 +26,7 @@ import type { Listener } from '../../src/services/listener'
 import type { SessionStore } from '../../src/services/session_store'
 import type { Store } from '../../src/services/store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
+import { voipPlugin } from '@vipertec/zapo-voip'
 
 describe('ClientZapo', () => {
   const phone = '5566999999999'
@@ -111,6 +112,10 @@ describe('ClientZapo', () => {
       'picture',
       'voip_call_incoming',
     ]))
+    expect(voipPlugin).toHaveBeenCalledWith({
+      maxConcurrentCalls: expect.any(Number),
+      logLevel: 'debug',
+    })
   })
 
   test('reuses native Zapo credentials without requesting pairing history again', async () => {
@@ -394,15 +399,30 @@ describe('ClientZapo', () => {
     })], 'notify')
   })
 
-  test('does not forward uncategorized unavailable placeholders', async () => {
+  test('waits for the recovered message when Zapo requested a placeholder resend', async () => {
     await service.connect(1)
 
     await handlers.message_unavailable({
       key: { id: 'other-1', remoteJid: '111@lid', fromMe: false },
       kind: 'other',
+      resendRequested: true,
     })
 
     expect(listener.process).not.toHaveBeenCalled()
+  })
+
+  test.each(['other', 'bot'] as const)('forwards unrecoverable %s placeholders to the integration', async (kind) => {
+    await service.connect(1)
+
+    await handlers.message_unavailable({
+      key: { id: `${kind}-1`, remoteJid: '111@lid', fromMe: false },
+      kind,
+      resendRequested: false,
+    })
+
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      messageStubParameters: ['hosted_message_unavailable'],
+    })], 'notify')
   })
 
   test('seeds the exact Zapo PN and LID mappings from group metadata', async () => {
@@ -973,6 +993,80 @@ describe('ClientZapo', () => {
       key: expect.objectContaining({ remoteJid: '5522@s.whatsapp.net' }),
       message: { conversation: 'Chamada recebida' },
     })], 'notify')
+  })
+
+  test('keeps configured automatic call rejection ahead of the connected VoIP bridge', async () => {
+    config.rejectCalls = 'Não atendemos chamadas por aqui.'
+    config.rejectCallsWebhook = 'Tentou ligar no WhatsApp'
+    await service.connect(1)
+    const voiceBridge = { publishIncoming: jest.fn().mockReturnValue(true) }
+    ;(service as any).voiceBridge = voiceBridge
+
+    await handlers.voip_call_incoming({
+      callId: 'call-auto-reject',
+      peerJid: '5511@s.whatsapp.net',
+      callerPn: '5522@s.whatsapp.net',
+    })
+
+    expect(client.voip.rejectCall).toHaveBeenCalledWith('call-auto-reject')
+    expect(client.message.send).toHaveBeenCalledWith('5522@s.whatsapp.net', {
+      type: 'text', text: 'Não atendemos chamadas por aqui.',
+    })
+    expect(voiceBridge.publishIncoming).not.toHaveBeenCalled()
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      key: expect.objectContaining({ __unoapiSkipTypebot: true }),
+      message: { conversation: 'Tentou ligar no WhatsApp' },
+    })], 'notify')
+  })
+
+  test('resolves an incoming call LID to its phone number before forwarding the call identity', async () => {
+    config.rejectCalls = 'Não atendemos chamadas por aqui.'
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '11343495192601@lid',
+      lid: '11343495192601@lid',
+      phoneNumber: '5566996269251',
+    } as never)
+    await service.connect(1)
+
+    await handlers.voip_call_incoming({
+      callId: 'call-lid',
+      peerJid: '11343495192601@lid',
+    })
+
+    expect(session.contacts.getByJid).toHaveBeenCalledWith('11343495192601@lid')
+    expect(client.voip.rejectCall).toHaveBeenCalledWith('call-lid')
+    expect(client.message.send).toHaveBeenCalledWith('5566996269251@s.whatsapp.net', {
+      type: 'text', text: 'Não atendemos chamadas por aqui.',
+    })
+  })
+
+  test('publishes the contact name and confirmed number with an incoming bridged call', async () => {
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '11343495192601@lid',
+      lid: '11343495192601@lid',
+      phoneNumber: '556699554300',
+      displayName: 'Joao da Silva',
+      pushName: 'Joao',
+    } as never)
+    session.contacts.getByPhoneNumber.mockResolvedValue(null)
+    await service.connect(1)
+    const voiceBridge = { publishIncoming: jest.fn().mockReturnValue(true) }
+    ;(service as any).voiceBridge = voiceBridge
+
+    const call = {
+      callId: 'call-with-name',
+      peerJid: '11343495192601@lid',
+      direction: 'incoming',
+      mediaType: 'audio',
+      canAccept: true,
+    }
+    await handlers.voip_call_incoming(call)
+
+    expect(voiceBridge.publishIncoming).toHaveBeenCalledWith(call, {
+      callerPn: '5566999554300',
+      callerName: 'Joao da Silva',
+      callerNameSource: 'display_name',
+    })
   })
 
   test('downloads incoming media through the official Zapo coordinator as a raw storage buffer', async () => {

@@ -25,6 +25,7 @@ describe('Zapo username index', () => {
 
     await index.touch('session', '@Maria', '123:4@lid')
     await expect(index.resolve('session', 'maria')).resolves.toBe('123@lid')
+    await expect(index.resolveByLid('session', '123:9@lid')).resolves.toBe('maria')
 
     expect(redis.hSet).toHaveBeenCalledWith('unoapi-zapo-username-lid:session', 'maria', '123@lid')
     expect(redis.zAdd).toHaveBeenCalledWith('unoapi-zapo-username-lid:session:seen', [{ score: expect.any(Number), value: 'maria' }])
@@ -32,6 +33,8 @@ describe('Zapo username index', () => {
 
     await index.removeByLid('session', '123:8@lid')
     await expect(index.resolve('session', 'maria')).resolves.toBeUndefined()
+    await expect(index.resolveByLid('session', '123@lid')).resolves.toBeUndefined()
+    await expect(index.resolveByLid('session', 'missing@lid', Date.now(), true)).resolves.toBeUndefined()
     expect(redis.hDel).toHaveBeenCalledWith('unoapi-zapo-username-lid:session', 'maria')
   })
 })

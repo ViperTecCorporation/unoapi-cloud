@@ -96,6 +96,25 @@ export class ZapoUsernameIndex {
     } catch {}
     return undefined
   }
+
+  async resolveByLid(phone: string, lid: string, nowMs = Date.now(), localOnly = false): Promise<string | undefined> {
+    const canonicalLid = `${`${lid || ''}`.split('@')[0].split(':')[0]}@lid`
+    const local = this.reverseLocal.get(`${phone}:${canonicalLid}`)
+    if (local && nowMs - local.seenAt <= Math.max(1, this.retentionSec) * 1000) return local.name
+    if (local) this.reverseLocal.delete(`${phone}:${canonicalLid}`)
+    if (localOnly) return undefined
+    try {
+      const redis = await getRedis()
+      await this.prune(phone, nowMs)
+      const name = normalizeUsername(`${await redis.hGet(this.key(phone), `lid:${canonicalLid}`) || ''}`)
+      if (name) {
+        this.reverseLocal.set(`${phone}:${canonicalLid}`, { name, seenAt: nowMs })
+        this.local.set(`${phone}:${name}`, { lid: canonicalLid, seenAt: nowMs })
+        return name
+      }
+    } catch {}
+    return undefined
+  }
 }
 
 export const zapoUsernameIndex = new ZapoUsernameIndex()

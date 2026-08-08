@@ -160,7 +160,7 @@ Estados permitidos: `nao iniciado`, `adapter`, `testado`, `documentado`, `conclu
 | Privacy token | consulta, bootstrap e cache | privacy token | testado |
 | Passkey | bridge WebAuthn externo | `signPasskeyAssertion` | testado |
 | Coexistencia | fluxo Meta especifico atual | sem coordinator equivalente documentado | sem capability |
-| Chamadas | receber e rejeitar automaticamente | `@zapo-js/voip`, `client.voip.rejectCall` | testado |
+| Chamadas | receber, rejeitar e fazer bridge de áudio ao vivo | plugin dedicado `vendor/zapo-voip`, `client.voip` | testado |
 | Status | publicar e receber `status@broadcast` | `client.status` e evento message | testado |
 | Catálogo | produto compartilhado e pedido itemizado no webhook | `productMessage`, `orderMessage` e `BizQueryOrder` | concluido |
 | Recuperacao | reenviar preservando ID publico | `message.send({ id })` e retry interno | testado |
@@ -172,6 +172,13 @@ para recuperação. A UnoAPI ainda encaminha ao webhook uma mensagem `type=text`
 com o aviso `Mensagem indisponível nesta integração. Confira o aparelho.` para
 evitar uma conversa sem conteúdo no sistema integrado. Isso não altera o estado
 `sem capability`: o conteúdo original continua irrecuperável.
+
+Desde `zapo-js` 1.7.0, placeholders comuns podem informar
+`resendRequested=true`: nesse caso a UnoAPI aguarda o reenvio do aparelho e não
+publica um aviso intermediário, pois a mensagem recuperada chega depois com a
+mesma chave. Quando `resendRequested=false`, inclusive para `kind=bot` ou
+`kind=other` fora da janela de recuperação, a UnoAPI encaminha o mesmo fallback
+explícito ao webhook.
 
 ### Falhas de envio
 

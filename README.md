@@ -3,7 +3,7 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0.2-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.2)
+[![Version](https://img.shields.io/badge/version-4.0.11-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.11)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
 [![Documentação](https://img.shields.io/badge/docs-viperconnect.vipertec.net-9d3836)](https://viperconnect.vipertec.net/)
 
@@ -170,7 +170,7 @@ ghcr.io/viperteccorporation/viperconnect
 Exemplo:
 
 ```bash
-docker pull ghcr.io/viperteccorporation/viperconnect:4.0.2
+docker pull ghcr.io/viperteccorporation/viperconnect:4.0.11
 ```
 
 A tag `latest` acompanha a versão estável mais recente:
@@ -178,6 +178,10 @@ A tag `latest` acompanha a versão estável mais recente:
 ```bash
 docker pull ghcr.io/viperteccorporation/viperconnect:latest
 ```
+
+Nos Composes de produção, não declare `entrypoint` nem `command` para os
+containers ViperConnect. Use somente `UNOAPI_PROCESS_ROLE`; a imagem preserva o
+Node como PID 1 e executa o desligamento gracioso das sessões Zapo.
 
 ## Créditos
 

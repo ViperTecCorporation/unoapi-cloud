@@ -29,6 +29,7 @@ const persistentDomains = (backend: string) => ({
 const cacheDomains = (backend: string) => ({
   retry: backend,
   groupMetadata: backend,
+  chatMetadata: backend,
   deviceList: backend,
   messageSecret: backend,
 } as const)

@@ -8,8 +8,10 @@ x-base: &base
     - ./:/app
     - /app/node_modules
   working_dir: /app
-  env_file: 
+  env_file:
     - /.env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   environment: &base-environment
     NODE_ENV: development
     CHOKIDAR_USEPOLLING: "1"
@@ -18,6 +20,11 @@ x-base: &base
     BASE_URL: http://web:9876
     REDIS_URL: redis://redis:6379
     STORAGE_ENDPOINT: https://af1ce4a18c7a153046fbdc9ce50db632.r2.cloudflarestorage.com/
+    VOIP_SERVICE_URL: http://host.docker.internal:3097
+    VOIP_BRIDGE_URL: ws://host.docker.internal:3097/v1/bridge/zapo
+    VOIP_SERVICE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
+    # Capacidade compartilhada por linha Zapo: mínimo 2, máximo 32.
+    VOIP_MAX_CONCURRENT_CALLS: "2"
     GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
   depends_on:
     redis:
@@ -83,6 +90,25 @@ services:
     ports:
       - 6379:6379
 
+  voip:
+    image: ghcr.io/viperteccorporation/viperconnect:latest
+    restart: on-failure
+    network_mode: host
+    environment:
+      PORT: "3097"
+      UNOAPI_PROCESS_ROLE: "voip"
+      VOIP_SERVICE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
+      VOIP_BRIDGE_TOKEN: ${VOIP_SERVICE_TOKEN:-change-me}
+      VOIP_MAX_CONCURRENT_CALLS: "2"
+    volumes:
+      - voip:/home/u/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3097/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   rabbitmq:
   redis:
+  voip:

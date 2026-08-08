@@ -1398,43 +1398,6 @@
     generic-pool "3.9.0"
     yallist "4.0.0"
 
-"@roamhq/wrtc-darwin-arm64@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc-darwin-arm64/-/wrtc-darwin-arm64-0.10.0.tgz#8fd9b6eb1c7189fa4f69becef7125d56c82398e4"
-  integrity sha512-vFdi79jWuPHcnUcnuOjTvyKtmY/RI2xRQo9Y6RsIjIlYePN/7LTy00c+Ivrz4prYAPbp0oHscl7PDV64VUqGTQ==
-
-"@roamhq/wrtc-darwin-x64@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc-darwin-x64/-/wrtc-darwin-x64-0.10.0.tgz#c860caa6997552b7d7218635f9b587e6e3900f68"
-  integrity sha512-H6852g2xYCuaR+/TrthpdMafs4bMfAUEpvRDhsIguzrK7Dz+MKpNI8MkwdqJN8W65J+7w7k+YqXIkTHe7Fz/cg==
-
-"@roamhq/wrtc-linux-arm64@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc-linux-arm64/-/wrtc-linux-arm64-0.10.0.tgz#088f411f1d33decf530d419e4f9dab997bcc3f18"
-  integrity sha512-fEuJbNjprxQG6QlFd2iqBW9x028RDSho6izVg7gyt8irdPiXWOxzOxNnYMs/B2fohBTd1wD4Qxfivl07/dCR8A==
-
-"@roamhq/wrtc-linux-x64@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc-linux-x64/-/wrtc-linux-x64-0.10.0.tgz#709d91ee73b66c24825498a3c39fa18fc03dc0b0"
-  integrity sha512-H32lK2eFg3sVb/9nkHIX5HIisxFoS82Gpesuea+zqAyRpRzSd5NpFXx28bVy9wQyRrNtj8k0bTUgEzWRzSbYCA==
-
-"@roamhq/wrtc-win32-x64@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc-win32-x64/-/wrtc-win32-x64-0.10.0.tgz#ecc0f3dde8ecc8ed20263a315d385fea51af309f"
-  integrity sha512-wEVXMvLrBizdLyrd+Zc7zb7zpwUuHUBXwrdIvI69e3i/AA8YsVYI2xo/sxk6GoQ+o8a14ONc4SStDS35TCjg+w==
-
-"@roamhq/wrtc@0.10.0":
-  version "0.10.0"
-  resolved "https://registry.yarnpkg.com/@roamhq/wrtc/-/wrtc-0.10.0.tgz#eecdfdad778e75b42c5e9f66584872c7dff4155f"
-  integrity sha512-yFqQQ0EV1ZUHaphh3tmjoxPi2wzhW2vjmzoAVNRRLUjXYd2e1nvwi9TKfE2w4WNvNws/hBkouvOt23Xo9FkXkQ==
-  optionalDependencies:
-    "@roamhq/wrtc-darwin-arm64" "0.10.0"
-    "@roamhq/wrtc-darwin-x64" "0.10.0"
-    "@roamhq/wrtc-linux-arm64" "0.10.0"
-    "@roamhq/wrtc-linux-x64" "0.10.0"
-    "@roamhq/wrtc-win32-x64" "0.10.0"
-    domexception "^4.0.0"
-
 "@sentry/conventions@^0.16.0":
   version "0.16.0"
   resolved "https://registry.yarnpkg.com/@sentry/conventions/-/conventions-0.16.0.tgz#3b58d15714cf44dca1518496c00749eec5525009"
@@ -2010,20 +1973,18 @@
   resolved "https://registry.yarnpkg.com/@zapo-js/media-utils/-/media-utils-1.0.0.tgz#2c33c342cce61630ac1f414d1b463750da3d582c"
   integrity sha512-u8IcoLloaP1kKSCgKsmaeEbOLVWHKYsdKOelIn8n9Xa+bFCCVC5XefeZUcksFr3eiB2optUzewlZYjZxNXHmHg==
 
-"@zapo-js/store-redis@1.1.0":
+"@zapo-js/store-redis@1.2.0":
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.2.0.tgz#cbbf0108c25a002acd7ce7145ae43335fd4194cc"
+  integrity sha512-bBoflDaoCRreF8lP/plpEPJyMGjQmOpPXsWRll1nw2HRMHmiiCU1+olycBWI33gHd6ri8cGVf14nYoEVP/N08A==
+
+"@zapo-js/store-sqlite@1.1.0":
   version "1.1.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.1.0.tgz#b4e59f3e0656b911de8012f259b3887ef082569e"
-  integrity sha512-vK1+QXx8zfSwA9yJ29RdOJ5A9GGKf+JGZBE+77NUP0i4X2XxSeDvLCbo/Pk+jmWXnY0BbxDkoK/yZqKzff9E9g==
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.1.0.tgz#0685bf76939e256e142c6f171ab2a1311809ab39"
+  integrity sha512-leoHja38lB7kBxVlcbktIMZjbocropExyjL2LPun6Ofd8gnr0+mcx9xyYpsj4htLM95OFMfd2jd5zbU6IqjgDQ==
 
-"@zapo-js/store-sqlite@1.0.2":
-  version "1.0.2"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.0.2.tgz#20632a3b9cf16503c2be03d943c36735a3492b04"
-  integrity sha512-mGx8WNa4nG7pV1f3BlmHxS9yFcdS7bIDIbGnW2qms5iGA1V/mnd3vk8Tq7YYhqaeFW8zxNBKm7gUlDA1JBBiwg==
-
-"@zapo-js/voip@1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/voip/-/voip-1.0.0.tgz#39cb7d7b94d13f28f9403534e9e9723e2c8559f2"
-  integrity sha512-BEhwxxdviFC5iIrRIk+kopuzFi/FOKJYvs1o3jx0siK0jVFAEPAA/2QyEiineqR4QQZzulsoQTzmS16Z2ub0PQ==
+"@vipertec/zapo-voip@file:vendor/zapo-voip":
+  version "1.0.0-viper.4"
 
 accepts@~1.3.4, accepts@~1.3.8:
   version "1.3.8"
@@ -6554,7 +6515,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zapo-js@1.6.1:
-  version "1.6.1"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.6.1.tgz#e55a8b539585fa5efda618bd0f02d4d6a1610333"
-  integrity sha512-7Nbc8PzrvaForP7hlF+1IsTMdv4Oucyw53afX5zCRECTAujEj1PQjOD8b21a5eLX3+/x8GJeBk4KX30I4dDebw==
+zapo-js@1.7.0:
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.7.0.tgz#bc1a48f590b6bd95f2e09a441cad3e4781d4c837"
+  integrity sha512-OSWpH0x93qlVvg85PScxxDzRKKa/AHi1Gh3HXFtc9KzOeqNrIsPPQbEx4y+o99QIghv/8STSr6N11CzljAtwsQ==

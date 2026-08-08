@@ -12,6 +12,7 @@ const EXTRA_KEY_FIELDS = [
   'remoteJidUsername',
   'senderUsername',
   'senderDevice',
+  '__unoapiSkipTypebot',
   'isGroup',
   'isBroadcast',
   'isNewsletter',

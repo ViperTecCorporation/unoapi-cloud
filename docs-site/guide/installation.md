@@ -1,7 +1,8 @@
 # Instalação
 
-Escolha o formato de implantação. Os dois usam a mesma versão do ViperConnect,
-o mesmo contrato HTTP e dependem de Valkey/Redis e RabbitMQ.
+Escolha o formato de implantação da Uno. A telefonia pode acompanhar a imagem
+única no Docker ou usar seu pacote nativo versionado separadamente. Os dois
+modos mantêm o mesmo contrato entre Uno e serviço VoIP.
 
 ## Instalador Linux oficial
 
@@ -9,6 +10,11 @@ Indicado para Debian 12 ou Ubuntu 24.04. O instalador prepara Node.js 24, compil
 uma tag imutável, mantém releases para rollback e cria o serviço `systemd`.
 
 [Abrir instalação nativa →](/guide/install-native-linux)
+
+O serviço de telefonia possui um pacote `.deb` próprio, já compilado, para quem
+quer manter a Uno em Docker e executar SIP/RTP/WebRTC diretamente no host.
+
+[Abrir telefonia em Linux nativo →](/guide/install-voip-native-linux)
 
 ## Docker Compose
 

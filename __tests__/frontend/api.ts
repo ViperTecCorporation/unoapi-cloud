@@ -110,4 +110,51 @@ describe('frontend API client', () => {
       confirm: 'unoapi:zapo:test:',
     })
   })
+
+  test('loads a VoIP recording as an authenticated blob', async () => {
+    const fetcher = jest.fn().mockResolvedValue(new Response(new Uint8Array([1, 2]), { headers: { 'Content-Type': 'audio/mpeg' } })) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+    api.setToken('admin-token')
+    const blob = await api.voipRecording('record-1')
+    expect(blob.type).toBe('audio/mpeg')
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://unoapi.example/admin/voip/recordings/record-1',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    )
+    expect(new Headers((fetcher as jest.Mock).mock.calls[0][1].headers).get('Authorization')).toBe('Bearer admin-token')
+  })
+
+  test('queries paged VoIP history without losing filters', async () => {
+    const fetcher = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [], total: 0, page: 2, pageSize: 50, totalPages: 1,
+    }))) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+
+    await api.voipHistory({ page: 2, pageSize: 50, search: ' 1001 ', startDate: '2026-08-01', endDate: '2026-08-05' })
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://unoapi.example/admin/voip/console/history?page=2&pageSize=50&search=1001&startDate=2026-08-01&endDate=2026-08-05',
+      expect.any(Object),
+    )
+  })
+
+  test('uploads transfer audio with an encoded Unicode filename', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ uploaded: true }))) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+    api.setToken('admin')
+
+    const file = new File([new Uint8Array([1, 2])], 'áudio espera.mp3', { type: 'audio/mpeg' })
+    await api.voipUploadTransferAudio('support', file)
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      'https://unoapi.example/admin/voip/console/extensionGroups/support/transfer-audio',
+      expect.any(Object),
+    )
+    const calls = (fetcher as jest.Mock).mock.calls
+    const headers = new Headers(calls[0][1]?.headers)
+    expect(headers.get('X-File-Name')).toBe(encodeURIComponent('áudio espera.mp3'))
+    expect(headers.get('Content-Type')).toBe('audio/mpeg')
+  })
 })

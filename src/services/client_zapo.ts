@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import QRCode from 'qrcode'
-import { WaClient as ZapoWaClient, createNoopLogger, type WaClient as WaClientType, type WaStoreSession } from 'zapo-js'
-import { voipPlugin, type CallInfo } from '@zapo-js/voip'
+import { PinoLogger, WaClient as ZapoWaClient, type WaClient as WaClientType, type WaStoreSession } from 'zapo-js'
+import { voipPlugin, type CallInfo } from '@vipertec/zapo-voip'
 import { v1 as uuid } from 'uuid'
 import type { Client, Contact } from './client'
 import { clients } from './client'
@@ -26,6 +26,11 @@ import {
   ZAPO_REDIS_MAINTENANCE_INTERVAL_MS,
   ZAPO_SESSION_LEASE_RENEW_MS,
   ZAPO_SESSION_LEASE_TTL_MS,
+  UNOAPI_SERVER_NAME,
+  VOIP_BRIDGE_URL,
+  VOIP_MAX_CONCURRENT_CALLS,
+  VOIP_SERVICE_TOKEN,
+  VOIP_SERVICE_URL,
 } from '../defaults'
 import { createPasskeyBridgeSession, updatePasskeyBridgeSession } from './passkey_bridge'
 import { RedisLease } from './redis_lease'
@@ -43,6 +48,9 @@ import { ZapoContactIdentityResolver } from './zapo/zapo_contact_identity'
 import type { SaveContactInput } from './contacts/contact_book_types'
 import { ZapoCatalog } from './zapo/zapo_catalog'
 import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
+import { ZapoVoiceAdapter } from './zapo/voice/zapo_voice_adapter'
+import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/zapo_voice_bridge_client'
+import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -52,7 +60,8 @@ type ZapoClient = WaClientType & {
 type ClientFactory = (options: ConstructorParameters<typeof ZapoWaClient>[0]) => ZapoClient
 type LeaseFactory = (phone: string) => RedisLease
 
-const defaultClientFactory: ClientFactory = (options) => new ZapoWaClient(options, createNoopLogger('info')) as ZapoClient
+const defaultClientFactory: ClientFactory = (options) =>
+  new ZapoWaClient(options, new PinoLogger(logger.child({ scope: 'zapo' }), 'error')) as ZapoClient
 const mediaMessageKeys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage'] as const
 
 export class ClientZapo implements Client {
@@ -85,6 +94,7 @@ export class ClientZapo implements Client {
   private pairingCodeRequest?: Promise<string>
   private pairingCodeIssued = false
   private connectionGeneration = 0
+  private voiceBridge?: ZapoVoiceBridgeClient
 
   constructor(
     private readonly phone: string,
@@ -200,6 +210,8 @@ export class ClientZapo implements Client {
     if (this.socket !== client) return
     this.connectionGeneration += 1
     this.connected = false
+    this.voiceBridge?.stop('connection_failed')
+    this.voiceBridge = undefined
     this.socket = undefined
     this.messages = undefined
     this.groups = undefined
@@ -271,10 +283,7 @@ export class ClientZapo implements Client {
   }
 
   private bindEvents(client: ZapoClient, resolvePrompt: () => void, generation: number) {
-    const isCurrent = () =>
-      this.socket === client &&
-      this.connectionGeneration === generation &&
-      !this.intentionalDisconnect
+    const isCurrent = () => this.socket === client && this.connectionGeneration === generation && !this.intentionalDisconnect
     const onCurrent = (event: any, handler: (...args: any[]) => any) =>
       client.on(event, (...args: any[]) => {
         if (!isCurrent()) return
@@ -343,6 +352,7 @@ export class ClientZapo implements Client {
         }
         clients.set(this.phone, this)
         this.connected = true
+        this.voiceBridge?.start()
         this.reconnectAttempts = 0
         await this.unoStore?.sessionStore.setStatus(this.phone, 'online')
         await this.emitStatus(`Connected with ${this.phone} using Zapo`).catch((error) => {
@@ -353,6 +363,7 @@ export class ClientZapo implements Client {
         return
       }
       this.connected = false
+      this.voiceBridge?.stop(event.isLogout ? 'session_unlinked' : 'connection_closed')
       this.pendingPasskey?.reject(new SendError(502, event.isLogout ? 'zapo_passkey_session_unlinked' : 'zapo_passkey_connection_closed'))
       try {
         await this.unoStore?.sessionStore.setStatus(this.phone, event.isLogout ? 'disconnected' : 'offline')
@@ -477,8 +488,17 @@ export class ClientZapo implements Client {
       await this.listener.process(this.phone, [message], 'notify')
     })
     onCurrent('message_unavailable', async (event) => {
-      logger.warn('Zapo unavailable message phone=%s id=%s kind=%s', this.phone, event.key.id, event.kind)
-      if (!['view_once', 'hosted'].includes(event.kind)) return
+      logger.warn(
+        'Zapo unavailable message phone=%s id=%s kind=%s resend_requested=%s',
+        this.phone,
+        event.key.id,
+        event.kind,
+        `${event.resendRequested === true}`,
+      )
+      // Zapo 1.7 can recover a plain placeholder from the primary device. In
+      // that case the real message arrives later with the same key, so emitting
+      // a fallback now would create duplicate content in the integration.
+      if (event.resendRequested === true) return
 
       const message = createZapoUnavailableMessage(event)
       if (event.key.remoteJid && event.key.id) {
@@ -613,19 +633,76 @@ export class ClientZapo implements Client {
         logger.error(error as any, 'Zapo incoming call rejection failed for %s call %s', this.phone, call.callId)
       })
     })
+    onCurrent('voip_call_state', (call: CallInfo) => {
+      logger.info(
+        'Zapo VoIP state phone=%s call=%s direction=%s state=%s endReason=%s peer=%s',
+        this.phone,
+        call.callId,
+        call.direction,
+        `${call.stateData?.state || 'unknown'}`,
+        `${call.stateData?.endReason || '<none>'}`,
+        call.peerJid,
+      )
+      this.voiceBridge?.publishState(call)
+    })
+    onCurrent('voip_call_ended', (call: CallInfo) => {
+      logger.info(
+        'Zapo VoIP ended phone=%s call=%s direction=%s state=%s endReason=%s peer=%s',
+        this.phone,
+        call.callId,
+        call.direction,
+        `${call.stateData?.state || 'unknown'}`,
+        `${call.stateData?.endReason || 'ended'}`,
+        call.peerJid,
+      )
+      this.voiceBridge?.publishEnded(call)
+    })
+    onCurrent('voip_call_inbound_audio', ({ call, pcm }: { call: CallInfo; pcm: Float32Array }) => {
+      this.voiceBridge?.publishInboundAudio(call.callId, pcm)
+    })
+    onCurrent('voip_call_error', (error: Error) => {
+      this.voiceBridge?.publishError(error)
+    })
   }
 
   private async handleIncomingCall(client: ZapoClient, call: CallInfo) {
+    const callerIdentity = await new ZapoVoiceCallerIdentityResolver(
+      this.phone,
+      this.zapoSession?.contacts,
+      (session, lidJid) => zapoUsernameIndex.resolveByLid(
+        session,
+        lidJid,
+        Date.now(),
+        !this.config.useRedis,
+      ),
+      async (session, peerJid) => this.unoStore?.dataStore.getPnForLid?.(session, peerJid),
+      { attempts: 4, delayMs: 100 },
+    ).resolve(call.peerJid, call.callerPn)
+    const callerJid = callerIdentity.callerPn
+      ? `${callerIdentity.callerPn}@s.whatsapp.net`
+      : normalizeZapoPhoneJid(`${call.callerPn || ''}`)
     const rejectionMessage = this.config.rejectCalls.trim()
     if (rejectionMessage) {
       await client.voip.rejectCall(call.callId)
-      await client.message.send(call.callerPn || call.peerJid, {
+      await client.message.send(callerJid || call.peerJid, {
         type: 'text',
         text: rejectionMessage,
       })
+      logger.info('Zapo incoming call rejected phone=%s call=%s peer=%s', this.phone, call.callId, callerJid || call.peerJid)
+      await this.emitCallWebhook(call, callerJid)
+      return
     }
+    if (this.voiceBridge?.publishIncoming(call, callerIdentity)) {
+      await this.emitCallWebhook(call, callerJid)
+      return
+    }
+    await this.emitCallWebhook(call, callerJid)
+  }
+
+  private async emitCallWebhook(call: CallInfo, resolvedCallerPn?: string) {
     const webhookMessage = (this.config.rejectCallsWebhook || this.config.messageCallsWebhook).trim()
     if (webhookMessage) {
+      const callerPn = resolvedCallerPn || call.callerPn
       await this.listener.process(
         this.phone,
         [
@@ -633,8 +710,9 @@ export class ClientZapo implements Client {
             key: {
               fromMe: false,
               id: uuid(),
-              remoteJid: call.callerPn || call.peerJid,
-              senderPn: call.callerPn,
+              remoteJid: callerPn || call.peerJid,
+              senderPn: callerPn,
+              __unoapiSkipTypebot: true,
             },
             message: { conversation: webhookMessage },
           },
@@ -816,9 +894,23 @@ export class ClientZapo implements Client {
       addons: { autoDecrypt: false },
       media: zapoMediaOptions,
       signPasskeyAssertion: this.signPasskeyAssertion.bind(this),
-      plugins: [voipPlugin()],
+      plugins: [voipPlugin({ maxConcurrentCalls: VOIP_MAX_CONCURRENT_CALLS, logLevel: 'debug' })],
     })
     const generation = ++this.connectionGeneration
+    const voiceBridgeUrl = resolveZapoVoiceBridgeUrl(VOIP_SERVICE_URL, VOIP_BRIDGE_URL)
+    this.voiceBridge =
+      voiceBridgeUrl && VOIP_SERVICE_TOKEN
+        ? new ZapoVoiceBridgeClient({
+            session: this.phone.replace(/\D/g, ''),
+            url: voiceBridgeUrl,
+            token: VOIP_SERVICE_TOKEN,
+            serverId: UNOAPI_SERVER_NAME,
+            workerId: `${UNOAPI_SERVER_NAME}:${process.pid}`,
+            generation,
+            maxConcurrentCalls: VOIP_MAX_CONCURRENT_CALLS,
+            adapter: new ZapoVoiceAdapter(client.voip),
+          })
+        : undefined
     this.socket = client
     this.messages = new ZapoMessages(client, this.unoStore.dataStore, {
       customMessageCharactersFunction: this.config.customMessageCharactersFunction,
@@ -863,6 +955,8 @@ export class ClientZapo implements Client {
     this.reconnectTimer = undefined
     this.reconnectAttempts = 0
     this.connected = false
+    this.voiceBridge?.stop('intentional_disconnect')
+    this.voiceBridge = undefined
     this.pendingPasskey?.reject(new SendError(409, 'zapo_passkey_connection_disconnected'))
     const socket = this.socket
     this.connectionGeneration += 1

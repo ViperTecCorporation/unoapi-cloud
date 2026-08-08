@@ -56,6 +56,23 @@ describe('ListenerZapo', () => {
     expect(payload.entry[0].changes[0].value.messages[0].id).not.toBe('3EB0ZAPO')
   })
 
+  test('marks synthetic call webhooks for Typebot exclusion', async () => {
+    await service.process('5566999999999', [{
+      key: {
+        id: 'call-webhook-provider-id',
+        remoteJid: '5566998888888@s.whatsapp.net',
+        fromMe: false,
+        __unoapiSkipTypebot: true,
+      },
+      message: { conversation: 'Tentou ligar no WhatsApp' },
+      messageTimestamp: 1,
+    }], 'notify')
+
+    const payload: any = (outgoing.send as jest.Mock).mock.calls[0][1]
+    expect(payload.__unoapiSkipTypebot).toBe(true)
+    expect(payload.entry[0].changes[0].value.messages[0].text.body).toBe('Tentou ligar no WhatsApp')
+  })
+
   test.each([
     ['direct', {
       remoteJid: '123@lid',
