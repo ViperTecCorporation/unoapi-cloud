@@ -1,5 +1,8 @@
 name: unoapi
 
+# Docker Compose standalone. Nao use este arquivo com docker stack deploy.
+# Para Swarm, baixe docker-stack.unoapi-nginx.yml na documentacao oficial.
+
 x-base: &base
   image: ghcr.io/viperteccorporation/viperconnect:latest
   # Preserve o ENTRYPOINT oficial da imagem; selecione o processo somente por UNOAPI_PROCESS_ROLE.

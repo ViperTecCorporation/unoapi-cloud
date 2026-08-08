@@ -1,5 +1,10 @@
 # Docker Compose
 
+> Estes modelos são para `docker compose` em um único host. Eles usam rede
+> bridge e `network_mode: host` na telefonia; não os envie com
+> `docker stack deploy`. Para cluster, overlays e portas host-mode explícitas,
+> use o guia de [Docker Swarm](/guide/docker-swarm).
+
 Estes são os dois modelos do próprio projeto e usam a imagem
 `viperconnect:latest`. Assim, uma nova instalação acompanha automaticamente a
 última imagem publicada no canal `latest`. Ambos preservam a arquitetura usada em produção:
@@ -170,3 +175,7 @@ e mantêm dados nos volumes `redis` e `rabbitmq`.
 
 Para QR code, pairing code e atualizações de conexão, o proxy precisa aceitar o
 upgrade do Socket.IO em `/socket.io/`.
+
+Para implantar com `docker stack deploy`, use os arquivos próprios de
+[Docker Swarm](/guide/docker-swarm). Eles não possuem `container_name`,
+`depends_on`, rede bridge nem `network_mode: host`.

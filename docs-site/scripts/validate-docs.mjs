@@ -2,6 +2,11 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
+import {
+  defaultRanges,
+  generateSwarmStacks,
+  validateRanges,
+} from '../../docs/examples/generate-swarm-stack.mjs'
 
 const docs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const root = path.resolve(docs, '..')
@@ -150,6 +155,193 @@ for (const composeFile of composeFiles) {
     }
   }
 }
+
+await generateSwarmStacks({
+  directory: path.join(root, 'docs', 'examples'),
+  ranges: defaultRanges,
+  check: true,
+})
+
+try {
+  validateRanges({ rtpMin: 12000, rtpMax: 13000, webrtcMin: 12500, webrtcMax: 14000 })
+  throw new Error('Gerador Swarm aceitou faixas de mídia sobrepostas')
+} catch (error) {
+  if (!/nao podem se sobrepor/.test(error.message)) throw error
+}
+
+const swarmFiles = [
+  path.join(docs, 'public', 'examples', 'docker-stack.unoapi-nginx.yml'),
+  path.join(docs, 'public', 'examples', 'docker-stack.unoapi-traefik.yml'),
+]
+const swarmGuide = await readFile(path.join(docs, 'guide', 'docker-swarm.md'), 'utf8')
+for (const swarmFile of swarmFiles) {
+  const downloadPath = `/examples/${path.basename(swarmFile)}`
+  if (!swarmGuide.includes(downloadPath)) {
+    throw new Error(`Guia Docker Swarm sem link para download: ${downloadPath}`)
+  }
+}
+const requiredSwarmServices = [
+  'unoapi',
+  'unoapi-broker',
+  'unoapi-worker-zapo',
+  'unoapi-redis',
+  'unoapi-rabbitmq',
+  'viperconnect-telefonia',
+]
+const requiredPlaceholder = (value, placeholder, location) => {
+  if (typeof value !== 'string' || !value.includes(placeholder)) {
+    throw new Error(`${location} deve usar o placeholder público ${placeholder}`)
+  }
+}
+const findPort = (ports, published, protocol) =>
+  ports.some((port) => port.published === published && port.protocol === protocol)
+
+for (const swarmFile of swarmFiles) {
+  const filename = path.basename(swarmFile)
+  const isTraefik = filename.includes('traefik')
+  const content = await readFile(swarmFile, 'utf8')
+  const stack = parseYaml(content)
+  const baseEnvironment = stack['x-base-environment']
+
+  if (!baseEnvironment || typeof baseEnvironment !== 'object' || Array.isArray(baseEnvironment)) {
+    throw new Error(`${filename}: x-base-environment precisa ser um mapa YAML`)
+  }
+  if (stack['x-base']?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest') {
+    throw new Error(`${filename}: imagem compartilhada precisa estar fixada no próprio YAML`)
+  }
+  if (stack.name) throw new Error(`${filename}: stack Swarm não deve declarar name no topo`)
+  if (stack.networks?.['unoapi-internal']?.driver !== 'overlay') {
+    throw new Error(`${filename}: rede interna precisa usar driver overlay`)
+  }
+  if (/host\.docker\.internal/.test(content)) {
+    throw new Error(`${filename}: comunicação interna deve usar DNS da overlay`)
+  }
+  if (/\$\{/.test(content)) {
+    throw new Error(`${filename}: todas as configurações públicas devem estar embutidas no YAML`)
+  }
+  if (/traefik\.docker\.network/.test(content)) {
+    throw new Error(`${filename}: label obsoleta traefik.docker.network encontrada`)
+  }
+
+  for (const serviceName of requiredSwarmServices) {
+    const service = stack.services?.[serviceName]
+    if (!service) throw new Error(`${filename}: serviço ausente ${serviceName}`)
+    for (const unsupported of ['container_name', 'network_mode', 'depends_on', 'restart']) {
+      if (service[unsupported] !== undefined) {
+        throw new Error(`${filename}: ${serviceName} não pode usar ${unsupported} no Swarm`)
+      }
+    }
+    if (service.labels) {
+      throw new Error(`${filename}: labels de ${serviceName} precisam ficar em deploy.labels`)
+    }
+    if (!service.deploy?.restart_policy) {
+      throw new Error(`${filename}: ${serviceName} sem deploy.restart_policy`)
+    }
+    if (serviceName.startsWith('unoapi') || serviceName === 'viperconnect-telefonia') {
+      if (service.entrypoint || (service.command && serviceName !== 'unoapi-redis')) {
+        throw new Error(`${filename}: ${serviceName} substitui o entrypoint/command oficial`)
+      }
+    }
+  }
+
+  for (const internalService of ['unoapi-redis', 'unoapi-rabbitmq']) {
+    if (stack.services[internalService].ports?.length) {
+      throw new Error(`${filename}: ${internalService} não pode publicar portas`)
+    }
+  }
+
+  if (baseEnvironment.VOIP_SERVICE_URL !== 'http://viperconnect-telefonia:3097') {
+    throw new Error(`${filename}: VOIP_SERVICE_URL não usa DNS interno`)
+  }
+  if (baseEnvironment.VOIP_BRIDGE_URL !== 'ws://viperconnect-telefonia:3097/v1/bridge/zapo') {
+    throw new Error(`${filename}: VOIP_BRIDGE_URL não usa DNS interno`)
+  }
+  requiredPlaceholder(baseEnvironment.UNOAPI_AUTH_TOKEN, 'GERE_UM_TOKEN_', `${filename}: UNOAPI_AUTH_TOKEN`)
+  requiredPlaceholder(baseEnvironment.AMQP_URL, 'TROQUE_A_SENHA_RABBITMQ', `${filename}: AMQP_URL`)
+  requiredPlaceholder(baseEnvironment.REDIS_URL, 'TROQUE_A_SENHA_VALKEY', `${filename}: REDIS_URL`)
+  requiredPlaceholder(baseEnvironment.VOIP_SERVICE_TOKEN, 'GERE_UM_TOKEN_VOIP_', `${filename}: VOIP_SERVICE_TOKEN`)
+  requiredPlaceholder(stack.services['unoapi-rabbitmq'].environment.RABBITMQ_DEFAULT_PASS, 'TROQUE_A_SENHA_RABBITMQ', `${filename}: RabbitMQ`)
+  requiredPlaceholder(stack.services['unoapi-redis'].environment.VALKEY_PASSWORD, 'TROQUE_A_SENHA_VALKEY', `${filename}: Valkey`)
+
+  const telephony = stack.services['viperconnect-telefonia']
+  const telephonyEnvironment = telephony.environment
+  requiredPlaceholder(telephonyEnvironment.VOIP_SERVICE_TOKEN, 'GERE_UM_TOKEN_VOIP_', `${filename}: token da telefonia`)
+  requiredPlaceholder(telephonyEnvironment.VOIP_BRIDGE_TOKEN, 'GERE_UM_TOKEN_VOIP_', `${filename}: token do bridge`)
+  requiredPlaceholder(telephonyEnvironment.VOIP_TURN_CREDENTIAL, 'TROQUE_A_SENHA_TURN', `${filename}: credencial TURN`)
+
+  const rtpMin = Number(telephonyEnvironment.SIP_RTP_MEDIA_PORT_MIN)
+  const rtpMax = Number(telephonyEnvironment.SIP_RTP_MEDIA_PORT_MAX)
+  const webrtcMin = Number(telephonyEnvironment.SIP_WEBRTC_UDP_PORT_MIN)
+  const webrtcMax = Number(telephonyEnvironment.SIP_WEBRTC_UDP_PORT_MAX)
+  validateRanges({ rtpMin, rtpMax, webrtcMin, webrtcMax })
+  if (
+    rtpMin !== defaultRanges.rtpMin ||
+    rtpMax !== defaultRanges.rtpMax ||
+    webrtcMin !== defaultRanges.webrtcMin ||
+    webrtcMax !== defaultRanges.webrtcMax
+  ) {
+    throw new Error(`${filename}: faixas públicas de telefonia não correspondem ao padrão fixo`)
+  }
+
+  const expectedCompactRanges = [
+    `${rtpMin}-${rtpMax}:${rtpMin}-${rtpMax}/udp`,
+    `${webrtcMin}-${webrtcMax}:${webrtcMin}-${webrtcMax}/udp`,
+  ]
+  const allPublishedPorts = []
+  for (const [serviceName, service] of Object.entries(stack.services)) {
+    for (const port of service.ports || []) {
+      if (typeof port === 'string') {
+        if (serviceName !== 'viperconnect-telefonia' || !expectedCompactRanges.includes(port)) {
+          throw new Error(`${filename}: faixa compacta inesperada em ${serviceName}: ${port}`)
+        }
+        continue
+      }
+      if (!port || typeof port !== 'object' || Array.isArray(port)) {
+        throw new Error(`${filename}: publicação inválida em ${serviceName}`)
+      }
+      if (!Number.isInteger(port.target) || !Number.isInteger(port.published)) {
+        throw new Error(`${filename}: ${serviceName} deve usar target/published numéricos`)
+      }
+      if (port.target !== port.published || port.mode !== 'host') {
+        throw new Error(`${filename}: ${serviceName} deve publicar a mesma porta com mode: host`)
+      }
+      const key = `${port.protocol}:${port.published}`
+      if (allPublishedPorts.includes(key)) throw new Error(`${filename}: porta duplicada ${key}`)
+      allPublishedPorts.push(key)
+    }
+  }
+
+  const telephonyPorts = telephony.ports || []
+  if (!findPort(telephonyPorts, 5060, 'udp') || findPort(telephonyPorts, 5060, 'tcp')) {
+    throw new Error(`${filename}: telefonia deve publicar somente 5060/udp para SIP`)
+  }
+  const compactRanges = telephonyPorts.filter((port) => typeof port === 'string')
+  if (
+    compactRanges.length !== expectedCompactRanges.length ||
+    expectedCompactRanges.some((range) => !compactRanges.includes(range))
+  ) {
+    throw new Error(`${filename}: faixas UDP compactas divergem dos limites da telefonia`)
+  }
+
+  const apiPorts = stack.services.unoapi.ports || []
+  if (isTraefik) {
+    if (apiPorts.length || findPort(telephonyPorts, 3097, 'tcp')) {
+      throw new Error(`${filename}: HTTP deve permanecer interno quando o Traefik usa overlay`)
+    }
+    if (!stack.networks?.['traefik-public']?.external) {
+      throw new Error(`${filename}: rede externa do Traefik ausente`)
+    }
+    for (const serviceName of ['unoapi', 'viperconnect-telefonia']) {
+      const labels = stack.services[serviceName].deploy?.labels || []
+      if (!labels.some((label) => label.startsWith('traefik.swarm.network='))) {
+        throw new Error(`${filename}: ${serviceName} sem traefik.swarm.network em deploy.labels`)
+      }
+    }
+  } else if (!findPort(apiPorts, 9876, 'tcp') || !findPort(telephonyPorts, 3097, 'tcp')) {
+    throw new Error(`${filename}: modelo Nginx precisa publicar 9876/tcp e 3097/tcp`)
+  }
+}
+
 for (const file of composeFiles) {
   const content = await readFile(file, 'utf8')
   if (/baileys/i.test(content)) throw new Error(`Termo interno exposto em ${path.relative(root, file)}`)

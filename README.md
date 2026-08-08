@@ -50,6 +50,7 @@ Escolha o modo de instalação na documentação oficial:
 
 - [Instalação](https://viperconnect.vipertec.net/guide/installation)
 - [Docker Compose](https://viperconnect.vipertec.net/guide/docker-compose)
+- [Docker Swarm](https://viperconnect.vipertec.net/guide/docker-swarm)
 - [Instalador nativo para Linux](https://viperconnect.vipertec.net/guide/install-native-linux)
 
 ### Manager

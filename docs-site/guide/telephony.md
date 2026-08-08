@@ -33,8 +33,9 @@ Uno. O token nunca é enviado ao navegador.
 
 ## Docker e rede
 
-O serviço VoIP pode usar `network_mode: host` para SIP, RTP e WebRTC, enquanto
-Uno, Valkey e RabbitMQ permanecem em bridge. O worker Uno acessa o host por:
+No Docker Compose standalone, o serviço VoIP usa `network_mode: host` para SIP,
+RTP e WebRTC, enquanto Uno, Valkey e RabbitMQ permanecem em bridge. O worker
+Uno acessa o host por:
 
 ```yaml
 extra_hosts:
@@ -48,6 +49,13 @@ environment:
 
 Para executar a telefonia fora de container com pacote `.deb` e `systemd`, veja
 [Telefonia em Linux nativo](/guide/install-voip-native-linux).
+
+No Docker Swarm, não use `network_mode: host`. O worker e a telefonia se
+encontram pelo DNS da overlay interna. `5060/udp` permanece em `mode: host`, e
+as faixas fixas RTP/WebRTC usam a sintaxe compacta aceita pelo stack. O modelo
+Traefik deixa HTTP e WebSocket nas overlays; o modelo Nginx publica também
+`9876/tcp` e `3097/tcp` no nó de borda. Veja [Docker Swarm](/guide/docker-swarm)
+para baixar os stacks completos.
 
 Os Composes para download já incluem essa topologia e o volume persistente do
 serviço VoIP. Todos os containers ViperConnect usam a mesma imagem e tag;
