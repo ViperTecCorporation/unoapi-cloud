@@ -12,6 +12,7 @@ import { buildRestrictionNoticeWebhooks } from '../services/restriction_notice'
 import { isChatwootWebhook } from '../services/webhook_config'
 import { buildProviderSendFailureResponse, shouldReturnProviderSendFailure } from '../services/providers/send_failure'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
+import { withOrderDetailsPixCopyButton } from '../services/transformer/interactive'
 
 type RetryContext = {
   countRetries: number
@@ -156,6 +157,7 @@ export class IncomingJob {
   private paymentTextForChatwootEcho(payload: any) {
     if (`${payload?.type || ''}` !== 'interactive') return undefined
     const action = payload?.interactive?.action || {}
+    if (`${payload?.interactive?.type || ''}` === 'order_details' || action?.name === 'review_and_pay') return undefined
     const buttonSettings = (Array.isArray(action.buttons) ? action.buttons : []).flatMap((button: any) => {
       if (button?.payment_setting) return [button.payment_setting]
       if (Array.isArray(button?.payment_request?.payment_settings)) return button.payment_request.payment_settings
@@ -217,8 +219,11 @@ export class IncomingJob {
     timestamp: string,
     messagePayload: any,
   ) {
-    const standardMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, messagePayload)
-    const chatwootEcho = this.buildChatwootOutgoingEchoMessage(phone, payload, idUno, timestamp, messagePayload)
+    const webhookMessagePayload = `${payload?.type || ''}` === 'interactive'
+      ? { ...messagePayload, action: withOrderDetailsPixCopyButton(messagePayload?.action) }
+      : messagePayload
+    const standardMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, webhookMessagePayload)
+    const chatwootEcho = this.buildChatwootOutgoingEchoMessage(phone, payload, idUno, timestamp, webhookMessagePayload)
     const enabled = webhooks.filter((webhook) => webhook.sendNewMessages)
     logger.debug('%s webhooks with sendNewMessages', enabled.length)
     await Promise.all(enabled.map((webhook) => this.outgoing.sendHttp(

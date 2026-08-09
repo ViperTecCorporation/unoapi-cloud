@@ -51,6 +51,7 @@ import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
 import { ZapoVoiceAdapter } from './zapo/voice/zapo_voice_adapter'
 import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/zapo_voice_bridge_client'
 import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
+import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -1019,12 +1020,17 @@ export class ClientZapo implements Client {
     const value: any = enriched
     const id = `${value?.key?.id || ''}`
     const event = this.pendingIncoming.get(id)
+    reviveZapoMediaBinaryFields(value)
+    if (this.unoStore?.mediaStore) {
+      await normalizeInteractiveMediaForWebhook(this.phone, value, this.unoStore.mediaStore, {
+        downloadBytes: async (content) => this.socket!.message.downloadBytes(content as any),
+      })
+    }
     const content: any = normalizeMessageContent(value?.message)
     const mediaKey = mediaMessageKeys.find((key) => content?.[key])
     if (!mediaKey) return enriched
     const media = content[mediaKey]
     if (`${media?.url || ''}`.startsWith('data:')) return enriched
-    reviveZapoMediaBinaryFields(value)
     const source = event || content
     const bytes = await this.socket.message.downloadBytes(source as any)
     value.__unoapiMediaBytes = Buffer.from(bytes)

@@ -42,6 +42,10 @@ import {
 } from '../defaults'
 import { t } from '../i18n'
 import { mapOrderMessage, mapProductMessage } from './catalog/catalog_mapper'
+import {
+  extractOrderDetailsNativeFlow,
+  interactiveHeaderForWebhook,
+} from './transformer/interactive'
 
 const BAILEYS_NATIVE_FLOW_ENABLED = true
 const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
@@ -2032,7 +2036,22 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
 
       case 'interactiveMessage': {
         const interactiveMessage: any = binMessage || payload?.message?.interactiveMessage || {}
-        const nfButtons = interactiveMessage?.nativeFlowMessage?.buttons || []
+        const nativeFlowMessage = interactiveMessage?.nativeFlowMessage || {}
+        const nfButtons = nativeFlowMessage?.buttons || []
+        const orderDetails = extractOrderDetailsNativeFlow(nativeFlowMessage)
+        if (orderDetails) {
+          message.type = 'interactive'
+          message.interactive = {
+            type: 'order_details',
+            header: interactiveHeaderForWebhook(interactiveMessage?.header),
+            body: { text: interactiveMessage?.body?.text || '' },
+            footer: interactiveMessage?.footer?.text
+              ? { text: interactiveMessage.footer.text }
+              : undefined,
+            action: orderDetails,
+          }
+          break
+        }
         for (const button of Array.isArray(nfButtons) ? nfButtons : []) {
           if (button?.name !== 'review_order') continue
           let parameters: any = {}
@@ -2115,32 +2134,23 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                     },
                   }
                 }
+                const id = `${params.id || ''}`
+                const title = `${params.display_text || ''}`
+                if (!id && !title) return null
                 return {
                   type: 'reply',
                   reply: {
-                    id: params.id || '',
-                    title: params.display_text || '',
+                    id,
+                    title,
                   },
                 }
-              })
+              }).filter(Boolean)
             : []
 
         if (interactiveMessage?.carouselMessage?.cards?.length) {
           const cards = interactiveMessage.carouselMessage.cards.map((card: any) => {
-            const header = card?.header || {}
-            let headerObj: any = undefined
-            if (header?.imageMessage?.url) {
-              headerObj = { type: 'image', image: { link: header.imageMessage.url } }
-            } else if (header?.videoMessage?.url) {
-              headerObj = { type: 'video', video: { link: header.videoMessage.url } }
-            } else if (header?.documentMessage?.url) {
-              headerObj = { type: 'document', document: { link: header.documentMessage.url } }
-            } else if (header?.title) {
-              headerObj = { type: 'text', text: header.title }
-            }
-
             return {
-              header: headerObj,
+              header: interactiveHeaderForWebhook(card?.header),
               body: { text: card?.body?.text || '' },
               footer: card?.footer?.text ? { text: card.footer.text } : undefined,
               action: {
@@ -2164,9 +2174,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
         message.type = 'interactive'
         message.interactive = {
           type: 'button',
-          header: interactiveMessage?.header?.title
-            ? { type: 'text', text: interactiveMessage.header.title }
-            : undefined,
+          header: interactiveHeaderForWebhook(interactiveMessage?.header),
           body: { text: interactiveMessage?.body?.text || '' },
           footer: interactiveMessage?.footer?.text ? { text: interactiveMessage.footer.text } : undefined,
           action: { buttons },

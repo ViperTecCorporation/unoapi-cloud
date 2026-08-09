@@ -25,6 +25,7 @@ import type { DataStore } from '../../src/services/data_store'
 import type { Listener } from '../../src/services/listener'
 import type { SessionStore } from '../../src/services/session_store'
 import type { Store } from '../../src/services/store'
+import type { MediaStore } from '../../src/services/media_store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
 import { voipPlugin } from '@vipertec/zapo-voip'
 
@@ -35,6 +36,7 @@ describe('ClientZapo', () => {
   let sessionStore: ReturnType<typeof mockDeep<SessionStore>>
   let dataStore: ReturnType<typeof mockDeep<DataStore>>
   let listener: ReturnType<typeof mockDeep<Listener>>
+  let mediaStore: ReturnType<typeof mockDeep<MediaStore>>
   let handlers: Record<string, (...args: any[]) => any>
   let service: ClientZapo
   let config: typeof defaultConfig
@@ -48,6 +50,10 @@ describe('ClientZapo', () => {
     sessionStore = mockDeep<SessionStore>()
     dataStore = mockDeep<DataStore>()
     listener = mockDeep<Listener>()
+    mediaStore = mockDeep<MediaStore>()
+    mediaStore.getFilePath.mockImplementation((_phone, mediaId) => `${phone}/${mediaId}.jpeg`)
+    mediaStore.getFileUrl.mockImplementation(async (filePath) => `https://s3.example.test/${filePath}`)
+    mediaStore.saveMediaBuffer.mockResolvedValue(true)
     sessionStore.isStatusOnline.mockResolvedValue(false)
     client.on.mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       handlers[event] = handler
@@ -68,7 +74,7 @@ describe('ClientZapo', () => {
     client.auth.requestPairingCode.mockResolvedValue('1234-5678')
     client.group.queryAllGroups.mockResolvedValue([])
     client.group.queryGroupMetadata.mockResolvedValue({ id: '120363@g.us', subject: 'Equipe' } as never)
-    const unoStore = { sessionStore, dataStore } as unknown as Store
+    const unoStore = { sessionStore, dataStore, mediaStore } as unknown as Store
     config = { ...defaultConfig, provider: 'zapo' as const, getStore: jest.fn().mockResolvedValue(unoStore) }
     const zapoStore = { session: jest.fn().mockReturnValue(session) } as unknown as WaStore
     service = new ClientZapo(
@@ -1086,6 +1092,46 @@ describe('ClientZapo', () => {
     expect(client.message.downloadBytes).toHaveBeenCalled()
     expect(normalized.__unoapiMediaBytes).toEqual(Buffer.from([1, 2, 3]))
     expect(normalized.message.imageMessage.url).toBeUndefined()
+  })
+
+  test('decrypts every carousel image and replaces the encrypted CDN URL with the S3 URL', async () => {
+    client.message.downloadBytes.mockResolvedValue(Uint8Array.from([10, 20, 30]))
+    await service.connect(1)
+    const message: any = {
+      key: { id: 'carousel-zapo-1', remoteJid: '111@lid', fromMe: false },
+      message: {
+        interactiveMessage: {
+          carouselMessage: {
+            cards: [{
+              header: {
+                imageMessage: {
+                  url: 'https://mmg.whatsapp.net/card.enc',
+                  directPath: '/card.enc',
+                  mediaKey: { 1: 2, 0: 1 },
+                  mimetype: 'image/jpeg',
+                },
+              },
+            }],
+          },
+        },
+      },
+    }
+
+    const normalized: any = await service.getMessageMetadata(message)
+
+    expect(client.message.downloadBytes).toHaveBeenCalledWith({
+      imageMessage: expect.objectContaining({
+        directPath: '/card.enc',
+        mediaKey: Uint8Array.from([1, 2]),
+      }),
+    })
+    expect(mediaStore.saveMediaBuffer).toHaveBeenCalledWith(
+      `${phone}/carousel-zapo-1-carousel-0.jpeg`,
+      Buffer.from([10, 20, 30]),
+      'image/jpeg',
+    )
+    expect(normalized.message.interactiveMessage.carouselMessage.cards[0].header.imageMessage.url)
+      .toBe(`https://s3.example.test/${phone}/carousel-zapo-1-carousel-0.jpeg`)
   })
 
   test('restores replayed media bytes before using the official Zapo downloader', async () => {

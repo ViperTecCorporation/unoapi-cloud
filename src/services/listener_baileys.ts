@@ -13,6 +13,7 @@ import { createDecipheriv, createHash, createHmac, hkdfSync } from 'crypto'
 import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 import { buildRestrictionNoticeWebhooks } from './restriction_notice'
 import { BAILEYS_LISTENER_POLICY } from './baileys_listener_policy'
+import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
 
 const {
   delayAfterFirstMessageMs: UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS,
@@ -1086,6 +1087,7 @@ export class ListenerBaileys implements Listener {
             logger.debug(`Saved media!`)
           }
         }
+        i = await normalizeInteractiveMediaForWebhook(phone, i, store.mediaStore)
       }
     } else if (messageType === 'update') {
       try {

@@ -222,6 +222,20 @@ O adapter segue a referência oficial de tipos da Zapo:
   total, pois ambos sao exigidos pelo checkout nativo;
 - atualizações usam `order_status/review_order` e preservam os objetos
   `payment` e `order`;
+- webhooks de pedidos preservam `interactive.type=order_details`, cabeçalho,
+  corpo, rodapé e `review_and_pay.parameters` tanto em `messages` quanto no eco
+  Chatwoot `smb_message_echoes`; a representação textual da chave PIX permanece
+  restrita à cobrança PIX simples e nunca achata um pedido detalhado;
+- pedidos com `pix_dynamic_code` ou `pix_static_code` acrescentam no webhook um
+  botão `cta_copy` com o código PIX completo em `copy_code.code`; o código não é
+  convertido em link nem abreviado e permanece idêntico em `messages` e
+  `smb_message_echoes`;
+- cabeçalhos de mídia de carrossel preservam URLs públicas originais. Quando o
+  evento recebido contém mídia criptografada do CDN do WhatsApp, a Uno baixa e
+  descriptografa pelo adapter do provider, salva no storage configurado e envia
+  a URL assinada em `interactive.carousel.cards[].header`. Se não houver dados
+  de decrypt, usa `jpegThumbnail` quando disponível; nunca encaminha uma URL
+  `mmg.whatsapp.net` ainda criptografada;
 - códigos PIX, boletos, links e credenciais são gerados pelo banco ou PSP e a
   Uno apenas os transporta; pedido, total, moeda e identificador de referência
   não são recalculados;

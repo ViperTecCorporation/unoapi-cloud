@@ -22,7 +22,6 @@ import {
   jidToMentionDigits,
   normalizeMentionText,
 } from '../../src/services/transformer'
-import { BASE_URL } from '../../src/defaults'
 const key = { remoteJid: 'XXXX@s.whatsapp.net', id: 'abc' }
 
 const documentMessage: proto.Message.IDocumentMessage = {
@@ -877,6 +876,132 @@ describe('service transformer', () => {
         action: { name: 'review_order', parameters },
       },
     }))
+  })
+
+  test('fromBaileysMessageContent preserves order_details from review_and_pay button parameters', async () => {
+    const pixCode = '00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595'
+    const parameters = {
+      reference_id: 'order-123',
+      type: 'physical-goods',
+      payment_type: 'br',
+      payment_settings: [
+        { type: 'boleto', boleto: { digitable_line: '1234567890' } },
+        {
+          type: 'pix_dynamic_code',
+          pix_dynamic_code: {
+            code: pixCode,
+            merchant_name: 'Merchant',
+            key: 'pix-key',
+            key_type: 'EVP',
+          },
+        },
+      ],
+      currency: 'BRL',
+      total_amount: { value: 6000, offset: 100 },
+      order: {
+        status: 'pending',
+        items: [{ name: 'Camera', amount: { value: 6000, offset: 100 }, quantity: 1 }],
+        subtotal: { value: 6000, offset: 100 },
+        tax: { value: 0, offset: 100 },
+      },
+    }
+    const input = {
+      key: {
+        remoteJid: '5566999554300@s.whatsapp.net',
+        fromMe: false,
+        id: 'order-details-1',
+      },
+      message: {
+        interactiveMessage: {
+          header: {
+            imageMessage: {
+              url: 'https://cdn.example.test/order.jpg',
+              mimetype: 'image/jpeg',
+            },
+          },
+          body: { text: 'Revise seu pedido' },
+          footer: { text: 'Merchant' },
+          nativeFlowMessage: {
+            buttons: [{
+              name: 'review_and_pay',
+              buttonParamsJson: JSON.stringify(parameters),
+            }],
+          },
+        },
+      },
+      pushName: 'Cliente',
+      messageTimestamp: '1785118589',
+    }
+
+    const message = fromBaileysMessageContent('5566996269251', input)[0].entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'interactive',
+      interactive: {
+        type: 'order_details',
+        header: {
+          type: 'image',
+          image: { link: 'https://cdn.example.test/order.jpg', mime_type: 'image/jpeg' },
+        },
+        body: { text: 'Revise seu pedido' },
+        footer: { text: 'Merchant' },
+        action: {
+          name: 'review_and_pay',
+          parameters,
+          buttons: [{
+            type: 'cta_copy',
+            copy_code: { title: 'Copiar código PIX', code: pixCode },
+          }],
+        },
+      },
+    }))
+  })
+
+  test('fromBaileysMessageContent recognizes itemized order_details in messageParamsJson without creating an empty reply', async () => {
+    const parameters = {
+      reference_id: 'order-message-params',
+      type: 'digital-goods',
+      payment_type: 'br',
+      payment_settings: [{ type: 'boleto', boleto: { digitable_line: '1234567890' } }],
+      currency: 'BRL',
+      total_amount: { value: 6000, offset: 100 },
+      order: {
+        status: 'pending',
+        items: [{ name: 'Subscription', amount: { value: 6000, offset: 100 }, quantity: 1 }],
+        subtotal: { value: 6000, offset: 100 },
+        tax: { value: 0, offset: 100 },
+      },
+    }
+    const input = {
+      key: {
+        remoteJid: '5566999554300@s.whatsapp.net',
+        fromMe: false,
+        id: 'order-details-message-params',
+      },
+      message: {
+        interactiveMessage: {
+          body: { text: 'Boleto do pedido' },
+          nativeFlowMessage: {
+            messageParamsJson: JSON.stringify(parameters),
+            buttons: [{ name: '', buttonParamsJson: '{}' }],
+          },
+        },
+      },
+      pushName: 'Cliente',
+      messageTimestamp: '1785118590',
+    }
+
+    const message = fromBaileysMessageContent('5566996269251', input)[0].entry[0].changes[0].value.messages[0]
+    expect(message).toEqual(expect.objectContaining({
+      type: 'interactive',
+      interactive: {
+        type: 'order_details',
+        header: undefined,
+        body: { text: 'Boleto do pedido' },
+        footer: undefined,
+        action: { name: 'review_and_pay', parameters },
+      },
+    }))
+    expect(message.interactive).not.toHaveProperty('action.buttons')
   })
 
   test('fromBaileysMessageContent emits a one-click payment method webhook', async () => {

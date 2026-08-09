@@ -371,6 +371,109 @@ describe('incoming job', () => {
     }))
   })
 
+  test('preserves complete order_details in the Chatwoot outgoing echo', async () => {
+    const pixCode = '00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595'
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0ORDER')
+    dataStore.setUnoId.mockResolvedValue('uno-order-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-order-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+        },
+        {
+          ...defaultConfig.webhooks[0],
+          id: 'consumer',
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://consumer.example.com/whatsapp',
+        },
+      ],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+    const parameters = {
+      reference_id: 'order-123',
+      type: 'physical-goods',
+      payment_type: 'br',
+      payment_settings: [
+        { type: 'boleto', boleto: { digitable_line: '1234567890' } },
+        {
+          type: 'pix_dynamic_code',
+          pix_dynamic_code: {
+            code: pixCode,
+            merchant_name: 'Merchant',
+            key: 'pix-key',
+            key_type: 'EVP',
+          },
+        },
+      ],
+      currency: 'BRL',
+      total_amount: { value: 6000, offset: 100 },
+      order: {
+        status: 'pending',
+        items: [{ name: 'Camera', amount: { value: 6000, offset: 100 }, quantity: 1 }],
+        subtotal: { value: 6000, offset: 100 },
+        tax: { value: 0, offset: 100 },
+      },
+    }
+    const interactive = {
+      type: 'order_details',
+      header: { type: 'image', image: { link: 'https://example.test/order.jpg' } },
+      body: { text: 'Revise seu pedido' },
+      footer: { text: 'Merchant' },
+      action: { name: 'review_and_pay', parameters },
+    }
+
+    await job.consume('5566999554300', {
+      id: 'uno-order-echo',
+      payload: {
+        to: '5566996269251',
+        type: 'interactive',
+        interactive,
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const echo = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'smb_message_echoes')
+    const expectedInteractive = {
+      ...interactive,
+      action: {
+        ...interactive.action,
+        buttons: [{
+          type: 'cta_copy',
+          copy_code: { title: 'Copiar código PIX', code: pixCode },
+        }],
+      },
+    }
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).toEqual(expect.objectContaining({
+      from: '5566999554300',
+      to: '5566996269251',
+      id: 'uno-order-echo',
+      type: 'interactive',
+      interactive: expectedInteractive,
+    }))
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).not.toHaveProperty('text')
+    const standard = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'messages')
+    expect(standard.entry[0].changes[0].value.messages[0].interactive)
+      .toEqual(expectedInteractive)
+  })
+
   test.each([
     ['button', {
       type: 'button',
