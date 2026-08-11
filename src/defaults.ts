@@ -130,6 +130,28 @@ export const UNOAPI_QUEUE_NAME = process.env.UNOAPI_QUEUE_NAME || 'unoapi'
 export const UNOAPI_QUEUE_OUTGOING_PREFETCH = parseInt(process.env.UNOAPI_QUEUE_OUTGOING_PREFETCH || '4')
 export const UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED = `${UNOAPI_QUEUE_NAME}.webhook.status.failed`
 export const UNOAPI_QUEUE_MEDIA = `${UNOAPI_QUEUE_NAME}.media`
+export const UNOAPI_QUEUE_VIDEO_STAGE = `${UNOAPI_QUEUE_NAME}.video.stage`
+export const UNOAPI_QUEUE_VIDEO_TRANSCODE = `${UNOAPI_QUEUE_NAME}.video.transcode`
+export const UNOAPI_VIDEO_STAGE_PREFETCH = Math.max(1, parseInt(process.env.UNOAPI_VIDEO_STAGE_PREFETCH || '4'))
+export const UNOAPI_VIDEO_MAX_INPUT_BYTES = Math.max(
+  16 * 1024 * 1024,
+  parseInt(process.env.UNOAPI_VIDEO_MAX_INPUT_BYTES || `${256 * 1024 * 1024}`),
+)
+export const UNOAPI_VIDEO_STAGE_TIMEOUT_MS = Math.max(
+  30_000,
+  parseInt(process.env.UNOAPI_VIDEO_STAGE_TIMEOUT_MS || `${5 * 60_000}`),
+)
+export const UNOAPI_VIDEO_TARGET_BYTES = Math.min(
+  15 * 1024 * 1024,
+  Math.max(1 * 1024 * 1024, parseInt(process.env.UNOAPI_VIDEO_TARGET_BYTES || `${15 * 1024 * 1024}`)),
+)
+export const UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS = Math.max(
+  1_000,
+  Math.min(
+    Math.max(1_000, CONSUMER_TIMEOUT_MS - 10_000),
+    parseInt(process.env.UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS || `${7 * 60_000}`),
+  ),
+)
 export const UNOAPI_QUEUE_NOTIFICATION = `${UNOAPI_QUEUE_NAME}.notification`
 export const UNOAPI_QUEUE_LISTENER = `${UNOAPI_QUEUE_NAME}.listener`
 export const UNOAPI_QUEUE_BLACKLIST_ADD = `${UNOAPI_QUEUE_NAME}.blacklist.add`

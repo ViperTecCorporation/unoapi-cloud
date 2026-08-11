@@ -6,6 +6,7 @@ import { MediaStore, mediaStores } from '../../src/services/media_store'
 import { defaultConfig } from '../../src/services/config'
 import fetch from 'node-fetch'
 import type { WAMessage } from '@whiskeysockets/baileys'
+import { Readable } from 'stream'
 jest.mock('node-fetch', () => jest.fn())
 const phone = `${new Date().getTime()}`
 const messageId = `wa.${new Date().getTime()}`
@@ -48,6 +49,18 @@ describe('media routes', () => {
       ...message
     }
     expect(await mediaStore.getMedia(url, messageId)).toStrictEqual(response)
+  })
+
+  test('stores outbound preparation sources as streams without buffering them in the caller', async () => {
+    const fileName = `${phone}/video-stage-source.bin`
+    await mediaStore.saveMediaStream(fileName, Readable.from(Buffer.from('streamed-video')))
+
+    const stored = await mediaStore.downloadMediaStream(fileName)
+    const chunks: Buffer[] = []
+    for await (const chunk of stored!) chunks.push(Buffer.from(chunk))
+    expect(Buffer.concat(chunks).toString()).toBe('streamed-video')
+
+    await mediaStore.removeMedia(fileName)
   })
 
   test('saveProfilePicture mirrors picture by phone and user id', async () => {

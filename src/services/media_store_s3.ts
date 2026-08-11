@@ -87,7 +87,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
   }
 
-  const uploadWithRetry = async (params: { Bucket: string; Key: string; Body: Buffer; ContentType?: string }, abortMs: number) => {
+  const uploadWithRetry = async (params: { Bucket: string; Key: string; Body: Buffer | Readable; ContentType?: string }, abortMs: number) => {
     const attempt = async () => {
       const uploader = new Upload({
         client: s3Client,
@@ -120,7 +120,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     try {
       return await attempt()
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      if (e?.name === 'AbortError' && Buffer.isBuffer(params.Body)) {
         try { logger.warn(e as any, 'S3 multipart upload aborted; retrying once') } catch {}
         await new Promise((r) => setTimeout(r, 800))
         return await attempt()
@@ -158,6 +158,26 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
         phone,
         { fileName: fileName },
         { delay: DATA_TTL * 1000, type: 'topic' }
+      )
+    }
+    return true
+  }
+
+  mediaStore.saveMediaStream = async (fileName: string, stream: Readable, contentType?: string, scheduleRemoval = true) => {
+    logger.debug('Uploading media stream %s to bucket %s', fileName, bucket)
+    await uploadWithRetry({
+      Bucket: bucket,
+      Key: fileName,
+      Body: stream,
+      ...(contentType ? { ContentType: contentType } : {}),
+    }, s3Config.timeoutMs)
+    if (scheduleRemoval) {
+      await amqpPublish(
+        UNOAPI_EXCHANGE_BROKER_NAME,
+        UNOAPI_QUEUE_MEDIA,
+        phone,
+        { fileName },
+        { delay: DATA_TTL * 1000, type: 'topic' },
       )
     }
     return true

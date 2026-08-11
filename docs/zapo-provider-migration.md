@@ -405,6 +405,41 @@ MEX alimentam um indice temporal `username -> LID`. A API aceita envio/consulta 
 LID -> username, mas nao username -> LID; portanto alias desconhecido retorna erro claro
 e nunca e convertido por heuristica em telefone.
 
+## Preparacao de video para envio Zapo
+
+Videos com link externo nao entram diretamente na fila serial da sessao. O broker
+usa duas filas globais separadas:
+
+- `unoapi.video.stage`: faz download por streaming e guarda a origem no media
+  store antes que URLs assinadas curtas expirem; o prefetch padrao e 4;
+- `unoapi.video.transcode`: possui prefetch 1 e executa no maximo uma preparacao
+  pesada por processo broker.
+
+Depois da preparacao, a mensagem volta para a fila `incoming` Zapo com o mesmo ID
+Uno. Mensagens de texto e demais tipos continuam no fluxo normal e podem ultrapassar
+um video que ainda esteja sendo preparado. Essa reordenacao intencional impede que
+uma conversao longa bloqueie a sessao inteira.
+
+Se staging ou conversao esgotarem as tentativas, a Uno publica um status Meta-like
+`failed` com codigo de midia `131053`, mantendo o mesmo ID devolvido na requisicao.
+Assim a aplicacao nao fica aguardando indefinidamente uma mensagem aceita pela API.
+
+Video H264/AAC compativel e menor que o alvo recebe apenas remux com `faststart`.
+Os demais sao convertidos com prioridade baixa (`nice 10`) para MP4 H264 Main 4.0,
+`yuv420p`, AAC, no maximo
+1280x720 ou 720x1280. O FFmpeg usa uma thread e a saida fica abaixo de 15 MiB,
+com uma segunda tentativa de bitrate reduzido quando necessario. Entradas acima
+de 256 MiB sao rejeitadas explicitamente.
+
+Controles runtime:
+
+- `UNOAPI_VIDEO_STAGE_PREFETCH` (padrao `4`);
+- `UNOAPI_VIDEO_MAX_INPUT_BYTES` (padrao `268435456`);
+- `UNOAPI_VIDEO_TARGET_BYTES` (padrao `15728640`, nunca acima de 15 MiB);
+- `UNOAPI_VIDEO_STAGE_TIMEOUT_MS` (padrao `300000`);
+- `UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS` (padrao `420000`, limitado pelo timeout
+  geral do consumidor).
+
 ## Auditoria completa
 
 O resultado classe a classe e mantido em `docs/zapo-class-audit.md`.

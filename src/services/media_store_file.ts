@@ -1,7 +1,8 @@
 import type { WhatsAppContact, WhatsAppMessage } from './whatsapp_types'
 import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
 import { writeFile } from 'fs/promises'
-import { existsSync, mkdirSync, rmSync, createReadStream, statSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, createReadStream, createWriteStream, statSync } from 'fs'
+import { pipeline } from 'stream/promises'
 import { MediaStore, getMediaStore, mediaStores } from './media_store'
 import mime from 'mime-types'
 import { Response } from 'express'
@@ -330,6 +331,15 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       mkdirSync(dir)
     }
     await writeFile(filePath, content)
+    return true
+  }
+
+  mediaStore.saveMediaStream = async (fileName: string, stream) => {
+    const filePath = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
+    const parts = filePath.split('/')
+    const dir: string = parts.splice(0, parts.length - 1).join('/')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    await pipeline(stream, createWriteStream(filePath))
     return true
   }
 

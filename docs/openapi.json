@@ -3335,11 +3335,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.11"
+            "example": "4.0.12"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.11"
+            "example": "4.0.12"
           },
           "update_available": {
             "type": "boolean"

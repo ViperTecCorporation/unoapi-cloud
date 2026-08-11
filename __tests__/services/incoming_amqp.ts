@@ -6,7 +6,12 @@ jest.mock('../../src/amqp', () => ({
 import { IncomingAmqp } from '../../src/services/incoming_amqp'
 import { defaultConfig, getConfig } from '../../src/services/config'
 import { amqpPublish, amqpRpc } from '../../src/amqp'
-import { UNOAPI_EXCHANGE_BRIDGE_NAME, UNOAPI_QUEUE_INCOMING } from '../../src/defaults'
+import {
+  UNOAPI_EXCHANGE_BRIDGE_NAME,
+  UNOAPI_EXCHANGE_BROKER_NAME,
+  UNOAPI_QUEUE_INCOMING,
+  UNOAPI_QUEUE_VIDEO_STAGE,
+} from '../../src/defaults'
 
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
 const amqpRpcMock = amqpRpc as jest.MockedFunction<typeof amqpRpc>
@@ -50,6 +55,52 @@ describe('service incoming amqp', () => {
         },
       ],
     })
+  })
+
+  test('routes Zapo videos to isolated preparation without occupying the session queue', async () => {
+    const incoming = new IncomingAmqp(async () => ({ ...defaultConfig, server: 'server_1', provider: 'zapo' }))
+
+    const response = await incoming.send('556600000000', {
+      to: '5566999999999',
+      type: 'video',
+      video: { link: 'https://chatwoot.example/video', filename: 'camera.mov' },
+    })
+
+    expect(amqpPublishMock).toHaveBeenCalledWith(
+      UNOAPI_EXCHANGE_BROKER_NAME,
+      UNOAPI_QUEUE_VIDEO_STAGE,
+      '556600000000',
+      expect.objectContaining({
+        id: response.ok.messages[0].id,
+        payload: expect.objectContaining({ type: 'video' }),
+      }),
+      { type: 'topic', priority: 5, maxRetries: 2 },
+    )
+    expect(amqpPublishMock).not.toHaveBeenCalledWith(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      expect.stringContaining(UNOAPI_QUEUE_INCOMING),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  test('keeps normal messages on the provider session queue', async () => {
+    const incoming = new IncomingAmqp(async () => ({ ...defaultConfig, server: 'server_1', provider: 'zapo' }))
+
+    await incoming.send('556600000000', {
+      to: '5566999999999',
+      type: 'text',
+      text: { body: 'nao deve aguardar video' },
+    })
+
+    expect(amqpPublishMock).toHaveBeenCalledWith(
+      UNOAPI_EXCHANGE_BRIDGE_NAME,
+      `${UNOAPI_QUEUE_INCOMING}.server_1.zapo`,
+      '556600000000',
+      expect.objectContaining({ payload: expect.objectContaining({ type: 'text' }) }),
+      expect.objectContaining({ type: 'direct' }),
+    )
   })
 
   test('group management methods are sent through AMQP RPC to the configured Zapo worker queue', async () => {

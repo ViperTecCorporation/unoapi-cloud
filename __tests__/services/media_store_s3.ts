@@ -31,6 +31,8 @@ import { defaultConfig } from '../../src/services/config'
 import { mock } from 'jest-mock-extended'
 import { DataStore } from '../../src/services/data_store'
 import { getDataStore } from '../../src/services/data_store'
+import { Readable } from 'stream'
+import { Upload } from '@aws-sdk/lib-storage'
 
 const fetchMock = fetch as unknown as jest.Mock
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
@@ -58,6 +60,22 @@ describe('service media store s3', () => {
 
     await mediaStore.saveMediaBuffer(`${phone}/message.jpg`, Buffer.from('media'), 'image/jpeg')
 
+    expect(amqpPublishMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('uploads staged outbound videos as streams and schedules cleanup', async () => {
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+    const stream = Readable.from(Buffer.from('streamed-video'))
+
+    await mediaStore.saveMediaStream(`${phone}/source.video`, stream, 'video/quicktime')
+
+    expect(Upload).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        Key: `${phone}/source.video`,
+        Body: stream,
+        ContentType: 'video/quicktime',
+      }),
+    }))
     expect(amqpPublishMock).toHaveBeenCalledTimes(1)
   })
 
