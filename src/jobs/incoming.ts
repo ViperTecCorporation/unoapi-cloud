@@ -12,7 +12,7 @@ import { buildRestrictionNoticeWebhooks } from '../services/restriction_notice'
 import { isChatwootWebhook } from '../services/webhook_config'
 import { buildProviderSendFailureResponse, shouldReturnProviderSendFailure } from '../services/providers/send_failure'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
-import { withOrderDetailsPixCopyButton } from '../services/transformer/interactive'
+import { interactiveForChatwootWebhook, withOrderDetailsPixCopyButton } from '../services/transformer/interactive'
 
 type RetryContext = {
   countRetries: number
@@ -223,7 +223,10 @@ export class IncomingJob {
       ? { ...messagePayload, action: withOrderDetailsPixCopyButton(messagePayload?.action) }
       : messagePayload
     const standardMessage = this.buildOutgoingWebhookMessage(phone, payload, idUno, timestamp, webhookMessagePayload)
-    const chatwootEcho = this.buildChatwootOutgoingEchoMessage(phone, payload, idUno, timestamp, webhookMessagePayload)
+    const chatwootMessagePayload = `${payload?.type || ''}` === 'interactive'
+      ? interactiveForChatwootWebhook(messagePayload)
+      : messagePayload
+    const chatwootEcho = this.buildChatwootOutgoingEchoMessage(phone, payload, idUno, timestamp, chatwootMessagePayload)
     const enabled = webhooks.filter((webhook) => webhook.sendNewMessages)
     logger.debug('%s webhooks with sendNewMessages', enabled.length)
     await Promise.all(enabled.map((webhook) => this.outgoing.sendHttp(

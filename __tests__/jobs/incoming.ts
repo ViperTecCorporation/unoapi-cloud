@@ -564,6 +564,80 @@ describe('incoming job', () => {
     }))
   })
 
+  test('normalizes carousel CTA URL in the Chatwoot echo without changing generic webhooks', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0CAROUSEL')
+    dataStore.setUnoId.mockResolvedValue('uno-carousel-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-carousel-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+        },
+        {
+          ...defaultConfig.webhooks[0],
+          id: 'consumer',
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://consumer.example.com/whatsapp',
+        },
+      ],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+    const interactive = {
+      type: 'carousel',
+      action: {
+        carousel: {
+          cards: [{
+            body: { text: 'Plano Profissional' },
+            action: {
+              buttons: [{
+                type: 'cta_url',
+                text: 'Agende uma demonstração',
+                url: 'https://vipertec.com.br',
+              }],
+            },
+          }],
+        },
+      },
+    }
+
+    await job.consume('5566996269251', {
+      id: 'uno-carousel-echo',
+      payload: {
+        to: '5566999554300',
+        type: 'interactive',
+        interactive,
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const calls = (outgoing.sendHttp as jest.Mock).mock.calls
+    const echo = calls.find((call) => call[1].urlAbsolute.includes('chatwoot'))[2]
+    const standard = calls.find((call) => call[1].urlAbsolute.includes('consumer'))[2]
+    expect(echo.entry[0].changes[0].value.message_echoes[0]
+      .interactive.action.carousel.cards[0].action.buttons[0]).toEqual(expect.objectContaining({
+      type: 'cta_url',
+      url: {
+        title: 'Agende uma demonstração',
+        link: 'https://vipertec.com.br',
+      },
+    }))
+    expect(standard.entry[0].changes[0].value.messages[0]
+      .interactive.action.carousel.cards[0].action.buttons[0].url).toBe('https://vipertec.com.br')
+  })
+
   test('dispatches provider contact operations without going through message sending', async () => {
     const incoming = mock<Incoming>()
     incoming.contacts = jest.fn().mockResolvedValue([{ input: '5566', status: 'valid' }])

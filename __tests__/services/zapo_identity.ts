@@ -46,6 +46,34 @@ describe('Zapo canonical identity resolver', () => {
     }])
   })
 
+  test('refreshes a phone LID strictly from the network and persists the canonical result', async () => {
+    const client = mockDeep<WaClient>()
+    const store = mockDeep<WaStoreSession>()
+    store.contacts.getByPhoneNumber.mockResolvedValue({
+      jid: '43731474477087@lid',
+      lid: '43731474477087@lid',
+      phoneNumber: '5566999810771',
+    } as never)
+    client.profile.getLidsByPhoneNumbers.mockResolvedValue([{
+      queriedJid: '5566999810771@s.whatsapp.net',
+      phoneJid: '5566999810771@s.whatsapp.net',
+      lidJid: '98765432100000@lid',
+      exists: true,
+    }] as never)
+    const identity = new ZapoIdentity(client, store, 'session')
+
+    await expect(identity.refreshPhoneLid('5566999810771')).resolves.toEqual({
+      phoneJid: '5566999810771@s.whatsapp.net',
+      lidJid: '98765432100000@lid',
+    })
+    expect(store.contacts.getByPhoneNumber).not.toHaveBeenCalled()
+    expect(store.contacts.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      jid: '98765432100000@lid',
+      lid: '98765432100000@lid',
+      phoneNumber: '5566999810771',
+    }))
+  })
+
   test('falls back to the contact store only when the official lookup is unavailable', async () => {
     const client = mockDeep<WaClient>()
     const store = mockDeep<WaStoreSession>()

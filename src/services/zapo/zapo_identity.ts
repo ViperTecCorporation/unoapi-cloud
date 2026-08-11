@@ -29,6 +29,29 @@ export class ZapoIdentity {
     return (await this.resolveMany([value]))[0]
   }
 
+  async refreshPhoneLid(value: string): Promise<{ phoneJid: string, lidJid: string }> {
+    const phoneJid = this.normalize(value)
+    if (!isPhoneJid(phoneJid)) {
+      throw new SendError(400, `zapo_lid_refresh_phone_required: ${value}`)
+    }
+
+    const lookups = await this.client.profile.getLidsByPhoneNumbers([phoneJid])
+    const lookup = lookups.find((item) => toRawPnJid(item?.queriedJid || '') === phoneJid) || lookups[0]
+    const lidJid = toLidJid(lookup?.lidJid)
+    if (!lookup?.exists || !lidJid) {
+      throw new SendError(404, `zapo_phone_lid_not_found: ${phoneJid.split('@')[0]}`)
+    }
+
+    const canonicalPhoneJid = toRawPnJid(lookup.phoneJid || phoneJid)
+    await this.store.contacts.upsert({
+      jid: lidJid,
+      lid: lidJid,
+      phoneNumber: canonicalPhoneJid.split('@')[0],
+      lastUpdatedMs: Date.now(),
+    })
+    return { phoneJid: canonicalPhoneJid, lidJid }
+  }
+
   async resolveManyPhoneJids(values: readonly string[]): Promise<string[]> {
     const resolved = await this.resolveMany(values)
     return Promise.all(resolved.map(async (jid) => {
