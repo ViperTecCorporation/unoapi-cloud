@@ -1,7 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const paymentKindBlock = `    const nativeButtons = msg.interactiveMessage?.nativeFlowMessage?.buttons;
+const legacyPaymentKindBlock = `    const nativeButtons = msg.interactiveMessage?.nativeFlowMessage?.buttons;
     if (Array.isArray(nativeButtons) && nativeButtons.length === 1 && nativeButtons[0]?.name === 'payment_info')
         return 'payment';
     if (Array.isArray(nativeButtons) && nativeButtons.length === 1 && nativeButtons[0]?.name === 'review_and_pay')
@@ -10,7 +10,11 @@ const paymentKindBlock = `    const nativeButtons = msg.interactiveMessage?.nati
         return 'order_status';
 `
 
-const paymentNodeBlock = `    if (kind === 'payment' || kind === 'order_details' || kind === 'order_status') {
+const orderStatusKindBlock = `    if (firstButtonName === 'review_order')
+        return 'order_status';
+`
+
+const legacyPaymentNodeBlock = `    if (kind === 'payment' || kind === 'order_details' || kind === 'order_status') {
         return {
             tag: WA_NODE_TAGS.BIZ,
             attrs: {
@@ -23,16 +27,32 @@ const paymentNodeBlock = `    if (kind === 'payment' || kind === 'order_details'
     }
 `
 
+const orderStatusNodeBlock = `    if (kind === 'order_status') {
+        return {
+            tag: WA_NODE_TAGS.BIZ,
+            attrs: { native_flow_name: 'order_status' },
+            content: undefined
+        };
+    }
+`
+
 const patchAddonKind = (source) => {
-  const anchor = "    if (msg.buttonsMessage || msg.interactiveMessage?.nativeFlowMessage)\n"
-  if (!source.includes(anchor)) throw new Error('zapo-js resolveButtonAddonKind anchor not found')
+  if (source.includes("if (firstButtonName === 'review_order')")) return source
+
+  const upstreamAnchor = "    return 'interactive';\n}\nfunction resolveButtonAddonKindFrom(msg) {\n"
+  if (source.includes(upstreamAnchor)) {
+    return source.replace(upstreamAnchor, orderStatusKindBlock + upstreamAnchor)
+  }
+
+  const legacyAnchor = "    if (msg.buttonsMessage || msg.interactiveMessage?.nativeFlowMessage)\n"
+  if (!source.includes(legacyAnchor)) throw new Error('zapo-js resolveButtonAddonKind anchor not found')
   const existingStart = source.indexOf('    const nativeButtons = msg.interactiveMessage?.nativeFlowMessage?.buttons;\n')
   if (existingStart >= 0) {
-    const anchorIndex = source.indexOf(anchor, existingStart)
+    const anchorIndex = source.indexOf(legacyAnchor, existingStart)
     if (anchorIndex < 0) throw new Error('zapo-js resolveButtonAddonKind generic anchor not found')
-    return source.slice(0, existingStart) + paymentKindBlock + source.slice(anchorIndex)
+    return source.slice(0, existingStart) + legacyPaymentKindBlock + source.slice(anchorIndex)
   }
-  return source.replace(anchor, paymentKindBlock + anchor)
+  return source.replace(legacyAnchor, legacyPaymentKindBlock + legacyAnchor)
 }
 
 const patchButtonNode = (source) => {
@@ -40,9 +60,16 @@ const patchButtonNode = (source) => {
   const esmAnchor = 'export function buildButtonAddonNode(kind) {\n'
   const anchor = source.includes(cjsAnchor) ? cjsAnchor : esmAnchor
   if (!anchor || !source.includes(anchor)) throw new Error('zapo-js buildButtonAddonNode anchor not found')
-  const nodeBlock = paymentNodeBlock.replaceAll('WA_NODE_TAGS', source.includes('constants_1.WA_NODE_TAGS')
+  const constantsName = source.includes('constants_1.WA_NODE_TAGS')
     ? 'constants_1.WA_NODE_TAGS'
-    : 'WA_NODE_TAGS')
+    : 'WA_NODE_TAGS'
+  if (source.includes("if (kind === 'order_status')")) return source
+
+  if (source.includes("const nativeFlowName = kind === 'payment_info'")) {
+    return source.replace(anchor, anchor + orderStatusNodeBlock.replaceAll('WA_NODE_TAGS', constantsName))
+  }
+
+  const nodeBlock = legacyPaymentNodeBlock.replaceAll('WA_NODE_TAGS', constantsName)
   if (source.includes("if (kind === 'payment'")) {
     return source.replace(
       /    if \(kind === 'payment'[\s\S]*?^    \}\n(?=    const inner)/m,
