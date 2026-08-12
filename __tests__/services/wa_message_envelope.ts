@@ -77,6 +77,34 @@ describe('WA message AMQP envelope', () => {
     expect(unpacked.key.__unoapiSkipTypebot).toBe(true)
   })
 
+  test('preserves decrypted poll selections outside the WAProto encrypted vote schema', () => {
+    const selected = Buffer.from('559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd', 'hex')
+    const original = {
+      key: {
+        remoteJid: '120363039221813429@g.us',
+        participant: '123456789@lid',
+        id: 'poll-vote-1',
+        fromMe: true,
+        isGroup: true,
+      },
+      message: {
+        pollUpdateMessage: {
+          pollCreationMessageKey: { remoteJid: '120363039221813429@g.us', id: 'poll-1', fromMe: true },
+          vote: {
+            selectedOptions: [selected],
+            selectedOptionNames: ['A'],
+          },
+        },
+      },
+    }
+
+    const packedThroughAmqp = JSON.parse(JSON.stringify(packWaMessage(original)))
+    const unpacked = unpackWaMessage(packedThroughAmqp)
+
+    expect(unpacked.message.pollUpdateMessage.vote.selectedOptionNames).toEqual(['A'])
+    expect(Buffer.from(unpacked.message.pollUpdateMessage.vote.selectedOptions[0]).toString('hex')).toBe(selected.toString('hex'))
+  })
+
   test('leaves non-message payloads unchanged', () => {
     const update = { update: { status: 'READ' } }
 

@@ -642,7 +642,7 @@ describe('service listener baileys', () => {
     )
   })
 
-  test('builds poll summary from decrypted pollUpdates message update', async () => {
+  test('builds poll summary from a Zapo-like Uint8Array poll update', async () => {
     config.getMessageMetadata = async message => message
     const groupJid = '120363040468224422@g.us'
     const pollId = 'poll-creation-update-aggregate-1'
@@ -680,7 +680,7 @@ describe('service listener baileys', () => {
               participant: '556699222222@s.whatsapp.net',
             },
             vote: {
-              selectedOptions: [optionHash],
+              selectedOptions: [Uint8Array.from(optionHash)],
             },
             senderTimestampMs: Date.now(),
           },

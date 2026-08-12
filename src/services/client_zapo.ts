@@ -39,6 +39,7 @@ import { loadZapoHistoryMessages } from './zapo/zapo_history'
 import { ZapoProfilePictures } from './zapo/zapo_profile_pictures'
 import { createPairingCodeImageDataUrl } from './zapo/pairing_code_image'
 import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
+import { decryptZapoPollVoteWithJidFallback } from './zapo/zapo_poll_addon_decrypt'
 import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
@@ -253,6 +254,11 @@ export class ClientZapo implements Client {
 
     this.decryptedAddonIds.delete(id)
     try {
+      const pollVote = await decryptZapoPollVoteWithJidFallback(event, this.zapoSession)
+      if (pollVote) {
+        await this.processAddonEvent(pollVote)
+        return true
+      }
       await client.message.tryDecryptAddon(event)
     } catch (error) {
       logger.warn(error as any, 'Zapo addon decryption failed phone=%s id=%s', this.phone, id)
@@ -262,6 +268,21 @@ export class ClientZapo implements Client {
     if (this.decryptedAddonIds.delete(id)) return true
     logger.warn('Zapo addon decryption produced no event phone=%s id=%s', this.phone, id)
     return false
+  }
+
+  private async processAddonEvent(event: any) {
+    if (event.key.id) this.decryptedAddonIds.add(event.key.id)
+    const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
+    if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
+      logger.warn(
+        'Zapo poll vote option names unresolved phone=%s id=%s parent=%s selected=%s',
+        this.phone,
+        event.key.id || '<none>',
+        event.targetMessageId || '<none>',
+        resolved.decrypted.pollVote.selectedOptions?.length || 0,
+      )
+    }
+    await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
   }
 
   private beginPairingCodeRequest(client: ZapoClient, forceRefresh = false) {
@@ -467,18 +488,7 @@ export class ClientZapo implements Client {
       if (updates.length) await this.listener.process(this.phone, updates, 'update')
     })
     onCurrent('message_addon', async (event) => {
-      if (event.key.id) this.decryptedAddonIds.add(event.key.id)
-      const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
-      if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
-        logger.warn(
-          'Zapo poll vote option names unresolved phone=%s id=%s parent=%s selected=%s',
-          this.phone,
-          event.key.id || '<none>',
-          event.targetMessageId || '<none>',
-          resolved.decrypted.pollVote.selectedOptions?.length || 0,
-        )
-      }
-      await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
+      await this.processAddonEvent(event)
     })
     onCurrent('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)

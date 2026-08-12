@@ -8,6 +8,13 @@ import type { Outgoing } from '../../src/services/outgoing'
 import type { Store } from '../../src/services/store'
 import type { ZapoMessageMetadataResolver } from '../../src/services/zapo/zapo_message_metadata'
 import { MessageFilter } from '../../src/services/message_filter'
+import { getPollState, setPollState } from '../../src/services/redis'
+
+jest.mock('../../src/services/redis', () => ({
+  ...jest.requireActual('../../src/services/redis'),
+  getPollState: jest.fn(),
+  setPollState: jest.fn(),
+}))
 
 describe('ListenerZapo', () => {
   let config: Config
@@ -15,6 +22,7 @@ describe('ListenerZapo', () => {
   let outgoing: Outgoing
   let service: ListenerZapo
   let messageMetadata: ZapoMessageMetadataResolver
+  let pollStates: Map<string, any>
 
   beforeEach(() => {
     store = mock<Store>()
@@ -26,6 +34,11 @@ describe('ListenerZapo', () => {
     messageMetadata = {
       resolve: jest.fn(async (_phone: string, message: any) => message),
     }
+    pollStates = new Map()
+    ;(getPollState as jest.Mock).mockImplementation(async (phone: string, jid: string, id: string) => pollStates.get(`${phone}|${jid}|${id}`))
+    ;(setPollState as jest.Mock).mockImplementation(async (phone: string, jid: string, id: string, state: any) => {
+      pollStates.set(`${phone}|${jid}|${id}`, state)
+    })
     service = new ListenerZapo(outgoing, mock<Broadcast>(), async () => config, messageMetadata)
   })
 
@@ -395,7 +408,7 @@ describe('ListenerZapo', () => {
         changes: [expect.objectContaining({
           value: expect.objectContaining({
             messages: [expect.objectContaining({
-              text: { body: '*Voto em enquete*: Pizza' },
+              text: { body: '*Resultado de enquete*\nTotal de votos: 1\n- Pizza: 1' },
               context: { message_id: 'poll-uno-id', id: 'poll-uno-id' },
             })],
           }),
