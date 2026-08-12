@@ -45,7 +45,7 @@ describe('native Linux installer', () => {
   test('plans a dedicated video worker unit', () => {
     const result = spawnSync(
       bashCommand,
-      bashArgs(['--dry-run', '--tag', 'v4.0.12', '--role', 'video']),
+      bashArgs(['--dry-run', '--tag', 'v4.0.13', '--role', 'video']),
       { encoding: 'utf8' },
     )
 
