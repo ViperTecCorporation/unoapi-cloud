@@ -906,6 +906,22 @@ describe('ClientZapo', () => {
     expect(lease.release).toHaveBeenCalledTimes(1)
   })
 
+  test('bounds replay deduplication state and clears it on disconnect', async () => {
+    const forwardedHistoryIds = (service as any).forwardedHistoryIds
+    for (let index = 0; index <= 100_000; index += 1) {
+      forwardedHistoryIds.add(`message-${index}`)
+    }
+
+    expect(forwardedHistoryIds.size).toBe(100_000)
+    expect(forwardedHistoryIds.has('message-0')).toBe(false)
+    expect(forwardedHistoryIds.has('message-100000')).toBe(true)
+
+    await service.connect(1)
+    await service.disconnect()
+
+    expect(forwardedHistoryIds.size).toBe(0)
+  })
+
   test('owns Redis-backed sessions with a distributed lease and runs index maintenance', async () => {
     config.useRedis = true
     const lease = {

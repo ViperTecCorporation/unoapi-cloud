@@ -362,6 +362,13 @@ O contrato e exemplos fictícios estão em [CATALOG_WEBHOOKS.md](CATALOG_WEBHOOK
 
 O contrato operacional, as configurações por sessão e os exemplos da rota de replay/sync estão em [MESSAGE_HISTORY.md](MESSAGE_HISTORY.md).
 
+O worker mantém somente os 100.000 IDs de mensagens mais recentes por sessão,
+por até 30 dias, para impedir que a deduplicação de replay cresça sem limite.
+Os caches auxiliares de foto de perfil também são limitados a 5.000 identidades
+por sessão e expiram conforme a maior janela de refresh/webhook (mínimo 24h).
+Quando ocorre uma expulsão, a Uno relê o dado do store persistente; credenciais,
+mensagens e arquivos de mídia não são removidos.
+
 ## Enderecamento 1:1 Zapo
 
 - O campo publico de enderecamento e `to`; ele aceita PN/`wa_id`, LID ou username.

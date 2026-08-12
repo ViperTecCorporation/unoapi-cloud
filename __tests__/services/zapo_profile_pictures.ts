@@ -142,6 +142,24 @@ describe('ZapoProfilePictures', () => {
     expect(store.mediaStore.getProfilePictureInfo).toHaveBeenCalledTimes(1)
   })
 
+  test('evicts old remembered pictures and reloads them from persistent storage', async () => {
+    store.mediaStore.getProfilePictureInfo.mockImplementation(async (_baseUrl, jid) => ({
+      url: `https://uno.test/${encodeURIComponent(jid)}.jpg`,
+    }))
+    const service = createService({
+      forceRefresh: false,
+      webhookIntervalSeconds: 10_800,
+      memoryCacheMaxEntries: 1,
+    })
+
+    await service.enrich({ key: { remoteJid: '120363000001@g.us' } })
+    await service.enrich({ key: { remoteJid: '120363000002@g.us' } })
+    await service.enrich({ key: { remoteJid: '120363000001@g.us' } })
+
+    expect(store.mediaStore.getProfilePictureInfo).toHaveBeenCalledTimes(3)
+    expect(client.profile.getProfilePicture).not.toHaveBeenCalled()
+  })
+
   test('uses the local picture during the refresh interval', async () => {
     store.mediaStore.getProfilePictureInfo.mockResolvedValueOnce(undefined).mockResolvedValue({ url: 'https://uno.test/profile.jpg' })
     client.profile.getProfilePicture.mockResolvedValue({ id: 'picture-1', url: 'https://zapo.test/profile.jpg' })

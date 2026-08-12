@@ -24,7 +24,10 @@ No Manager, os campos ficam juntos em **Ignorar Histórico de Mensagens** e **Ja
 
 Quando `ignoreHistoryMessages=false`, a UnoAPI aguarda o chunk final da sincronização Zapo (`progress=100`), consulta o store usando `historyMaxAgeDays`, ordena as mensagens da mais antiga para a mais nova e as envia pelo fluxo normal de webhook com o tipo interno `history`.
 
-Chunks parciais não disparam replay. IDs recebidos como eventos ao vivo no processo atual também são excluídos do replay automático.
+Chunks parciais não disparam replay. IDs recentes recebidos como eventos ao vivo
+no processo atual também são excluídos do replay automático. Esse índice em
+memória mantém no máximo 100.000 IDs por sessão durante até 30 dias; a aplicação
+destinatária continua responsável pela idempotência persistente.
 
 ## Reprocessar o que já está persistido
 
@@ -53,7 +56,9 @@ Resposta:
 
 Esse modo consulta somente o store existente e não solicita QR Code nem nova sincronização ao aparelho.
 
-Por padrão, o worker não reenvia IDs já encaminhados por ele desde a última inicialização. Para um replay intencional completo dentro da janela:
+Por padrão, o worker não reenvia os até 100.000 IDs mais recentes encaminhados
+nos últimos 30 dias desde a inicialização atual. Para um replay intencional
+completo dentro da janela:
 
 ```json
 {

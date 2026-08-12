@@ -53,6 +53,7 @@ import { ZapoVoiceAdapter } from './zapo/voice/zapo_voice_adapter'
 import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/zapo_voice_bridge_client'
 import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
 import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
+import { BoundedTtlSet } from '../utils/bounded_ttl_cache'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -65,6 +66,8 @@ type LeaseFactory = (phone: string) => RedisLease
 const defaultClientFactory: ClientFactory = (options) =>
   new ZapoWaClient(options, new PinoLogger(logger.child({ scope: 'zapo' }), 'error')) as ZapoClient
 const mediaMessageKeys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage'] as const
+const ZAPO_HISTORY_DEDUP_MAX_IDS = 100_000
+const ZAPO_HISTORY_DEDUP_TTL_MS = 30 * 24 * 60 * 60 * 1_000
 
 export class ClientZapo implements Client {
   private config: Config = defaultConfig
@@ -79,7 +82,10 @@ export class ClientZapo implements Client {
   private connected = false
   private readonly pendingIncoming = new Map<string, any>()
   private readonly decryptedAddonIds = new Set<string>()
-  private readonly forwardedHistoryIds = new Set<string>()
+  private readonly forwardedHistoryIds = new BoundedTtlSet<string>({
+    maxEntries: ZAPO_HISTORY_DEDUP_MAX_IDS,
+    ttlMs: ZAPO_HISTORY_DEDUP_TTL_MS,
+  })
   private historySyncTask: Promise<void> = Promise.resolve()
   private intentionalDisconnect = false
   private lease?: RedisLease
@@ -978,6 +984,9 @@ export class ClientZapo implements Client {
     this.catalog = undefined
     this.pairingCodeRequest = undefined
     this.pairingCodeIssued = false
+    this.pendingIncoming.clear()
+    this.decryptedAddonIds.clear()
+    this.forwardedHistoryIds.clear()
     try {
       if (socket) await socket.disconnect()
       await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
