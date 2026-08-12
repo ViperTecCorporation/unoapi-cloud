@@ -15,9 +15,7 @@ import {
   UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED,
   UNOAPI_QUEUE_TIMER,
   UNOAPI_QUEUE_TRANSCRIBER,
-  UNOAPI_QUEUE_VIDEO_STAGE,
-  UNOAPI_QUEUE_VIDEO_TRANSCODE,
-  UNOAPI_VIDEO_STAGE_PREFETCH,
+  UNOAPI_VIDEO_WORKER_MODE,
 } from './defaults'
 
 import { amqpConsume } from './amqp'
@@ -39,9 +37,8 @@ import { WebhookStatusFailedJob } from './jobs/webhook_status_failed'
 import { addToBlacklist } from './jobs/add_to_blacklist'
 import { TimerJob } from './jobs/timer'
 import { TranscriberJob } from './jobs/transcriber'
-import { VideoStageJob } from './jobs/video_stage'
-import { VideoTranscodeJob } from './jobs/video_transcode'
-import { VideoPreparationFailureReporter } from './services/video_preparation_failure'
+import { startVideoConsumers } from './jobs/video_consumers'
+import { brokerRunsVideoConsumers, resolveVideoWorkerMode } from './services/providers/cloud_process_role'
 import { OutgoingAmqp } from './services/outgoing_amqp'
 import { runRabbitQueueCleanupMigration } from './services/rabbitmq_queue_cleanup'
 
@@ -55,9 +52,6 @@ const notificationJob = new NotificationJob(incomingAmqp)
 const outgingJob = new OutgoingJob(getConfigRedis, outgoingCloudApi)
 const timerJob = new TimerJob(incomingAmqp)
 const transcriberJob = new TranscriberJob(outgoingAmqp, getConfigRedis)
-const videoPreparationFailureReporter = new VideoPreparationFailureReporter(getConfigRedis, outgoingAmqp)
-const videoStageJob = new VideoStageJob(getConfigRedis, undefined, videoPreparationFailureReporter)
-const videoTranscodeJob = new VideoTranscodeJob(getConfigRedis, undefined, videoPreparationFailureReporter)
 
 import * as Sentry from '@sentry/node'
 import { isTransientBaileysError } from './services/error_utils'
@@ -98,23 +92,13 @@ const startBroker = async () => {
     { type: 'topic' }
   )
 
-  logger.info('Starting video staging consumer with prefetch %s', UNOAPI_VIDEO_STAGE_PREFETCH)
-  await amqpConsume(
-    UNOAPI_EXCHANGE_BROKER_NAME,
-    UNOAPI_QUEUE_VIDEO_STAGE,
-    '*',
-    videoStageJob.consume.bind(videoStageJob),
-    { notifyFailedMessages: false, prefetch: UNOAPI_VIDEO_STAGE_PREFETCH, type: 'topic' },
-  )
-
-  logger.info('Starting isolated video transcoding consumer with concurrency 1')
-  await amqpConsume(
-    UNOAPI_EXCHANGE_BROKER_NAME,
-    UNOAPI_QUEUE_VIDEO_TRANSCODE,
-    '*',
-    videoTranscodeJob.consume.bind(videoTranscodeJob),
-    { notifyFailedMessages: false, prefetch: 1, type: 'topic' },
-  )
+  const videoWorkerMode = resolveVideoWorkerMode(UNOAPI_VIDEO_WORKER_MODE)
+  if (brokerRunsVideoConsumers(videoWorkerMode)) {
+    logger.info('Video worker mode is broker; keeping compatible in-broker consumers')
+    await startVideoConsumers()
+  } else {
+    logger.info('Video worker mode is dedicated; broker will not consume video preparation queues')
+  }
 
   logger.info('Binding queues consumer for server %s', UNOAPI_SERVER_NAME)
 

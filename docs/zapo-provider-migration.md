@@ -440,6 +440,17 @@ Controles runtime:
 - `UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS` (padrao `420000`, limitado pelo timeout
   geral do consumidor).
 
+Por compatibilidade, `UNOAPI_VIDEO_WORKER_MODE=broker` (ou variável ausente)
+mantém esses consumidores no processo broker. Para isolar CPU, configure o
+broker com `UNOAPI_VIDEO_WORKER_MODE=dedicated` e execute outra instância com
+`UNOAPI_PROCESS_ROLE=video`. O modo dedicado não faz failover automático: se a
+instância parar, os jobs ficam duráveis no RabbitMQ e o broker não assume a
+conversão silenciosamente.
+
+O isolamento foi motivado por validação real: um vídeo de 106,9 MB, 1920x1080 e
+6min30s manteve um núcleo ocupado por aproximadamente 3min30s. A fila da sessão
+permaneceu livre, mas sem worker dedicado essa CPU ainda pertencia ao broker.
+
 ## Auditoria completa
 
 O resultado classe a classe e mantido em `docs/zapo-class-audit.md`.

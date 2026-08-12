@@ -108,10 +108,23 @@ services:
     environment:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: "broker"
+      UNOAPI_VIDEO_WORKER_MODE: "dedicated"
     deploy:
       resources:
         limits:
           cpus: "1"
+          memory: 1024M
+
+  unoapi-video-worker:
+    <<: *base
+    container_name: unoapi-video-worker
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: "video"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
           memory: 1024M
 
   unoapi-worker-zapo:

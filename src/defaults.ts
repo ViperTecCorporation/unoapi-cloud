@@ -132,6 +132,7 @@ export const UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED = `${UNOAPI_QUEUE_NAME}.webhook.
 export const UNOAPI_QUEUE_MEDIA = `${UNOAPI_QUEUE_NAME}.media`
 export const UNOAPI_QUEUE_VIDEO_STAGE = `${UNOAPI_QUEUE_NAME}.video.stage`
 export const UNOAPI_QUEUE_VIDEO_TRANSCODE = `${UNOAPI_QUEUE_NAME}.video.transcode`
+export const UNOAPI_VIDEO_WORKER_MODE = process.env.UNOAPI_VIDEO_WORKER_MODE || 'broker'
 export const UNOAPI_VIDEO_STAGE_PREFETCH = Math.max(1, parseInt(process.env.UNOAPI_VIDEO_STAGE_PREFETCH || '4'))
 export const UNOAPI_VIDEO_MAX_INPUT_BYTES = Math.max(
   16 * 1024 * 1024,

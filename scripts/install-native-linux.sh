@@ -10,7 +10,7 @@ Uso:
 
 Opções:
   --tag TAG              Tag imutável a instalar (padrão: versão do package.json)
-  --role ROLE            all, web, broker ou worker (padrão: all)
+  --role ROLE            all, web, broker, worker ou video (padrão: all)
   --env-file ARQUIVO     Arquivo de ambiente a instalar em /etc/viperconnect
   --install-root DIR     Releases e link current (padrão: /opt/viperconnect)
   --state-root DIR       Dados persistentes (padrão: /var/lib/viperconnect)
@@ -56,7 +56,7 @@ done
 
 [[ -n "$TAG" ]] || { printf 'Informe --tag ao executar o instalador fora do repositório.\n' >&2; exit 2; }
 [[ "$TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { printf 'Tag inválida: %s\n' "$TAG" >&2; exit 2; }
-[[ "$ROLE" =~ ^(all|web|broker|worker)$ ]] || { printf 'Role inválida: %s\n' "$ROLE" >&2; exit 2; }
+[[ "$ROLE" =~ ^(all|web|broker|worker|video)$ ]] || { printf 'Role inválida: %s\n' "$ROLE" >&2; exit 2; }
 [[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]] || { printf 'Usuário inválido: %s\n' "$SERVICE_USER" >&2; exit 2; }
 [[ "$INSTALL_ROOT" == /* && "$INSTALL_ROOT" != "/" ]] || { printf 'install-root deve ser absoluto e específico\n' >&2; exit 2; }
 [[ "$STATE_ROOT" == /* && "$STATE_ROOT" != "/" ]] || { printf 'state-root deve ser absoluto e específico\n' >&2; exit 2; }

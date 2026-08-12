@@ -135,9 +135,19 @@ o serviço correspondente estiver realmente instalado.
 
 ## Arquitetura do modelo
 
-Os três serviços ViperConnect usam a mesma imagem e o mesmo bloco de ambiente.
-`UNOAPI_PROCESS_ROLE` seleciona `web`, `broker` ou `worker`; somente o worker
+Os quatro serviços ViperConnect usam a mesma imagem e o mesmo bloco de ambiente.
+`UNOAPI_PROCESS_ROLE` seleciona `web`, `broker`, `video` ou `worker`; somente o worker
 declara o motor Zapo. Nenhum serviço substitui o entrypoint oficial da imagem.
+
+Os exemplos atuais configuram `UNOAPI_VIDEO_WORKER_MODE=dedicated` no broker e
+incluem `unoapi-video-worker` com duas CPUs, 1 GB e concorrência de conversão
+igual a uma. Isso foi adotado porque vídeos grandes mantêm um núcleo ocupado por
+minutos; separá-los impede disputa com webhooks e status.
+
+Para instalações antigas sem o novo container, omita
+`UNOAPI_VIDEO_WORKER_MODE` ou use `broker`: o broker continuará consumindo as
+filas de vídeo. No modo `dedicated`, se o worker parar, os vídeos ficam no
+RabbitMQ até sua recuperação; não há fallback automático ao broker.
 
 Não adicione `entrypoint`, `command`, `yarn cloud` ou `yarn start` ao `x-base`
 nem aos serviços `unoapi`, `unoapi-broker`, `unoapi-worker-zapo` e
@@ -159,6 +169,22 @@ x-base: &base
   restart: always
 
 services:
+  unoapi-broker:
+    <<: *base
+    environment:
+      UNOAPI_PROCESS_ROLE: broker
+      UNOAPI_VIDEO_WORKER_MODE: dedicated
+
+  unoapi-video-worker:
+    <<: *base
+    environment:
+      UNOAPI_PROCESS_ROLE: video
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
   unoapi-worker-zapo:
     <<: *base
     environment:

@@ -110,6 +110,7 @@ services:
     environment:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: "broker"
+      UNOAPI_VIDEO_WORKER_MODE: "dedicated"
     deploy:
       replicas: 1
       restart_policy:
@@ -121,6 +122,26 @@ services:
       resources:
         limits:
           cpus: "1"
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+  unoapi-video-worker:
+    <<: *base
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: "video"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+      resources:
+        limits:
+          cpus: "2"
           memory: 1024M
         reservations:
           memory: 256M

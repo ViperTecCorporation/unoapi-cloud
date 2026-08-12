@@ -30,6 +30,19 @@ existindo porque são carregados pelo `cloud.js`.
 - `broker`: filas de envio, webhook, mídia, timer e transcrição, além dos
   consumidores de campanhas, comandos e status em lote;
 - `worker`: conexões e operações das sessões Zapo.
+- `video`: staging por streaming e conversão FFmpeg dos vídeos enviados.
+
+`UNOAPI_VIDEO_WORKER_MODE` controla onde as filas de vídeo são consumidas:
+
+- ausente ou `broker`: mantém o comportamento compatível e processa vídeos no
+  broker;
+- `dedicated`: o broker não consome `video.stage` nem `video.transcode`; uma
+  instância com `UNOAPI_PROCESS_ROLE=video` deve estar ativa.
+
+O modo não faz failover automático para o broker. Se o worker dedicado parar,
+os jobs permanecem duráveis no RabbitMQ até ele voltar. Isso evita duas
+conversões concorrentes e impede que uma falha do worker volte a ocupar CPU do
+broker sem decisão operacional.
 
 Quando `UNOAPI_PROCESS_ROLE` está ausente ou vazio, o processo inicia os três
 papéis. Portanto, um container único não precisa declarar essa variável.
@@ -69,8 +82,21 @@ services:
     image: ghcr.io/viperteccorporation/viperconnect:latest
     environment:
       UNOAPI_PROCESS_ROLE: broker
+      UNOAPI_VIDEO_WORKER_MODE: dedicated
       REDIS_URL: redis://redis:6379
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
+
+  video-worker:
+    image: ghcr.io/viperteccorporation/viperconnect:latest
+    environment:
+      UNOAPI_PROCESS_ROLE: video
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://guest:guest@rabbitmq:5672
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
 
   worker-zapo:
     image: ghcr.io/viperteccorporation/viperconnect:latest
@@ -84,6 +110,12 @@ services:
 Somente o serviço web publica a porta HTTP. Todos os papéis precisam acessar o
 mesmo Redis/Valkey e RabbitMQ. O papel `broker` também inicia internamente o
 bulker; não crie um quarto container para ele.
+
+O isolamento foi introduzido porque uma conversão real de 106,9 MB utilizou um
+núcleo durante aproximadamente três minutos e meio. A fila serial da sessão
+continuou livre, mas o processo do broker ainda compartilhava CPU com webhooks
+e status. O worker dedicado limita a concorrência pesada a uma conversão,
+permite reservar CPU própria e preserva a responsividade do broker.
 
 ## Desenvolvimento
 

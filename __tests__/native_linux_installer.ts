@@ -42,6 +42,18 @@ describe('native Linux installer', () => {
     expect(result.stdout).toContain('nenhuma alteração foi realizada')
   })
 
+  test('plans a dedicated video worker unit', () => {
+    const result = spawnSync(
+      bashCommand,
+      bashArgs(['--dry-run', '--tag', 'v4.0.12', '--role', 'video']),
+      { encoding: 'utf8' },
+    )
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('role: video')
+    expect(result.stdout).toContain('unit: viperconnect-video.service')
+  })
+
   test('rejects unsafe tags before requiring root', () => {
     const result = spawnSync(bashCommand, bashArgs(['--dry-run', '--tag', '../main']), {
       encoding: 'utf8',

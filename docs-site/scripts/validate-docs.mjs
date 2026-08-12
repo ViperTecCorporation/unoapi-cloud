@@ -133,17 +133,22 @@ for (const composeFile of composeFiles) {
   if (workerEnvironment?.UNOAPI_PROCESS_ROLE !== 'worker' || workerEnvironment?.UNOAPI_WORKER_ENGINE !== 'zapo') {
     throw new Error(`Worker Zapo inválido: ${path.basename(composeFile)}`)
   }
+  const brokerEnvironment = compose.services?.['unoapi-broker']?.environment
+  const videoEnvironment = compose.services?.['unoapi-video-worker']?.environment
+  if (brokerEnvironment?.UNOAPI_VIDEO_WORKER_MODE !== 'dedicated' || videoEnvironment?.UNOAPI_PROCESS_ROLE !== 'video') {
+    throw new Error(`Worker de vídeo dedicado inválido: ${path.basename(composeFile)}`)
+  }
   const telephony = compose.services?.['viperconnect-telefonia']
   if (telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' || telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' || telephony?.network_mode !== 'host') {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
-  const requiredServices = ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']
+  const requiredServices = ['unoapi', 'unoapi-broker', 'unoapi-video-worker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']
   for (const service of requiredServices) {
     if (!compose.services?.[service]) {
       throw new Error(`${path.basename(composeFile)} sem serviço ${service}`)
     }
   }
-  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-worker-zapo', 'viperconnect-telefonia']) {
+  for (const service of ['unoapi', 'unoapi-broker', 'unoapi-video-worker', 'unoapi-worker-zapo', 'viperconnect-telefonia']) {
     const definition = compose.services?.[service]
     if (definition?.entrypoint || definition?.command) {
       throw new Error(`${path.basename(composeFile)} substitui entrypoint/command em ${service}`)
@@ -183,6 +188,7 @@ for (const swarmFile of swarmFiles) {
 const requiredSwarmServices = [
   'unoapi',
   'unoapi-broker',
+  'unoapi-video-worker',
   'unoapi-worker-zapo',
   'unoapi-redis',
   'unoapi-rabbitmq',
