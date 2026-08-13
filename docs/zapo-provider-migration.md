@@ -376,8 +376,26 @@ mensagens e arquivos de mídia não são removidos.
 - Quando o LID estiver presente, a UnoAPI envia por ele e consulta `contacts.getByJid` para recuperar o PN exato armazenado pela Zapo.
 - O PN do store entra no envelope do provider sem inserir nem remover o nono digito. A normalizacao brasileira fica restrita ao webhook publico da aplicacao.
 - Sem LID, um `username` conhecido e resolvido pelo indice Zapo para seu LID. Alias ainda nao sincronizado retorna erro explicito.
-- Quando a aplicacao nao conhecer LID nem username, a UnoAPI usa o PN recebido para consultar o store/API da Zapo e recuperar o LID; depois da resolucao, o envio usa o LID.
-- Nunca escolher um contato Zapo por heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs distintos.
+- Quando a aplicacao nao conhecer LID nem username, a UnoAPI consulta primeiro o
+  PN exato no contact store persistente da sessao Zapo. Um LID armazenado e usado
+  diretamente, sem nova consulta de rede. Se o envio rejeitar esse LID como
+  inexistente, a protecao de renovacao consulta a rede, substitui os mapeamentos
+  antigos e repete o envio uma vez.
+- Para celulares brasileiros recebidos com o nono digito, somente depois de um
+  cache miss exato o resolver tenta no mesmo store o PN legado sem esse digito.
+  O PN exato sempre vence quando as duas formas existirem. Esse fallback nao se
+  aplica a numeros internacionais, nao fabrica um LID e nao altera o PN enviado
+  para a consulta de rede.
+- Somente quando o PN exato nao estiver no store a UnoAPI chama
+  `profile.getLidsByPhoneNumbers`. Consultas simultaneas do mesmo PN na mesma
+  sessao compartilham a mesma requisicao pendente, reduzindo flood e risco de
+  restricao. O resultado canonico e persistido para os proximos envios.
+- Falha de transporte relê o store uma vez para cobrir uma atualizacao concorrente.
+  Uma resposta de rede explicita sem LID continua retornando
+  `zapo_phone_lid_not_found`; a Uno nao fabrica identidade.
+- Fora desse fallback local e ordenado, nunca escolher um contato Zapo por
+  heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs
+  distintos.
 
 ### Verificacao e importacao de contatos
 
