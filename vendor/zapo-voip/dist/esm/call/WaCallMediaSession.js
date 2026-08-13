@@ -1372,12 +1372,14 @@ export class WaCallMediaSession {
                 this.sctpRelay.setStreamSsrcs(this.selfStreamSsrcs);
                 this.sctpRelay.setSubscriptionSsrcs(this.peerSsrcs);
                 this.sctpRelay.setParticipantPids(this.info.relayData?.selfPid, this.info.relayData?.peerPid);
-                // The validated WASM inbound path kept every advertised relay
-                // allocated while publishing media on only one provisional path.
-                // This lets an authenticated packet arriving on another relay
-                // confirm that path without duplicating outbound RTP.
-                this.sctpRelay.setStartupMediaFanout(false);
-                this.logger.info('inbound relay candidates preconnected without media fanout', {
+                // Keep every advertised relay allocated and publish startup RTP
+                // on all of them until authenticated remote media confirms the
+                // path selected by the caller. Some direct incoming offers do
+                // not include a later relay-election stanza, so sending only on
+                // our provisional path can leave a live relay with control
+                // pongs but no bidirectional media.
+                this.sctpRelay.setStartupMediaFanout(true);
+                this.logger.info('inbound relay candidates preconnected with startup media fanout', {
                     callId: this.info.callId,
                     candidateCount: candidates.length,
                     provisionalRelayId: first.relayId,
