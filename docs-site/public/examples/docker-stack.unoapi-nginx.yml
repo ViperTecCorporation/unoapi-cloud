@@ -271,9 +271,10 @@ services:
       VOIP_APP_STORAGE: "sqlite"
       VOICE_CONFIG_STORAGE: "sqlite"
       SIP_RTP_ENABLED: "true"
-      SIP_RTP_BIND_HOST: "0.0.0.0"
-      SIP_RTP_PUBLIC_IP: "sip.seudominio.com.br"
-      SIP_RTP_PUBLIC_ADVERTISE_IP: "203.0.113.10"
+      SIP_RTP_BIND_IPV4: "0.0.0.0"
+      SIP_RTP_BIND_IPV6: "::"
+      SIP_RTP_PUBLIC_IPV4: "203.0.113.10"
+      SIP_RTP_PUBLIC_IPV6_HOST: "sip6.seudominio.com.br"
       SIP_RTP_LAN_IP: "192.168.1.10"
       SIP_RTP_PORT: "5060"
       # Estes quatro valores correspondem exatamente as faixas fixas publicadas abaixo.

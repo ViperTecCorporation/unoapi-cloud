@@ -104,6 +104,21 @@ Se a unit de vídeo parar, os jobs permanecem duráveis no RabbitMQ até ela
 voltar; eles não migram automaticamente ao broker. Removendo a variável ou
 usando `broker`, instalações antigas continuam processando vídeo no broker.
 
+O fluxo separa `video.stage` (download por streaming) de `video.transcode`
+(FFmpeg). Mensagens comuns continuam nas filas normais e não aguardam a
+conversão. Os padrões operacionais são:
+
+| Variável | Padrão | Finalidade |
+| --- | --- | --- |
+| `UNOAPI_VIDEO_STAGE_PREFETCH` | `4` | Downloads preparados em paralelo. |
+| `UNOAPI_VIDEO_MAX_INPUT_BYTES` | `268435456` | Limite de entrada de 256 MiB. |
+| `UNOAPI_VIDEO_TARGET_BYTES` | `15728640` | Alvo de saída, limitado a 15 MiB. |
+| `UNOAPI_VIDEO_STAGE_TIMEOUT_MS` | `300000` | Timeout de download e staging. |
+| `UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS` | `420000` | Timeout da conversão FFmpeg. |
+
+Cada processo `video` executa uma conversão por vez. Escale esse papel somente
+depois de observar CPU, memória e profundidade das filas no RabbitMQ.
+
 ## Estrutura criada
 
 ```text

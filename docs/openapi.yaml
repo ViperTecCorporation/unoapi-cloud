@@ -1823,10 +1823,10 @@ components:
       properties:
         installed_version:
           type: string
-          example: 4.0.15
+          example: 4.0.16
         latest_version:
           type: string
-          example: 4.0.15
+          example: 4.0.16
         update_available:
           type: boolean
         status:

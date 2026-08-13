@@ -29,6 +29,7 @@ export default defineConfig({
           { text: 'Instalação', link: '/guide/installation' },
           { text: 'Instalador Linux', link: '/guide/install-native-linux' },
           { text: 'Telefonia Linux nativa', link: '/guide/install-voip-native-linux' },
+          { text: 'VoIP IPv4 e IPv6', link: '/guide/voip-ipv6' },
           { text: 'Docker Compose', link: '/guide/docker-compose' },
           { text: 'Docker Swarm', link: '/guide/docker-swarm' },
           { text: 'Conectar uma sessão', link: '/guide/connection' },

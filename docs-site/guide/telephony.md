@@ -50,6 +50,11 @@ environment:
 Para executar a telefonia fora de container com pacote `.deb` e `systemd`, veja
 [Telefonia em Linux nativo](/guide/install-voip-native-linux).
 
+SIP, RTP, WebRTC e o proxy de mídia suportam IPv4 e IPv6 em paralelo a partir
+da telefonia `v0.1.61` e da imagem unificada `v4.0.15`. A configuração pública
+por família, Coturn e os testes de aceite estão em
+[VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
+
 No Docker Swarm, não use `network_mode: host`. O worker e a telefonia se
 encontram pelo DNS da overlay interna. `5060/udp` permanece em `mode: host`, e
 as faixas fixas RTP/WebRTC usam a sintaxe compacta aceita pelo stack. O modelo

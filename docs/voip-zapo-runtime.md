@@ -60,6 +60,10 @@ internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece
 ativo e o endereço público IPv6 é configurado por hostname/ENV, sem gravar o
 prefixo dinâmico da Starlink na imagem.
 
+A configuração por família, o Coturn, as portas e a validação operacional estão
+consolidados em
+[`docs-site/guide/voip-ipv6.md`](../docs-site/guide/voip-ipv6.md).
+
 O estágio `voip-builder` também valida o JavaScript compilado antes de permitir
 a imagem: `voice_router.js` deve usar `outbound_line`, `maxConcurrentCalls` e os
 erros de capacidade por linha. O build falha se reaparecerem

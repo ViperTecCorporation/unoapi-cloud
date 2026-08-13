@@ -119,6 +119,22 @@ const composeFiles = [
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-nginx.yml'),
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-traefik.yml'),
 ]
+const validateDualStackEnvironment = (environment, location) => {
+  if (environment?.SIP_RTP_BIND_IPV4 !== '0.0.0.0') {
+    throw new Error(`${location}: SIP_RTP_BIND_IPV4 precisa preservar o bind IPv4`)
+  }
+  if (environment?.SIP_RTP_BIND_IPV6 !== '::') {
+    throw new Error(`${location}: SIP_RTP_BIND_IPV6 precisa habilitar o socket IPv6 separado`)
+  }
+  if (!environment?.SIP_RTP_PUBLIC_IPV4 || !environment?.SIP_RTP_PUBLIC_IPV6_HOST) {
+    throw new Error(`${location}: anúncios públicos IPv4 e IPv6 precisam estar separados`)
+  }
+  for (const legacy of ['SIP_RTP_BIND_HOST', 'SIP_RTP_PUBLIC_IP', 'SIP_RTP_PUBLIC_ADVERTISE_IP']) {
+    if (environment?.[legacy] !== undefined) {
+      throw new Error(`${location}: exemplo novo não deve ensinar a variável legada ${legacy}`)
+    }
+  }
+}
 for (const composeFile of composeFiles) {
   const composeContent = await readFile(composeFile, 'utf8')
   const compose = parseYaml(composeContent)
@@ -142,6 +158,7 @@ for (const composeFile of composeFiles) {
   if (telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' || telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' || telephony?.network_mode !== 'host') {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
+  validateDualStackEnvironment(telephony.environment, path.basename(composeFile))
   const requiredServices = ['unoapi', 'unoapi-broker', 'unoapi-video-worker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']
   for (const service of requiredServices) {
     if (!compose.services?.[service]) {
@@ -271,6 +288,7 @@ for (const swarmFile of swarmFiles) {
 
   const telephony = stack.services['viperconnect-telefonia']
   const telephonyEnvironment = telephony.environment
+  validateDualStackEnvironment(telephonyEnvironment, filename)
   requiredPlaceholder(telephonyEnvironment.VOIP_SERVICE_TOKEN, 'GERE_UM_TOKEN_VOIP_', `${filename}: token da telefonia`)
   requiredPlaceholder(telephonyEnvironment.VOIP_BRIDGE_TOKEN, 'GERE_UM_TOKEN_VOIP_', `${filename}: token do bridge`)
   requiredPlaceholder(telephonyEnvironment.VOIP_TURN_CREDENTIAL, 'TROQUE_A_SENHA_TURN', `${filename}: credencial TURN`)
@@ -345,6 +363,35 @@ for (const swarmFile of swarmFiles) {
     }
   } else if (!findPort(apiPorts, 9876, 'tcp') || !findPort(telephonyPorts, 3097, 'tcp')) {
     throw new Error(`${filename}: modelo Nginx precisa publicar 9876/tcp e 3097/tcp`)
+  }
+}
+
+const dualStackGuide = await readFile(path.join(docs, 'guide', 'voip-ipv6.md'), 'utf8')
+for (const requiredText of [
+  'SIP_RTP_BIND_IPV4',
+  'SIP_RTP_BIND_IPV6',
+  'SIP_RTP_PUBLIC_IPV4',
+  'SIP_RTP_PUBLIC_IPV6_HOST',
+  'IN IP6',
+  'DNS-only',
+  'COTURN_LISTEN_IPV6',
+]) {
+  if (!dualStackGuide.includes(requiredText)) {
+    throw new Error(`Guia dual-stack sem contrato obrigatório: ${requiredText}`)
+  }
+}
+
+for (const guideName of ['docker-compose.md', 'docker-swarm.md', 'install-native-linux.md']) {
+  const guideContent = await readFile(path.join(docs, 'guide', guideName), 'utf8')
+  if (
+    !guideContent.includes('UNOAPI_PROCESS_ROLE=video') &&
+    !guideContent.includes('UNOAPI_PROCESS_ROLE: video') &&
+    !guideContent.includes('--role video')
+  ) {
+    throw new Error(`${guideName}: worker de vídeo dedicado não está documentado`)
+  }
+  if (!guideContent.includes('UNOAPI_VIDEO_WORKER_MODE')) {
+    throw new Error(`${guideName}: modo de execução do worker de vídeo não está documentado`)
   }
 }
 

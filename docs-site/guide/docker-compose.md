@@ -11,7 +11,7 @@ Estes são os dois modelos do próprio projeto e usam a imagem
 web, broker e worker Zapo separados, com Valkey e RabbitMQ persistentes.
 
 Cada tag Git de release no formato `v*` publica duas referências da mesma
-imagem: a versão imutável, por exemplo `4.0.15`, e `latest`. Use `latest` para
+imagem: a versão imutável, por exemplo `4.0.16`, e `latest`. Use `latest` para
 acompanhar o canal estável automaticamente ou fixe a versão semântica quando
 precisar controlar a janela de atualização.
 
@@ -97,8 +97,9 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 | `VOIP_NATIVE_LOG_LEVEL` | Nível do motor de chamadas; use `info` normalmente e `debug` somente para diagnóstico. |
 | `CALL_HISTORY_STORAGE`, `VOIP_APP_STORAGE`, `VOICE_CONFIG_STORAGE` | Mantêm histórico, estado operacional e configuração no SQLite. |
 | `VOIP_SQLITE_PATH` | Banco persistido no volume da telefonia. |
-| `SIP_RTP_PUBLIC_IP` | Domínio ou IP público anunciado para SIP/RTP. |
-| `SIP_RTP_PUBLIC_ADVERTISE_IP` | IP público literal anunciado quando o servidor está atrás de NAT. |
+| `SIP_RTP_BIND_IPV4` e `SIP_RTP_BIND_IPV6` | Abrem sockets IPv4 e IPv6 independentes; use `0.0.0.0` e `::`. |
+| `SIP_RTP_PUBLIC_IPV4` | IPv4 público literal anunciado para peers IPv4. |
+| `SIP_RTP_PUBLIC_IPV6_HOST` | Hostname DNS-only cujo AAAA acompanha o prefixo IPv6 delegado. |
 | `SIP_RTP_LAN_IP` | IP anunciado aos ramais da LAN. |
 | `SIP_RTP_PORT` | Porta UDP de sinalização SIP tradicional. |
 | `SIP_RTP_MEDIA_PORT_MIN/MAX` | Faixa UDP de áudio RTP tradicional. |
@@ -109,6 +110,12 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 `203.0.113.10` é um IP reservado para documentação. Troque por seu IP público
 real. Se não houver coturn disponível, deixe as três variáveis TURN vazias em
 vez de apontar para um serviço inexistente.
+
+O runtime dual-stack usa sockets separados por família e preserva o caminho
+IPv4. Não grave um IPv6 de prefixo dinâmico no Compose: anuncie o hostname de
+`SIP_RTP_PUBLIC_IPV6_HOST`. As variáveis antigas permanecem apenas como aliases
+de compatibilidade IPv4. Veja configuração, Coturn e testes em
+[VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
 
 No bloco compartilhado da Uno, mantenha este trio com o mesmo host e token do
 serviço de telefonia:
@@ -133,6 +140,10 @@ de telefonia. Abra no host `3097/tcp`, `5060/udp`, `12000-13000/udp` e
 `13001-14000/udp`. STUN/TURN possui portas próprias e só deve ser publicado se
 o serviço correspondente estiver realmente instalado.
 
+Essas portas devem estar liberadas nos firewalls IPv4 e IPv6. Como a telefonia
+usa rede host, `ss -lunp` deve mostrar listeners em `0.0.0.0` e `[::]` para SIP
+e para as portas RTP alocadas.
+
 ## Arquitetura do modelo
 
 Os quatro serviços ViperConnect usam a mesma imagem e o mesmo bloco de ambiente.
@@ -148,6 +159,13 @@ Para instalações antigas sem o novo container, omita
 `UNOAPI_VIDEO_WORKER_MODE` ou use `broker`: o broker continuará consumindo as
 filas de vídeo. No modo `dedicated`, se o worker parar, os vídeos ficam no
 RabbitMQ até sua recuperação; não há fallback automático ao broker.
+
+O fluxo possui duas filas duráveis: `video.stage` baixa a origem por streaming
+e `video.transcode` executa FFmpeg com concorrência igual a uma e prioridade
+baixa. Vídeos já compatíveis podem ser preparados sem recodificação; os demais
+são normalizados antes de retornarem à fila do provider. O limite padrão de
+entrada é 256 MiB e o alvo padrão de saída é no máximo 15 MiB. A separação não
+atrasa mensagens de texto, porque elas continuam nas filas normais.
 
 Não adicione `entrypoint`, `command`, `yarn cloud` ou `yarn start` ao `x-base`
 nem aos serviços `unoapi`, `unoapi-broker`, `unoapi-worker-zapo` e

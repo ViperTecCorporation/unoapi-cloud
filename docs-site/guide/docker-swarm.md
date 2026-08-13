@@ -59,7 +59,7 @@ Revise principalmente:
 - a mesma senha Valkey em `REDIS_URL`, `VALKEY_PASSWORD` e `--requirepass`;
 - o mesmo token em `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN`;
 - webhook e armazenamento, quando utilizados;
-- IP público anunciado e IP local da telefonia.
+- IPv4 público, hostname público IPv6 e IP local da telefonia.
 
 ```bash
 openssl rand -hex 32
@@ -123,6 +123,31 @@ faixas compactas de mídia são expandidas pelo Docker em `mode: ingress`, pois 
 formato curto não possui um campo para selecionar o modo. A telefonia permanece
 com uma réplica presa ao nó `viperconnect.voip=true`.
 
+O runtime abre sockets IPv4 e IPv6 independentes. Os stacks usam
+`SIP_RTP_BIND_IPV4`, `SIP_RTP_BIND_IPV6`, `SIP_RTP_PUBLIC_IPV4` e
+`SIP_RTP_PUBLIC_IPV6_HOST`; o último deve ser um hostname DNS-only com AAAA
+atualizado, nunca um prefixo dinâmico gravado no YAML. No Swarm, a aplicação
+dual-stack não substitui a configuração IPv6 do daemon, das redes e da
+publicação de portas do nó. Valide listeners e mídia nas duas famílias conforme
+[VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
+
+## Worker dedicado de vídeo
+
+Os stacks incluem `unoapi-video-worker` com `UNOAPI_PROCESS_ROLE=video` e
+configuram `UNOAPI_VIDEO_WORKER_MODE=dedicated` no broker. Assim, download por
+streaming e FFmpeg não competem com webhooks, status e mensagens comuns.
+
+`video.stage` pode preparar vários downloads conforme o prefetch configurado;
+`video.transcode` executa somente uma conversão por instância, com prioridade
+baixa. O limite padrão de entrada é 256 MiB e o alvo de saída é no máximo
+15 MiB. Se o worker parar, os jobs duráveis aguardam no RabbitMQ; o modo
+dedicado não faz failover automático para o broker.
+
+Para manter o desenho antigo sem o serviço separado, remova
+`UNOAPI_VIDEO_WORKER_MODE=dedicated` ou use `broker`; nesse modo o próprio
+broker consome as duas filas. Não mantenha o modo `dedicated` sem uma réplica
+ativa de `unoapi-video-worker`.
+
 ## Validar e implantar
 
 Escolha apenas um dos arquivos baixados e já editados:
@@ -146,6 +171,7 @@ Confira a convergência e as portas realmente publicadas:
 docker stack services viperconnect
 docker service ps viperconnect_viperconnect-telefonia
 docker service logs --tail 100 viperconnect_viperconnect-telefonia
+docker service logs --tail 100 viperconnect_unoapi-video-worker
 docker service inspect viperconnect_viperconnect-telefonia \
   --format '{{json .Endpoint.Spec.Ports}}'
 ```
@@ -164,6 +190,10 @@ compactas são publicadas pelo ingress do Swarm.
 | `5060` | UDP | SIP tradicional no nó VoIP. O runtime não publica SIP por TCP. |
 | `12000-13000` | UDP | Faixa fixa de áudio dos ramais SIP. |
 | `13001-14000` | UDP | Faixa fixa de mídia dos clientes WebRTC. |
+
+Libere essas portas para IPv4 e IPv6. Coturn usa adicionalmente `3478/udp`,
+`3478/tcp` e uma faixa de relay sem sobreposição, por exemplo
+`14001-15000/udp`.
 
 Valkey e RabbitMQ não possuem `ports` e só são acessíveis pela overlay
 `unoapi-internal`. No Traefik, `9876` e `3097` também permanecem internos e são
