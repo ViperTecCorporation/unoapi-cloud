@@ -185,12 +185,38 @@ containers ViperConnect. Use `UNOAPI_PROCESS_ROLE` (`web`, `broker`, `video` ou
 `worker`) para selecionar o processo; a imagem preserva o
 Node como PID 1 e executa o desligamento gracioso das sessões Zapo.
 
+## Projetos relacionados e referências técnicas
+
+### Zapo
+
+O runtime de comunicação do ViperConnect utiliza o
+[Zapo](https://github.com/vinikjkkj/zapo), com adapters próprios para preservar
+o contrato HTTP, os webhooks, os contatos, as mídias e as integrações do
+ViperConnect.
+
+- [Repositório oficial](https://github.com/vinikjkkj/zapo)
+- [Documentação oficial](https://zapo.to/pt-br)
+
+### Meow Caller
+
+A implementação de chamadas utiliza o
+[Meow Caller](https://github.com/purpshell/meowcaller) como referência técnica
+para partes do fluxo de chamadas 1:1, sinalização, relay direto, RTP/SRTP,
+codec e vetores de validação.
+
+O runtime VoIP do ViperConnect é híbrido e possui adaptações próprias; não é
+uma cópia pura do Zapo nem do Meow Caller. As diferenças e os pontos de
+compatibilidade estão registrados na
+[auditoria técnica de VoIP](docs/voip-meowcaller-audit.md).
+
 ## Créditos
 
 - Mantenedora: ViperTec Corporation <suporte@vipertec.com.br>
 - Rodrigo Caitano <caitano28@gmail.com>
 - Baseado no projeto original Unoapi Cloud, criado por Clairton Rodrigo.
-- Runtime de comunicação: Zapo
+- Runtime de comunicação baseado no [Zapo](https://github.com/vinikjkkj/zapo).
+- Telefonia baseada no plugin Zapo VoIP, com referências técnicas do
+  [Meow Caller](https://github.com/purpshell/meowcaller).
 
 ## Aviso legal
 
