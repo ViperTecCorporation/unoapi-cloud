@@ -15,6 +15,19 @@ import {
   normalizeMessageContent,
 } from './transformer'
 import { resolveUnoMessageId } from './message_id_map'
+import { getPollState, setPollState } from './redis'
+import {
+  normalizePollAggregateState,
+  pollOptionHash,
+  selectedPollOptionHashes,
+} from './messages/poll_vote_state'
+
+const POLL_CREATION_TYPES = new Set([
+  'pollCreationMessage',
+  'pollCreationMessageV2',
+  'pollCreationMessageV3',
+  'pollCreationMessageV5',
+])
 
 const STATUS_RANK: Record<string, number> = {
   failed: 0,
@@ -148,6 +161,94 @@ export class ListenerZapo implements Listener {
     return true
   }
 
+  private async savePollCreation(phone: string, message: any, messageType?: string) {
+    if (!messageType || !POLL_CREATION_TYPES.has(messageType)) return
+    const creation = message?.message?.[messageType]
+    const pollId = `${message?.key?.id || ''}`.trim()
+    const remoteJid = `${message?.key?.remoteJid || ''}`.trim()
+    const options = (Array.isArray(creation?.options) ? creation.options : []).reduce((acc: Record<string, string>, option: any) => {
+      const name = `${option?.optionName || ''}`.trim()
+      if (name) acc[pollOptionHash(name)] = name
+      return acc
+    }, {})
+    if (!pollId || !remoteJid || !Object.keys(options).length) return
+    await setPollState(phone, remoteJid, pollId, {
+      pollId,
+      remoteJid,
+      pollName: `${creation?.name || ''}`.trim(),
+      options,
+      voters: {},
+      updatedAt: Date.now(),
+    })
+  }
+
+  private async loadPollCreation(store: any, remoteJid: string, pollId: string) {
+    const key = await store.dataStore.loadKey?.(pollId)
+    const providerId = `${key?.id || pollId}`.trim()
+    const parent = await store.dataStore.loadMessage?.(remoteJid, providerId)
+    const content = parent?.message || {}
+    return content.pollCreationMessage
+      || content.pollCreationMessageV2
+      || content.pollCreationMessageV3
+      || content.pollCreationMessageV5
+  }
+
+  private async enrichPollUpdate(phone: string, store: any, message: any, payload: any) {
+    const update = message?.message?.pollUpdateMessage
+    const pollId = `${update?.pollCreationMessageKey?.id || ''}`.trim()
+    const remoteJid = `${update?.pollCreationMessageKey?.remoteJid || message?.key?.remoteJid || ''}`.trim()
+    if (!pollId || !remoteJid) return
+
+    let state: any = await getPollState(phone, remoteJid, pollId)
+    if (!state) {
+      const creation = await this.loadPollCreation(store, remoteJid, pollId)
+      const optionNames = Array.isArray(creation?.options)
+        ? creation.options.map((option: any) => `${option?.optionName || ''}`.trim()).filter(Boolean)
+        : (Array.isArray(update?.vote?.selectedOptionNames)
+          ? update.vote.selectedOptionNames.map((name: unknown) => `${name || ''}`.trim()).filter(Boolean)
+          : [])
+      state = {
+        pollId,
+        remoteJid,
+        pollName: `${creation?.name || ''}`.trim(),
+        options: optionNames.reduce((acc: Record<string, string>, name: string) => {
+          acc[pollOptionHash(name)] = name
+          return acc
+        }, {}),
+        voters: {},
+      }
+    }
+    state = normalizePollAggregateState(state)
+    if (!Object.keys(state.options || {}).length) return
+
+    const voterJid = `${message?.key?.participant || (message?.key?.fromMe ? `self:${phone}` : message?.key?.remoteJid) || ''}`.trim()
+    if (!voterJid) return
+    const selected = selectedPollOptionHashes(update?.vote, state.options)
+    state.voters = state.voters || {}
+    if (selected.length) state.voters[voterJid] = selected
+    else delete state.voters[voterJid]
+    state.updatedAt = Date.now()
+    await setPollState(phone, remoteJid, pollId, state)
+
+    const counts = Object.keys(state.options).reduce<Record<string, number>>((acc, hash) => {
+      acc[hash] = 0
+      return acc
+    }, {})
+    for (const hashes of Object.values(state.voters) as string[][]) {
+      for (const hash of hashes) if (hash in counts) counts[hash] += 1
+    }
+    const webhookMessage = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+    if (!webhookMessage) return
+    webhookMessage.type = 'text'
+    webhookMessage.text = {
+      body: [
+        `*Resultado de enquete*${state.pollName ? `: ${state.pollName}` : ''}`,
+        `Total de votos: ${Object.keys(state.voters).length}`,
+        ...Object.entries(state.options).map(([hash, name]) => `- ${name}: ${counts[hash] || 0}`),
+      ].join('\n'),
+    }
+  }
+
   async sendOne(phone: string, raw: object) {
     const source: any = raw
     const message: any = {
@@ -165,6 +266,7 @@ export class ListenerZapo implements Listener {
     const config = await this.getConfig(phone)
     const store = await config.getStore(phone, config)
     const normalized = await this.normalizeMessageId(phone, store, message, messageType)
+    await this.savePollCreation(phone, normalized, messageType)
 
     if (normalized?.key?.id && normalized?.key?.remoteJid && !normalized?.key?.fromMe) {
       const receiptKey = providerIncomingKey
@@ -177,6 +279,7 @@ export class ListenerZapo implements Listener {
 
     const [payload] = fromBaileysMessageContent(phone, normalized, config)
     if (!payload || !(await this.shouldForwardStatus(store, payload))) return
+    if (messageType === 'pollUpdateMessage') await this.enrichPollUpdate(phone, store, normalized, payload)
     if (skipTypebot) (payload as any).__unoapiSkipTypebot = true
     await this.outgoing.send(phone, payload)
   }

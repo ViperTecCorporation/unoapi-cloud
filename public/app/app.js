@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.11-02421e46';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.11-02421e46';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.11-02421e46';
-import { SocketBridge } from './core/socket.js?v=4.0.11-02421e46';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.11-02421e46';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.11-02421e46';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.11-02421e46';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.11-02421e46';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.11-02421e46';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.11-02421e46';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.11-02421e46';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.11-02421e46';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.11-02421e46';
-import { renderSessionPage } from './pages/session.js?v=4.0.11-02421e46';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.11-02421e46';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.11-02421e46';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.11-02421e46';
-import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.11-02421e46';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.18-ae8d08b9';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.18-ae8d08b9';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.18-ae8d08b9';
+import { SocketBridge } from './core/socket.js?v=4.0.18-ae8d08b9';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.18-ae8d08b9';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.18-ae8d08b9';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.18-ae8d08b9';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.18-ae8d08b9';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.18-ae8d08b9';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.18-ae8d08b9';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.18-ae8d08b9';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.18-ae8d08b9';
+import { DOCUMENTATION_ORIGIN, renderDocumentationPage } from './pages/documentation.js?v=4.0.18-ae8d08b9';
+import { renderSessionPage } from './pages/session.js?v=4.0.18-ae8d08b9';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.18-ae8d08b9';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.18-ae8d08b9';
+import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js?v=4.0.18-ae8d08b9';
+import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.18-ae8d08b9';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -119,6 +119,18 @@ export class ViperConnectApp {
         catch { }
     }
     bindEvents() {
+        window.addEventListener('message', (event) => {
+            if (event.origin !== DOCUMENTATION_ORIGIN || event.data?.type !== 'viperconnect:docs-ready')
+                return;
+            const frame = this.root.querySelector('.documentation-embed__frame');
+            if (!frame?.contentWindow || event.source !== frame.contentWindow)
+                return;
+            frame.contentWindow.postMessage({
+                type: 'viperconnect:docs-config',
+                apiUrl: window.location.origin,
+                token: this.api.getToken(),
+            }, DOCUMENTATION_ORIGIN);
+        });
         this.root.addEventListener('click', (event) => {
             void this.handleClick(event);
         });
@@ -268,7 +280,10 @@ export class ViperConnectApp {
                     URL.revokeObjectURL(this.voipRecordingUrls[recordId]);
                 this.voipRecordingUrls[recordId] = URL.createObjectURL(blob);
                 this.render();
-                void this.root.querySelector(`[data-recording-player="${CSS.escape(recordId)}"]`)?.play().catch(() => undefined);
+                void this.root
+                    .querySelector(`[data-recording-player="${CSS.escape(recordId)}"]`)
+                    ?.play()
+                    .catch(() => undefined);
             }
             catch (error) {
                 this.showToast(this.messageFor(error));
@@ -282,7 +297,10 @@ export class ViperConnectApp {
                     URL.revokeObjectURL(this.voipTransferAudioUrls[id]);
                 this.voipTransferAudioUrls[id] = URL.createObjectURL(blob);
                 this.render();
-                void this.root.querySelector(`[data-transfer-player="${CSS.escape(id)}"]`)?.play().catch(() => undefined);
+                void this.root
+                    .querySelector(`[data-transfer-player="${CSS.escape(id)}"]`)
+                    ?.play()
+                    .catch(() => undefined);
             }
             catch (error) {
                 this.showToast(this.messageFor(error));
@@ -633,11 +651,18 @@ export class ViperConnectApp {
     }
     voipResourcePayload(resource, data) {
         const value = (name) => `${data.get(name) || ''}`.trim();
-        const values = (name) => data.getAll(name).map(item => `${item}`).filter(Boolean);
+        const values = (name) => data
+            .getAll(name)
+            .map((item) => `${item}`)
+            .filter(Boolean);
         const payload = { id: value('id'), enabled: data.has('enabled') };
-        const put = (...names) => names.forEach(name => { if (value(name))
-            payload[name] = value(name); });
-        const putEditable = (...names) => names.forEach(name => { payload[name] = value(name); });
+        const put = (...names) => names.forEach((name) => {
+            if (value(name))
+                payload[name] = value(name);
+        });
+        const putEditable = (...names) => names.forEach((name) => {
+            payload[name] = value(name);
+        });
         if (resource === 'companies') {
             putEditable('label', 'timeZone', 'aiTranscriptionBaseUrl', 'aiTranscriptionModel', 'aiTranscriptionLanguage', 'aiSummaryBaseUrl', 'aiSummaryModel', 'aiSummaryPrompt');
             put('aiTranscriptionApiKey', 'aiSummaryApiKey');
@@ -673,10 +698,8 @@ export class ViperConnectApp {
         if (resource === 'extensions') {
             put('displayName', 'username', 'password', 'companyId', 'type');
             const groupIds = values('extensionGroupIds');
-            const extensionId = this.modal?.type === 'voip-resource' && this.modal.resource === 'extensions'
-                ? this.modal.id
-                : value('id');
-            const current = (this.voip.extensions || []).find(item => `${item.id}` === extensionId);
+            const extensionId = this.modal?.type === 'voip-resource' && this.modal.resource === 'extensions' ? this.modal.id : value('id');
+            const current = (this.voip.extensions || []).find((item) => `${item.id}` === extensionId);
             payload.extensionGroupIds = groupIds;
             payload.extensionGroupDistances = Object.fromEntries(groupIds.map((groupId, index) => {
                 const raw = value(`extensionGroupDistance:${groupId}`);
@@ -729,10 +752,14 @@ export class ViperConnectApp {
             this.render();
         }
         else if (input.dataset.filter === 'contacts-query') {
+            const previousQueryLength = this.contactsQuery.trim().length;
             this.contactsQuery = input.value;
             this.renderAndRestoreFilter('contacts-query');
             if (this.contactSearchTimer)
                 window.clearTimeout(this.contactSearchTimer);
+            const queryLength = this.contactsQuery.trim().length;
+            if (queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH && previousQueryLength < CONTACT_SEARCH_MIN_LENGTH)
+                return;
             this.contactSearchTimer = window.setTimeout(() => {
                 void this.loadContacts(true);
             }, 300);
@@ -879,8 +906,7 @@ export class ViperConnectApp {
         if (this.view === 'voip') {
             if (this.voipLoading)
                 return;
-            const audioPlaying = Array.from(this.root.querySelectorAll('.voip-audio'))
-                .some(player => !player.paused && !player.ended);
+            const audioPlaying = Array.from(this.root.querySelectorAll('.voip-audio')).some((player) => !player.paused && !player.ended);
             if (audioPlaying)
                 return;
             this.voipRefreshIn -= 1;

@@ -26,9 +26,7 @@ const unsupported = [
   /\/debug\/(?:auth_cache|privacy_)/,
   /\/jidmap(?:\/|$)/,
 ]
-const normalize = (value) => value
-  .replace(/:([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))?/g, '{$1}')
-  .replace(/\*$/, '{path}')
+const normalize = (value) => value.replace(/:([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))?/g, '{$1}').replace(/\*$/, '{path}')
 const publicRoute = (route) => route.replace(/^\/v\d+(?:\.\d+)?(?=\/|$)/, '/{version}')
 
 const tagFor = (route) => {
@@ -40,9 +38,17 @@ const tagFor = (route) => {
   if (route.includes('/contacts')) return 'Contatos'
   if (route.includes('/webhooks') || route.includes('/blacklist/')) return 'Webhooks'
   if (route.includes('/templates')) return 'Modelos de mensagem'
-  if (route.includes('/messages') || route.includes('/marketing_messages') || route.includes('/preflight/') || route.startsWith('/timer/')) return 'Mensagens'
-  if (route.includes('/download/') || /\{media_id\}$/.test(route)) return 'Mídia'
-  if (route.includes('/sessions') || route.includes('/register') || route.includes('/deregister') || route.includes('/phone_numbers') || /^\/\{version\}\/\{phone\}$/.test(route)) return 'Sessões'
+  if (route.includes('/messages') || route.includes('/marketing_messages') || route.includes('/preflight/') || route.startsWith('/timer/'))
+    return 'Mensagens'
+  if (route.includes('/download/') || route.includes('/profile-pictures/') || /\{media_id\}$/.test(route)) return 'Mídia'
+  if (
+    route.includes('/sessions') ||
+    route.includes('/register') ||
+    route.includes('/deregister') ||
+    route.includes('/phone_numbers') ||
+    /^\/\{version\}\/\{phone\}$/.test(route)
+  )
+    return 'Sessões'
   return 'Outros'
 }
 
@@ -99,6 +105,7 @@ const summaryRules = [
   ['GET', /^\/\{version\}\/\{phone\}\/\{media_id\}$/, 'Consultar metadados de uma mídia'],
   ['GET', /^\/\{version\}\/\{media_id\}$/, 'Consultar mídia pelo identificador'],
   ['GET', /^\/\{version\}\/download\/\{phone\}\/\{file\}$/, 'Baixar arquivo de mídia'],
+  ['GET', /^\/\{version\}\/\{session\}\/profile-pictures\/\{picture_id\}$/, 'Baixar foto de perfil pelo ID estável'],
   ['POST', /^\/\{version\}\/\{phone\}\/debug\/app_state_resync$/, 'Ressincronizar estado da sessão'],
   ['POST', /^\/\{version\}\/\{phone\}\/debug\/history_on_demand$/, 'Solicitar sincronização de histórico'],
 ]
@@ -114,9 +121,7 @@ const operationIdFor = (method, route) => {
     .replace(/[{}.-]+/g, '_')
     .split(/[_/]+/)
     .filter(Boolean)
-  return words.map((word, index) => index === 0
-    ? word.toLowerCase()
-    : `${word[0].toUpperCase()}${word.slice(1)}`).join('')
+  return words.map((word, index) => (index === 0 ? word.toLowerCase() : `${word[0].toUpperCase()}${word.slice(1)}`)).join('')
 }
 
 spec.tags = [
@@ -144,10 +149,11 @@ for (const route of Object.keys(spec.paths)) {
   if (unsupported.some((pattern) => pattern.test(route))) delete spec.paths[route]
 }
 
-const humanize = (value) => value
-  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-  .replace(/[_-]+/g, ' ')
-  .replace(/^./, (letter) => letter.toUpperCase())
+const humanize = (value) =>
+  value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/^./, (letter) => letter.toUpperCase())
 
 for (const line of router.split(/\r?\n/)) {
   const match = line.match(/router\.(get|post|put|patch|delete)\('([^']+)'(.*)/)
@@ -163,15 +169,18 @@ for (const line of router.split(/\r?\n/)) {
   spec.paths[route][method] ??= {
     tags: [tagFor(route)],
     summary: summaryFor(method, route, handlerMatch ? humanize(handlerMatch[2]) : `${method.toUpperCase()} ${route}`),
-    description: handler
-      ? `Operação exposta pelo controller \`${handler}\` na versão atual.`
-      : 'Operação registrada no roteador da versão atual.',
+    description: handler ? `Operação exposta pelo controller \`${handler}\` na versão atual.` : 'Operação registrada no roteador da versão atual.',
     parameters: [...route.matchAll(/\{([^}]+)\}/g)].map((item) => ({
-      name: item[1], in: 'path', required: true, schema: { type: 'string' },
+      name: item[1],
+      in: 'path',
+      required: true,
+      schema: { type: 'string' },
     })),
-    ...(method === 'post' || method === 'put' || method === 'patch' ? {
-      requestBody: { content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } } },
-    } : {}),
+    ...(method === 'post' || method === 'put' || method === 'patch'
+      ? {
+          requestBody: { content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } } },
+        }
+      : {}),
     responses: { 200: { description: 'Operação processada.' } },
     security: [{ ApiToken: [] }],
     operationId: operationIdFor(method, route),
@@ -201,12 +210,8 @@ for (const [route, pathItem] of Object.entries(spec.paths)) {
         name,
         in: 'path',
         required: true,
-        description: name === 'version'
-          ? 'Prefixo de compatibilidade da rota. Exemplos: `v15`, `v22` ou `v25`.'
-          : undefined,
-        schema: name === 'version'
-          ? { type: 'string', example: 'v25' }
-          : { type: 'string' },
+        description: name === 'version' ? 'Prefixo de compatibilidade da rota. Exemplos: `v15`, `v22` ou `v25`.' : undefined,
+        schema: name === 'version' ? { type: 'string', example: 'v25' } : { type: 'string' },
       })
     }
   }
@@ -226,7 +231,8 @@ const sanitize = (value) => {
 }
 
 spec.info.title = 'ViperConnect API'
-spec.info.description = 'API para integração com WhatsApp, sessões, mensagens, contatos, grupos, mídia, webhooks e operações administrativas. Rotas compatíveis usam `/{version}` e aceitam prefixos como `v15`, `v22` ou `v25`.'
+spec.info.description =
+  'API para integração com WhatsApp, sessões, mensagens, contatos, grupos, mídia, webhooks e operações administrativas. Rotas compatíveis usam `/{version}` e aceitam prefixos como `v15`, `v22` ou `v25`.'
 await mkdir(outputDir, { recursive: true })
 await writeFile(output, `${JSON.stringify(sanitize(spec), null, 2)}\n`)
 console.log(`OpenAPI sincronizado: ${Object.keys(spec.paths).length} caminhos`)

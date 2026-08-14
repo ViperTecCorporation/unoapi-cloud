@@ -2,12 +2,13 @@ import * as dotenv from 'dotenv'
 dotenv.config()
 
 import logger from './services/logger'
-import { resolveCloudProcessRole } from './services/providers/cloud_process_role'
+import { resolveCloudProcessRole, resolveVideoWorkerMode } from './services/providers/cloud_process_role'
 import { ensureRequiredRedis } from './services/redis_runtime'
 import { disconnectActiveClients } from './services/graceful_shutdown'
 logger.info('Starting...')
 
 const role = resolveCloudProcessRole(process.env.UNOAPI_PROCESS_ROLE)
+const videoWorkerMode = resolveVideoWorkerMode(process.env.UNOAPI_VIDEO_WORKER_MODE)
 let shutdownTask: Promise<void> | undefined
 
 const shutdown = (signal: NodeJS.Signals) => {
@@ -29,7 +30,10 @@ const start = async () => {
   if (role === 'web') return import('./web.js')
   if (role === 'broker') return Promise.all([import('./broker.js'), import('./bulker.js')])
   if (role === 'worker') return import('./worker.js')
-  await Promise.all([import('./web.js'), import('./worker.js'), import('./broker.js'), import('./bulker.js')])
+  if (role === 'video') return import('./video.js')
+  const roles: Promise<unknown>[] = [import('./web.js'), import('./worker.js'), import('./broker.js'), import('./bulker.js')]
+  if (videoWorkerMode === 'dedicated') roles.push(import('./video.js'))
+  await Promise.all(roles)
 }
 
 start().catch((error) => {

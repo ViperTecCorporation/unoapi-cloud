@@ -97,15 +97,13 @@ describe('frontend features', () => {
   })
 
   test('filters contacts and groups by their public identity fields', () => {
-    expect(
-      filterContacts(
-        [
-          { user_id: '123@lid', display_name: 'Maria Comercial', last_updated_ms: 1 },
-          { user_id: '456@lid', display_name: 'João', last_updated_ms: 2 },
-        ],
-        'comercial',
-      ),
-    ).toHaveLength(1)
+    const contacts = [
+      { user_id: '123@lid', display_name: 'Maria Comercial', username: 'maria.vendas', last_updated_ms: 1 },
+      { user_id: '456@lid', display_name: 'João', username: 'joao.financeiro', last_updated_ms: 2 },
+    ]
+    expect(filterContacts(contacts, 'ma')).toEqual(contacts)
+    expect(filterContacts(contacts, 'comercial')).toHaveLength(1)
+    expect(filterContacts(contacts, 'vendas')).toEqual([expect.objectContaining({ user_id: '123@lid' })])
     expect(
       filterGroups(
         [

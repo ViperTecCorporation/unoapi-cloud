@@ -31,9 +31,14 @@ import { defaultConfig } from '../../src/services/config'
 import { mock } from 'jest-mock-extended'
 import { DataStore } from '../../src/services/data_store'
 import { getDataStore } from '../../src/services/data_store'
+import { Readable } from 'stream'
+import { Upload } from '@aws-sdk/lib-storage'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 
 const fetchMock = fetch as unknown as jest.Mock
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
+const getSignedUrlMock = getSignedUrl as jest.MockedFunction<typeof getSignedUrl>
 
 describe('service media store s3', () => {
   const phone = '5566996269251'
@@ -45,11 +50,14 @@ describe('service media store s3', () => {
     mockS3Send.mockReset()
     dataStore.getLidForPn.mockResolvedValue(undefined)
     dataStore.getPnForLid.mockResolvedValue(undefined)
+    dataStore.loadMediaPayload.mockReset()
+    getSignedUrlMock.mockReset()
+    getSignedUrlMock.mockResolvedValue('https://cdn.example.com/profile.jpg?X-Amz-Signature=abc')
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
       headers: { get: () => 'image/jpeg' },
-      arrayBuffer: async () => Buffer.from('profile-picture'),
+      arrayBuffer: async () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
     })
   })
 
@@ -58,6 +66,22 @@ describe('service media store s3', () => {
 
     await mediaStore.saveMediaBuffer(`${phone}/message.jpg`, Buffer.from('media'), 'image/jpeg')
 
+    expect(amqpPublishMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('uploads staged outbound videos as streams and schedules cleanup', async () => {
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+    const stream = Readable.from(Buffer.from('streamed-video'))
+
+    await mediaStore.saveMediaStream(`${phone}/source.video`, stream, 'video/quicktime')
+
+    expect(Upload).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        Key: `${phone}/source.video`,
+        Body: stream,
+        ContentType: 'video/quicktime',
+      }),
+    }))
     expect(amqpPublishMock).toHaveBeenCalledTimes(1)
   })
 
@@ -84,7 +108,7 @@ describe('service media store s3', () => {
     const info = await mediaStore.getProfilePictureInfo?.('', '556699999999@s.whatsapp.net')
 
     expect(info).toEqual({
-      url: 'https://cdn.example.com/profile.jpg?X-Amz-Signature=abc&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD',
+      url: 'https://cdn.example.com/profile.jpg?X-Amz-Signature=abc',
       metadata: {
         etag: '"avatar-etag"',
         last_modified: '2026-06-15T19:24:29.000Z',
@@ -92,6 +116,60 @@ describe('service media store s3', () => {
         content_type: 'image/jpeg',
       },
     })
+  })
+
+  test.each(['MinIO', 'Amazon S3', 'Cloudflare R2'])(
+    'streams profile pictures internally through the %s-compatible SDK',
+    async () => {
+      const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+      mockS3Send
+        .mockResolvedValueOnce({
+          ETag: '"avatar-etag"',
+          LastModified: new Date('2026-08-14T12:00:00.000Z'),
+          ContentLength: bytes.length,
+          ContentType: 'image/jpeg',
+        })
+        .mockResolvedValueOnce({ Body: Readable.from(bytes) })
+      const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+      const pictureId = '53515477086263@lid'
+      const picture = await mediaStore.getProfilePictureObject?.(pictureId)
+      const stream = await picture?.openStream()
+      const chunks: Buffer[] = []
+      for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
+
+      expect(picture?.metadata).toEqual({
+        etag: '"avatar-etag"',
+        last_modified: '2026-08-14T12:00:00.000Z',
+        content_length: `${bytes.length}`,
+        content_type: 'image/jpeg',
+      })
+      expect(Buffer.concat(chunks)).toEqual(bytes)
+      expect(getSignedUrlMock).not.toHaveBeenCalled()
+      expect(HeadObjectCommand).toHaveBeenCalledWith(expect.objectContaining({
+        Key: `${phone}/profile-pictures/${pictureId}.jpg`,
+      }))
+    },
+  )
+
+  test('resolves a LID profile picture through its PN alias', async () => {
+    dataStore.getPnForLid.mockResolvedValue('556699999999@s.whatsapp.net')
+    dataStore.getLidForPn.mockResolvedValue('123456789012345@lid')
+    mockS3Send
+      .mockRejectedValueOnce(Object.assign(new Error('missing LID key'), {
+        name: 'NotFound',
+        $metadata: { httpStatusCode: 404 },
+      }))
+      .mockResolvedValueOnce({
+        ETag: '"pn-etag"',
+        LastModified: new Date('2026-08-14T12:00:00.000Z'),
+        ContentLength: 4,
+        ContentType: 'image/jpeg',
+      })
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    expect(await mediaStore.getProfilePictureObject?.('123456789012345@lid')).toBeDefined()
+    expect(mockS3Send).toHaveBeenCalledTimes(2)
   })
 
   test('does not persist a profile picture when the download fails', async () => {
@@ -108,5 +186,63 @@ describe('service media store s3', () => {
     })).rejects.toThrow('HTTP 403')
 
     expect(amqpPublishMock).not.toHaveBeenCalled()
+  })
+
+  test('returns the UnoAPI proxy when the S3-compatible object exists', async () => {
+    const mediaId = 'stored-media'
+    dataStore.loadMediaPayload.mockResolvedValue({
+      id: `${phone}/${mediaId}`,
+      url: 'https://minio.example.test/media?X-Amz-Signature=stored',
+      mime_type: 'video/mp4',
+      filename: 'video.mp4',
+      file_size: 123,
+      sha256: 'video-sha256',
+    })
+    mockS3Send.mockResolvedValueOnce({})
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const payload = await mediaStore.getMedia('https://uno.example.test', mediaId) as { url: string }
+
+    expect(payload.url).toBe(`https://uno.example.test/v15.0/download/${phone}/${mediaId}.mp4`)
+    expect(mockS3Send).toHaveBeenCalledTimes(1)
+  })
+
+  test('falls back to the stored URL when the S3-compatible object is missing', async () => {
+    const storedUrl = 'https://r2.example.test/media?X-Amz-Signature=stored'
+    dataStore.loadMediaPayload.mockResolvedValue({
+      id: `${phone}/missing-media`,
+      url: storedUrl,
+      mime_type: 'application/pdf',
+      filename: 'document.pdf',
+      file_size: 321,
+      sha256: 'document-sha256',
+    })
+    mockS3Send.mockRejectedValueOnce(Object.assign(new Error('missing'), {
+      name: 'NotFound',
+      $metadata: { httpStatusCode: 404 },
+    }))
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const payload = await mediaStore.getMedia('https://uno.example.test', 'missing-media') as { url: string }
+
+    expect(payload.url).toBe(storedUrl)
+  })
+
+  test('preserves signer-provided UNSIGNED-PAYLOAD without mutating the signed URL', async () => {
+    const signedUrl = 'https://r2.example.test/object?X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Signature=abc'
+    getSignedUrlMock.mockResolvedValueOnce(signedUrl)
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    expect(await mediaStore.getFileUrl(`${phone}/image.jpg`, 300)).toBe(signedUrl)
+  })
+
+  test('does not append parameters after the SDK signs the URL', async () => {
+    const signedUrl = 'https://s3.example.test/object?X-Amz-Signature=abc'
+    getSignedUrlMock.mockResolvedValueOnce(signedUrl)
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const result = await mediaStore.getFileUrl(`${phone}/document.pdf`, 300)
+    expect(result).toBe(signedUrl)
+    expect(result).not.toContain('X-Amz-Content-Sha256')
   })
 })

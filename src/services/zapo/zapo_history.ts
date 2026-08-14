@@ -23,7 +23,7 @@ export const toUnoHistoryMessage = (record: WaStoredMessageRecord) => {
 export const loadZapoHistoryMessages = async (
   store: WaStoreSession,
   maxAgeDays: unknown,
-  seen: Set<string> = new Set(),
+  seen: Iterable<string> = [],
   nowMs = Date.now(),
 ) => {
   const cutoffMs = nowMs - normalizeHistoryMaxAgeDays(maxAgeDays) * DAY_MS

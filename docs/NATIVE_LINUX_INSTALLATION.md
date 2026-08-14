@@ -38,6 +38,7 @@ Execute uma vez para cada papel:
 ```sh
 sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role web --env-file /root/viperconnect.env
 sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role broker
+sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role video
 sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role worker
 ```
 
@@ -45,10 +46,27 @@ As units criadas são:
 
 - `viperconnect-web.service`;
 - `viperconnect-broker.service`;
+- `viperconnect-video.service`;
 - `viperconnect-worker.service`.
 
 Todas compartilham `/opt/viperconnect/current`, `/var/lib/viperconnect/data` e
 `/etc/viperconnect/viperconnect.env`.
+
+Para usar a unit de vídeo, configure no ambiente compartilhado:
+
+```dotenv
+UNOAPI_VIDEO_WORKER_MODE=dedicated
+```
+
+Sem essa variável, o broker continua processando vídeos para preservar a
+compatibilidade com instalações antigas. Em modo dedicado, a unit de vídeo faz
+download por streaming e executa uma conversão FFmpeg por vez com prioridade
+baixa. Se ela parar, os vídeos aguardam no RabbitMQ e o broker continua livre;
+não existe fallback automático enquanto `dedicated` estiver configurado.
+
+Esse isolamento evita que vídeos grandes disputem o mesmo limite de CPU usado
+por webhooks e status. No teste de referência, um vídeo de 106,9 MB e 6min30s
+ocupou um núcleo por aproximadamente 3min30s até gerar um MP4 de 13,9 MB.
 
 ## Estrutura
 
@@ -81,13 +99,15 @@ sudo mv -Tf /opt/viperconnect/current.next /opt/viperconnect/current
 sudo systemctl restart viperconnect.service
 ```
 
-Em instalações separadas, reinicie as três units.
+Em instalações separadas, reinicie as quatro units.
 
 ## Diagnóstico
 
 ```sh
 systemctl status viperconnect.service
 journalctl -u viperconnect.service -f
+systemctl status viperconnect-video.service
+systemctl status viperconnect-broker.service
 curl http://127.0.0.1:9876/ping
 ```
 

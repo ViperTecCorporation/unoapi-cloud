@@ -115,6 +115,47 @@ export class ZapoUsernameIndex {
     } catch {}
     return undefined
   }
+
+  async resolveManyByLid(
+    phone: string,
+    lids: readonly string[],
+    nowMs = Date.now(),
+    localOnly = false,
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>()
+    const missing: string[] = []
+    const pending = new Set<string>()
+    for (const lid of lids) {
+      const canonicalLid = `${`${lid || ''}`.split('@')[0].split(':')[0]}@lid`
+      if (result.has(canonicalLid)) continue
+      const local = this.reverseLocal.get(`${phone}:${canonicalLid}`)
+      if (local && nowMs - local.seenAt <= Math.max(1, this.retentionSec) * 1000) {
+        result.set(canonicalLid, local.name)
+      } else {
+        if (local) this.reverseLocal.delete(`${phone}:${canonicalLid}`)
+        if (canonicalLid !== '@lid' && !pending.has(canonicalLid)) {
+          missing.push(canonicalLid)
+          pending.add(canonicalLid)
+        }
+      }
+    }
+    if (localOnly || !missing.length) return result
+
+    try {
+      const redis = await getRedis()
+      await this.prune(phone, nowMs)
+      const names = await redis.hmGet(this.key(phone), missing.map((lid) => `lid:${lid}`))
+      for (let index = 0; index < missing.length; index += 1) {
+        const lid = missing[index]
+        const name = normalizeUsername(`${names[index] || ''}`)
+        if (!name) continue
+        result.set(lid, name)
+        this.reverseLocal.set(`${phone}:${lid}`, { name, seenAt: nowMs })
+        this.local.set(`${phone}:${name}`, { lid, seenAt: nowMs })
+      }
+    } catch {}
+    return result
+  }
 }
 
 export const zapoUsernameIndex = new ZapoUsernameIndex()

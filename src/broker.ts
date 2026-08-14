@@ -15,6 +15,7 @@ import {
   UNOAPI_QUEUE_WEBHOOK_STATUS_FAILED,
   UNOAPI_QUEUE_TIMER,
   UNOAPI_QUEUE_TRANSCRIBER,
+  UNOAPI_VIDEO_WORKER_MODE,
 } from './defaults'
 
 import { amqpConsume } from './amqp'
@@ -36,6 +37,8 @@ import { WebhookStatusFailedJob } from './jobs/webhook_status_failed'
 import { addToBlacklist } from './jobs/add_to_blacklist'
 import { TimerJob } from './jobs/timer'
 import { TranscriberJob } from './jobs/transcriber'
+import { startVideoConsumers } from './jobs/video_consumers'
+import { brokerRunsVideoConsumers, resolveVideoWorkerMode } from './services/providers/cloud_process_role'
 import { OutgoingAmqp } from './services/outgoing_amqp'
 import { runRabbitQueueCleanupMigration } from './services/rabbitmq_queue_cleanup'
 
@@ -88,6 +91,14 @@ const startBroker = async () => {
     mediaJob.consume.bind(mediaJob),
     { type: 'topic' }
   )
+
+  const videoWorkerMode = resolveVideoWorkerMode(UNOAPI_VIDEO_WORKER_MODE)
+  if (brokerRunsVideoConsumers(videoWorkerMode)) {
+    logger.info('Video worker mode is broker; keeping compatible in-broker consumers')
+    await startVideoConsumers()
+  } else {
+    logger.info('Video worker mode is dedicated; broker will not consume video preparation queues')
+  }
 
   logger.info('Binding queues consumer for server %s', UNOAPI_SERVER_NAME)
 

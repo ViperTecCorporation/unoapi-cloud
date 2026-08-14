@@ -222,6 +222,20 @@ O adapter segue a referência oficial de tipos da Zapo:
   total, pois ambos sao exigidos pelo checkout nativo;
 - atualizações usam `order_status/review_order` e preservam os objetos
   `payment` e `order`;
+- webhooks de pedidos preservam `interactive.type=order_details`, cabeçalho,
+  corpo, rodapé e `review_and_pay.parameters` tanto em `messages` quanto no eco
+  Chatwoot `smb_message_echoes`; a representação textual da chave PIX permanece
+  restrita à cobrança PIX simples e nunca achata um pedido detalhado;
+- pedidos com `pix_dynamic_code` ou `pix_static_code` acrescentam no webhook um
+  botão `cta_copy` com o código PIX completo em `copy_code.code`; o código não é
+  convertido em link nem abreviado e permanece idêntico em `messages` e
+  `smb_message_echoes`;
+- cabeçalhos de mídia de carrossel preservam URLs públicas originais. Quando o
+  evento recebido contém mídia criptografada do CDN do WhatsApp, a Uno baixa e
+  descriptografa pelo adapter do provider, salva no storage configurado e envia
+  a URL assinada em `interactive.carousel.cards[].header`. Se não houver dados
+  de decrypt, usa `jpegThumbnail` quando disponível; nunca encaminha uma URL
+  `mmg.whatsapp.net` ainda criptografada;
 - códigos PIX, boletos, links e credenciais são gerados pelo banco ou PSP e a
   Uno apenas os transporta; pedido, total, moeda e identificador de referência
   não são recalculados;
@@ -348,6 +362,13 @@ O contrato e exemplos fictícios estão em [CATALOG_WEBHOOKS.md](CATALOG_WEBHOOK
 
 O contrato operacional, as configurações por sessão e os exemplos da rota de replay/sync estão em [MESSAGE_HISTORY.md](MESSAGE_HISTORY.md).
 
+O worker mantém somente os 100.000 IDs de mensagens mais recentes por sessão,
+por até 30 dias, para impedir que a deduplicação de replay cresça sem limite.
+Os caches auxiliares de foto de perfil também são limitados a 5.000 identidades
+por sessão e expiram conforme a maior janela de refresh/webhook (mínimo 24h).
+Quando ocorre uma expulsão, a Uno relê o dado do store persistente; credenciais,
+mensagens e arquivos de mídia não são removidos.
+
 ## Enderecamento 1:1 Zapo
 
 - O campo publico de enderecamento e `to`; ele aceita PN/`wa_id`, LID ou username.
@@ -355,8 +376,26 @@ O contrato operacional, as configurações por sessão e os exemplos da rota de 
 - Quando o LID estiver presente, a UnoAPI envia por ele e consulta `contacts.getByJid` para recuperar o PN exato armazenado pela Zapo.
 - O PN do store entra no envelope do provider sem inserir nem remover o nono digito. A normalizacao brasileira fica restrita ao webhook publico da aplicacao.
 - Sem LID, um `username` conhecido e resolvido pelo indice Zapo para seu LID. Alias ainda nao sincronizado retorna erro explicito.
-- Quando a aplicacao nao conhecer LID nem username, a UnoAPI usa o PN recebido para consultar o store/API da Zapo e recuperar o LID; depois da resolucao, o envio usa o LID.
-- Nunca escolher um contato Zapo por heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs distintos.
+- Quando a aplicacao nao conhecer LID nem username, a UnoAPI consulta primeiro o
+  PN exato no contact store persistente da sessao Zapo. Um LID armazenado e usado
+  diretamente, sem nova consulta de rede. Se o envio rejeitar esse LID como
+  inexistente, a protecao de renovacao consulta a rede, substitui os mapeamentos
+  antigos e repete o envio uma vez.
+- Para celulares brasileiros recebidos com o nono digito, somente depois de um
+  cache miss exato o resolver tenta no mesmo store o PN legado sem esse digito.
+  O PN exato sempre vence quando as duas formas existirem. Esse fallback nao se
+  aplica a numeros internacionais, nao fabrica um LID e nao altera o PN enviado
+  para a consulta de rede.
+- Somente quando o PN exato nao estiver no store a UnoAPI chama
+  `profile.getLidsByPhoneNumbers`. Consultas simultaneas do mesmo PN na mesma
+  sessao compartilham a mesma requisicao pendente, reduzindo flood e risco de
+  restricao. O resultado canonico e persistido para os proximos envios.
+- Falha de transporte relê o store uma vez para cobrir uma atualizacao concorrente.
+  Uma resposta de rede explicita sem LID continua retornando
+  `zapo_phone_lid_not_found`; a Uno nao fabrica identidade.
+- Fora desse fallback local e ordenado, nunca escolher um contato Zapo por
+  heuristica de 8/9 digitos: PNs diferentes podem coexistir e apontar para LIDs
+  distintos.
 
 ### Verificacao e importacao de contatos
 
@@ -381,7 +420,9 @@ LID e nome ja forem iguais.
 
 `GET /{phone}/contacts` devolve `total_count` apenas para chaves canonicas
 `@lid`, alem de `raw_total_count` e `ignored_count`, preservando a paginacao por
-cursor e tornando divergencias do cache observaveis.
+cursor e tornando divergencias do cache observaveis. A busca por nome,
+username, telefone ou LID começa com 3 caracteres: o front não envia termos
+menores e a rota HTTP os rejeita para evitar varreduras desnecessarias no cache.
 
 ## Username
 
@@ -390,6 +431,60 @@ MEX alimentam um indice temporal `username -> LID`. A API aceita envio/consulta 
 `@username` quando esse alias ja foi aprendido. A documentacao oficial oferece consulta
 LID -> username, mas nao username -> LID; portanto alias desconhecido retorna erro claro
 e nunca e convertido por heuristica em telefone.
+
+Quando a Zapo omite o username em uma mensagem posterior, a Uno consulta somente esse
+indice local, sem fazer uma nova consulta à rede do WhatsApp, e enriquece
+`contacts[].profile.username` nos webhooks de mensagens, addons, protocolos e replay de
+historico. O mesmo fallback LID -> username e aplicado em `GET /{phone}/contacts`, em
+`POST /{phone}/contacts` e nos lotes internos `contacts.update` enviados pelo job de
+sincronizacao. O username nativo do evento ou do contato sempre tem prioridade sobre o
+indice temporal; ausencia no cache preserva o payload anterior sem erro.
+
+## Preparacao de video para envio Zapo
+
+Videos com link externo nao entram diretamente na fila serial da sessao. O broker
+usa duas filas globais separadas:
+
+- `unoapi.video.stage`: faz download por streaming e guarda a origem no media
+  store antes que URLs assinadas curtas expirem; o prefetch padrao e 4;
+- `unoapi.video.transcode`: possui prefetch 1 e executa no maximo uma preparacao
+  pesada por processo broker.
+
+Depois da preparacao, a mensagem volta para a fila `incoming` Zapo com o mesmo ID
+Uno. Mensagens de texto e demais tipos continuam no fluxo normal e podem ultrapassar
+um video que ainda esteja sendo preparado. Essa reordenacao intencional impede que
+uma conversao longa bloqueie a sessao inteira.
+
+Se staging ou conversao esgotarem as tentativas, a Uno publica um status Meta-like
+`failed` com codigo de midia `131053`, mantendo o mesmo ID devolvido na requisicao.
+Assim a aplicacao nao fica aguardando indefinidamente uma mensagem aceita pela API.
+
+Video H264/AAC compativel e menor que o alvo recebe apenas remux com `faststart`.
+Os demais sao convertidos com prioridade baixa (`nice 10`) para MP4 H264 Main 4.0,
+`yuv420p`, AAC, no maximo
+1280x720 ou 720x1280. O FFmpeg usa uma thread e a saida fica abaixo de 15 MiB,
+com uma segunda tentativa de bitrate reduzido quando necessario. Entradas acima
+de 256 MiB sao rejeitadas explicitamente.
+
+Controles runtime:
+
+- `UNOAPI_VIDEO_STAGE_PREFETCH` (padrao `4`);
+- `UNOAPI_VIDEO_MAX_INPUT_BYTES` (padrao `268435456`);
+- `UNOAPI_VIDEO_TARGET_BYTES` (padrao `15728640`, nunca acima de 15 MiB);
+- `UNOAPI_VIDEO_STAGE_TIMEOUT_MS` (padrao `300000`);
+- `UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS` (padrao `420000`, limitado pelo timeout
+  geral do consumidor).
+
+Por compatibilidade, `UNOAPI_VIDEO_WORKER_MODE=broker` (ou variável ausente)
+mantém esses consumidores no processo broker. Para isolar CPU, configure o
+broker com `UNOAPI_VIDEO_WORKER_MODE=dedicated` e execute outra instância com
+`UNOAPI_PROCESS_ROLE=video`. O modo dedicado não faz failover automático: se a
+instância parar, os jobs ficam duráveis no RabbitMQ e o broker não assume a
+conversão silenciosamente.
+
+O isolamento foi motivado por validação real: um vídeo de 106,9 MB, 1920x1080 e
+6min30s manteve um núcleo ocupado por aproximadamente 3min30s. A fila da sessão
+permaneceu livre, mas sem worker dedicado essa CPU ainda pertencia ao broker.
 
 ## Auditoria completa
 

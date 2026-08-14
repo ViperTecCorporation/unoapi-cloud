@@ -22,6 +22,7 @@ import { mediaStoreFile } from './media_store_file'
 import { Config } from './config'
 import logger from './logger'
 import fetch, { Response as FetchResponse } from 'node-fetch'
+import { validateProfilePictureBuffer } from './profile_picture_content'
 
 
 export const getMediaStoreS3: getMediaStore = (phone: string, config: Config, getDataStore: getDataStore): MediaStore => {
@@ -87,7 +88,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
   }
 
-  const uploadWithRetry = async (params: { Bucket: string; Key: string; Body: Buffer; ContentType?: string }, abortMs: number) => {
+  const uploadWithRetry = async (params: { Bucket: string; Key: string; Body: Buffer | Readable; ContentType?: string }, abortMs: number) => {
     const attempt = async () => {
       const uploader = new Upload({
         client: s3Client,
@@ -120,7 +121,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     try {
       return await attempt()
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      if (e?.name === 'AbortError' && Buffer.isBuffer(params.Body)) {
         try { logger.warn(e as any, 'S3 multipart upload aborted; retrying once') } catch {}
         await new Promise((r) => setTimeout(r, 800))
         return await attempt()
@@ -163,6 +164,26 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     return true
   }
 
+  mediaStore.saveMediaStream = async (fileName: string, stream: Readable, contentType?: string, scheduleRemoval = true) => {
+    logger.debug('Uploading media stream %s to bucket %s', fileName, bucket)
+    await uploadWithRetry({
+      Bucket: bucket,
+      Key: fileName,
+      Body: stream,
+      ...(contentType ? { ContentType: contentType } : {}),
+    }, s3Config.timeoutMs)
+    if (scheduleRemoval) {
+      await amqpPublish(
+        UNOAPI_EXCHANGE_BROKER_NAME,
+        UNOAPI_QUEUE_MEDIA,
+        phone,
+        { fileName },
+        { delay: DATA_TTL * 1000, type: 'topic' },
+      )
+    }
+    return true
+  }
+
   mediaStore.getFileUrl = async (fileName: string, expiresIn = DATA_URL_TTL) => {
     const getParams = {
       Bucket: bucket,
@@ -170,13 +191,9 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
     const command = new GetObjectCommand(getParams)
     try {
-      let link = await getSignedUrl(s3Client, command, { expiresIn })
-      // Alguns provedores (ex.: R2) exigem X-Amz-Content-Sha256=UNSIGNED-PAYLOAD; se nÇõo vier, acrescenta
-      if (!/X-Amz-Content-Sha256=/i.test(link)) {
-        const sep = link.includes('?') ? '&' : '?'
-        link = `${link}${sep}X-Amz-Content-Sha256=UNSIGNED-PAYLOAD`
-      }
-      return link
+      // Preserve the exact SigV4 URL produced by the SDK. Query parameters must
+      // never be appended after signing, including X-Amz-Content-Sha256.
+      return await getSignedUrl(s3Client, command, { expiresIn })
     } catch (error: any) {
       logger.error(
         `Error on generate s3 signed url for bucket: ${bucket} file name: ${fileName} expires in: ${expiresIn} -> ${error.message}`
@@ -248,12 +265,25 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       error?.Code === 'NotFound'
   }
 
-  mediaStore.getProfilePictureInfo = async (_baseUrl: string, jid: string) => {
+  mediaStore.hasMedia = async (fileName: string) => {
+    try {
+      await sendWithRetry<HeadObjectCommandOutput>(
+        new HeadObjectCommand({ Bucket: bucket, Key: fileName }),
+        s3Config.timeoutMs
+      )
+      return true
+    } catch (error: any) {
+      if (isS3NotFound(error)) return false
+      logger.warn(error as any, 'Failed to verify S3 media object: %s', fileName)
+      return false
+    }
+  }
+
+  const findProfilePicture = async (jid: string) => {
     const ids = await profilePictureIdsFor(jid)
     logger.debug('S3 profile picture path candidate ids: %s (from %s)', ids.join(','), sanitizeProfileId(jid))
     for (const id of ids) {
       const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
-      // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
       let head: HeadObjectCommandOutput
       try {
         head = await sendWithRetry<HeadObjectCommandOutput>(
@@ -267,16 +297,36 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
         }
         throw error
       }
-      try {
-        const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
-        logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
-        return { url, metadata: profilePictureMetadata(head) }
-      } catch (error: any) {
-        logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
-        return undefined
-      }
+      return { fileName, metadata: profilePictureMetadata(head) }
     }
     return undefined
+  }
+
+  mediaStore.getProfilePictureInfo = async (_baseUrl: string, jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    try {
+      const url = await mediaStore.getFileUrl(picture.fileName, DATA_URL_TTL)
+      return { url, metadata: picture.metadata }
+    } catch (error: any) {
+      logger.warn(error as any, 'Failed to presign S3 profile picture URL for %s', picture.fileName)
+      return undefined
+    }
+  }
+
+  mediaStore.getProfilePictureObject = async (jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    return {
+      metadata: picture.metadata,
+      openStream: async () => {
+        const response = await sendWithRetry<GetObjectCommandOutput>(
+          new GetObjectCommand({ Bucket: bucket, Key: picture.fileName }),
+          s3Config.timeoutMs
+        )
+        return response.Body as Readable
+      },
+    }
   }
 
   mediaStore.getProfilePictureUrl = async (baseUrl: string, jid: string) => {
@@ -298,9 +348,8 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       logger.info('PROFILE_PICTURE saving (S3) targets: %s (from %s)', targetIds.join(','), sanitizeProfileId(originalId))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       if (!response.ok) throw new Error(`Could not download profile picture: HTTP ${response.status}`)
-      const responseContentType = `${response.headers.get('content-type') || ''}`.split(';')[0].trim().toLowerCase()
-      const profilePictureContentType = responseContentType.startsWith('image/') ? responseContentType : 'image/jpeg'
       const buffer = toBuffer(await response.arrayBuffer())
+      const profilePictureContentType = validateProfilePictureBuffer(buffer)
       for (const targetId of targetIds) {
         const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
         try {

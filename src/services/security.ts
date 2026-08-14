@@ -19,7 +19,7 @@ export default class Security {
       const path = req.path || ''
       if (path.startsWith('/embedded')) return next()
     } catch {}
-    const rawPhone = req.params.phone || req.params.phone_number_id || req.params.business_account_id || '*'
+    const rawPhone = req.params.phone || req.params.session || req.params.phone_number_id || req.params.business_account_id || '*'
     logger.debug('Verifing client authentication...')
     if (UNOAPI_AUTH_TOKEN) {
       const httpAuthToken = `${getAuthHeaderToken(req).trim()}`

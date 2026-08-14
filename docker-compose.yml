@@ -54,6 +54,20 @@ services:
     environment:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: broker
+      UNOAPI_VIDEO_WORKER_MODE: dedicated
+
+  video-worker:
+    <<: *base
+    restart: on-failure
+    entrypoint: [sh, -lc, "yarn install --check-files && yarn cloud-dev"]
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: video
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1024M
 
   # O worker Baileys foi suprimido. O codigo legado permanece apenas como
   # referencia/rollback e nao deve ser reativado sem restaurar a politica,

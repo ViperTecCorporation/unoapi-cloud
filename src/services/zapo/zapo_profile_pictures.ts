@@ -5,6 +5,7 @@ import { ProfilePictureWebhookMarker } from '../profile_picture_webhook_marker'
 import { ProfilePictureMissCache } from '../profile_picture_miss_cache'
 import type { Store } from '../store'
 import { normalizeZapoPhoneJid } from './zapo_contact_resolver'
+import { BoundedTtlMap } from '../../utils/bounded_ttl_cache'
 
 type ProfilePictureInfo = {
   url: string
@@ -38,16 +39,20 @@ export type ZapoProfilePicturesOptions = {
   refreshIntervalSeconds?: number
   webhookIntervalSeconds?: number
   notFoundTtlSeconds?: number
+  memoryCacheMaxEntries?: number
+  memoryCacheTtlMs?: number
 }
 
 const isGroupJid = (jid: string) => jid.endsWith('@g.us')
 const isLidJid = (jid: string) => jid.endsWith('@lid')
 const isPhoneJid = (jid: string) => jid.endsWith('@s.whatsapp.net')
+const PROFILE_PICTURE_MEMORY_CACHE_MAX_ENTRIES = 5_000
+const PROFILE_PICTURE_MEMORY_CACHE_MIN_TTL_MS = 24 * 60 * 60 * 1_000
 
 export class ZapoProfilePictures {
-  private readonly pictureIds = new Map<string, string>()
-  private readonly checkedAt = new Map<string, number>()
-  private readonly webhookPictures = new Map<string, ProfilePictureInfo>()
+  private readonly pictureIds: BoundedTtlMap<string, string>
+  private readonly checkedAt: BoundedTtlMap<string, number>
+  private readonly webhookPictures: BoundedTtlMap<string, ProfilePictureInfo>
   private readonly pending = new Map<string, Promise<ProfilePictureInfo | undefined>>()
   private readonly forceRefresh: boolean
   private readonly refreshIntervalMs: number
@@ -57,6 +62,17 @@ export class ZapoProfilePictures {
   constructor(private readonly options: ZapoProfilePicturesOptions) {
     this.forceRefresh = options.forceRefresh ?? PROFILE_PICTURE_FORCE_REFRESH
     this.refreshIntervalMs = Math.max(0, options.refreshIntervalSeconds ?? PROFILE_PICTURE_REFRESH_INTERVAL_SEC) * 1_000
+    const memoryCacheOptions = {
+      maxEntries: options.memoryCacheMaxEntries ?? PROFILE_PICTURE_MEMORY_CACHE_MAX_ENTRIES,
+      ttlMs: options.memoryCacheTtlMs ?? Math.max(
+        PROFILE_PICTURE_MEMORY_CACHE_MIN_TTL_MS,
+        this.refreshIntervalMs,
+        Math.max(0, options.webhookIntervalSeconds ?? 0) * 1_000,
+      ),
+    }
+    this.pictureIds = new BoundedTtlMap(memoryCacheOptions)
+    this.checkedAt = new BoundedTtlMap(memoryCacheOptions)
+    this.webhookPictures = new BoundedTtlMap(memoryCacheOptions)
     this.webhookMarker = new ProfilePictureWebhookMarker({
       useRedis: options.store.dataStore.type === 'redis',
       intervalSeconds: options.webhookIntervalSeconds,

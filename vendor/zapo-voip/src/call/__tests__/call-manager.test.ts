@@ -461,7 +461,7 @@ test('outgoing media relay preparation opens exactly one selected UDP candidate'
     assert.deepEqual(startupFanoutModes, [])
 })
 
-test('incoming media relay preparation preconnects candidates without media fanout', async () => {
+test('incoming media relay preparation fans startup media across preconnected candidates', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = 'INCOMING-MULTI-RELAY'
@@ -516,7 +516,7 @@ test('incoming media relay preparation preconnects candidates without media fano
         ['gru1c02', 'bsb1c01']
     )
     assert.deepEqual(selectedRelayIds, [1])
-    assert.deepEqual(startupFanoutModes, [false])
+    assert.deepEqual(startupFanoutModes, [true])
     session.handleCallTerminate()
 })
 

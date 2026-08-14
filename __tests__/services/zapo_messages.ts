@@ -308,6 +308,122 @@ describe('Zapo messages adapter', () => {
     expect(client.message.send).toHaveBeenCalledTimes(2)
   })
 
+  test('refreshes an invalid LID from the phone network mapping, updates caches and retries once', async () => {
+    const client = mockDeep<WaClient>()
+    const dataStore = mockDeep<DataStore>()
+    const store = mockDeep<WaStoreSession>()
+    const staleLid = '43731474477087@lid'
+    const refreshedLid = '98765432100000@lid'
+    store.contacts.getByJid.mockResolvedValue({
+      jid: staleLid,
+      lid: staleLid,
+      phoneNumber: '5566999810771',
+    } as never)
+    client.profile.getLidsByPhoneNumbers.mockResolvedValue([{
+      queriedJid: '5566999810771@s.whatsapp.net',
+      phoneJid: '5566999810771@s.whatsapp.net',
+      lidJid: refreshedLid,
+      exists: true,
+    }] as never)
+    client.message.send
+      .mockRejectedValueOnce(new Error(`LID not found: ${staleLid}`))
+      .mockResolvedValueOnce(publishResult)
+    const messages = new ZapoMessages(client, dataStore, { store, phone: '5566999554300' })
+
+    const response = await messages.send({
+      to: '5566999810771',
+      user_id: staleLid,
+      type: 'text',
+      text: { body: 'Oi' },
+    })
+
+    expect(client.message.send).toHaveBeenNthCalledWith(1, staleLid, { type: 'text', text: 'Oi' }, {})
+    expect(client.message.send).toHaveBeenNthCalledWith(2, refreshedLid, { type: 'text', text: 'Oi' }, {})
+    expect(client.profile.getLidsByPhoneNumbers).toHaveBeenCalledTimes(1)
+    expect(client.profile.getLidsByPhoneNumbers).toHaveBeenCalledWith(['5566999810771@s.whatsapp.net'])
+    expect(dataStore.removeJidMapping).toHaveBeenCalledWith(
+      '5566999554300',
+      '5566999810771@s.whatsapp.net',
+      staleLid,
+    )
+    expect(dataStore.setJidMapping).toHaveBeenCalledWith(
+      '5566999554300',
+      '5566999810771@s.whatsapp.net',
+      refreshedLid,
+    )
+    expect(store.contacts.deleteByJid).toHaveBeenCalledWith(staleLid)
+    expect(response.ok?.contacts).toEqual([{
+      input: '5566999810771',
+      wa_id: '5566999810771',
+      user_id: refreshedLid,
+    }])
+  })
+
+  test('uses a cached LID for a phone-only payload and refreshes it only when the send rejects that LID', async () => {
+    const client = mockDeep<WaClient>()
+    const dataStore = mockDeep<DataStore>()
+    const store = mockDeep<WaStoreSession>()
+    const staleLid = '43731474477087@lid'
+    const refreshedLid = '98765432100000@lid'
+    store.contacts.getByPhoneNumber.mockResolvedValue({
+      jid: staleLid,
+      lid: staleLid,
+      phoneNumber: '5566999810771',
+    } as never)
+    client.profile.getLidsByPhoneNumbers.mockResolvedValue([{
+      queriedJid: '5566999810771@s.whatsapp.net',
+      phoneJid: '5566999810771@s.whatsapp.net',
+      lidJid: refreshedLid,
+      exists: true,
+    }] as never)
+    client.message.send
+      .mockRejectedValueOnce(new Error(`LID not found: ${staleLid}`))
+      .mockResolvedValueOnce(publishResult)
+    const messages = new ZapoMessages(client, dataStore, { store, phone: '5566999554300' })
+
+    const response = await messages.send({
+      to: '5566999810771',
+      type: 'text',
+      text: { body: 'Oi' },
+    })
+
+    expect(client.message.send).toHaveBeenNthCalledWith(1, staleLid, { type: 'text', text: 'Oi' }, {})
+    expect(client.message.send).toHaveBeenNthCalledWith(2, refreshedLid, { type: 'text', text: 'Oi' }, {})
+    expect(client.profile.getLidsByPhoneNumbers).toHaveBeenCalledTimes(1)
+    expect(dataStore.removeJidMapping).toHaveBeenCalledWith(
+      '5566999554300',
+      '5566999810771@s.whatsapp.net',
+      staleLid,
+    )
+    expect(dataStore.setJidMapping).toHaveBeenCalledWith(
+      '5566999554300',
+      '5566999810771@s.whatsapp.net',
+      refreshedLid,
+    )
+    expect(response.ok?.contacts).toEqual([{
+      input: '5566999810771',
+      wa_id: '5566999810771',
+      user_id: refreshedLid,
+    }])
+  })
+
+  test('does not query the network or retry for unrelated send failures', async () => {
+    const client = mockDeep<WaClient>()
+    const store = mockDeep<WaStoreSession>()
+    client.message.send.mockRejectedValue(new Error('socket closed'))
+    const messages = new ZapoMessages(client, mockDeep<DataStore>(), { store, phone: 'session' })
+
+    await expect(messages.send({
+      to: '5566999810771',
+      user_id: '43731474477087@lid',
+      type: 'text',
+      text: { body: 'Oi' },
+    })).rejects.toThrow('socket closed')
+
+    expect(client.profile.getLidsByPhoneNumbers).not.toHaveBeenCalled()
+    expect(client.message.send).toHaveBeenCalledTimes(1)
+  })
+
   test('uses the stored provider key for reactions and replies', async () => {
     const client = mockDeep<WaClient>()
     const dataStore = mockDeep<DataStore>()

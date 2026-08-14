@@ -6,6 +6,7 @@ import type { ContactDirectory, ContactDirectoryItem, ContactDirectoryPage, Cont
 import { profilePictureCacheIds } from '../profile_picture_cache'
 import { resolveZapoRedisKeyPrefix } from './zapo_store'
 import { normalizeContactPhoneNumber } from './zapo_contact_phone'
+import { zapoUsernameIndex } from './zapo_username_index'
 
 export { normalizeContactPhoneNumber } from './zapo_contact_phone'
 
@@ -19,6 +20,7 @@ type ContactCounts = {
   ignored_count: number
 }
 type ContactCounter = (redis: RedisClient, pattern: string) => Promise<ContactCounts | number>
+type UsernameLookup = (phone: string, lids: readonly string[], localOnly: boolean) => Promise<Map<string, string>>
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 200
@@ -103,6 +105,8 @@ export class ZapoContactDirectory implements ContactDirectory {
     prefix = ZAPO_REDIS_KEY_PREFIX,
     private readonly pictureLookup: PictureLookup = getProfilePicture,
     private readonly counter: ContactCounter = countContactKeyKinds,
+    private readonly usernameLookup: UsernameLookup = (phone, lids, localOnly) =>
+      zapoUsernameIndex.resolveManyByLid(phone, lids, Date.now(), localOnly),
   ) {
     this.prefix = resolveZapoRedisKeyPrefix(prefix)
   }
@@ -142,9 +146,20 @@ export class ZapoContactDirectory implements ContactDirectory {
         COUNT: Math.max(500, limit * 10),
       })
       const stored = await Promise.all((result.keys || []).map((key) => redis.hGetAll(key)))
-      const batch = stored
+      const storedContacts = stored
         .map(mapStoredZapoContact)
         .filter((contact): contact is ContactDirectoryItem => !!contact)
+      const missingUsernameLids = storedContacts
+        .filter((contact) => !contact.username)
+        .map((contact) => contact.user_id)
+      const usernames = missingUsernameLids.length
+        ? await this.usernameLookup(phone, missingUsernameLids, !config.useRedis).catch(() => new Map<string, string>())
+        : new Map<string, string>()
+      const batch = storedContacts
+        .map((contact) => contact.username ? contact : {
+          ...contact,
+          username: usernames.get(contact.user_id),
+        })
         .filter(
           (contact) =>
             !search ||

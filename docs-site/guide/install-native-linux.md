@@ -42,6 +42,7 @@ BASE_URL=https://unoapi.seudominio.com.br
 UNOAPI_AUTH_TOKEN=TOKEN_LONGO_E_ALEATORIO
 WHATSAPP_ENGINE=zapo
 UNOAPI_WORKER_ENGINE=zapo
+UNOAPI_VIDEO_WORKER_MODE=dedicated
 PORT=9876
 LOG_LEVEL=info
 UNO_LOG_LEVEL=info
@@ -83,12 +84,40 @@ sudo bash scripts/install-native-linux.sh \
   --tag "$LATEST_TAG" --role broker
 
 sudo bash scripts/install-native-linux.sh \
+  --tag "$LATEST_TAG" --role video
+
+sudo bash scripts/install-native-linux.sh \
   --tag "$LATEST_TAG" --role worker
 ```
 
-Isso cria `viperconnect-web.service`, `viperconnect-broker.service` e
-`viperconnect-worker.service`. As três units compartilham o mesmo ambiente,
+Isso cria `viperconnect-web.service`, `viperconnect-broker.service`,
+`viperconnect-video.service` e `viperconnect-worker.service`. As quatro units compartilham o mesmo ambiente,
 estado e release.
+
+O papel `video` existe para não deixar FFmpeg competir com webhooks e status no
+broker. Um vídeo real de 106,9 MB ocupou um núcleo por cerca de 3min30s durante
+a conversão. Com `UNOAPI_VIDEO_WORKER_MODE=dedicated`, somente a unit de vídeo
+consome as filas `video.stage` e `video.transcode`, uma conversão por vez e com
+prioridade baixa.
+
+Se a unit de vídeo parar, os jobs permanecem duráveis no RabbitMQ até ela
+voltar; eles não migram automaticamente ao broker. Removendo a variável ou
+usando `broker`, instalações antigas continuam processando vídeo no broker.
+
+O fluxo separa `video.stage` (download por streaming) de `video.transcode`
+(FFmpeg). Mensagens comuns continuam nas filas normais e não aguardam a
+conversão. Os padrões operacionais são:
+
+| Variável | Padrão | Finalidade |
+| --- | --- | --- |
+| `UNOAPI_VIDEO_STAGE_PREFETCH` | `4` | Downloads preparados em paralelo. |
+| `UNOAPI_VIDEO_MAX_INPUT_BYTES` | `268435456` | Limite de entrada de 256 MiB. |
+| `UNOAPI_VIDEO_TARGET_BYTES` | `15728640` | Alvo de saída, limitado a 15 MiB. |
+| `UNOAPI_VIDEO_STAGE_TIMEOUT_MS` | `300000` | Timeout de download e staging. |
+| `UNOAPI_VIDEO_TRANSCODE_TIMEOUT_MS` | `420000` | Timeout da conversão FFmpeg. |
+
+Cada processo `video` executa uma conversão por vez. Escale esse papel somente
+depois de observar CPU, memória e profundidade das filas no RabbitMQ.
 
 ## Estrutura criada
 
@@ -134,13 +163,14 @@ sudo mv -Tf \
 sudo systemctl restart viperconnect.service
 ```
 
-Se os papéis estiverem separados, reinicie os três serviços.
+Se os papéis estiverem separados, reinicie os quatro serviços.
 
 ## Diagnóstico
 
 ```bash
 systemctl status viperconnect.service
 journalctl -u viperconnect.service -f
+systemctl status viperconnect-video.service
 curl http://127.0.0.1:9876/ping
 ```
 

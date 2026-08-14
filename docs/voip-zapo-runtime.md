@@ -54,6 +54,16 @@ atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
 repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
 para o checkout do SHA exato.
 
+A imagem unificada `v4.0.15` incorpora o VoIP `v0.1.61`, revisão
+`837002c4b96b9f30488143cd2c5ba6b4c90be3e8`, com SIP, RTP, media bridge,
+internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece
+ativo e o endereço público IPv6 é configurado por hostname/ENV, sem gravar o
+prefixo dinâmico da Starlink na imagem.
+
+A configuração por família, o Coturn, as portas e a validação operacional estão
+consolidados em
+[`docs-site/guide/voip-ipv6.md`](../docs-site/guide/voip-ipv6.md).
+
 O estágio `voip-builder` também valida o JavaScript compilado antes de permitir
 a imagem: `voice_router.js` deve usar `outbound_line`, `maxConcurrentCalls` e os
 erros de capacidade por linha. O build falha se reaparecerem

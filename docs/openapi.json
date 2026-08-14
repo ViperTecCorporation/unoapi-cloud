@@ -1721,6 +1721,115 @@
         }
       }
     },
+    "/v13.0/{session}/profile-pictures/{picture_id}": {
+      "get": {
+        "tags": [
+          "Mídia"
+        ],
+        "operationId": "downloadProfilePictureById",
+        "summary": "Baixar foto de perfil pelo ID estável",
+        "description": "Transmite a imagem armazenada internamente sem redirecionar para MinIO, S3 ou R2.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "description": "Telefone da sessão, ID Meta ou alias existente.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "picture_id",
+            "required": true,
+            "description": "PN, LID ou JID de grupo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Imagem de perfil",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/gif": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Foto não modificada"
+          },
+          "400": {
+            "description": "Identificador inválido"
+          },
+          "401": {
+            "description": "Token ausente"
+          },
+          "404": {
+            "description": "Foto não encontrada"
+          },
+          "413": {
+            "description": "Foto acima do limite permitido"
+          },
+          "415": {
+            "description": "Objeto não é uma imagem suportada"
+          }
+        }
+      }
+    },
     "/{phone}/contacts": {
       "get": {
         "summary": "Listar contatos armazenados da sessão Zapo",
@@ -3335,11 +3444,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.11"
+            "example": "4.0.18"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.11"
+            "example": "4.0.18"
           },
           "update_available": {
             "type": "boolean"

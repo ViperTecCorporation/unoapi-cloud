@@ -25,8 +25,10 @@ import type { DataStore } from '../../src/services/data_store'
 import type { Listener } from '../../src/services/listener'
 import type { SessionStore } from '../../src/services/session_store'
 import type { Store } from '../../src/services/store'
+import type { MediaStore } from '../../src/services/media_store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
 import { voipPlugin } from '@vipertec/zapo-voip'
+import { zapoUsernameIndex } from '../../src/services/zapo/zapo_username_index'
 
 describe('ClientZapo', () => {
   const phone = '5566999999999'
@@ -35,9 +37,21 @@ describe('ClientZapo', () => {
   let sessionStore: ReturnType<typeof mockDeep<SessionStore>>
   let dataStore: ReturnType<typeof mockDeep<DataStore>>
   let listener: ReturnType<typeof mockDeep<Listener>>
+  let mediaStore: ReturnType<typeof mockDeep<MediaStore>>
   let handlers: Record<string, (...args: any[]) => any>
   let service: ClientZapo
   let config: typeof defaultConfig
+
+  const stubRedisOwnership = () => {
+    ;(service as any).leaseFactory = jest.fn().mockReturnValue({
+      acquire: jest.fn().mockResolvedValue(true),
+      renew: jest.fn().mockResolvedValue(true),
+      release: jest.fn().mockResolvedValue(true),
+    })
+    ;(service as any).maintenance = {
+      pruneMessageIndexBatch: jest.fn().mockResolvedValue({ scanned: 0, removed: 0 }),
+    }
+  }
 
   beforeEach(() => {
     clients.clear()
@@ -48,6 +62,10 @@ describe('ClientZapo', () => {
     sessionStore = mockDeep<SessionStore>()
     dataStore = mockDeep<DataStore>()
     listener = mockDeep<Listener>()
+    mediaStore = mockDeep<MediaStore>()
+    mediaStore.getFilePath.mockImplementation((_phone, mediaId) => `${phone}/${mediaId}.jpeg`)
+    mediaStore.getFileUrl.mockImplementation(async (filePath) => `https://s3.example.test/${filePath}`)
+    mediaStore.saveMediaBuffer.mockResolvedValue(true)
     sessionStore.isStatusOnline.mockResolvedValue(false)
     client.on.mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       handlers[event] = handler
@@ -68,7 +86,7 @@ describe('ClientZapo', () => {
     client.auth.requestPairingCode.mockResolvedValue('1234-5678')
     client.group.queryAllGroups.mockResolvedValue([])
     client.group.queryGroupMetadata.mockResolvedValue({ id: '120363@g.us', subject: 'Equipe' } as never)
-    const unoStore = { sessionStore, dataStore } as unknown as Store
+    const unoStore = { sessionStore, dataStore, mediaStore } as unknown as Store
     config = { ...defaultConfig, provider: 'zapo' as const, getStore: jest.fn().mockResolvedValue(unoStore) }
     const zapoStore = { session: jest.fn().mockReturnValue(session) } as unknown as WaStore
     service = new ClientZapo(
@@ -181,6 +199,31 @@ describe('ClientZapo', () => {
     expect(listener.process).toHaveBeenCalledWith(phone, expect.any(Array), 'notify')
     expect(listener.process).toHaveBeenCalledWith(phone, expect.any(Array), 'update')
     expect(dataStore.setGroupMetada).toHaveBeenCalledWith('120363@g.us', expect.objectContaining({ subject: 'Equipe' }))
+  })
+
+  test('enriches an incoming webhook message with a username cached by LID', async () => {
+    const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
+    config.useRedis = true
+    stubRedisOwnership()
+    await service.connect(1)
+
+    await handlers.message({
+      key: {
+        id: 'username-cache-1',
+        remoteJid: '149396209594612@lid',
+        remoteJidAlt: '573106677588@s.whatsapp.net',
+        fromMe: false,
+        isNewsletter: false,
+      },
+      timestampSeconds: 1,
+      message: { conversation: 'oi' },
+    })
+
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      key: expect.objectContaining({ senderUsername: 'raulasalazart' }),
+    })], 'notify')
+    expect(lookup).toHaveBeenCalledWith(phone, '149396209594612@lid', expect.any(Number), false)
+    lookup.mockRestore()
   })
 
   test('marks incoming messages as read on receipt when configured', async () => {
@@ -827,6 +870,30 @@ describe('ClientZapo', () => {
     expect(client.chat.sync).toHaveBeenCalledTimes(1)
   })
 
+  test('includes a cached username in numeric contact verification', async () => {
+    const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
+    config.useRedis = true
+    stubRedisOwnership()
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '111@lid',
+      lid: '111@lid',
+      phoneNumber: '5566111',
+      displayName: 'Raul',
+      lastUpdatedMs: 1,
+    } as never)
+    await service.connect(1)
+
+    await expect(service.contacts(['5566111'])).resolves.toEqual([
+      expect.objectContaining({
+        wa_id: '5566111',
+        user_id: '111@lid',
+        username: 'raulasalazart',
+      }),
+    ])
+    expect(lookup).toHaveBeenCalledWith(phone, '111@lid', expect.any(Number), false)
+    lookup.mockRestore()
+  })
+
   test('does not send while the Zapo socket is still pairing', async () => {
     await service.connect(1)
 
@@ -898,6 +965,22 @@ describe('ClientZapo', () => {
 
     expect((service as any).socket).toBeUndefined()
     expect(lease.release).toHaveBeenCalledTimes(1)
+  })
+
+  test('bounds replay deduplication state and clears it on disconnect', async () => {
+    const forwardedHistoryIds = (service as any).forwardedHistoryIds
+    for (let index = 0; index <= 100_000; index += 1) {
+      forwardedHistoryIds.add(`message-${index}`)
+    }
+
+    expect(forwardedHistoryIds.size).toBe(100_000)
+    expect(forwardedHistoryIds.has('message-0')).toBe(false)
+    expect(forwardedHistoryIds.has('message-100000')).toBe(true)
+
+    await service.connect(1)
+    await service.disconnect()
+
+    expect(forwardedHistoryIds.size).toBe(0)
   })
 
   test('owns Redis-backed sessions with a distributed lease and runs index maintenance', async () => {
@@ -1086,6 +1169,46 @@ describe('ClientZapo', () => {
     expect(client.message.downloadBytes).toHaveBeenCalled()
     expect(normalized.__unoapiMediaBytes).toEqual(Buffer.from([1, 2, 3]))
     expect(normalized.message.imageMessage.url).toBeUndefined()
+  })
+
+  test('decrypts every carousel image and replaces the encrypted CDN URL with the S3 URL', async () => {
+    client.message.downloadBytes.mockResolvedValue(Uint8Array.from([10, 20, 30]))
+    await service.connect(1)
+    const message: any = {
+      key: { id: 'carousel-zapo-1', remoteJid: '111@lid', fromMe: false },
+      message: {
+        interactiveMessage: {
+          carouselMessage: {
+            cards: [{
+              header: {
+                imageMessage: {
+                  url: 'https://mmg.whatsapp.net/card.enc',
+                  directPath: '/card.enc',
+                  mediaKey: { 1: 2, 0: 1 },
+                  mimetype: 'image/jpeg',
+                },
+              },
+            }],
+          },
+        },
+      },
+    }
+
+    const normalized: any = await service.getMessageMetadata(message)
+
+    expect(client.message.downloadBytes).toHaveBeenCalledWith({
+      imageMessage: expect.objectContaining({
+        directPath: '/card.enc',
+        mediaKey: Uint8Array.from([1, 2]),
+      }),
+    })
+    expect(mediaStore.saveMediaBuffer).toHaveBeenCalledWith(
+      `${phone}/carousel-zapo-1-carousel-0.jpeg`,
+      Buffer.from([10, 20, 30]),
+      'image/jpeg',
+    )
+    expect(normalized.message.interactiveMessage.carouselMessage.cards[0].header.imageMessage.url)
+      .toBe(`https://s3.example.test/${phone}/carousel-zapo-1-carousel-0.jpeg`)
   })
 
   test('restores replayed media bytes before using the official Zapo downloader', async () => {

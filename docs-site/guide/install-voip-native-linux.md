@@ -101,9 +101,10 @@ VOICE_CONFIG_STORAGE=sqlite
 VOIP_MEMORY_RESTART_RSS_MB=0
 
 SIP_RTP_ENABLED=true
-SIP_RTP_BIND_HOST=0.0.0.0
-SIP_RTP_PUBLIC_IP=sip.seudominio.com.br
-SIP_RTP_PUBLIC_ADVERTISE_IP=203.0.113.10
+SIP_RTP_BIND_IPV4=0.0.0.0
+SIP_RTP_BIND_IPV6=::
+SIP_RTP_PUBLIC_IPV4=203.0.113.10
+SIP_RTP_PUBLIC_IPV6_HOST=sip6.seudominio.com.br
 SIP_RTP_LAN_IP=192.168.0.50
 SIP_RTP_PORT=5060
 SIP_RTP_MEDIA_PORT_MIN=12000
@@ -122,6 +123,12 @@ VOIP_AUTO_UPDATE_CHANNEL=stable
 Use o mesmo valor em `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN`. Troque os
 domínios, IP público, IP LAN e credenciais TURN pelos valores reais. O endereço
 `203.0.113.10` é apenas um exemplo reservado para documentação.
+
+O hostname de `SIP_RTP_PUBLIC_IPV6_HOST` precisa ter um registro AAAA DNS-only
+que acompanhe o prefixo delegado atual. Não fixe o IPv6 dinâmico no arquivo de
+ambiente. As variáveis antigas de bind e anúncio continuam aceitas somente como
+compatibilidade IPv4. Consulte [VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6)
+para a configuração do Coturn e os critérios completos de validação.
 
 ## 4. Conectar a Uno ao serviço nativo
 
@@ -157,6 +164,10 @@ sudo ufw allow 12000:13000/udp
 sudo ufw allow 13001:14000/udp
 ```
 
+Com `IPV6=yes` em `/etc/default/ufw`, essas regras são aplicadas às duas
+famílias. Confira também o firewall IPv6 do provedor e as regras `nftables` ou
+`ip6tables` existentes; liberar somente IPv4 não habilita o tráfego IPv6.
+
 Se houver coturn no mesmo host, libere também as portas configuradas para
 STUN/TURN e use uma faixa de relay diferente das faixas RTP acima. Firewall do
 provedor, NAT e roteador precisam encaminhar as mesmas portas UDP.
@@ -174,6 +185,7 @@ sudo systemctl enable --now viperconnect-voip-service
 sudo systemctl status viperconnect-voip-service --no-pager
 curl -fsS http://127.0.0.1:3097/health
 sudo journalctl -u viperconnect-voip-service -f
+ss -lunp | grep -E ':(5060|12[0-9]{3}|13[0-9]{3})\b'
 ```
 
 Depois confirme no Manager:
@@ -184,6 +196,10 @@ Depois confirme no Manager:
 4. uma chamada toca e possui áudio nos dois sentidos;
 5. histórico, gravação e configuração persistem após reiniciar o serviço;
 6. o simulador de roteamento resolve a linha e o ramal esperados sem abrir chamada.
+
+Em uma instalação dual-stack, faça um teste independente com ramal IPv4 e
+outro IPv6. O segundo deve receber SDP `IN IP6` e manter áudio nos dois sentidos;
+o primeiro deve preservar o SDP IPv4 anterior.
 
 ## Atualizar e remover
 

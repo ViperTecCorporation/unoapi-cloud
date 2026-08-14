@@ -26,11 +26,11 @@ import { sessionConfigPayload } from './features/session_config.js'
 import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js'
 import { renderWebhookModal, webhookPayload } from './features/webhooks.js'
 import { renderDashboard } from './pages/dashboard.js'
-import { renderDocumentationPage } from './pages/documentation.js'
+import { DOCUMENTATION_ORIGIN, renderDocumentationPage } from './pages/documentation.js'
 import { renderSessionPage } from './pages/session.js'
 import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
 import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
-import { filterContacts, filterGroups } from './features/entities.js'
+import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js'
 import {
   renderVoipCredentialsModal,
   renderVoipPage,
@@ -176,6 +176,19 @@ export class ViperConnectApp {
   }
 
   private bindEvents(): void {
+    window.addEventListener('message', (event) => {
+      if (event.origin !== DOCUMENTATION_ORIGIN || event.data?.type !== 'viperconnect:docs-ready') return
+      const frame = this.root.querySelector<HTMLIFrameElement>('.documentation-embed__frame')
+      if (!frame?.contentWindow || event.source !== frame.contentWindow) return
+      frame.contentWindow.postMessage(
+        {
+          type: 'viperconnect:docs-config',
+          apiUrl: window.location.origin,
+          token: this.api.getToken(),
+        },
+        DOCUMENTATION_ORIGIN,
+      )
+    })
     this.root.addEventListener('click', (event) => {
       void this.handleClick(event)
     })
@@ -264,7 +277,9 @@ export class ViperConnectApp {
         const value = await this.api.voipConsole(`extensions/${encodeURIComponent(actionElement.dataset.id || '')}/credentials`)
         this.modal = { type: 'voip-credentials', value }
         this.render()
-      } catch (error) { this.showToast(this.messageFor(error)) }
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (action === 'drop-voip-registration') {
       const extensionId = actionElement.dataset.extensionId || ''
       const registrationId = actionElement.dataset.registrationId || ''
@@ -277,7 +292,9 @@ export class ViperConnectApp {
           )
           this.showToast(t('Registro de ramal desconectado.'))
           await this.loadVoip()
-        } catch (error) { this.showToast(this.messageFor(error)) }
+        } catch (error) {
+          this.showToast(this.messageFor(error))
+        }
       }
     } else if (action === 'edit-voip-recording-settings') {
       this.modal = { type: 'voip-recording-settings' }
@@ -291,7 +308,9 @@ export class ViperConnectApp {
           this.modal = undefined
           this.showToast(t('Configuração removida.'))
           await this.loadVoip()
-        } catch (error) { this.showToast(this.messageFor(error)) }
+        } catch (error) {
+          this.showToast(this.messageFor(error))
+        }
       }
     } else if (action === 'play-voip-recording') {
       const recordId = actionElement.dataset.recordId || ''
@@ -300,8 +319,13 @@ export class ViperConnectApp {
         if (this.voipRecordingUrls[recordId]) URL.revokeObjectURL(this.voipRecordingUrls[recordId])
         this.voipRecordingUrls[recordId] = URL.createObjectURL(blob)
         this.render()
-        void this.root.querySelector<HTMLAudioElement>(`[data-recording-player="${CSS.escape(recordId)}"]`)?.play().catch(() => undefined)
-      } catch (error) { this.showToast(this.messageFor(error)) }
+        void this.root
+          .querySelector<HTMLAudioElement>(`[data-recording-player="${CSS.escape(recordId)}"]`)
+          ?.play()
+          .catch(() => undefined)
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (action === 'play-voip-transfer-audio') {
       const id = actionElement.dataset.id || ''
       try {
@@ -309,8 +333,13 @@ export class ViperConnectApp {
         if (this.voipTransferAudioUrls[id]) URL.revokeObjectURL(this.voipTransferAudioUrls[id])
         this.voipTransferAudioUrls[id] = URL.createObjectURL(blob)
         this.render()
-        void this.root.querySelector<HTMLAudioElement>(`[data-transfer-player="${CSS.escape(id)}"]`)?.play().catch(() => undefined)
-      } catch (error) { this.showToast(this.messageFor(error)) }
+        void this.root
+          .querySelector<HTMLAudioElement>(`[data-transfer-player="${CSS.escape(id)}"]`)
+          ?.play()
+          .catch(() => undefined)
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (action === 'download-voip-recording') {
       const recordId = actionElement.dataset.recordId || ''
       try {
@@ -321,7 +350,9 @@ export class ViperConnectApp {
         anchor.download = `${actionElement.dataset.callId || recordId}.${actionElement.dataset.recordingExtension || 'mp3'}`
         anchor.click()
         window.setTimeout(() => URL.revokeObjectURL(url), 5_000)
-      } catch (error) { this.showToast(this.messageFor(error)) }
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (action === 'end-voip-call') {
       const session = actionElement.dataset.session || ''
       const callId = actionElement.dataset.callId || ''
@@ -343,7 +374,9 @@ export class ViperConnectApp {
           this.voip = { ...this.voip, router: { ...((this.voip.router as Record<string, any>) || {}), locks: result?.locks || [] } }
           this.showToast('Reserva liberada.')
           this.render()
-        } catch (error) { this.showToast(this.messageFor(error)) }
+        } catch (error) {
+          this.showToast(this.messageFor(error))
+        }
       }
     } else if (action === 'refresh-queues') {
       await this.loadQueues()
@@ -487,11 +520,7 @@ export class ViperConnectApp {
       await this.runRedisQuery(data)
     } else if (form.dataset.form === 'voip-call') {
       try {
-        await this.api.voipStartCall(
-          `${data.get('session') || ''}`,
-          `${data.get('peerJid') || ''}`,
-          `${data.get('extensionId') || ''}`,
-        )
+        await this.api.voipStartCall(`${data.get('session') || ''}`, `${data.get('peerJid') || ''}`, `${data.get('extensionId') || ''}`)
         this.showToast(t('Chamada iniciada.'))
         await this.loadVoip()
       } catch (error) {
@@ -553,14 +582,18 @@ export class ViperConnectApp {
         this.modal = undefined
         this.showToast(t('Configuração salva.'))
         await this.loadVoip()
-      } catch (error) { this.showToast(this.messageFor(error)) }
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (form.dataset.form === 'voip-recording-settings') {
       try {
         await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data))
         this.modal = undefined
         this.showToast(t('Configuração salva.'))
         await this.loadVoip()
-      } catch (error) { this.showToast(this.messageFor(error)) }
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (form.dataset.form === 'voip-history-filter') {
       await this.loadVoipHistory(1, {
         search: `${data.get('search') || ''}`.trim(),
@@ -582,10 +615,20 @@ export class ViperConnectApp {
 
   private voipResourcePayload(resource: VoipResourceName, data: FormData): Record<string, unknown> {
     const value = (name: string) => `${data.get(name) || ''}`.trim()
-    const values = (name: string) => data.getAll(name).map(item => `${item}`).filter(Boolean)
+    const values = (name: string) =>
+      data
+        .getAll(name)
+        .map((item) => `${item}`)
+        .filter(Boolean)
     const payload: Record<string, unknown> = { id: value('id'), enabled: data.has('enabled') }
-    const put = (...names: string[]) => names.forEach(name => { if (value(name)) payload[name] = value(name) })
-    const putEditable = (...names: string[]) => names.forEach(name => { payload[name] = value(name) })
+    const put = (...names: string[]) =>
+      names.forEach((name) => {
+        if (value(name)) payload[name] = value(name)
+      })
+    const putEditable = (...names: string[]) =>
+      names.forEach((name) => {
+        payload[name] = value(name)
+      })
     if (resource === 'companies') {
       putEditable(
         'label',
@@ -630,17 +673,17 @@ export class ViperConnectApp {
     if (resource === 'extensions') {
       put('displayName', 'username', 'password', 'companyId', 'type')
       const groupIds = values('extensionGroupIds')
-      const extensionId = this.modal?.type === 'voip-resource' && this.modal.resource === 'extensions'
-        ? this.modal.id
-        : value('id')
-      const current = (this.voip.extensions || []).find(item => `${item.id}` === extensionId) as any
+      const extensionId = this.modal?.type === 'voip-resource' && this.modal.resource === 'extensions' ? this.modal.id : value('id')
+      const current = (this.voip.extensions || []).find((item) => `${item.id}` === extensionId) as any
       payload.extensionGroupIds = groupIds
-      payload.extensionGroupDistances = Object.fromEntries(groupIds.map((groupId, index) => {
-        const raw = value(`extensionGroupDistance:${groupId}`)
-        const currentDistance = Number(current?.extensionGroupDistances?.[groupId])
-        const distance = raw ? Number(raw) : Number.isFinite(currentDistance) && currentDistance > 0 ? currentDistance : index + 1
-        return [groupId, Math.max(1, Number.isFinite(distance) ? distance : index + 1)]
-      }))
+      payload.extensionGroupDistances = Object.fromEntries(
+        groupIds.map((groupId, index) => {
+          const raw = value(`extensionGroupDistance:${groupId}`)
+          const currentDistance = Number(current?.extensionGroupDistances?.[groupId])
+          const distance = raw ? Number(raw) : Number.isFinite(currentDistance) && currentDistance > 0 ? currentDistance : index + 1
+          return [groupId, Math.max(1, Number.isFinite(distance) ? distance : index + 1)]
+        }),
+      )
     }
     return payload
   }
@@ -686,9 +729,12 @@ export class ViperConnectApp {
       this.sessionVisibleLimit = PAGE_SIZE
       this.render()
     } else if (input.dataset.filter === 'contacts-query') {
+      const previousQueryLength = this.contactsQuery.trim().length
       this.contactsQuery = input.value
       this.renderAndRestoreFilter('contacts-query')
       if (this.contactSearchTimer) window.clearTimeout(this.contactSearchTimer)
+      const queryLength = this.contactsQuery.trim().length
+      if (queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH && previousQueryLength < CONTACT_SEARCH_MIN_LENGTH) return
       this.contactSearchTimer = window.setTimeout(() => {
         void this.loadContacts(true)
       }, 300)
@@ -813,8 +859,7 @@ export class ViperConnectApp {
     }
     if (this.view === 'voip') {
       if (this.voipLoading) return
-      const audioPlaying = Array.from(this.root.querySelectorAll<HTMLAudioElement>('.voip-audio'))
-        .some(player => !player.paused && !player.ended)
+      const audioPlaying = Array.from(this.root.querySelectorAll<HTMLAudioElement>('.voip-audio')).some((player) => !player.paused && !player.ended)
       if (audioPlaying) return
       this.voipRefreshIn -= 1
       if (this.voipRefreshIn <= 0) {

@@ -1,7 +1,9 @@
 import type { SignalLidSyncResult, WaClient, WaStoredContactRecord, WaStoreSession } from 'zapo-js'
 import { toRawPnJid } from '../transformer/jid'
 import { SendError } from '../send_error'
+import logger from '../logger'
 import { zapoUsernameIndex, type ZapoUsernameIndex } from './zapo_username_index'
+import { contactPhoneLookupNumbers } from './zapo_contact_phone'
 
 const isPhoneJid = (value: string) => /^\d+@s\.whatsapp\.net$/.test(value)
 const isExplicitJid = (value: string) => value.indexOf('@') > 0
@@ -12,6 +14,8 @@ const toLidJid = (value?: string | null) => {
 }
 
 export class ZapoIdentity {
+  private readonly pendingPhoneLookups = new Map<string, Promise<SignalLidSyncResult | undefined>>()
+
   constructor(
     private readonly client: WaClient,
     private readonly store: WaStoreSession,
@@ -27,6 +31,29 @@ export class ZapoIdentity {
 
   async resolve(value: string): Promise<string> {
     return (await this.resolveMany([value]))[0]
+  }
+
+  async refreshPhoneLid(value: string): Promise<{ phoneJid: string, lidJid: string }> {
+    const phoneJid = this.normalize(value)
+    if (!isPhoneJid(phoneJid)) {
+      throw new SendError(400, `zapo_lid_refresh_phone_required: ${value}`)
+    }
+
+    const lookups = await this.client.profile.getLidsByPhoneNumbers([phoneJid])
+    const lookup = lookups.find((item) => toRawPnJid(item?.queriedJid || '') === phoneJid) || lookups[0]
+    const lidJid = toLidJid(lookup?.lidJid)
+    if (!lookup?.exists || !lidJid) {
+      throw new SendError(404, `zapo_phone_lid_not_found: ${phoneJid.split('@')[0]}`)
+    }
+
+    const canonicalPhoneJid = toRawPnJid(lookup.phoneJid || phoneJid)
+    await this.store.contacts.upsert({
+      jid: lidJid,
+      lid: lidJid,
+      phoneNumber: canonicalPhoneJid.split('@')[0],
+      lastUpdatedMs: Date.now(),
+    })
+    return { phoneJid: canonicalPhoneJid, lidJid }
   }
 
   async resolveManyPhoneJids(values: readonly string[]): Promise<string[]> {
@@ -58,16 +85,28 @@ export class ZapoIdentity {
       .filter((item) => isPhoneJid(item.phoneJid))
 
     if (phoneTargets.length) {
-      let lookups: readonly SignalLidSyncResult[] | undefined
+      const networkTargets: typeof phoneTargets = []
+      for (const target of phoneTargets) {
+        const cachedLid = await this.cachedPhoneLid(target.phoneJid)
+        if (cachedLid) {
+          resolved[target.index] = cachedLid
+          logger.debug('Zapo PN to LID resolved source=contact_store session=%s phone=%s lid=%s', this.phone, target.phoneJid, cachedLid)
+        } else {
+          networkTargets.push(target)
+        }
+      }
+
+      let lookups: ReadonlyMap<string, SignalLidSyncResult | undefined> | undefined
       try {
-        lookups = await this.client.profile.getLidsByPhoneNumbers(phoneTargets.map((item) => item.phoneJid))
+        lookups = networkTargets.length
+          ? await this.lookupPhonesFromNetwork(networkTargets.map((item) => item.phoneJid))
+          : new Map()
       } catch {
         lookups = undefined
       }
       const contacts: WaStoredContactRecord[] = []
-      for (let i = 0; i < phoneTargets.length; i += 1) {
-        const { index, phoneJid } = phoneTargets[i]
-        const lookup = lookups?.find((item) => toRawPnJid(item?.queriedJid || '') === phoneJid) || lookups?.[i]
+      for (const { index, phoneJid } of networkTargets) {
+        const lookup = lookups?.get(phoneJid)
         const lid = toLidJid(lookup?.lidJid)
         if (lookup?.exists && lid) {
           const canonicalPhoneJid = toRawPnJid(lookup.phoneJid || phoneJid)
@@ -78,14 +117,14 @@ export class ZapoIdentity {
             phoneNumber: canonicalPhoneJid.split('@')[0],
             lastUpdatedMs: Date.now(),
           })
+          logger.debug('Zapo PN to LID resolved source=network session=%s phone=%s lid=%s', this.phone, canonicalPhoneJid, lid)
           continue
         }
         if (lookups) continue
 
-        const phone = phoneJid.split('@')[0]
-        const cached = await this.store.contacts.getByPhoneNumber(phone)
-          || await this.store.contacts.getByPhoneNumber(phoneJid)
-        const cachedLid = toLidJid(cached?.lid) || (cached?.jid?.endsWith('@lid') ? cached.jid : undefined)
+        // A concurrent message/contact event may have populated the store while
+        // the network lookup was unavailable. Re-read once before returning 404.
+        const cachedLid = await this.cachedPhoneLid(phoneJid)
         if (cachedLid) resolved[index] = cachedLid
       }
       if (contacts.length) await this.store.contacts.upsertBatch(contacts)
@@ -97,5 +136,42 @@ export class ZapoIdentity {
     }
 
     return resolved
+  }
+
+  private async cachedPhoneLid(phoneJid: string): Promise<string | undefined> {
+    try {
+      for (const phone of contactPhoneLookupNumbers(phoneJid)) {
+        const cached = await this.store.contacts.getByPhoneNumber(phone)
+          || await this.store.contacts.getByPhoneNumber(`${phone}@s.whatsapp.net`)
+        const cachedLid = toLidJid(cached?.lid) || (cached?.jid?.endsWith('@lid') ? cached.jid : undefined)
+        if (cachedLid) return cachedLid
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  private async lookupPhonesFromNetwork(phoneJids: readonly string[]): Promise<ReadonlyMap<string, SignalLidSyncResult | undefined>> {
+    const uniquePhoneJids = Array.from(new Set(phoneJids))
+    const newPhoneJids = uniquePhoneJids.filter((phoneJid) => !this.pendingPhoneLookups.has(phoneJid))
+    if (newPhoneJids.length) {
+      const batch = this.client.profile.getLidsByPhoneNumbers(newPhoneJids)
+      for (let index = 0; index < newPhoneJids.length; index += 1) {
+        const phoneJid = newPhoneJids[index]
+        const promise = batch
+          .then((items) => items.find((item) => toRawPnJid(item?.queriedJid || '') === phoneJid) || items[index])
+          .finally(() => {
+            if (this.pendingPhoneLookups.get(phoneJid) === promise) this.pendingPhoneLookups.delete(phoneJid)
+          })
+        this.pendingPhoneLookups.set(phoneJid, promise)
+      }
+    }
+
+    const entries = await Promise.all(uniquePhoneJids.map(async (phoneJid) => [
+      phoneJid,
+      await this.pendingPhoneLookups.get(phoneJid),
+    ] as const))
+    return new Map(entries)
   }
 }

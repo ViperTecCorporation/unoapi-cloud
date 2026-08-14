@@ -1,6 +1,11 @@
 import { Incoming } from './incoming'
 import { amqpPublish, amqpRpc } from '../amqp'
-import { UNOAPI_EXCHANGE_BRIDGE_NAME, UNOAPI_QUEUE_INCOMING } from '../defaults'
+import {
+  UNOAPI_EXCHANGE_BRIDGE_NAME,
+  UNOAPI_EXCHANGE_BROKER_NAME,
+  UNOAPI_QUEUE_INCOMING,
+  UNOAPI_QUEUE_VIDEO_STAGE,
+} from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { jidToPhoneNumber, normalizeGroupId } from './transformer'
 import { getConfig } from './config'
@@ -8,6 +13,7 @@ import { providerQueueName } from './providers/provider_queue'
 import { isProviderRuntimeEnabled } from './providers/provider_runtime_policy'
 import { SendError } from './send_error'
 import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
+import { resolveWhatsAppEngine } from './providers/provider_resolver'
 
 type GroupManagementAction =
   | 'groupCreate'
@@ -135,7 +141,22 @@ export class IncomingAmqp implements Incoming {
         options['priority'] = 5 // send message without bulk is very important
       }
       options['type'] = 'direct'
-      await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, id, options }, options)
+      const shouldPrepareVideo =
+        resolveWhatsAppEngine(config.provider) === 'zapo' &&
+        type === 'video' &&
+        !!`${body?.video?.link || ''}`.trim() &&
+        !options['videoPrepared']
+      if (shouldPrepareVideo) {
+        await amqpPublish(
+          UNOAPI_EXCHANGE_BROKER_NAME,
+          UNOAPI_QUEUE_VIDEO_STAGE,
+          phone,
+          { payload, id, options },
+          { type: 'topic', priority: 5, maxRetries: 2 },
+        )
+      } else {
+        await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, id, options }, options)
+      }
       const isGroup = body?.recipient_type === 'group' || `${to || ''}`.trim().endsWith('@g.us')
       const target = isGroup ? normalizeGroupId(to) : `${to || ''}`
       const ok = {

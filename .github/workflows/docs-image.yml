@@ -43,6 +43,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Validate Docker Swarm examples
+        run: |
+          docker stack config -c docs/examples/docker-stack.unoapi-nginx.yml >/dev/null
+          docker stack config -c docs/examples/docker-stack.unoapi-traefik.yml >/dev/null
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

@@ -40,6 +40,7 @@ import { QueuesController } from './controllers/queues_controller'
 import { RedisAdminController } from './controllers/redis_admin_controller'
 import { ContactBookIncoming } from './services/contacts/contact_book_incoming'
 import { VoipController } from './controllers/voip_controller'
+import { ProfilePictureController } from './controllers/profile_picture_controller'
 
 export const router = (
   incoming: Incoming,
@@ -78,6 +79,7 @@ export const router = (
   const queuesController = new QueuesController()
   const redisAdminController = new RedisAdminController()
   const voipController = new VoipController()
+  const profilePictureController = new ProfilePictureController(getConfig)
 
   // Webhook (Cloud API) roteado por phone_number_id
   router.post('/webhooks/whatsapp', webhookController.whatsappNoParam.bind(webhookController))
@@ -219,6 +221,11 @@ export const router = (
   router.patch('/:version/:phone/groups/:groupId', middleware, groupsController.update.bind(groupsController))
   router.delete('/:version/:phone/groups/:groupId', middleware, groupsController.destroy.bind(groupsController))
   router.post('/:version/:phone/marketing_messages', middleware, marketingMessagesController.index.bind(marketingMessagesController))
+  router.get(
+    '/:version/:session/profile-pictures/:picture_id',
+    middleware,
+    profilePictureController.download.bind(profilePictureController),
+  )
   router.get('/:version/:phone/:media_id', middleware, mediaController.index.bind(mediaController))
   router.get('/:version/download/:phone/:file', middleware, mediaController.download.bind(mediaController))
   router.post('/:phone/blacklist/:webhook_id', middleware, blacklistController.update.bind(blacklistController))

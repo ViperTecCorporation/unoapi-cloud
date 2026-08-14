@@ -62,7 +62,7 @@ describe('media routes', () => {
       id: `${phone}/${messageId}`,
     }
     mediaStore.getMedia.mockReturnValue(new Promise((resolve) => resolve(mediaData)))
-    await request(app.server).get(`/v15.0/${phone}/${messageId}`).expect(200, mediaData)
+    await request(app.server).get(`/v13.0/${phone}/${messageId}`).expect(200, mediaData)
   })
 
   test('download', async () => {
@@ -115,7 +115,7 @@ describe('media routes', () => {
     })
     mediaStore.getMedia.mockResolvedValue(mediaData)
 
-    const response = await request(app.server).get(`/v15.0/${rawMediaId}`).expect(200)
+    const response = await request(app.server).get(`/v17.0/${rawMediaId}`).expect(200)
 
     expect(response.body.url).toBe(mediaData.url)
     expect(response.body.url).not.toContain('cloudflarestorage.com')

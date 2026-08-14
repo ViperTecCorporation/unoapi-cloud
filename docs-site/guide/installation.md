@@ -24,6 +24,14 @@ borda.
 
 [Abrir Docker Compose →](/guide/docker-compose)
 
+## Docker Swarm
+
+Indicado para cluster Swarm. Os modelos próprios usam redes overlay, placement
+para dados e telefonia, labels do Traefik no nível correto e publicação
+host-mode das portas individuais, com faixas compactas para mídia RTP/WebRTC.
+
+[Abrir Docker Swarm →](/guide/docker-swarm)
+
 ## Requisitos de infraestrutura
 
 | Recurso | Mínimo recomendado |

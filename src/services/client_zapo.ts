@@ -19,6 +19,7 @@ import { ZapoMessages } from './zapo/zapo_messages'
 import { isEncryptedZapoAddonMessage, toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from './zapo/zapo_events'
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
+import { enrichZapoMessageUsername } from './zapo/zapo_username_enrichment'
 import { normalizeMessageContent } from './transformer/message_type'
 import { Template } from './template'
 import {
@@ -39,6 +40,7 @@ import { loadZapoHistoryMessages } from './zapo/zapo_history'
 import { ZapoProfilePictures } from './zapo/zapo_profile_pictures'
 import { createPairingCodeImageDataUrl } from './zapo/pairing_code_image'
 import { resolveZapoPollVoteOptionNames } from './zapo/zapo_poll_votes'
+import { decryptZapoPollVoteWithJidFallback } from './zapo/zapo_poll_addon_decrypt'
 import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
@@ -51,6 +53,8 @@ import { createZapoUnavailableMessage } from './zapo/zapo_unavailable_message'
 import { ZapoVoiceAdapter } from './zapo/voice/zapo_voice_adapter'
 import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/zapo_voice_bridge_client'
 import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
+import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
+import { BoundedTtlSet } from '../utils/bounded_ttl_cache'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -63,6 +67,8 @@ type LeaseFactory = (phone: string) => RedisLease
 const defaultClientFactory: ClientFactory = (options) =>
   new ZapoWaClient(options, new PinoLogger(logger.child({ scope: 'zapo' }), 'error')) as ZapoClient
 const mediaMessageKeys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'ptvMessage'] as const
+const ZAPO_HISTORY_DEDUP_MAX_IDS = 100_000
+const ZAPO_HISTORY_DEDUP_TTL_MS = 30 * 24 * 60 * 60 * 1_000
 
 export class ClientZapo implements Client {
   private config: Config = defaultConfig
@@ -77,7 +83,10 @@ export class ClientZapo implements Client {
   private connected = false
   private readonly pendingIncoming = new Map<string, any>()
   private readonly decryptedAddonIds = new Set<string>()
-  private readonly forwardedHistoryIds = new Set<string>()
+  private readonly forwardedHistoryIds = new BoundedTtlSet<string>({
+    maxEntries: ZAPO_HISTORY_DEDUP_MAX_IDS,
+    ttlMs: ZAPO_HISTORY_DEDUP_TTL_MS,
+  })
   private historySyncTask: Promise<void> = Promise.resolve()
   private intentionalDisconnect = false
   private lease?: RedisLease
@@ -196,6 +205,7 @@ export class ClientZapo implements Client {
     const messages = await loadZapoHistoryMessages(this.zapoSession, maxAgeDays, this.forwardedHistoryIds)
     logger.info('Zapo forwarding history phone=%s days=%s messages=%s', this.phone, maxAgeDays, messages.length)
     if (messages.length) {
+      await Promise.all(messages.map((message) => this.enrichMessageUsername(message)))
       await this.listener.process(this.phone, messages, 'history')
       for (const message of messages) {
         const id = `${message.key.id || ''}`.trim()
@@ -252,6 +262,11 @@ export class ClientZapo implements Client {
 
     this.decryptedAddonIds.delete(id)
     try {
+      const pollVote = await decryptZapoPollVoteWithJidFallback(event, this.zapoSession)
+      if (pollVote) {
+        await this.processAddonEvent(pollVote)
+        return true
+      }
       await client.message.tryDecryptAddon(event)
     } catch (error) {
       logger.warn(error as any, 'Zapo addon decryption failed phone=%s id=%s', this.phone, id)
@@ -261,6 +276,27 @@ export class ClientZapo implements Client {
     if (this.decryptedAddonIds.delete(id)) return true
     logger.warn('Zapo addon decryption produced no event phone=%s id=%s', this.phone, id)
     return false
+  }
+
+  private async processAddonEvent(event: any) {
+    if (event.key.id) this.decryptedAddonIds.add(event.key.id)
+    const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
+    if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
+      logger.warn(
+        'Zapo poll vote option names unresolved phone=%s id=%s parent=%s selected=%s',
+        this.phone,
+        event.key.id || '<none>',
+        event.targetMessageId || '<none>',
+        resolved.decrypted.pollVote.selectedOptions?.length || 0,
+      )
+    }
+    const message = toUnoAddonEvent(resolved)
+    await this.enrichMessageUsername(message)
+    await this.listener.process(this.phone, [message], 'notify')
+  }
+
+  private enrichMessageUsername(message: { key?: object }) {
+    return enrichZapoMessageUsername(this.phone, message, !this.config.useRedis)
   }
 
   private beginPairingCodeRequest(client: ZapoClient, forceRefresh = false) {
@@ -387,6 +423,7 @@ export class ClientZapo implements Client {
       if (await this.forwardDecryptedAddon(client, event)) return
 
       const message = toUnoMessageEvent(event)
+      await this.enrichMessageUsername(message)
       await this.enrichDirectPhoneAlias(message, event)
       if (event.key.isGroup || `${event.key.remoteJid || ''}`.endsWith('@g.us')) {
         logger.info(
@@ -466,21 +503,11 @@ export class ClientZapo implements Client {
       if (updates.length) await this.listener.process(this.phone, updates, 'update')
     })
     onCurrent('message_addon', async (event) => {
-      if (event.key.id) this.decryptedAddonIds.add(event.key.id)
-      const resolved = await resolveZapoPollVoteOptionNames(event, this.zapoSession)
-      if (resolved.decrypted.kind === 'poll_vote' && !resolved.decrypted.selectedOptionNames?.length) {
-        logger.warn(
-          'Zapo poll vote option names unresolved phone=%s id=%s parent=%s selected=%s',
-          this.phone,
-          event.key.id || '<none>',
-          event.targetMessageId || '<none>',
-          resolved.decrypted.pollVote.selectedOptions?.length || 0,
-        )
-      }
-      await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
+      await this.processAddonEvent(event)
     })
     onCurrent('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)
+      await this.enrichMessageUsername(message)
       if (message.key.remoteJid && message.key.id) {
         await this.unoStore?.dataStore.setKey(message.key.id, message.key as never)
         await this.unoStore?.dataStore.setMessage(message.key.remoteJid, message as never)
@@ -501,6 +528,7 @@ export class ClientZapo implements Client {
       if (event.resendRequested === true) return
 
       const message = createZapoUnavailableMessage(event)
+      await this.enrichMessageUsername(message)
       if (event.key.remoteJid && event.key.id) {
         await this.unoStore?.dataStore.setKey(event.key.id, event.key as never)
         await this.unoStore?.dataStore.setMessage(event.key.remoteJid, message as never)
@@ -967,6 +995,9 @@ export class ClientZapo implements Client {
     this.catalog = undefined
     this.pairingCodeRequest = undefined
     this.pairingCodeIssued = false
+    this.pendingIncoming.clear()
+    this.decryptedAddonIds.clear()
+    this.forwardedHistoryIds.clear()
     try {
       if (socket) await socket.disconnect()
       await this.unoStore?.sessionStore.setStatus(this.phone, 'offline')
@@ -1019,12 +1050,17 @@ export class ClientZapo implements Client {
     const value: any = enriched
     const id = `${value?.key?.id || ''}`
     const event = this.pendingIncoming.get(id)
+    reviveZapoMediaBinaryFields(value)
+    if (this.unoStore?.mediaStore) {
+      await normalizeInteractiveMediaForWebhook(this.phone, value, this.unoStore.mediaStore, {
+        downloadBytes: async (content) => this.socket!.message.downloadBytes(content as any),
+      })
+    }
     const content: any = normalizeMessageContent(value?.message)
     const mediaKey = mediaMessageKeys.find((key) => content?.[key])
     if (!mediaKey) return enriched
     const media = content[mediaKey]
     if (`${media?.url || ''}`.startsWith('data:')) return enriched
-    reviveZapoMediaBinaryFields(value)
     const source = event || content
     const bytes = await this.socket.message.downloadBytes(source as any)
     value.__unoapiMediaBytes = Buffer.from(bytes)
@@ -1056,12 +1092,15 @@ export class ClientZapo implements Client {
       const result = resolutions[resultIndex]
       const index = numeric[resultIndex].index
       const stored = result.stored || (result.lid_jid ? await this.zapoSession.contacts.getByJid(result.lid_jid) : undefined)
+      const username = `${(stored as any)?.username || ''}`.trim()
+        || (result.lid_jid ? await zapoUsernameIndex.resolveByLid(this.phone, result.lid_jid, Date.now(), !this.config.useRedis) : undefined)
       output[index] = {
         input: numbers[index],
         wa_id: result.status === 'valid' ? result.public_phone_number : undefined,
         user_id: result.status === 'valid' ? result.lid_jid : undefined,
         display_name: stored?.displayName,
         push_name: stored?.pushName,
+        username: username || undefined,
         status: result.status,
       }
     }

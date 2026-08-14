@@ -1921,6 +1921,9 @@
   resolved "https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.3.0.tgz"
   integrity sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==
 
+"@vipertec/zapo-voip@file:vendor/zapo-voip":
+  version "1.0.0-viper.4"
+
 "@wasm-audio-decoders/common@9.0.7":
   version "9.0.7"
   resolved "https://registry.npmjs.org/@wasm-audio-decoders/common/-/common-9.0.7.tgz"
@@ -1982,9 +1985,6 @@
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.1.0.tgz#0685bf76939e256e142c6f171ab2a1311809ab39"
   integrity sha512-leoHja38lB7kBxVlcbktIMZjbocropExyjL2LPun6Ofd8gnr0+mcx9xyYpsj4htLM95OFMfd2jd5zbU6IqjgDQ==
-
-"@vipertec/zapo-voip@file:vendor/zapo-voip":
-  version "1.0.0-viper.4"
 
 accepts@~1.3.4, accepts@~1.3.8:
   version "1.3.8"
@@ -2855,13 +2855,6 @@ doctrine@^3.0.0:
   integrity sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==
   dependencies:
     esutils "^2.0.2"
-
-domexception@^4.0.0:
-  version "4.0.0"
-  resolved "https://registry.yarnpkg.com/domexception/-/domexception-4.0.0.tgz#4ad1be56ccadc86fc76d033353999a8037d03673"
-  integrity sha512-A2is4PLG+eeSfoTMA95/s4pvAoSo2mKtiM5jlHkAVewmiO8ISFTFKZjH7UAM1Atli/OT/7JHOrJRJiMKUZKYBw==
-  dependencies:
-    webidl-conversions "^7.0.0"
 
 dotenv@^16.4.5:
   version "16.6.1"
@@ -6324,11 +6317,6 @@ webidl-conversions@^3.0.0:
   resolved "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz"
   integrity sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==
 
-webidl-conversions@^7.0.0:
-  version "7.0.0"
-  resolved "https://registry.yarnpkg.com/webidl-conversions/-/webidl-conversions-7.0.0.tgz#256b4e1882be7debbf01d05f0aa2039778ea080a"
-  integrity sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==
-
 whatsapp-rust-bridge@0.5.4:
   version "0.5.4"
   resolved "https://registry.yarnpkg.com/whatsapp-rust-bridge/-/whatsapp-rust-bridge-0.5.4.tgz#98a3313b4c231967cb411336e752d71cee4ed4a0"
@@ -6515,7 +6503,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zapo-js@1.7.0:
-  version "1.7.0"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.7.0.tgz#bc1a48f590b6bd95f2e09a441cad3e4781d4c837"
-  integrity sha512-OSWpH0x93qlVvg85PScxxDzRKKa/AHi1Gh3HXFtc9KzOeqNrIsPPQbEx4y+o99QIghv/8STSr6N11CzljAtwsQ==
+zapo-js@1.7.1:
+  version "1.7.1"
+  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.7.1.tgz#71fd862b1ced9e44122375378af315a1b81ba08c"
+  integrity sha512-tnPxZh406SbXL3TAG4AE7fxHjZ3vm3nNoz88oqIMt75DM16aXhdi78VJbdaSjS6kvsmnl3XYoEwpo1iZtFOQLg==

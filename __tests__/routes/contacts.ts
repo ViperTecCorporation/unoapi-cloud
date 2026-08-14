@@ -40,6 +40,18 @@ describe('contacts directory route', () => {
     expect(response.body).toEqual(page)
   })
 
+  test('rejects contact searches shorter than three characters', async () => {
+    const directory: ContactDirectory = { list: jest.fn() }
+    const controller = new ContactsController(mock<Contact>(), directory)
+    const app = express()
+    app.get('/:phone/contacts', controller.get.bind(controller))
+
+    const response = await request(app).get('/5566/contacts?search=ma').expect(400)
+
+    expect(response.body).toEqual({ error: 'search_must_have_at_least_3_characters' })
+    expect(directory.list).not.toHaveBeenCalled()
+  })
+
   test('saves a contact through POST /:phone/contacts/import', async () => {
     const contactBook: ContactBook = {
       save: jest.fn().mockResolvedValue({

@@ -1,5 +1,8 @@
 name: unoapi
 
+# Docker Compose standalone. Nao use este arquivo com docker stack deploy.
+# Para Swarm, baixe docker-stack.unoapi-traefik.yml na documentacao oficial.
+
 x-base: &base
   image: ghcr.io/viperteccorporation/viperconnect:latest
   # Preserve o ENTRYPOINT oficial da imagem; selecione o processo somente por UNOAPI_PROCESS_ROLE.
@@ -105,10 +108,23 @@ services:
     environment:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: "broker"
+      UNOAPI_VIDEO_WORKER_MODE: "dedicated"
     deploy:
       resources:
         limits:
           cpus: "1"
+          memory: 1024M
+
+  unoapi-video-worker:
+    <<: *base
+    container_name: unoapi-video-worker
+    environment:
+      <<: *base-environment
+      UNOAPI_PROCESS_ROLE: "video"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
           memory: 1024M
 
   unoapi-worker-zapo:
@@ -201,9 +217,10 @@ services:
       VOIP_APP_STORAGE: "sqlite"
       VOICE_CONFIG_STORAGE: "sqlite"
       SIP_RTP_ENABLED: "true"
-      SIP_RTP_BIND_HOST: "0.0.0.0"
-      SIP_RTP_PUBLIC_IP: "sip.seudominio.com.br"
-      SIP_RTP_PUBLIC_ADVERTISE_IP: "203.0.113.10"
+      SIP_RTP_BIND_IPV4: "0.0.0.0"
+      SIP_RTP_BIND_IPV6: "::"
+      SIP_RTP_PUBLIC_IPV4: "203.0.113.10"
+      SIP_RTP_PUBLIC_IPV6_HOST: "sip6.seudominio.com.br"
       SIP_RTP_LAN_IP: "192.168.0.50"
       SIP_RTP_PORT: "5060"
       SIP_RTP_MEDIA_PORT_MIN: "12000"

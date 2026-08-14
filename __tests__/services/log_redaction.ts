@@ -41,4 +41,54 @@ describe('log redaction', () => {
     expect(redacted.token).toBe('[REDACTED]')
     expect(redacted.stack).not.toContain('Authorization=secret')
   })
+
+  test('redacts payment secrets from serialized order details without changing the payload source', () => {
+    const serialized = JSON.stringify({
+      payment_settings: [
+        {
+          type: 'boleto',
+          boleto: { digitable_line: '12345678901234567890' },
+        },
+        {
+          type: 'pix_dynamic_code',
+          pix_dynamic_code: {
+            code: 'complete-pix-code',
+            key: 'pix-key',
+            merchant_name: 'Merchant',
+          },
+        },
+        {
+          type: 'offsite_card_pay',
+          offsite_card_pay: { credential_id: 'credential-secret', last_four_digits: '1234' },
+        },
+      ],
+      buttons: [{
+        type: 'cta_copy',
+        copy_code: { title: 'Copiar código PIX', code: 'complete-pix-code' },
+      }],
+    })
+
+    const redacted = redactLogString(serialized)
+
+    expect(redacted).not.toContain('12345678901234567890')
+    expect(redacted).not.toContain('complete-pix-code')
+    expect(redacted).not.toContain('pix-key')
+    expect(redacted).not.toContain('credential-secret')
+    expect(redacted).toContain('Copiar código PIX')
+    expect(serialized).toContain('complete-pix-code')
+    expect(redacted).toContain('Merchant')
+    expect(redacted).toContain('1234')
+  })
+
+  test('redacts nested dynamic PIX and boleto fields from object log arguments', () => {
+    expect(redactLogValue({
+      pix_dynamic_code: { code: 'complete-pix-code', key: 'pix-key', merchant_name: 'Merchant' },
+      copy_code: { title: 'Copiar código PIX', code: 'complete-pix-code' },
+      boleto: { digitable_line: '12345678901234567890' },
+    })).toEqual({
+      pix_dynamic_code: { code: '[REDACTED]', key: '[REDACTED]', merchant_name: 'Merchant' },
+      copy_code: { title: 'Copiar código PIX', code: '[REDACTED]' },
+      boleto: { digitable_line: '[REDACTED]' },
+    })
+  })
 })

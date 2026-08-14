@@ -1,5 +1,5 @@
 import { renderDashboard } from '../../frontend/pages/dashboard'
-import { DOCUMENTATION_URL, renderDocumentationPage } from '../../frontend/pages/documentation'
+import { DOCUMENTATION_ORIGIN, DOCUMENTATION_URL, renderDocumentationPage } from '../../frontend/pages/documentation'
 import { renderSessionPage } from '../../frontend/pages/session'
 import { setLocale } from '../../frontend/core/i18n'
 
@@ -43,6 +43,27 @@ describe('frontend pages', () => {
     expect(html).not.toContain('aria-modal="true"')
     expect(html.indexOf('data-tab="webhooks"')).toBeLessThan(html.indexOf('data-tab="contacts"'))
     expect(html.indexOf('data-tab="contacts"')).toBeLessThan(html.indexOf('data-tab="groups"'))
+    expect(html).toContain('minlength="3"')
+    expect(html).toContain('Nome, username, telefone de apresentação e LID canônico.')
+  })
+
+  test('asks for three characters before searching contacts', () => {
+    const html = renderSessionPage({
+      session: { phone: '5566', status: 'online', webhooks: [] },
+      tab: 'contacts',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: 'ma',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(html).toContain('Digite pelo menos 3 caracteres para pesquisar.')
+    expect(html).toContain('aria-live="polite"')
   })
 
   test('embeds the public documentation in the API front', () => {
@@ -51,6 +72,7 @@ describe('frontend pages', () => {
     expect(html).toContain(`src="${DOCUMENTATION_URL}"`)
     expect(html).toContain('class="documentation-embed__frame"')
     expect(html).toContain('title="Documentação"')
+    expect(DOCUMENTATION_ORIGIN).toBe('https://viperconnect.vipertec.net')
   })
 
   test('offers only removal for a suppressed Baileys session', () => {

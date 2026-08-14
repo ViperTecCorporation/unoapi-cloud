@@ -9,10 +9,13 @@ import { WAMessage, delay, jidNormalizedUser, isLidUser, proto } from '@whiskeys
 import { Template } from './template'
 import { BASE_URL } from '../defaults'
 import { v1 as uuid } from 'uuid'
-import { createDecipheriv, createHash, createHmac, hkdfSync } from 'crypto'
+import { createDecipheriv, createHmac, hkdfSync } from 'crypto'
 import { getPollState, setPollState, getStatusMediaState, setStatusMediaState, getUnoIdsForProviderAnySession } from './redis'
 import { buildRestrictionNoticeWebhooks } from './restriction_notice'
 import { BAILEYS_LISTENER_POLICY } from './baileys_listener_policy'
+import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
+import { normalizePollAggregateState, pollOptionHash, selectedPollOptionHashes } from './messages/poll_vote_state'
+import { resolveProfilePictureId } from './profile_picture_identity'
 
 const {
   delayAfterFirstMessageMs: UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS,
@@ -264,7 +267,7 @@ export class ListenerBaileys implements Listener {
   }
 
   private pollOptionHash(name: string) {
-    return createHash('sha256').update(Buffer.from(name || '')).digest().toString()
+    return pollOptionHash(name)
   }
 
   private toBuffer(value: any): Buffer | undefined {
@@ -693,6 +696,7 @@ export class ListenerBaileys implements Listener {
           updatedAt: Date.now(),
         }
       }
+      state = normalizePollAggregateState(state)
       if (!state || !state.options || !Object.keys(state.options).length) return undefined
 
       const voterJidRaw = `${(message as any)?.key?.participant || (message as any)?.key?.remoteJid || ''}`.trim()
@@ -700,10 +704,7 @@ export class ListenerBaileys implements Listener {
       let voterJid = voterJidRaw
       try { voterJid = jidNormalizedUser(voterJidRaw as any) as string } catch {}
 
-      const selected = Array.isArray(pollUpdate?.vote?.selectedOptions) ? pollUpdate.vote.selectedOptions : []
-      const selectedHashes = selected
-        .map((v: any) => (v?.toString ? v.toString() : `${v || ''}`))
-        .filter((v: string) => !!v)
+      const selectedHashes = selectedPollOptionHashes(pollUpdate?.vote, state.options)
 
       state.voters = state.voters || {}
       if (selectedHashes.length) {
@@ -1086,6 +1087,7 @@ export class ListenerBaileys implements Listener {
             logger.debug(`Saved media!`)
           }
         }
+        i = await normalizeInteractiveMediaForWebhook(phone, i, store.mediaStore)
       }
     } else if (messageType === 'update') {
       try {
@@ -1404,6 +1406,8 @@ export class ListenerBaileys implements Listener {
                 const url = info?.url || await store?.dataStore?.getImageUrl(jid)
                 if (url) {
                   profile.picture = url
+                  const pictureId = resolveProfilePictureId(waId, jid)
+                  if (pictureId) profile.picture_id = pictureId
                   if (info?.metadata) profile.picture_metadata = info.metadata
                 }
               } catch {}

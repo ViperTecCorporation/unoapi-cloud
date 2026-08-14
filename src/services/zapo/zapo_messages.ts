@@ -329,9 +329,27 @@ export class ZapoMessages {
       if (payload?.ttl !== undefined) options.expirationSeconds = Number(payload.ttl)
     }
 
-    const result = target === 'status@broadcast'
-      ? await this.sendStatus(content, options)
-      : await this.sendDirect(target, content, options)
+    let result
+    if (target === 'status@broadcast') {
+      result = await this.sendStatus(content, options)
+    } else {
+      try {
+        result = await this.sendDirect(target, content, options)
+      } catch (error) {
+        const staleTarget = target
+        const refreshedTarget = await this.refreshInvalidLidTarget(error, staleTarget, payload)
+        if (!refreshedTarget) throw error
+        target = refreshedTarget
+        if (options.quote && typeof options.quote === 'object') {
+          const quote = options.quote as WaMessageKey
+          if (quote.remoteJid === staleTarget) options.quote = { ...quote, remoteJid: target }
+        }
+        if (Array.isArray(options.mentions)) {
+          options.mentions = options.mentions.map((jid) => jid === staleTarget ? target : jid)
+        }
+        result = await this.sendDirect(target, content, options)
+      }
+    }
     if (target !== 'status@broadcast') await this.markLastIncomingRead(target)
     const key = { remoteJid: target, id: result.id, fromMe: true }
     let unoId = requestedUnoId || `${await this.dataStore.loadUnoId(result.id) || ''}`.trim() || uuid()
@@ -427,6 +445,57 @@ export class ZapoMessages {
   private isPrivacyTokenNack(error: unknown) {
     const value = error as any
     return Number(value?.code || value?.data || value?.errorCode) === 463 || /(?:error|code)[= :]+463\b/i.test(`${value?.message || ''}`)
+  }
+
+  private isLidNotFound(error: unknown) {
+    const value = error as any
+    const details = [
+      value?.message,
+      value?.data?.message,
+      value?.cause?.message,
+      value?.response?.message,
+      value?.response?.data?.message,
+      value?.node?.attrs?.error,
+    ].map((item) => `${item || ''}`).filter(Boolean).join(' | ')
+    return /(?:\blid\b.{0,50}(?:not[\s_-]*found|unknown|invalid|does not exist)|(?:not[\s_-]*found|unknown|invalid).{0,50}\blid\b|(?:no devices|device.{0,20}not[\s_-]*found).{0,80}@lid\b)/i.test(details)
+  }
+
+  private async refreshInvalidLidTarget(error: unknown, staleLid: string, payload: any): Promise<string | undefined> {
+    if (!this.identity || !this.store || !staleLid.endsWith('@lid') || !this.isLidNotFound(error)) return undefined
+
+    const presentationPhone = /^\+?\d+(?:@s\.whatsapp\.net)?$/i.test(`${payload?.to || ''}`.trim())
+      ? toRawPnJid(`${payload.to}`)
+      : undefined
+    const mappedPhone = await this.dataStore.getPnForLid?.(this.phone, staleLid)
+    const storedPhone = toRawPnJid(`${(await this.store.contacts.getByJid(staleLid))?.phoneNumber || ''}`)
+    const phoneJid = [presentationPhone, mappedPhone, storedPhone]
+      .map((value) => toRawPnJid(`${value || ''}`))
+      .find((value) => value.endsWith('@s.whatsapp.net'))
+    if (!phoneJid) {
+      logger.warn('Cannot refresh invalid Zapo LID without phone session=%s stale_lid=%s', this.phone, staleLid)
+      return undefined
+    }
+
+    const refreshed = await this.identity.refreshPhoneLid(phoneJid)
+    if (refreshed.lidJid === staleLid) {
+      logger.warn('Zapo network returned the same invalid LID session=%s phone=%s lid=%s', this.phone, refreshed.phoneJid, staleLid)
+      return undefined
+    }
+
+    await this.dataStore.removeJidMapping?.(this.phone, phoneJid, staleLid)
+    if (refreshed.phoneJid !== phoneJid) {
+      await this.dataStore.removeJidMapping?.(this.phone, refreshed.phoneJid, staleLid)
+    }
+    await this.dataStore.setJidMapping?.(this.phone, refreshed.phoneJid, refreshed.lidJid)
+    await this.store.contacts.deleteByJid(staleLid)
+    logger.warn(
+      'Refreshed invalid Zapo LID and retrying send session=%s phone=%s stale_lid=%s new_lid=%s',
+      this.phone,
+      refreshed.phoneJid,
+      staleLid,
+      refreshed.lidJid,
+    )
+    return refreshed.lidJid
   }
 
   private async recoverPrivacyMaterial(target: string): Promise<boolean> {

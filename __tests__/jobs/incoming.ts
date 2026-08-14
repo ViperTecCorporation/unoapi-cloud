@@ -371,6 +371,109 @@ describe('incoming job', () => {
     }))
   })
 
+  test('preserves complete order_details in the Chatwoot outgoing echo', async () => {
+    const pixCode = '00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595'
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0ORDER')
+    dataStore.setUnoId.mockResolvedValue('uno-order-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-order-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+        },
+        {
+          ...defaultConfig.webhooks[0],
+          id: 'consumer',
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://consumer.example.com/whatsapp',
+        },
+      ],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+    const parameters = {
+      reference_id: 'order-123',
+      type: 'physical-goods',
+      payment_type: 'br',
+      payment_settings: [
+        { type: 'boleto', boleto: { digitable_line: '1234567890' } },
+        {
+          type: 'pix_dynamic_code',
+          pix_dynamic_code: {
+            code: pixCode,
+            merchant_name: 'Merchant',
+            key: 'pix-key',
+            key_type: 'EVP',
+          },
+        },
+      ],
+      currency: 'BRL',
+      total_amount: { value: 6000, offset: 100 },
+      order: {
+        status: 'pending',
+        items: [{ name: 'Camera', amount: { value: 6000, offset: 100 }, quantity: 1 }],
+        subtotal: { value: 6000, offset: 100 },
+        tax: { value: 0, offset: 100 },
+      },
+    }
+    const interactive = {
+      type: 'order_details',
+      header: { type: 'image', image: { link: 'https://example.test/order.jpg' } },
+      body: { text: 'Revise seu pedido' },
+      footer: { text: 'Merchant' },
+      action: { name: 'review_and_pay', parameters },
+    }
+
+    await job.consume('5566999554300', {
+      id: 'uno-order-echo',
+      payload: {
+        to: '5566996269251',
+        type: 'interactive',
+        interactive,
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const echo = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'smb_message_echoes')
+    const expectedInteractive = {
+      ...interactive,
+      action: {
+        ...interactive.action,
+        buttons: [{
+          type: 'cta_copy',
+          copy_code: { title: 'Copiar código PIX', code: pixCode },
+        }],
+      },
+    }
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).toEqual(expect.objectContaining({
+      from: '5566999554300',
+      to: '5566996269251',
+      id: 'uno-order-echo',
+      type: 'interactive',
+      interactive: expectedInteractive,
+    }))
+    expect(echo.entry[0].changes[0].value.message_echoes[0]).not.toHaveProperty('text')
+    const standard = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((webhook) => webhook?.entry?.[0]?.changes?.[0]?.field === 'messages')
+    expect(standard.entry[0].changes[0].value.messages[0].interactive)
+      .toEqual(expectedInteractive)
+  })
+
   test.each([
     ['button', {
       type: 'button',
@@ -459,6 +562,80 @@ describe('incoming job', () => {
       type: 'interactive',
       interactive,
     }))
+  })
+
+  test('normalizes carousel CTA URL in the Chatwoot echo without changing generic webhooks', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('3EB0CAROUSEL')
+    dataStore.setUnoId.mockResolvedValue('uno-carousel-echo')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'uno-carousel-echo' }] },
+    })
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [
+        {
+          ...defaultConfig.webhooks[0],
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://chatwoot.example.com/webhooks/whatsapp/5566999554300',
+        },
+        {
+          ...defaultConfig.webhooks[0],
+          id: 'consumer',
+          sendNewMessages: true,
+          url: '',
+          urlAbsolute: 'https://consumer.example.com/whatsapp',
+        },
+      ],
+      getStore: async () => ({ dataStore }) as any,
+    }))
+    const interactive = {
+      type: 'carousel',
+      action: {
+        carousel: {
+          cards: [{
+            body: { text: 'Plano Profissional' },
+            action: {
+              buttons: [{
+                type: 'cta_url',
+                text: 'Agende uma demonstração',
+                url: 'https://vipertec.com.br',
+              }],
+            },
+          }],
+        },
+      },
+    }
+
+    await job.consume('5566996269251', {
+      id: 'uno-carousel-echo',
+      payload: {
+        to: '5566999554300',
+        type: 'interactive',
+        interactive,
+      },
+      options: { endpoint: 'messages' },
+    })
+
+    const calls = (outgoing.sendHttp as jest.Mock).mock.calls
+    const echo = calls.find((call) => call[1].urlAbsolute.includes('chatwoot'))[2]
+    const standard = calls.find((call) => call[1].urlAbsolute.includes('consumer'))[2]
+    expect(echo.entry[0].changes[0].value.message_echoes[0]
+      .interactive.action.carousel.cards[0].action.buttons[0]).toEqual(expect.objectContaining({
+      type: 'cta_url',
+      url: {
+        title: 'Agende uma demonstração',
+        link: 'https://vipertec.com.br',
+      },
+    }))
+    expect(standard.entry[0].changes[0].value.messages[0]
+      .interactive.action.carousel.cards[0].action.buttons[0].url).toBe('https://vipertec.com.br')
   })
 
   test('dispatches provider contact operations without going through message sending', async () => {
@@ -698,6 +875,47 @@ describe('incoming job', () => {
     })
     expect(contact.profile.picture).toBeUndefined()
     expect(contact.group_picture).toBeUndefined()
+  })
+
+  test('preserves legacy picture and adds a stable picture_id to outgoing webhooks', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const getConfigTest: getConfig = async () => ({
+      ...defaultConfig,
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        id: 'default',
+        sendNewMessages: true,
+      }],
+    })
+    incoming.send = jest.fn().mockResolvedValue({ ok: { success: true } })
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, getConfigTest)
+
+    await job.consume('5566996269251', {
+      id: 'uno-profile-id',
+      payload: {
+        messaging_product: 'whatsapp',
+        to: '5566999069708',
+        user_id: '53515477086263@lid',
+        type: 'text',
+        text: { body: 'Teste' },
+        profile: {
+          name: 'Maria',
+          picture: 'https://storage.test/avatar?X-Amz-Signature=legacy',
+          picture_metadata: { etag: '"avatar"' },
+        },
+      },
+      options: {},
+    })
+
+    const webhookPayload = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
+    const profile = webhookPayload.entry[0].changes[0].value.contacts[0].profile
+    expect(profile.picture).toContain('X-Amz-Signature=legacy')
+    expect(profile.picture_id).toBe('53515477086263@lid')
+    expect(profile.picture_metadata).toEqual({ etag: '"avatar"' })
   })
 
   test('emits restriction notice webhooks for 463 reachout lock without changing failed status', async () => {

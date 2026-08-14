@@ -2,6 +2,7 @@ import { escapeHtml } from '../core/html.js'
 import { t } from '../core/i18n.js'
 
 export const DOCUMENTATION_URL = 'https://viperconnect.vipertec.net/'
+export const DOCUMENTATION_ORIGIN = new URL(DOCUMENTATION_URL).origin
 
 export const renderDocumentationPage = (): string => `
   <section class="documentation-embed" aria-label="${escapeHtml(t('Documentação'))}">

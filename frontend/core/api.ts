@@ -105,7 +105,8 @@ export class ApiClient {
 
   contacts(phone: string, cursor = '0', limit = 20, search = ''): Promise<ContactDirectoryPage> {
     const query = new URLSearchParams({ cursor, limit: `${limit}` })
-    if (search.trim()) query.set('search', search.trim())
+    const normalizedSearch = search.trim()
+    if (normalizedSearch.length >= 3) query.set('search', normalizedSearch)
     return this.request<ContactDirectoryPage>(`/${encodeURIComponent(phone)}/contacts?${query}`)
   }
 
