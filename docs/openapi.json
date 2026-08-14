@@ -3440,11 +3440,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.16"
+            "example": "4.0.17"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.16"
+            "example": "4.0.17"
           },
           "update_available": {
             "type": "boolean"
