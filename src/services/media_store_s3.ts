@@ -22,6 +22,7 @@ import { mediaStoreFile } from './media_store_file'
 import { Config } from './config'
 import logger from './logger'
 import fetch, { Response as FetchResponse } from 'node-fetch'
+import { validateProfilePictureBuffer } from './profile_picture_content'
 
 
 export const getMediaStoreS3: getMediaStore = (phone: string, config: Config, getDataStore: getDataStore): MediaStore => {
@@ -278,12 +279,11 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
   }
 
-  mediaStore.getProfilePictureInfo = async (_baseUrl: string, jid: string) => {
+  const findProfilePicture = async (jid: string) => {
     const ids = await profilePictureIdsFor(jid)
     logger.debug('S3 profile picture path candidate ids: %s (from %s)', ids.join(','), sanitizeProfileId(jid))
     for (const id of ids) {
       const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
-      // Verifica existência antes de gerar URL assinada (GetSignedUrl não valida existência)
       let head: HeadObjectCommandOutput
       try {
         head = await sendWithRetry<HeadObjectCommandOutput>(
@@ -297,16 +297,36 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
         }
         throw error
       }
-      try {
-        const url = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
-        logger.debug('PROFILE_PICTURE S3 presigned URL: %s', url)
-        return { url, metadata: profilePictureMetadata(head) }
-      } catch (error: any) {
-        logger.warn(error as any, 'Failed to presign S3 URL for %s', fileName)
-        return undefined
-      }
+      return { fileName, metadata: profilePictureMetadata(head) }
     }
     return undefined
+  }
+
+  mediaStore.getProfilePictureInfo = async (_baseUrl: string, jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    try {
+      const url = await mediaStore.getFileUrl(picture.fileName, DATA_URL_TTL)
+      return { url, metadata: picture.metadata }
+    } catch (error: any) {
+      logger.warn(error as any, 'Failed to presign S3 profile picture URL for %s', picture.fileName)
+      return undefined
+    }
+  }
+
+  mediaStore.getProfilePictureObject = async (jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    return {
+      metadata: picture.metadata,
+      openStream: async () => {
+        const response = await sendWithRetry<GetObjectCommandOutput>(
+          new GetObjectCommand({ Bucket: bucket, Key: picture.fileName }),
+          s3Config.timeoutMs
+        )
+        return response.Body as Readable
+      },
+    }
   }
 
   mediaStore.getProfilePictureUrl = async (baseUrl: string, jid: string) => {
@@ -328,9 +348,8 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       logger.info('PROFILE_PICTURE saving (S3) targets: %s (from %s)', targetIds.join(','), sanitizeProfileId(originalId))
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       if (!response.ok) throw new Error(`Could not download profile picture: HTTP ${response.status}`)
-      const responseContentType = `${response.headers.get('content-type') || ''}`.split(';')[0].trim().toLowerCase()
-      const profilePictureContentType = responseContentType.startsWith('image/') ? responseContentType : 'image/jpeg'
       const buffer = toBuffer(await response.arrayBuffer())
+      const profilePictureContentType = validateProfilePictureBuffer(buffer)
       for (const targetId of targetIds) {
         const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(targetId)}`
         try {

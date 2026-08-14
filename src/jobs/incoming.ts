@@ -13,6 +13,7 @@ import { isChatwootWebhook } from '../services/webhook_config'
 import { buildProviderSendFailureResponse, shouldReturnProviderSendFailure } from '../services/providers/send_failure'
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 import { interactiveForChatwootWebhook, withOrderDetailsPixCopyButton } from '../services/transformer/interactive'
+import { resolveProfilePictureId } from '../services/profile_picture_identity'
 
 type RetryContext = {
   countRetries: number
@@ -119,7 +120,17 @@ export class IncomingJob {
       },
     }
     const profilePicture = `${payload?.contact?.picture || payload?.profile?.picture || ''}`.trim()
-    if (profilePicture) contact.profile.picture = profilePicture
+    if (profilePicture) {
+      contact.profile.picture = profilePicture
+      const pictureId = resolveProfilePictureId(
+        payload?.contact?.picture_id,
+        payload?.profile?.picture_id,
+        payload?.profile_picture_id,
+        userId,
+        contactWaId,
+      )
+      if (pictureId) contact.profile.picture_id = pictureId
+    }
     const profilePictureMetadata = payload?.contact?.picture_metadata || payload?.profile?.picture_metadata || payload?.profile_picture_metadata
     if (profilePictureMetadata) contact.profile.picture_metadata = profilePictureMetadata
     if (payload?.group_subject) contact.group_subject = `${payload.group_subject}`

@@ -682,7 +682,28 @@ describe('service transformer', () => {
     const value = fromBaileysMessageContent(phoneNumer, input)[0].entry[0].changes[0].value
 
     expect(value.contacts[0].profile.picture).toBe('https://cdn.example.com/profile/maria.jpg')
+    expect(value.contacts[0].profile.picture_id).toBe('5549988290955')
     expect(value.contacts[0].profile.picture_metadata).toEqual(metadata)
+  })
+
+  test('keeps picture_id stable when only the signed profile picture URL changes', async () => {
+    const input = (picture: string) => ({
+      key: {
+        remoteJid: '554988290955@s.whatsapp.net',
+        fromMe: false,
+        id: `wa.profile.${picture.length}`,
+      },
+      message: { conversation: 'oi' },
+      pushName: 'Maria',
+      messageTimestamp: '1781554162',
+      profilePicture: picture,
+    })
+
+    const first = fromBaileysMessageContent('5549998360838', input('https://s3.test/avatar?X-Amz-Signature=first'))[0]
+    const second = fromBaileysMessageContent('5549998360838', input('https://s3.test/avatar?X-Amz-Signature=second'))[0]
+
+    expect(first.entry[0].changes[0].value.contacts[0].profile.picture_id)
+      .toBe(second.entry[0].changes[0].value.contacts[0].profile.picture_id)
   })
 
   test('fromBaileysMessageContent includes group picture metadata', async () => {

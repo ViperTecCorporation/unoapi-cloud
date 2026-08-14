@@ -1,7 +1,7 @@
 import type { WhatsAppContact, WhatsAppMessage } from './whatsapp_types'
 import { getBinMessage, jidToPhoneNumberIfUser, toBuffer, ensurePn, phoneNumberToJid } from './transformer'
-import { writeFile } from 'fs/promises'
-import { existsSync, mkdirSync, rmSync, createReadStream, createWriteStream, statSync } from 'fs'
+import { copyFile, writeFile } from 'fs/promises'
+import { existsSync, mkdirSync, rmSync, createReadStream, createWriteStream, statSync, openSync, readSync, closeSync } from 'fs'
 import { pipeline } from 'stream/promises'
 import { MediaStore, getMediaStore, mediaStores } from './media_store'
 import mime from 'mime-types'
@@ -13,6 +13,7 @@ import { DATA_URL_TTL, FETCH_TIMEOUT_MS, DOWNLOAD_AUDIO_CONVERT_TO_MP3 } from '.
 import { convertBufferToMp3 } from '../utils/audio_convert_mp3'
 import fetch, { Response as FetchResponse } from 'node-fetch'
 import mediaToBuffer from '../utils/media_to_buffer'
+import { detectProfilePictureContentType, validateProfilePictureBuffer } from './profile_picture_content'
 
 const LEGACY_BAILEYS_MEDIA_MODULE = '@whiskeysockets/baileys'
 const legacyBaileysMedia = async () => import(LEGACY_BAILEYS_MEDIA_MODULE)
@@ -444,26 +445,77 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     return Array.from(ids)
   }
 
-  mediaStore.getProfilePictureInfo = async (baseUrl: string, jid: string) => {
+  const profilePictureMetadata = (complete: string): Record<string, string> | undefined => {
+    const stat = statSync(complete)
+    const header = Buffer.alloc(16)
+    const fd = openSync(complete, 'r')
+    let bytesRead = 0
+    try {
+      bytesRead = readSync(fd, header, 0, header.length, 0)
+    } finally {
+      closeSync(fd)
+    }
+    const bytes = header.subarray(0, bytesRead)
+    const contentType = detectProfilePictureContentType(bytes)
+    if (!contentType) return undefined
+    return {
+      etag: `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`,
+      content_length: `${stat.size}`,
+      last_modified: stat.mtime.toISOString(),
+      content_type: contentType,
+    }
+  }
+
+  const findProfilePicture = async (jid: string) => {
     const ids = await profilePictureIdsFor(jid)
     logger.debug('Profile picture path candidate ids: %s (from %s)', ids.join(','), jid)
-    const base = await mediaStore.getFileUrl(PROFILE_PICTURE_FOLDER, DATA_URL_TTL)
     for (const id of ids) {
       const fName = profilePictureFileName(id)
-      const complete = `${base}/${fName}`
-      if (existsSync(complete)) {
-        const stat = statSync(complete)
-        return {
-          url: `${baseUrl}/v15.0/download/${phone}/${PROFILE_PICTURE_FOLDER}/${fName}`,
-          metadata: {
-            content_length: `${stat.size}`,
-            last_modified: stat.mtime.toISOString(),
-            content_type: 'image/jpeg',
-          },
+      const canonicalFile = `${phone}/${PROFILE_PICTURE_FOLDER}/${fName}`
+      const legacyFile = `${PROFILE_PICTURE_FOLDER}/${fName}`
+      for (const fileName of [canonicalFile, legacyFile]) {
+        const complete = await mediaStore.getFileUrl(fileName, DATA_URL_TTL)
+        if (!existsSync(complete)) continue
+        let resolvedFileName = fileName
+        let resolvedComplete = complete
+        if (fileName === legacyFile) {
+          try {
+            const canonicalComplete = await mediaStore.getFileUrl(canonicalFile, DATA_URL_TTL)
+            const dir = canonicalComplete.split('/').slice(0, -1).join('/')
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+            await copyFile(complete, canonicalComplete)
+            resolvedFileName = canonicalFile
+            resolvedComplete = canonicalComplete
+          } catch (error) {
+            logger.warn(error as Error, 'Could not migrate legacy profile picture for %s', id)
+          }
         }
+        const metadata = profilePictureMetadata(resolvedComplete)
+        if (metadata) return { fileName: resolvedFileName, complete: resolvedComplete, metadata }
       }
     }
     return undefined
+  }
+
+  mediaStore.getProfilePictureInfo = async (baseUrl: string, jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    const fileName = picture.fileName.startsWith(`${phone}/`)
+      ? picture.fileName
+      : `${phone}/${picture.fileName}`
+    return {
+      url: `${baseUrl}/v15.0/download/${fileName}`,
+      metadata: picture.metadata,
+    }
+  }
+
+  mediaStore.getProfilePictureObject = async (jid: string) => {
+    const picture = await findProfilePicture(jid)
+    if (!picture) return undefined
+    return {
+      metadata: picture.metadata,
+      openStream: async () => createReadStream(picture.complete),
+    }
   }
 
   mediaStore.getProfilePictureUrl = async (baseUrl: string, jid: string) => {
@@ -477,12 +529,14 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
     if (['changed', 'removed'].includes(contact.imgUrl || '')) {
       for (const targetId of targetIds) {
         const fName = profilePictureFileName(targetId)
-        try { await mediaStore.removeMedia(`${PROFILE_PICTURE_FOLDER}/${fName}`) } catch {}
+        for (const fileName of [`${phone}/${PROFILE_PICTURE_FOLDER}/${fName}`, `${PROFILE_PICTURE_FOLDER}/${fName}`]) {
+          try { await mediaStore.removeMedia(fileName) } catch {}
+        }
       }
       return
     }
     if (contact.imgUrl) {
-      const base = await mediaStore.getFileUrl(PROFILE_PICTURE_FOLDER, DATA_URL_TTL)
+      const base = await mediaStore.getFileUrl(`${phone}/${PROFILE_PICTURE_FOLDER}`, DATA_URL_TTL)
       if (!existsSync(base)) {
         mkdirSync(base, { recursive: true })
       }
@@ -490,6 +544,7 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       const response: FetchResponse = await fetch(contact.imgUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET'})
       if (!response.ok) throw new Error(`Could not download profile picture: HTTP ${response.status}`)
       const buffer = toBuffer(await response.arrayBuffer())
+      validateProfilePictureBuffer(buffer)
       for (const targetId of targetIds) {
         const fName = profilePictureFileName(targetId)
         const complete = `${base}/${fName}`

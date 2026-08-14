@@ -15,6 +15,7 @@ import { buildRestrictionNoticeWebhooks } from './restriction_notice'
 import { BAILEYS_LISTENER_POLICY } from './baileys_listener_policy'
 import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
 import { normalizePollAggregateState, pollOptionHash, selectedPollOptionHashes } from './messages/poll_vote_state'
+import { resolveProfilePictureId } from './profile_picture_identity'
 
 const {
   delayAfterFirstMessageMs: UNOAPI_DELAY_AFTER_FIRST_MESSAGE_MS,
@@ -1405,6 +1406,8 @@ export class ListenerBaileys implements Listener {
                 const url = info?.url || await store?.dataStore?.getImageUrl(jid)
                 if (url) {
                   profile.picture = url
+                  const pictureId = resolveProfilePictureId(waId, jid)
+                  if (pictureId) profile.picture_id = pictureId
                   if (info?.metadata) profile.picture_metadata = info.metadata
                 }
               } catch {}

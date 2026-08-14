@@ -34,6 +34,7 @@ import { getDataStore } from '../../src/services/data_store'
 import { Readable } from 'stream'
 import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 
 const fetchMock = fetch as unknown as jest.Mock
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
@@ -56,7 +57,7 @@ describe('service media store s3', () => {
       ok: true,
       status: 200,
       headers: { get: () => 'image/jpeg' },
-      arrayBuffer: async () => Buffer.from('profile-picture'),
+      arrayBuffer: async () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
     })
   })
 
@@ -115,6 +116,60 @@ describe('service media store s3', () => {
         content_type: 'image/jpeg',
       },
     })
+  })
+
+  test.each(['MinIO', 'Amazon S3', 'Cloudflare R2'])(
+    'streams profile pictures internally through the %s-compatible SDK',
+    async () => {
+      const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+      mockS3Send
+        .mockResolvedValueOnce({
+          ETag: '"avatar-etag"',
+          LastModified: new Date('2026-08-14T12:00:00.000Z'),
+          ContentLength: bytes.length,
+          ContentType: 'image/jpeg',
+        })
+        .mockResolvedValueOnce({ Body: Readable.from(bytes) })
+      const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+      const pictureId = '53515477086263@lid'
+      const picture = await mediaStore.getProfilePictureObject?.(pictureId)
+      const stream = await picture?.openStream()
+      const chunks: Buffer[] = []
+      for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
+
+      expect(picture?.metadata).toEqual({
+        etag: '"avatar-etag"',
+        last_modified: '2026-08-14T12:00:00.000Z',
+        content_length: `${bytes.length}`,
+        content_type: 'image/jpeg',
+      })
+      expect(Buffer.concat(chunks)).toEqual(bytes)
+      expect(getSignedUrlMock).not.toHaveBeenCalled()
+      expect(HeadObjectCommand).toHaveBeenCalledWith(expect.objectContaining({
+        Key: `${phone}/profile-pictures/${pictureId}.jpg`,
+      }))
+    },
+  )
+
+  test('resolves a LID profile picture through its PN alias', async () => {
+    dataStore.getPnForLid.mockResolvedValue('556699999999@s.whatsapp.net')
+    dataStore.getLidForPn.mockResolvedValue('123456789012345@lid')
+    mockS3Send
+      .mockRejectedValueOnce(Object.assign(new Error('missing LID key'), {
+        name: 'NotFound',
+        $metadata: { httpStatusCode: 404 },
+      }))
+      .mockResolvedValueOnce({
+        ETag: '"pn-etag"',
+        LastModified: new Date('2026-08-14T12:00:00.000Z'),
+        ContentLength: 4,
+        ContentType: 'image/jpeg',
+      })
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    expect(await mediaStore.getProfilePictureObject?.('123456789012345@lid')).toBeDefined()
+    expect(mockS3Send).toHaveBeenCalledTimes(2)
   })
 
   test('does not persist a profile picture when the download fails', async () => {

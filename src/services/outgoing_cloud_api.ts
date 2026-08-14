@@ -127,8 +127,10 @@ const normalizePayloadForTypebot = (payload: any, phone: string) => {
       value.contacts = value.contacts.map((c: any) => {
         const cc = { ...c }
         try {
-          if (cc.profile && cc.profile.picture !== undefined) {
+          if (cc.profile) {
             delete cc.profile.picture
+            delete cc.profile.picture_id
+            delete cc.profile.picture_metadata
           }
         } catch {}
         return cc

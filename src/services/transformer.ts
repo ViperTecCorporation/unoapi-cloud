@@ -46,6 +46,7 @@ import {
   extractOrderDetailsNativeFlow,
   interactiveHeaderForWebhook,
 } from './transformer/interactive'
+import { resolveProfilePictureId } from './profile_picture_identity'
 
 const BAILEYS_NATIVE_FLOW_ENABLED = true
 const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
@@ -1387,6 +1388,8 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
                   const pic = payload.profilePicture
                   if (typeof pic === 'string' && pic) {
                     p.picture = pic
+                    const pictureId = resolveProfilePictureId(senderStableUserId, contactWaId, senderId)
+                    if (pictureId) p.picture_id = pictureId
                   }
                   if (payload.profilePictureMetadata) {
                     p.picture_metadata = payload.profilePictureMetadata

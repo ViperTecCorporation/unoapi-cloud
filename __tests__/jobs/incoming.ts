@@ -877,6 +877,47 @@ describe('incoming job', () => {
     expect(contact.group_picture).toBeUndefined()
   })
 
+  test('preserves legacy picture and adds a stable picture_id to outgoing webhooks', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const getConfigTest: getConfig = async () => ({
+      ...defaultConfig,
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{
+        ...defaultConfig.webhooks[0],
+        id: 'default',
+        sendNewMessages: true,
+      }],
+    })
+    incoming.send = jest.fn().mockResolvedValue({ ok: { success: true } })
+    outgoing.sendHttp = jest.fn().mockResolvedValue(undefined)
+    const job = new IncomingJob(incoming, outgoing, getConfigTest)
+
+    await job.consume('5566996269251', {
+      id: 'uno-profile-id',
+      payload: {
+        messaging_product: 'whatsapp',
+        to: '5566999069708',
+        user_id: '53515477086263@lid',
+        type: 'text',
+        text: { body: 'Teste' },
+        profile: {
+          name: 'Maria',
+          picture: 'https://storage.test/avatar?X-Amz-Signature=legacy',
+          picture_metadata: { etag: '"avatar"' },
+        },
+      },
+      options: {},
+    })
+
+    const webhookPayload = (outgoing.sendHttp as jest.Mock).mock.calls[0][2]
+    const profile = webhookPayload.entry[0].changes[0].value.contacts[0].profile
+    expect(profile.picture).toContain('X-Amz-Signature=legacy')
+    expect(profile.picture_id).toBe('53515477086263@lid')
+    expect(profile.picture_metadata).toEqual({ etag: '"avatar"' })
+  })
+
   test('emits restriction notice webhooks for 463 reachout lock without changing failed status', async () => {
     const incoming = mock<Incoming>()
     const outgoing = mock<Outgoing>()

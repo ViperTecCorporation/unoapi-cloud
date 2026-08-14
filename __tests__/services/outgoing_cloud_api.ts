@@ -323,7 +323,12 @@ describe('service outgoing whatsapp cloud api', () => {
               value: {
                 messaging_product: 'whatsapp',
                 metadata: { display_phone_number: phone, phone_number_id: phone },
-                contacts: [{ profile: { name: 'Contato', picture: 'https://files.local/avatar.jpg' }, wa_id }],
+                contacts: [{ profile: {
+                  name: 'Contato',
+                  picture: 'https://files.local/avatar.jpg',
+                  picture_id: wa_id,
+                  picture_metadata: { etag: '"avatar"' },
+                }, wa_id }],
                 messages: [
                   {
                     from: wa_id,
@@ -349,6 +354,8 @@ describe('service outgoing whatsapp cloud api', () => {
     expect(value.metadata.phone_number_id).toBe(phone)
     expect(value.metadata.display_phone_number).toBe(`+${phone}`)
     expect(value.contacts[0].profile.picture).toBeUndefined()
+    expect(value.contacts[0].profile.picture_id).toBeUndefined()
+    expect(value.contacts[0].profile.picture_metadata).toBeUndefined()
   })
 
   test('omits synthetic call webhooks only for Typebot', async () => {

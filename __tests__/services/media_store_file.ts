@@ -7,6 +7,7 @@ import { defaultConfig } from '../../src/services/config'
 import fetch from 'node-fetch'
 import type { WAMessage } from '@whiskeysockets/baileys'
 import { Readable } from 'stream'
+import { existsSync } from 'fs'
 jest.mock('node-fetch', () => jest.fn())
 const phone = `${new Date().getTime()}`
 const messageId = `wa.${new Date().getTime()}`
@@ -42,7 +43,7 @@ describe('media routes', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      arrayBuffer: async () => Buffer.from('profile-picture'),
+      arrayBuffer: async () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
     })
     mediaStore = getMediaStoreFile(phone, defaultConfig, getTestDataStore)
   })
@@ -117,6 +118,54 @@ describe('media routes', () => {
 
     expect(pnUrl).toContain('5566999999999.jpg')
     expect(lidUrl).toContain(`${lid}.jpg`)
+
+    const picture = await mediaStore.getProfilePictureObject?.(pn)
+    expect(picture?.metadata).toEqual(expect.objectContaining({
+      content_type: 'image/jpeg',
+      content_length: '4',
+      etag: expect.any(String),
+    }))
+    const stream = await picture?.openStream()
+    const chunks: Buffer[] = []
+    for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+  })
+
+  test('resolves profile picture aliases from LID back to PN', async () => {
+    const pn = '556699999999'
+    const pnJid = `${pn}@s.whatsapp.net`
+    const lid = '123456789012345@lid'
+    dataStore.getPnForLid.mockResolvedValue(pnJid)
+    dataStore.getLidForPn.mockResolvedValue(lid)
+
+    await mediaStore.saveProfilePicture({ id: pnJid, lid, imgUrl: 'https://example.test/profile.jpg' })
+
+    expect(await mediaStore.getProfilePictureObject?.(lid)).toBeDefined()
+  })
+
+  test('stores and retrieves a group profile picture under the session path', async () => {
+    const groupId = '120363039221813429@g.us'
+    await mediaStore.saveProfilePicture({ id: groupId, imgUrl: 'https://example.test/group.jpg' })
+
+    const picture = await mediaStore.getProfilePictureObject?.(groupId)
+    const canonicalPath = await mediaStore.getFileUrl(`${phone}/profile-pictures/${groupId}.jpg`, 60)
+    expect(existsSync(canonicalPath)).toBe(true)
+    expect(picture).toBeDefined()
+
+    await mediaStore.removeMedia(`${phone}/profile-pictures/${groupId}.jpg`)
+  })
+
+  test('migrates a legacy filesystem profile picture to the session-scoped path', async () => {
+    const pictureId = '5566999069708'
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+    await mediaStore.saveMediaBuffer(`profile-pictures/${pictureId}.jpg`, bytes)
+
+    expect(await mediaStore.getProfilePictureObject?.(pictureId)).toBeDefined()
+    const canonicalPath = await mediaStore.getFileUrl(`${phone}/profile-pictures/${pictureId}.jpg`, 60)
+    expect(existsSync(canonicalPath)).toBe(true)
+
+    await mediaStore.removeMedia(`${phone}/profile-pictures/${pictureId}.jpg`)
+    await mediaStore.removeMedia(`profile-pictures/${pictureId}.jpg`)
   })
 
   test('persists an already downloaded provider buffer without Baileys decryption', async () => {
