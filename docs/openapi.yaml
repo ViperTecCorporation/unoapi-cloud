@@ -1029,6 +1029,8 @@ paths:
 
   /v13.0/{session}/profile-pictures/{picture_id}:
     get:
+      tags: [Mídia]
+      operationId: downloadProfilePictureById
       summary: Baixar foto de perfil pelo ID estável
       description: Transmite a imagem armazenada internamente sem redirecionar para MinIO, S3 ou R2.
       parameters:
@@ -1597,7 +1599,8 @@ paths:
                 companyLabel: { type: string, deprecated: true, description: Mantido somente para compatibilidade com clientes antigos. }
                 label: { type: string, description: Nome da linha. }
                 maxConcurrentCalls: { type: integer, minimum: 2, maximum: 32, default: 2 }
-                createBasicRoute: { type: boolean, deprecated: true, description: Ignorado; o ramal básico é gerenciado automaticamente pela sessão Zapo. }
+                createBasicRoute:
+                  { type: boolean, deprecated: true, description: Ignorado; o ramal básico é gerenciado automaticamente pela sessão Zapo. }
       responses:
         '200': { description: Mudança idempotente de empresa concluída sem recriar o ramal nem sobrescrever Chatwoot, IA ou roteamento avançado. }
 
@@ -1866,10 +1869,10 @@ components:
       properties:
         installed_version:
           type: string
-          example: 4.0.17
+          example: 4.0.18
         latest_version:
           type: string
-          example: 4.0.17
+          example: 4.0.18
         update_available:
           type: boolean
         status:

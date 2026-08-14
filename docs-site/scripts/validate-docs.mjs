@@ -2,14 +2,29 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
-import {
-  defaultRanges,
-  generateSwarmStacks,
-  validateRanges,
-} from '../../docs/examples/generate-swarm-stack.mjs'
+import { defaultRanges, generateSwarmStacks, validateRanges } from '../../docs/examples/generate-swarm-stack.mjs'
+import { managerOriginFromBrowser, normalizeApiServerUrl, normalizeAuthorizationValue } from '../.vitepress/theme/api_reference_config.mjs'
 
 const docs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const root = path.resolve(docs, '..')
+
+if (normalizeApiServerUrl('https://unoapi.example.com/') !== 'https://unoapi.example.com') {
+  throw new Error('A referência não normaliza a URL editável da instalação')
+}
+if (normalizeAuthorizationValue('secret') !== 'Bearer secret' || normalizeAuthorizationValue('Bearer secret') !== 'Bearer secret') {
+  throw new Error('A referência não normaliza o token de autorização')
+}
+if (managerOriginFromBrowser({ referrer: 'https://unoapi.example.com/app/' }) !== 'https://unoapi.example.com') {
+  throw new Error('A referência não detecta a origem do Manager quando embutida')
+}
+for (const invalidUrl of ['javascript:alert(1)', 'https://user:secret@unoapi.example.com']) {
+  try {
+    normalizeApiServerUrl(invalidUrl)
+    throw new Error(`A referência aceitou endpoint inseguro: ${invalidUrl}`)
+  } catch (error) {
+    if (/aceitou endpoint inseguro/.test(error.message)) throw error
+  }
+}
 const spec = JSON.parse(await readFile(path.join(docs, 'public', 'openapi.json'), 'utf8'))
 const required = [
   '/sessions',
@@ -30,9 +45,7 @@ for (const field of ['statusJidList', 'ttl', 'options']) {
     throw new Error(`MessageCommon não deve expor opção específica em todos os modelos: ${field}`)
   }
 }
-const messageSchemaRefs = new Set(
-  (spec.components?.schemas?.MessageRequest?.oneOf || []).map((item) => item.$ref),
-)
+const messageSchemaRefs = new Set((spec.components?.schemas?.MessageRequest?.oneOf || []).map((item) => item.$ref))
 for (const schema of [
   'MessageText',
   'MessageStatusBroadcast',
@@ -85,11 +98,11 @@ for (const schema of ['MessageImage', 'MessageAudio', 'MessageDocument', 'Messag
 }
 
 const router = await readFile(path.join(root, 'src', 'router.ts'), 'utf8')
-const ignoredRoute = /^(\/$|\/index\.html|\/socket\.io|min\.js|\/favicon|\/docs(?:\/|$)|\/app\/|\/logos\/|\/embedded|\/config\.js|\/embedded-callback)/
-const unsupportedRoute = /oauth\/access_token|whatsapp_business_accounts|sessions\/meta\/mappings|subscribed_apps|message_templates|\/config\.js|debug_token|business_account_id|phone_number_id|\/invite_link$|^\/admin\/(?:redis|rabbitmq)\/|\/debug\/(?:auth_cache|privacy_)|\/jidmap(?:\/|$)/
-const normalizeRoute = (value) => value
-  .replace(/:([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))?/g, '{$1}')
-  .replace(/\*$/, '{path}')
+const ignoredRoute =
+  /^(\/$|\/index\.html|\/socket\.io|min\.js|\/favicon|\/docs(?:\/|$)|\/app\/|\/logos\/|\/embedded|\/config\.js|\/embedded-callback)/
+const unsupportedRoute =
+  /oauth\/access_token|whatsapp_business_accounts|sessions\/meta\/mappings|subscribed_apps|message_templates|\/config\.js|debug_token|business_account_id|phone_number_id|\/invite_link$|^\/admin\/(?:redis|rabbitmq)\/|\/debug\/(?:auth_cache|privacy_)|\/jidmap(?:\/|$)/
+const normalizeRoute = (value) => value.replace(/:([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))?/g, '{$1}').replace(/\*$/, '{path}')
 const missing = []
 for (const line of router.split(/\r?\n/)) {
   const match = line.match(/router\.(get|post|put|patch|delete)\('([^']+)'/)
@@ -155,11 +168,23 @@ for (const composeFile of composeFiles) {
     throw new Error(`Worker de vídeo dedicado inválido: ${path.basename(composeFile)}`)
   }
   const telephony = compose.services?.['viperconnect-telefonia']
-  if (telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' || telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' || telephony?.network_mode !== 'host') {
+  if (
+    telephony?.image !== 'ghcr.io/viperteccorporation/viperconnect:latest' ||
+    telephony?.environment?.UNOAPI_PROCESS_ROLE !== 'voip' ||
+    telephony?.network_mode !== 'host'
+  ) {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
   validateDualStackEnvironment(telephony.environment, path.basename(composeFile))
-  const requiredServices = ['unoapi', 'unoapi-broker', 'unoapi-video-worker', 'unoapi-worker-zapo', 'unoapi-redis', 'unoapi-rabbitmq', 'viperconnect-telefonia']
+  const requiredServices = [
+    'unoapi',
+    'unoapi-broker',
+    'unoapi-video-worker',
+    'unoapi-worker-zapo',
+    'unoapi-redis',
+    'unoapi-rabbitmq',
+    'viperconnect-telefonia',
+  ]
   for (const service of requiredServices) {
     if (!compose.services?.[service]) {
       throw new Error(`${path.basename(composeFile)} sem serviço ${service}`)
@@ -216,8 +241,7 @@ const requiredPlaceholder = (value, placeholder, location) => {
     throw new Error(`${location} deve usar o placeholder público ${placeholder}`)
   }
 }
-const findPort = (ports, published, protocol) =>
-  ports.some((port) => port.published === published && port.protocol === protocol)
+const findPort = (ports, published, protocol) => ports.some((port) => port.published === published && port.protocol === protocol)
 
 for (const swarmFile of swarmFiles) {
   const filename = path.basename(swarmFile)
@@ -307,10 +331,7 @@ for (const swarmFile of swarmFiles) {
     throw new Error(`${filename}: faixas públicas de telefonia não correspondem ao padrão fixo`)
   }
 
-  const expectedCompactRanges = [
-    `${rtpMin}-${rtpMax}:${rtpMin}-${rtpMax}/udp`,
-    `${webrtcMin}-${webrtcMax}:${webrtcMin}-${webrtcMax}/udp`,
-  ]
+  const expectedCompactRanges = [`${rtpMin}-${rtpMax}:${rtpMin}-${rtpMax}/udp`, `${webrtcMin}-${webrtcMax}:${webrtcMin}-${webrtcMax}/udp`]
   const allPublishedPorts = []
   for (const [serviceName, service] of Object.entries(stack.services)) {
     for (const port of service.ports || []) {
@@ -340,10 +361,7 @@ for (const swarmFile of swarmFiles) {
     throw new Error(`${filename}: telefonia deve publicar somente 5060/udp para SIP`)
   }
   const compactRanges = telephonyPorts.filter((port) => typeof port === 'string')
-  if (
-    compactRanges.length !== expectedCompactRanges.length ||
-    expectedCompactRanges.some((range) => !compactRanges.includes(range))
-  ) {
+  if (compactRanges.length !== expectedCompactRanges.length || expectedCompactRanges.some((range) => !compactRanges.includes(range))) {
     throw new Error(`${filename}: faixas UDP compactas divergem dos limites da telefonia`)
   }
 

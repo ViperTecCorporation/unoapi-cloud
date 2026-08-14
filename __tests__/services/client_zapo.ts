@@ -42,6 +42,17 @@ describe('ClientZapo', () => {
   let service: ClientZapo
   let config: typeof defaultConfig
 
+  const stubRedisOwnership = () => {
+    ;(service as any).leaseFactory = jest.fn().mockReturnValue({
+      acquire: jest.fn().mockResolvedValue(true),
+      renew: jest.fn().mockResolvedValue(true),
+      release: jest.fn().mockResolvedValue(true),
+    })
+    ;(service as any).maintenance = {
+      pruneMessageIndexBatch: jest.fn().mockResolvedValue({ scanned: 0, removed: 0 }),
+    }
+  }
+
   beforeEach(() => {
     clients.clear()
     jest.clearAllMocks()
@@ -193,6 +204,7 @@ describe('ClientZapo', () => {
   test('enriches an incoming webhook message with a username cached by LID', async () => {
     const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
     config.useRedis = true
+    stubRedisOwnership()
     await service.connect(1)
 
     await handlers.message({
@@ -861,6 +873,7 @@ describe('ClientZapo', () => {
   test('includes a cached username in numeric contact verification', async () => {
     const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
     config.useRedis = true
+    stubRedisOwnership()
     session.contacts.getByJid.mockResolvedValue({
       jid: '111@lid',
       lid: '111@lid',

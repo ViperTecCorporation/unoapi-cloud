@@ -1,5 +1,5 @@
 import { renderDashboard } from '../../frontend/pages/dashboard'
-import { DOCUMENTATION_URL, renderDocumentationPage } from '../../frontend/pages/documentation'
+import { DOCUMENTATION_ORIGIN, DOCUMENTATION_URL, renderDocumentationPage } from '../../frontend/pages/documentation'
 import { renderSessionPage } from '../../frontend/pages/session'
 import { setLocale } from '../../frontend/core/i18n'
 
@@ -72,6 +72,7 @@ describe('frontend pages', () => {
     expect(html).toContain(`src="${DOCUMENTATION_URL}"`)
     expect(html).toContain('class="documentation-embed__frame"')
     expect(html).toContain('title="Documentação"')
+    expect(DOCUMENTATION_ORIGIN).toBe('https://viperconnect.vipertec.net')
   })
 
   test('offers only removal for a suppressed Baileys session', () => {

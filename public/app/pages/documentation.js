@@ -1,6 +1,7 @@
-import { escapeHtml } from '../core/html.js?v=4.0.17-91432cf3';
-import { t } from '../core/i18n.js?v=4.0.17-91432cf3';
+import { escapeHtml } from '../core/html.js?v=4.0.18-ae8d08b9';
+import { t } from '../core/i18n.js?v=4.0.18-ae8d08b9';
 export const DOCUMENTATION_URL = 'https://viperconnect.vipertec.net/';
+export const DOCUMENTATION_ORIGIN = new URL(DOCUMENTATION_URL).origin;
 export const renderDocumentationPage = () => `
   <section class="documentation-embed" aria-label="${escapeHtml(t('Documentação'))}">
     <iframe

@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js?v=4.0.17-91432cf3';
-import { renderModal } from '../components/modal.js?v=4.0.17-91432cf3';
-import { renderStatus } from '../components/status.js?v=4.0.17-91432cf3';
-import { escapeHtml } from '../core/html.js?v=4.0.17-91432cf3';
+import { icon } from '../components/icons.js?v=4.0.18-ae8d08b9';
+import { renderModal } from '../components/modal.js?v=4.0.18-ae8d08b9';
+import { renderStatus } from '../components/status.js?v=4.0.18-ae8d08b9';
+import { escapeHtml } from '../core/html.js?v=4.0.18-ae8d08b9';
 const labels = {
     companies: 'Empresas',
     accounts: 'Linhas Zapo',

@@ -1723,6 +1723,10 @@
     },
     "/v13.0/{session}/profile-pictures/{picture_id}": {
       "get": {
+        "tags": [
+          "Mídia"
+        ],
+        "operationId": "downloadProfilePictureById",
         "summary": "Baixar foto de perfil pelo ID estável",
         "description": "Transmite a imagem armazenada internamente sem redirecionar para MinIO, S3 ou R2.",
         "parameters": [
@@ -3440,11 +3444,11 @@
         "properties": {
           "installed_version": {
             "type": "string",
-            "example": "4.0.17"
+            "example": "4.0.18"
           },
           "latest_version": {
             "type": "string",
-            "example": "4.0.17"
+            "example": "4.0.18"
           },
           "update_available": {
             "type": "boolean"
