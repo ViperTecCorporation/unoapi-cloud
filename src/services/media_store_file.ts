@@ -363,8 +363,9 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       if (mediaPayload?.filename) {
         res.setHeader('Content-disposition', `attachment; filename="${encodeURIComponent(mediaPayload.filename)}"`)
       }
-      if (mediaPayload?.content_type) {
-        res.contentType(mediaPayload.content_type)
+      const contentType = mediaPayload?.mime_type || mediaPayload?.content_type
+      if (contentType) {
+        res.contentType(contentType)
       }
     }
     stream.pipe(res)
@@ -373,6 +374,11 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   mediaStore.downloadMediaStream = async (file: string) => {
     const filePath = await mediaStore.getFileUrl(file, DATA_URL_TTL)
     return createReadStream(filePath)
+  }
+
+  mediaStore.hasMedia = async (file: string) => {
+    const filePath = await mediaStore.getFileUrl(file, DATA_URL_TTL)
+    return existsSync(filePath)
   }
 
   mediaStore.getMedia = async (baseUrl: string, mediaId: string) => {
@@ -388,7 +394,21 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
       return undefined
     }
     const filePath = mediaStore.getFilePath(phone, mediaId!, mimeType, mediaPayload?.filename)
-    const url = await mediaStore.getDownloadUrl(baseUrl, filePath)
+    const storedUrl = `${mediaPayload?.url || ''}`.trim()
+    let url = storedUrl
+    try {
+      if (await mediaStore.hasMedia(filePath)) {
+        url = await mediaStore.getDownloadUrl(baseUrl, filePath)
+      } else {
+        logger.warn('Persisted media is unavailable internally; using stored URL fallback: %s', filePath)
+      }
+    } catch (error) {
+      logger.warn(error as any, 'Failed to verify persisted media; using stored URL fallback: %s', filePath)
+    }
+    if (!url) {
+      logger.debug('media getMedia has no available URL: %s', mediaId)
+      return undefined
+    }
     const payload = {
       ...mediaPayload,
       url,

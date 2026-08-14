@@ -33,9 +33,11 @@ import { DataStore } from '../../src/services/data_store'
 import { getDataStore } from '../../src/services/data_store'
 import { Readable } from 'stream'
 import { Upload } from '@aws-sdk/lib-storage'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const fetchMock = fetch as unknown as jest.Mock
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
+const getSignedUrlMock = getSignedUrl as jest.MockedFunction<typeof getSignedUrl>
 
 describe('service media store s3', () => {
   const phone = '5566996269251'
@@ -47,6 +49,9 @@ describe('service media store s3', () => {
     mockS3Send.mockReset()
     dataStore.getLidForPn.mockResolvedValue(undefined)
     dataStore.getPnForLid.mockResolvedValue(undefined)
+    dataStore.loadMediaPayload.mockReset()
+    getSignedUrlMock.mockReset()
+    getSignedUrlMock.mockResolvedValue('https://cdn.example.com/profile.jpg?X-Amz-Signature=abc')
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -102,7 +107,7 @@ describe('service media store s3', () => {
     const info = await mediaStore.getProfilePictureInfo?.('', '556699999999@s.whatsapp.net')
 
     expect(info).toEqual({
-      url: 'https://cdn.example.com/profile.jpg?X-Amz-Signature=abc&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD',
+      url: 'https://cdn.example.com/profile.jpg?X-Amz-Signature=abc',
       metadata: {
         etag: '"avatar-etag"',
         last_modified: '2026-06-15T19:24:29.000Z',
@@ -126,5 +131,63 @@ describe('service media store s3', () => {
     })).rejects.toThrow('HTTP 403')
 
     expect(amqpPublishMock).not.toHaveBeenCalled()
+  })
+
+  test('returns the UnoAPI proxy when the S3-compatible object exists', async () => {
+    const mediaId = 'stored-media'
+    dataStore.loadMediaPayload.mockResolvedValue({
+      id: `${phone}/${mediaId}`,
+      url: 'https://minio.example.test/media?X-Amz-Signature=stored',
+      mime_type: 'video/mp4',
+      filename: 'video.mp4',
+      file_size: 123,
+      sha256: 'video-sha256',
+    })
+    mockS3Send.mockResolvedValueOnce({})
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const payload = await mediaStore.getMedia('https://uno.example.test', mediaId) as { url: string }
+
+    expect(payload.url).toBe(`https://uno.example.test/v15.0/download/${phone}/${mediaId}.mp4`)
+    expect(mockS3Send).toHaveBeenCalledTimes(1)
+  })
+
+  test('falls back to the stored URL when the S3-compatible object is missing', async () => {
+    const storedUrl = 'https://r2.example.test/media?X-Amz-Signature=stored'
+    dataStore.loadMediaPayload.mockResolvedValue({
+      id: `${phone}/missing-media`,
+      url: storedUrl,
+      mime_type: 'application/pdf',
+      filename: 'document.pdf',
+      file_size: 321,
+      sha256: 'document-sha256',
+    })
+    mockS3Send.mockRejectedValueOnce(Object.assign(new Error('missing'), {
+      name: 'NotFound',
+      $metadata: { httpStatusCode: 404 },
+    }))
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const payload = await mediaStore.getMedia('https://uno.example.test', 'missing-media') as { url: string }
+
+    expect(payload.url).toBe(storedUrl)
+  })
+
+  test('preserves signer-provided UNSIGNED-PAYLOAD without mutating the signed URL', async () => {
+    const signedUrl = 'https://r2.example.test/object?X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Signature=abc'
+    getSignedUrlMock.mockResolvedValueOnce(signedUrl)
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    expect(await mediaStore.getFileUrl(`${phone}/image.jpg`, 300)).toBe(signedUrl)
+  })
+
+  test('does not append parameters after the SDK signs the URL', async () => {
+    const signedUrl = 'https://s3.example.test/object?X-Amz-Signature=abc'
+    getSignedUrlMock.mockResolvedValueOnce(signedUrl)
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+
+    const result = await mediaStore.getFileUrl(`${phone}/document.pdf`, 300)
+    expect(result).toBe(signedUrl)
+    expect(result).not.toContain('X-Amz-Content-Sha256')
   })
 })

@@ -190,13 +190,9 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
     }
     const command = new GetObjectCommand(getParams)
     try {
-      let link = await getSignedUrl(s3Client, command, { expiresIn })
-      // Alguns provedores (ex.: R2) exigem X-Amz-Content-Sha256=UNSIGNED-PAYLOAD; se nÇõo vier, acrescenta
-      if (!/X-Amz-Content-Sha256=/i.test(link)) {
-        const sep = link.includes('?') ? '&' : '?'
-        link = `${link}${sep}X-Amz-Content-Sha256=UNSIGNED-PAYLOAD`
-      }
-      return link
+      // Preserve the exact SigV4 URL produced by the SDK. Query parameters must
+      // never be appended after signing, including X-Amz-Content-Sha256.
+      return await getSignedUrl(s3Client, command, { expiresIn })
     } catch (error: any) {
       logger.error(
         `Error on generate s3 signed url for bucket: ${bucket} file name: ${fileName} expires in: ${expiresIn} -> ${error.message}`
@@ -266,6 +262,20 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
       error?.name === 'NotFound' ||
       error?.code === 'NotFound' ||
       error?.Code === 'NotFound'
+  }
+
+  mediaStore.hasMedia = async (fileName: string) => {
+    try {
+      await sendWithRetry<HeadObjectCommandOutput>(
+        new HeadObjectCommand({ Bucket: bucket, Key: fileName }),
+        s3Config.timeoutMs
+      )
+      return true
+    } catch (error: any) {
+      if (isS3NotFound(error)) return false
+      logger.warn(error as any, 'Failed to verify S3 media object: %s', fileName)
+      return false
+    }
   }
 
   mediaStore.getProfilePictureInfo = async (_baseUrl: string, jid: string) => {

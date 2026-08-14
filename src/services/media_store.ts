@@ -21,6 +21,7 @@ export type MediaStore = {
   removeMedia: (fileName: string) => Promise<void>
   downloadMedia: (resp: Response, fileName: string) => Promise<void>
   downloadMediaStream: (fileName: string) => Promise<Readable | undefined>
+  hasMedia: (fileName: string) => Promise<boolean>
   getFilePath: (phone: string, mediaId: string, mimeType: string, fileName?: string) => string
   getFileUrl: (filePath: string, expiresIn: number) => Promise<string>
   getDownloadUrl: (baseUrl: string, fileName: string) => Promise<string>

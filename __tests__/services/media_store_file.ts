@@ -17,7 +17,11 @@ const extension = 'txt'
 const message = {
   messaging_product: 'whatsapp',
   id: `${phone}/${messageId}`,
-  mime_type: mimetype
+  mime_type: mimetype,
+  filename: `${messageId}.${extension}`,
+  file_size: 12,
+  sha256: 'test-sha256',
+  url: 'https://storage.example.test/presigned-media',
 }
 const dataStore = mock<DataStore>()
 const fetchMock = fetch as unknown as jest.Mock
@@ -44,11 +48,47 @@ describe('media routes', () => {
   })
 
   test('getMedia', async () => {
+    const filePath = mediaStore.getFilePath(phone, messageId, mimetype, message.filename)
+    await mediaStore.saveMediaBuffer(filePath, Buffer.from('proxy-bytes'))
     const response = {
+      ...message,
       url: `${url}/v15.0/download/${phone}/${messageId}.${extension}`,
-      ...message
     }
     expect(await mediaStore.getMedia(url, messageId)).toStrictEqual(response)
+    await mediaStore.removeMedia(filePath)
+  })
+
+  test('falls back to the stored signed URL when the persisted object is unavailable', async () => {
+    expect(await mediaStore.getMedia(url, messageId)).toStrictEqual(message)
+  })
+
+  test.each([
+    ['image/jpeg', 'image.jpg'],
+    ['audio/ogg', 'audio.ogg'],
+    ['video/mp4', 'video.mp4'],
+    ['application/pdf', 'document.pdf'],
+  ])('serves exact persisted bytes through the proxy contract for %s', async (mimeType, filename) => {
+    const mediaId = `media-${filename}`
+    const bytes = Buffer.from(`bytes-${filename}`)
+    const filePath = mediaStore.getFilePath(phone, mediaId, mimeType, filename)
+    dataStore.loadMediaPayload.mockResolvedValueOnce({
+      id: `${phone}/${mediaId}`,
+      url: `https://storage.example.test/${filename}?X-Amz-Signature=test`,
+      mime_type: mimeType,
+      filename,
+      file_size: bytes.length,
+      sha256: `sha256-${filename}`,
+    })
+    await mediaStore.saveMediaBuffer(filePath, bytes)
+
+    const payload = await mediaStore.getMedia(url, mediaId) as { url: string }
+    expect(payload.url).toBe(`${url}/v15.0/download/${filePath}`)
+    const stored = await mediaStore.downloadMediaStream(filePath)
+    const chunks: Buffer[] = []
+    for await (const chunk of stored!) chunks.push(Buffer.from(chunk))
+    expect(Buffer.concat(chunks)).toEqual(bytes)
+
+    await mediaStore.removeMedia(filePath)
   })
 
   test('stores outbound preparation sources as streams without buffering them in the caller', async () => {
