@@ -1316,6 +1316,12 @@ select[multiple] {
   margin-bottom: 16px;
 }
 
+.entity-search-hint {
+  margin: -10px 0 16px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .entity-card {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -1334,6 +1340,12 @@ select[multiple] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.entity-card__username {
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .entity-card__actions {

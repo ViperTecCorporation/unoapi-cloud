@@ -30,7 +30,7 @@ import { renderDocumentationPage } from './pages/documentation.js'
 import { renderSessionPage } from './pages/session.js'
 import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js'
 import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js'
-import { filterContacts, filterGroups } from './features/entities.js'
+import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js'
 import {
   renderVoipCredentialsModal,
   renderVoipPage,
@@ -686,9 +686,12 @@ export class ViperConnectApp {
       this.sessionVisibleLimit = PAGE_SIZE
       this.render()
     } else if (input.dataset.filter === 'contacts-query') {
+      const previousQueryLength = this.contactsQuery.trim().length
       this.contactsQuery = input.value
       this.renderAndRestoreFilter('contacts-query')
       if (this.contactSearchTimer) window.clearTimeout(this.contactSearchTimer)
+      const queryLength = this.contactsQuery.trim().length
+      if (queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH && previousQueryLength < CONTACT_SEARCH_MIN_LENGTH) return
       this.contactSearchTimer = window.setTimeout(() => {
         void this.loadContacts(true)
       }, 300)

@@ -1,21 +1,21 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.16-02421e46';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.16-02421e46';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.16-02421e46';
-import { SocketBridge } from './core/socket.js?v=4.0.16-02421e46';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.16-02421e46';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.16-02421e46';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.16-02421e46';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.16-02421e46';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.16-02421e46';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.16-02421e46';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.16-02421e46';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.16-02421e46';
-import { renderDocumentationPage } from './pages/documentation.js?v=4.0.16-02421e46';
-import { renderSessionPage } from './pages/session.js?v=4.0.16-02421e46';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.16-02421e46';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.16-02421e46';
-import { filterContacts, filterGroups } from './features/entities.js?v=4.0.16-02421e46';
-import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.16-02421e46';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.16-91432cf3';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.16-91432cf3';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.16-91432cf3';
+import { SocketBridge } from './core/socket.js?v=4.0.16-91432cf3';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.16-91432cf3';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.16-91432cf3';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.16-91432cf3';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.16-91432cf3';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.16-91432cf3';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.16-91432cf3';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.16-91432cf3';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.16-91432cf3';
+import { renderDocumentationPage } from './pages/documentation.js?v=4.0.16-91432cf3';
+import { renderSessionPage } from './pages/session.js?v=4.0.16-91432cf3';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.16-91432cf3';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.16-91432cf3';
+import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js?v=4.0.16-91432cf3';
+import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.16-91432cf3';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -729,10 +729,14 @@ export class ViperConnectApp {
             this.render();
         }
         else if (input.dataset.filter === 'contacts-query') {
+            const previousQueryLength = this.contactsQuery.trim().length;
             this.contactsQuery = input.value;
             this.renderAndRestoreFilter('contacts-query');
             if (this.contactSearchTimer)
                 window.clearTimeout(this.contactSearchTimer);
+            const queryLength = this.contactsQuery.trim().length;
+            if (queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH && previousQueryLength < CONTACT_SEARCH_MIN_LENGTH)
+                return;
             this.contactSearchTimer = window.setTimeout(() => {
                 void this.loadContacts(true);
             }, 300);

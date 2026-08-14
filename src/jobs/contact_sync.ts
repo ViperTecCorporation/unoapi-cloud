@@ -11,11 +11,12 @@ import { Outgoing } from '../services/outgoing'
 import { BASE_KEY, delContactSyncPending, getRedis, redisGet, redisSetAndExpire, redisSetIfNotExists } from '../services/redis'
 import { jidToPhoneNumber } from '../services/transformer'
 
-type ContactSyncItem = {
+export type ContactSyncItem = {
   wa_id: string
   profile: {
     name: string
     phone: string
+    username?: string
   }
 }
 
@@ -37,7 +38,7 @@ const scheduleKeyForPhone = (phone: string) => `${CONTACT_SYNC_SCHEDULE_PREFIX}$
 
 const normalizeDigits = (value?: string) => `${value || ''}`.replace(/\D/g, '')
 
-const buildContactSyncPayload = (phone: string, contacts: ContactSyncItem[]) => {
+export const buildContactSyncPayload = (phone: string, contacts: ContactSyncItem[]) => {
   const timestamp = `${Math.floor(Date.now() / 1000)}`
   const from = contacts.find((c) => c.wa_id !== phone)?.wa_id || contacts[0]?.wa_id || phone
   return {
@@ -83,7 +84,9 @@ const parseContactInfoKey = (key: string) => {
   return { phone, jid }
 }
 
-const resolveContactFromInfo = (jid: string, info: any) => {
+const normalizeUsername = (value?: string) => `${value || ''}`.trim().replace(/^@/, '').toLowerCase()
+
+export const resolveContactFromInfo = (jid: string, info: any, usernameIndex: Record<string, string> = {}) => {
   if (jid === 'status@broadcast') return undefined
   if (jid.includes('@lid')) return undefined
   const name = `${info?.name || ''}`.trim()
@@ -102,7 +105,10 @@ const resolveContactFromInfo = (jid: string, info: any) => {
     }
   }
   if (!pn) return undefined
-  return { pn, name }
+  const rawLid = `${info?.lidJid || (jid.endsWith('@lid') ? jid : '')}`.trim()
+  const lid = rawLid.endsWith('@lid') ? `${rawLid.split('@')[0].split(':')[0]}@lid` : ''
+  const username = normalizeUsername(info?.username || (lid ? usernameIndex[`lid:${lid}`] : '')) || undefined
+  return { pn, name, username }
 }
 
 export class ContactSyncJob {
@@ -122,8 +128,8 @@ export class ContactSyncJob {
     }
   }
 
-  private upsertContact(bucket: Map<string, ContactSyncItem>, jid: string, info: any) {
-    const resolved = resolveContactFromInfo(jid, info)
+  private upsertContact(bucket: Map<string, ContactSyncItem>, jid: string, info: any, usernameIndex: Record<string, string> = {}) {
+    const resolved = resolveContactFromInfo(jid, info, usernameIndex)
     if (!resolved) return
     const existing = bucket.get(resolved.pn)
     if (!existing) {
@@ -132,16 +138,19 @@ export class ContactSyncJob {
         profile: {
           name: resolved.name,
           phone: resolved.pn,
+          ...(resolved.username ? { username: resolved.username } : {}),
         },
       })
-    } else if (resolved.name && !existing.profile.name) {
-      existing.profile.name = resolved.name
+    } else {
+      if (resolved.name && !existing.profile.name) existing.profile.name = resolved.name
+      if (resolved.username && !existing.profile.username) existing.profile.username = resolved.username
     }
   }
 
   private async loadContactsByPhone(): Promise<Map<string, Map<string, ContactSyncItem>>> {
     const redis: any = await getRedis()
     const perPhone = new Map<string, Map<string, ContactSyncItem>>()
+    const usernameIndexes = new Map<string, Promise<Record<string, string>>>()
     const pattern = `${BASE_KEY}contact-info:*`
     const count = Math.max(10, CONTACT_SYNC_SCAN_COUNT || 500)
     let cursor = '0'
@@ -167,7 +176,15 @@ export class ContactSyncJob {
           bucket = new Map()
           perPhone.set(phone, bucket)
         }
-        this.upsertContact(bucket, jid, info)
+        let usernameIndex = usernameIndexes.get(phone)
+        if (!usernameIndex) {
+          const loadingIndex: Promise<Record<string, string>> = redis
+            .hGetAll(`${BASE_KEY}zapo-username-lid:${phone}`)
+            .catch(() => ({}))
+          usernameIndexes.set(phone, loadingIndex)
+          usernameIndex = loadingIndex
+        }
+        this.upsertContact(bucket, jid, info, await usernameIndex)
       }
     } while (cursor !== '0')
     return perPhone
@@ -176,6 +193,9 @@ export class ContactSyncJob {
   private async loadContactsForPhone(phone: string): Promise<Map<string, ContactSyncItem>> {
     const redis: any = await getRedis()
     const bucket = new Map<string, ContactSyncItem>()
+    const usernameIndex: Record<string, string> = await redis
+      .hGetAll(`${BASE_KEY}zapo-username-lid:${phone}`)
+      .catch(() => ({}))
     const pattern = `${BASE_KEY}contact-info:${phone}:*`
     const count = Math.max(10, CONTACT_SYNC_SCAN_COUNT || 500)
     let cursor = '0'
@@ -194,7 +214,7 @@ export class ContactSyncJob {
         if (!parsed || parsed.phone !== phone) continue
         let info: any
         try { info = JSON.parse(raw) } catch { continue }
-        this.upsertContact(bucket, parsed.jid, info)
+        this.upsertContact(bucket, parsed.jid, info, usernameIndex)
       }
     } while (cursor !== '0')
     return bucket

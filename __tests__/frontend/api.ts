@@ -42,6 +42,19 @@ describe('frontend API client', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            contacts: [],
+            next_cursor: '0',
+            has_more: false,
+            total_count: 0,
+            raw_total_count: 0,
+            ignored_count: 0,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
             groups: [],
             paging: { cursors: { before: null, after: null } },
           }),
@@ -51,10 +64,12 @@ describe('frontend API client', () => {
     const api = new ApiClient('https://unoapi.example', fetcher)
 
     await api.contacts('5566', '42', 20, ' Maria ')
+    await api.contacts('5566', '0', 20, ' Ma ')
     await api.groups('5566', '20', 20, ' Comercial ')
 
     expect(fetcher).toHaveBeenNthCalledWith(1, 'https://unoapi.example/5566/contacts?cursor=42&limit=20&search=Maria', expect.any(Object))
-    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://unoapi.example/v15.0/5566/groups?cursor=20&limit=20&search=Comercial', expect.any(Object))
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://unoapi.example/5566/contacts?cursor=0&limit=20', expect.any(Object))
+    expect(fetcher).toHaveBeenNthCalledWith(3, 'https://unoapi.example/v15.0/5566/groups?cursor=20&limit=20&search=Comercial', expect.any(Object))
   })
 
   test('lists, previews and purges RabbitMQ queues through authenticated backend routes', async () => {

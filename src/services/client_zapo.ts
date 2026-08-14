@@ -19,6 +19,7 @@ import { ZapoMessages } from './zapo/zapo_messages'
 import { isEncryptedZapoAddonMessage, toUnoAddonEvent, toUnoMessageEvent, toUnoReceiptUpdates } from './zapo/zapo_events'
 import { statusRecipients } from './status/status_recipients'
 import { zapoUsernameIndex } from './zapo/zapo_username_index'
+import { enrichZapoMessageUsername } from './zapo/zapo_username_enrichment'
 import { normalizeMessageContent } from './transformer/message_type'
 import { Template } from './template'
 import {
@@ -204,6 +205,7 @@ export class ClientZapo implements Client {
     const messages = await loadZapoHistoryMessages(this.zapoSession, maxAgeDays, this.forwardedHistoryIds)
     logger.info('Zapo forwarding history phone=%s days=%s messages=%s', this.phone, maxAgeDays, messages.length)
     if (messages.length) {
+      await Promise.all(messages.map((message) => this.enrichMessageUsername(message)))
       await this.listener.process(this.phone, messages, 'history')
       for (const message of messages) {
         const id = `${message.key.id || ''}`.trim()
@@ -288,7 +290,13 @@ export class ClientZapo implements Client {
         resolved.decrypted.pollVote.selectedOptions?.length || 0,
       )
     }
-    await this.listener.process(this.phone, [toUnoAddonEvent(resolved)], 'notify')
+    const message = toUnoAddonEvent(resolved)
+    await this.enrichMessageUsername(message)
+    await this.listener.process(this.phone, [message], 'notify')
+  }
+
+  private enrichMessageUsername(message: { key?: object }) {
+    return enrichZapoMessageUsername(this.phone, message, !this.config.useRedis)
   }
 
   private beginPairingCodeRequest(client: ZapoClient, forceRefresh = false) {
@@ -415,6 +423,7 @@ export class ClientZapo implements Client {
       if (await this.forwardDecryptedAddon(client, event)) return
 
       const message = toUnoMessageEvent(event)
+      await this.enrichMessageUsername(message)
       await this.enrichDirectPhoneAlias(message, event)
       if (event.key.isGroup || `${event.key.remoteJid || ''}`.endsWith('@g.us')) {
         logger.info(
@@ -498,6 +507,7 @@ export class ClientZapo implements Client {
     })
     onCurrent('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)
+      await this.enrichMessageUsername(message)
       if (message.key.remoteJid && message.key.id) {
         await this.unoStore?.dataStore.setKey(message.key.id, message.key as never)
         await this.unoStore?.dataStore.setMessage(message.key.remoteJid, message as never)
@@ -518,6 +528,7 @@ export class ClientZapo implements Client {
       if (event.resendRequested === true) return
 
       const message = createZapoUnavailableMessage(event)
+      await this.enrichMessageUsername(message)
       if (event.key.remoteJid && event.key.id) {
         await this.unoStore?.dataStore.setKey(event.key.id, event.key as never)
         await this.unoStore?.dataStore.setMessage(event.key.remoteJid, message as never)
@@ -1081,12 +1092,15 @@ export class ClientZapo implements Client {
       const result = resolutions[resultIndex]
       const index = numeric[resultIndex].index
       const stored = result.stored || (result.lid_jid ? await this.zapoSession.contacts.getByJid(result.lid_jid) : undefined)
+      const username = `${(stored as any)?.username || ''}`.trim()
+        || (result.lid_jid ? await zapoUsernameIndex.resolveByLid(this.phone, result.lid_jid, Date.now(), !this.config.useRedis) : undefined)
       output[index] = {
         input: numbers[index],
         wa_id: result.status === 'valid' ? result.public_phone_number : undefined,
         user_id: result.status === 'valid' ? result.lid_jid : undefined,
         display_name: stored?.displayName,
         push_name: stored?.pushName,
+        username: username || undefined,
         status: result.status,
       }
     }

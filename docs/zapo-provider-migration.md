@@ -420,7 +420,9 @@ LID e nome ja forem iguais.
 
 `GET /{phone}/contacts` devolve `total_count` apenas para chaves canonicas
 `@lid`, alem de `raw_total_count` e `ignored_count`, preservando a paginacao por
-cursor e tornando divergencias do cache observaveis.
+cursor e tornando divergencias do cache observaveis. A busca por nome,
+username, telefone ou LID começa com 3 caracteres: o front não envia termos
+menores e a rota HTTP os rejeita para evitar varreduras desnecessarias no cache.
 
 ## Username
 
@@ -429,6 +431,14 @@ MEX alimentam um indice temporal `username -> LID`. A API aceita envio/consulta 
 `@username` quando esse alias ja foi aprendido. A documentacao oficial oferece consulta
 LID -> username, mas nao username -> LID; portanto alias desconhecido retorna erro claro
 e nunca e convertido por heuristica em telefone.
+
+Quando a Zapo omite o username em uma mensagem posterior, a Uno consulta somente esse
+indice local, sem fazer uma nova consulta à rede do WhatsApp, e enriquece
+`contacts[].profile.username` nos webhooks de mensagens, addons, protocolos e replay de
+historico. O mesmo fallback LID -> username e aplicado em `GET /{phone}/contacts`, em
+`POST /{phone}/contacts` e nos lotes internos `contacts.update` enviados pelo job de
+sincronizacao. O username nativo do evento ou do contato sempre tem prioridade sobre o
+indice temporal; ausencia no cache preserva o payload anterior sem erro.
 
 ## Preparacao de video para envio Zapo
 

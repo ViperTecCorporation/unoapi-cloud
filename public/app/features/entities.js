@@ -1,11 +1,16 @@
-import { renderAvatar } from '../components/avatar.js?v=4.0.16-02421e46';
-import { icon } from '../components/icons.js?v=4.0.16-02421e46';
-import { escapeHtml } from '../core/html.js?v=4.0.16-02421e46';
-import { t } from '../core/i18n.js?v=4.0.16-02421e46';
-const contactName = (contact) => contact.display_name || contact.push_name || contact.username || contact.phone_number || contact.user_id;
+import { renderAvatar } from '../components/avatar.js?v=4.0.16-91432cf3';
+import { icon } from '../components/icons.js?v=4.0.16-91432cf3';
+import { escapeHtml } from '../core/html.js?v=4.0.16-91432cf3';
+import { t } from '../core/i18n.js?v=4.0.16-91432cf3';
+export const CONTACT_SEARCH_MIN_LENGTH = 3;
+const contactUsername = (contact) => {
+    const username = `${contact.username || ''}`.trim().replace(/^@/, '');
+    return username ? `@${username}` : '';
+};
+const contactName = (contact) => contact.display_name || contact.push_name || contactUsername(contact) || contact.phone_number || contact.user_id;
 export const filterContacts = (contacts, query) => {
     const needle = query.trim().toLowerCase();
-    if (!needle)
+    if (needle.length < CONTACT_SEARCH_MIN_LENGTH)
         return contacts;
     return contacts.filter((contact) => [contactName(contact), contact.phone_number, contact.user_id, contact.username].some((value) => `${value || ''}`.toLowerCase().includes(needle)));
 };
@@ -21,13 +26,15 @@ export const renderContactCards = (contacts, sessionPhone = '') => {
     return `<div class="entity-grid">${contacts
         .map((contact) => {
         const name = contactName(contact);
+        const username = contactUsername(contact);
+        const showUsername = username && username.toLowerCase() !== name.toLowerCase();
         return `<article class="entity-card">
       ${renderAvatar(contact.picture, t('Foto de {name}', { name }), 'contact')}
       <div class="entity-card__body">
         <strong>${escapeHtml(name)}</strong>
+        ${showUsername ? `<span class="entity-card__username">${escapeHtml(username)}</span>` : ''}
         ${contact.phone_number ? `<span>${escapeHtml(contact.phone_number)}</span>` : ''}
         <small>${escapeHtml(contact.user_id)}</small>
-        ${contact.username ? `<small>@${escapeHtml(contact.username.replace(/^@/, ''))}</small>` : ''}
         <div class="entity-card__actions">
           <button class="btn btn--icon btn--ghost" type="button" data-action="test-message" data-phone="${escapeHtml(sessionPhone)}" data-recipient="${escapeHtml(contact.user_id)}" aria-label="${escapeHtml(t('Enviar mensagem para {name}', { name }))}" title="${t('Enviar mensagem')}">${icon('send')}</button>
           ${contact.phone_number ? `<button class="btn btn--icon btn--ghost" type="button" data-action="copy-value" data-value="${escapeHtml(contact.phone_number)}" data-copy-label="${t('Telefone')}" aria-label="${escapeHtml(t('Copiar telefone de {name}', { name }))}" title="${t('Copiar telefone')}">${icon('copy')}</button>` : ''}

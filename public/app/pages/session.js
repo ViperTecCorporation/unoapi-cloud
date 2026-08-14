@@ -1,11 +1,11 @@
-import { icon } from '../components/icons.js?v=4.0.16-02421e46';
-import { renderStatus } from '../components/status.js?v=4.0.16-02421e46';
-import { escapeHtml } from '../core/html.js?v=4.0.16-02421e46';
-import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.16-02421e46';
-import { renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.16-02421e46';
-import { renderSessionConfig } from '../features/session_config.js?v=4.0.16-02421e46';
-import { renderWebhooks } from '../features/webhooks.js?v=4.0.16-02421e46';
-import { formatNumber, t } from '../core/i18n.js?v=4.0.16-02421e46';
+import { icon } from '../components/icons.js?v=4.0.16-91432cf3';
+import { renderStatus } from '../components/status.js?v=4.0.16-91432cf3';
+import { escapeHtml } from '../core/html.js?v=4.0.16-91432cf3';
+import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js?v=4.0.16-91432cf3';
+import { CONTACT_SEARCH_MIN_LENGTH, renderContactCards, renderGroupCards } from '../features/entities.js?v=4.0.16-91432cf3';
+import { renderSessionConfig } from '../features/session_config.js?v=4.0.16-91432cf3';
+import { renderWebhooks } from '../features/webhooks.js?v=4.0.16-91432cf3';
+import { formatNumber, t } from '../core/i18n.js?v=4.0.16-91432cf3';
 const tabs = [
     ['overview', 'Visão geral'],
     ['config', 'Configuração'],
@@ -60,18 +60,23 @@ const renderOverview = (session, contactCount) => `
     </div>
   </section>
 `;
-const renderContacts = (session, contacts, hasMore, loading, error, query) => `
+const renderContacts = (session, contacts, hasMore, loading, error, query) => {
+    const queryLength = query.trim().length;
+    const awaitingMinimum = queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH;
+    return `
   <section class="section">
     <div class="section__heading">
-      <div><h2>${t('Contatos da sessão')}</h2><p class="muted">${t('Nome, telefone de apresentação e LID canônico.')}</p></div>
+      <div><h2>${t('Contatos da sessão')}</h2><p class="muted">${t('Nome, username, telefone de apresentação e LID canônico.')}</p></div>
       <button class="btn btn--ghost" type="button" data-action="reload-contacts">${icon('refresh')}${t('Atualizar')}</button>
     </div>
-    <label class="search-field entity-search">${icon('search')}<input data-filter="contacts-query" value="${escapeHtml(query)}" placeholder="${t('Pesquisar nome, telefone, username ou LID')}" aria-label="${t('Pesquisar contatos')}"></label>
+    <label class="search-field entity-search">${icon('search')}<input data-filter="contacts-query" value="${escapeHtml(query)}" placeholder="${t('Pesquisar nome, telefone, username ou LID')}" aria-label="${t('Pesquisar contatos')}" minlength="${CONTACT_SEARCH_MIN_LENGTH}" autocomplete="off"></label>
+    ${awaitingMinimum ? `<p class="entity-search-hint" aria-live="polite">${t('Digite pelo menos 3 caracteres para pesquisar.')}</p>` : ''}
     ${error ? `<div class="inline-error">${escapeHtml(error)}</div>` : ''}
     ${loading ? `<div class="loading-state">${t('Carregando contatos…')}</div>` : renderContactCards(contacts, sessionPhone(session))}
     ${hasMore && !loading ? `<div class="load-more"><button class="btn" type="button" data-action="load-more-contacts">${t('Carregar mais')}</button></div>` : ''}
   </section>
 `;
+};
 const renderGroups = (session, groups, hasMore, loading, error, query) => `
   <section class="section">
     <div class="section__heading">

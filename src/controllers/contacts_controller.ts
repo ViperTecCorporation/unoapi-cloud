@@ -69,6 +69,9 @@ export class ContactsController {
     if (cursor !== undefined && !/^\d+$/.test(cursor)) {
       return res.status(400).send({ error: 'cursor_must_be_numeric' })
     }
+    if (search && search.length < 3) {
+      return res.status(400).send({ error: 'search_must_have_at_least_3_characters' })
+    }
     if (search && search.length > 100) {
       return res.status(400).send({ error: 'search_must_have_at_most_100_characters' })
     }

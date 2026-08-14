@@ -28,6 +28,7 @@ import type { Store } from '../../src/services/store'
 import type { MediaStore } from '../../src/services/media_store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
 import { voipPlugin } from '@vipertec/zapo-voip'
+import { zapoUsernameIndex } from '../../src/services/zapo/zapo_username_index'
 
 describe('ClientZapo', () => {
   const phone = '5566999999999'
@@ -187,6 +188,30 @@ describe('ClientZapo', () => {
     expect(listener.process).toHaveBeenCalledWith(phone, expect.any(Array), 'notify')
     expect(listener.process).toHaveBeenCalledWith(phone, expect.any(Array), 'update')
     expect(dataStore.setGroupMetada).toHaveBeenCalledWith('120363@g.us', expect.objectContaining({ subject: 'Equipe' }))
+  })
+
+  test('enriches an incoming webhook message with a username cached by LID', async () => {
+    const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
+    config.useRedis = true
+    await service.connect(1)
+
+    await handlers.message({
+      key: {
+        id: 'username-cache-1',
+        remoteJid: '149396209594612@lid',
+        remoteJidAlt: '573106677588@s.whatsapp.net',
+        fromMe: false,
+        isNewsletter: false,
+      },
+      timestampSeconds: 1,
+      message: { conversation: 'oi' },
+    })
+
+    expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
+      key: expect.objectContaining({ senderUsername: 'raulasalazart' }),
+    })], 'notify')
+    expect(lookup).toHaveBeenCalledWith(phone, '149396209594612@lid', expect.any(Number), false)
+    lookup.mockRestore()
   })
 
   test('marks incoming messages as read on receipt when configured', async () => {
@@ -831,6 +856,29 @@ describe('ClientZapo', () => {
     expect(client.auth.requestPairingCode).toHaveBeenCalledWith(phone)
     await service.resyncAppState()
     expect(client.chat.sync).toHaveBeenCalledTimes(1)
+  })
+
+  test('includes a cached username in numeric contact verification', async () => {
+    const lookup = jest.spyOn(zapoUsernameIndex, 'resolveByLid').mockResolvedValue('raulasalazart')
+    config.useRedis = true
+    session.contacts.getByJid.mockResolvedValue({
+      jid: '111@lid',
+      lid: '111@lid',
+      phoneNumber: '5566111',
+      displayName: 'Raul',
+      lastUpdatedMs: 1,
+    } as never)
+    await service.connect(1)
+
+    await expect(service.contacts(['5566111'])).resolves.toEqual([
+      expect.objectContaining({
+        wa_id: '5566111',
+        user_id: '111@lid',
+        username: 'raulasalazart',
+      }),
+    ])
+    expect(lookup).toHaveBeenCalledWith(phone, '111@lid', expect.any(Number), false)
+    lookup.mockRestore()
   })
 
   test('does not send while the Zapo socket is still pairing', async () => {

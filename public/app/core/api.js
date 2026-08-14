@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.16-02421e46';
+import { t } from './i18n.js?v=4.0.16-91432cf3';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
@@ -74,8 +74,9 @@ export class ApiClient {
     }
     contacts(phone, cursor = '0', limit = 20, search = '') {
         const query = new URLSearchParams({ cursor, limit: `${limit}` });
-        if (search.trim())
-            query.set('search', search.trim());
+        const normalizedSearch = search.trim();
+        if (normalizedSearch.length >= 3)
+            query.set('search', normalizedSearch);
         return this.request(`/${encodeURIComponent(phone)}/contacts?${query}`);
     }
     groups(phone, cursor = '0', limit = 20, search = '') {

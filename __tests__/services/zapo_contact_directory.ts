@@ -162,6 +162,51 @@ describe('ZapoContactDirectory', () => {
     })
   })
 
+  test('enriches and searches contacts by the username index when the Zapo contact hash lacks it', async () => {
+    const redis = {
+      scan: jest.fn().mockResolvedValue({
+        cursor: '0',
+        keys: ['unoapi:zapo:contact:session:149396209594612@lid'],
+      }),
+      hGetAll: jest.fn().mockResolvedValue({
+        jid: '149396209594612@lid',
+        phone_number: '573106677588@s.whatsapp.net',
+        display_name: 'Raul',
+        last_updated_ms: '10',
+      }),
+    }
+    const usernameLookup = jest.fn().mockResolvedValue(new Map([
+      ['149396209594612@lid', 'raulasalazart'],
+    ]))
+    const loadConfig: getConfig = jest.fn().mockResolvedValue({
+      ...defaultConfig,
+      provider: 'zapo',
+      useRedis: true,
+    })
+    const directory = new ZapoContactDirectory(
+      loadConfig,
+      async () => redis as never,
+      undefined,
+      async () => undefined,
+      async () => 1,
+      usernameLookup,
+    )
+
+    const page = await directory.list('session', { search: 'raulasalazart' })
+
+    expect(page.contacts).toEqual([
+      expect.objectContaining({
+        user_id: '149396209594612@lid',
+        username: 'raulasalazart',
+      }),
+    ])
+    expect(usernameLookup).toHaveBeenCalledWith(
+      'session',
+      ['149396209594612@lid'],
+      false,
+    )
+  })
+
   test('continues scanning when the first Redis cursor page has no session contacts', async () => {
     const redis = {
       scan: jest

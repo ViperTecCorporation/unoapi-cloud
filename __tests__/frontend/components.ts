@@ -97,11 +97,12 @@ describe('frontend components', () => {
 
   test('renders contact and group cards with picture slots', () => {
     const contact = renderContactCards(
-      [{ user_id: '1@lid', phone_number: '5566999999999', display_name: 'Maria', last_updated_ms: 1 }],
+      [{ user_id: '1@lid', phone_number: '5566999999999', display_name: 'Maria', username: '@maria.vendas', last_updated_ms: 1 }],
       '5566000000000',
     )
     expect(contact).toContain('data-recipient="1@lid"')
     expect(contact).toContain('data-value="5566999999999"')
+    expect(contact).toContain('class="entity-card__username">@maria.vendas</span>')
 
     const group = renderGroupCards([{ id: '1@g.us', subject: 'Equipe', participants_count: 4 }], '5566000000000')
     expect(group).toContain('4 participantes')

@@ -43,6 +43,27 @@ describe('frontend pages', () => {
     expect(html).not.toContain('aria-modal="true"')
     expect(html.indexOf('data-tab="webhooks"')).toBeLessThan(html.indexOf('data-tab="contacts"'))
     expect(html.indexOf('data-tab="contacts"')).toBeLessThan(html.indexOf('data-tab="groups"'))
+    expect(html).toContain('minlength="3"')
+    expect(html).toContain('Nome, username, telefone de apresentação e LID canônico.')
+  })
+
+  test('asks for three characters before searching contacts', () => {
+    const html = renderSessionPage({
+      session: { phone: '5566', status: 'online', webhooks: [] },
+      tab: 'contacts',
+      contacts: [],
+      contactsHasMore: false,
+      contactCount: 0,
+      contactsQuery: 'ma',
+      groups: [],
+      groupsHasMore: false,
+      groupsQuery: '',
+      loadingSection: false,
+      sectionError: '',
+    })
+
+    expect(html).toContain('Digite pelo menos 3 caracteres para pesquisar.')
+    expect(html).toContain('aria-live="polite"')
   })
 
   test('embeds the public documentation in the API front', () => {

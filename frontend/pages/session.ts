@@ -3,7 +3,7 @@ import { renderStatus } from '../components/status.js'
 import { escapeHtml } from '../core/html.js'
 import { isLegacySession, isOnlineStatus, sessionLabel, sessionPhone } from '../domain/session.js'
 import type { ContactDirectoryItem, GroupSummary, SessionConfig, SessionTab } from '../domain/types.js'
-import { renderContactCards, renderGroupCards } from '../features/entities.js'
+import { CONTACT_SEARCH_MIN_LENGTH, renderContactCards, renderGroupCards } from '../features/entities.js'
 import { renderSessionConfig } from '../features/session_config.js'
 import { renderWebhooks } from '../features/webhooks.js'
 import { formatNumber, t, type TranslationKey } from '../core/i18n.js'
@@ -84,18 +84,23 @@ const renderOverview = (session: SessionConfig, contactCount: number): string =>
   </section>
 `
 
-const renderContacts = (session: SessionConfig, contacts: ContactDirectoryItem[], hasMore: boolean, loading: boolean, error: string, query: string): string => `
+const renderContacts = (session: SessionConfig, contacts: ContactDirectoryItem[], hasMore: boolean, loading: boolean, error: string, query: string): string => {
+  const queryLength = query.trim().length
+  const awaitingMinimum = queryLength > 0 && queryLength < CONTACT_SEARCH_MIN_LENGTH
+  return `
   <section class="section">
     <div class="section__heading">
-      <div><h2>${t('Contatos da sessão')}</h2><p class="muted">${t('Nome, telefone de apresentação e LID canônico.')}</p></div>
+      <div><h2>${t('Contatos da sessão')}</h2><p class="muted">${t('Nome, username, telefone de apresentação e LID canônico.')}</p></div>
       <button class="btn btn--ghost" type="button" data-action="reload-contacts">${icon('refresh')}${t('Atualizar')}</button>
     </div>
-    <label class="search-field entity-search">${icon('search')}<input data-filter="contacts-query" value="${escapeHtml(query)}" placeholder="${t('Pesquisar nome, telefone, username ou LID')}" aria-label="${t('Pesquisar contatos')}"></label>
+    <label class="search-field entity-search">${icon('search')}<input data-filter="contacts-query" value="${escapeHtml(query)}" placeholder="${t('Pesquisar nome, telefone, username ou LID')}" aria-label="${t('Pesquisar contatos')}" minlength="${CONTACT_SEARCH_MIN_LENGTH}" autocomplete="off"></label>
+    ${awaitingMinimum ? `<p class="entity-search-hint" aria-live="polite">${t('Digite pelo menos 3 caracteres para pesquisar.')}</p>` : ''}
     ${error ? `<div class="inline-error">${escapeHtml(error)}</div>` : ''}
     ${loading ? `<div class="loading-state">${t('Carregando contatos…')}</div>` : renderContactCards(contacts, sessionPhone(session))}
     ${hasMore && !loading ? `<div class="load-more"><button class="btn" type="button" data-action="load-more-contacts">${t('Carregar mais')}</button></div>` : ''}
   </section>
 `
+}
 
 const renderGroups = (session: SessionConfig, groups: GroupSummary[], hasMore: boolean, loading: boolean, error: string, query: string): string => `
   <section class="section">
