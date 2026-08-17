@@ -78,6 +78,9 @@ fi
 SERVICE_NAME="viperconnect${SERVICE_SUFFIX}.service"
 RELEASES_ROOT="${INSTALL_ROOT}/releases"
 RELEASE_DIR="${RELEASES_ROOT}/${TAG}"
+RELAY_BRIDGE_RELATIVE="vendor/zapo-voip/native/relay-bridge/relay-bridge"
+RELAY_BRIDGE_RELEASE_PATH="${RELEASE_DIR}/${RELAY_BRIDGE_RELATIVE}"
+RELAY_BRIDGE_CURRENT_PATH="${INSTALL_ROOT}/current/${RELAY_BRIDGE_RELATIVE}"
 ENV_TARGET="/etc/viperconnect/viperconnect.env"
 UNIT_TARGET="/etc/systemd/system/${SERVICE_NAME}"
 
@@ -131,7 +134,7 @@ install -d -m 0755 "$INSTALL_ROOT" "$RELEASES_ROOT"
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 \
   "$STATE_ROOT" "$STATE_ROOT/data" "$STATE_ROOT/data/medias" "$STATE_ROOT/data/logs"
 
-if [[ ! -f "${RELEASE_DIR}/dist/src/cloud.js" ]]; then
+if [[ ! -f "${RELEASE_DIR}/dist/src/cloud.js" || ! -x "$RELAY_BRIDGE_RELEASE_PATH" ]]; then
   if [[ -e "$RELEASE_DIR" ]]; then
     mv "$RELEASE_DIR" "${RELEASE_DIR}.incomplete.$(date +%s)"
   fi
@@ -142,11 +145,15 @@ if [[ ! -f "${RELEASE_DIR}/dist/src/cloud.js" ]]; then
     cd "$STAGING_DIR"
     yarn install --frozen-lockfile
     yarn build
+    bash scripts/build-native-relay-bridge.sh \
+      --source-dir vendor/zapo-voip/native/relay-bridge \
+      --output "${STAGING_DIR}/${RELAY_BRIDGE_RELATIVE}"
     rm -rf -- node_modules
     NODE_ENV=production yarn install --production --frozen-lockfile --no-progress
     test ! -d node_modules/@whiskeysockets/baileys
     test -f dist/src/cloud.js
     test -f public/app/main.js
+    test -x "$RELAY_BRIDGE_RELATIVE"
   )
   if [[ -e "${STAGING_DIR}/data" && ! -L "${STAGING_DIR}/data" ]]; then
     mv "${STAGING_DIR}/data" "${STAGING_DIR}/data.build"
@@ -167,6 +174,10 @@ fi
 
 grep -Eq '^REDIS_URL=.+$' "$ENV_TARGET" || { printf 'REDIS_URL ausente em %s\n' "$ENV_TARGET" >&2; exit 1; }
 grep -Eq '^AMQP_URL=.+$' "$ENV_TARGET" || { printf 'AMQP_URL ausente em %s\n' "$ENV_TARGET" >&2; exit 1; }
+if ! grep -Eq '^ZAPO_VOIP_RELAY_BRIDGE_PATH=.+$' "$ENV_TARGET"; then
+  printf '\nZAPO_VOIP_RELAY_BRIDGE_PATH=%s\n' "$RELAY_BRIDGE_CURRENT_PATH" >> "$ENV_TARGET"
+fi
+chmod 0600 "$ENV_TARGET"
 
 UNIT_TEMPLATE="${RELEASE_DIR}/deploy/systemd/viperconnect.service.in"
 sed \

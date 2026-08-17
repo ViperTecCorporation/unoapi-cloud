@@ -1,7 +1,12 @@
 # Instalação nativa no Linux
 
 O instalador oficial prepara o ViperConnect em Debian ou Ubuntu com Node.js 24,
-build Zapo-only, dependências de produção e serviço `systemd`.
+build Zapo-only, dependências de produção, o helper nativo de mídia
+`relay-bridge` e serviço `systemd`.
+
+O helper é testado e compilado com um toolchain Go 1.25 oficial temporário. O
+instalador valida o SHA-256 publicado em `go.dev` e remove o toolchain ao final;
+não é necessário instalar Go previamente no servidor.
 
 Redis/Valkey e RabbitMQ são serviços externos obrigatórios. O instalador não
 altera a configuração deles: informe suas URLs no arquivo de ambiente.
@@ -11,10 +16,11 @@ Em servidores menores, configure swap antes da instalação.
 
 ## Instalação em processo único
 
-Baixe a tag imutável e prepare o ambiente:
+Baixe a tag imutável que contém o instalador corrigido e prepare o ambiente.
+Substitua `vX.Y.Z` pela versão publicada desejada:
 
 ```sh
-git clone --depth 1 --branch v4.0.2 \
+git clone --depth 1 --branch vX.Y.Z \
   https://github.com/ViperTecCorporation/ViperConnect.git
 cd ViperConnect
 cp deploy/native/viperconnect.env.example /root/viperconnect.env
@@ -25,7 +31,7 @@ Execute a partir de um checkout do projeto:
 
 ```sh
 sudo bash scripts/install-native-linux.sh \
-  --tag v4.0.2 \
+  --tag vX.Y.Z \
   --env-file /root/viperconnect.env
 ```
 
@@ -36,10 +42,10 @@ Sem `--role`, a unit `viperconnect.service` inicia web, broker e worker Zapo.
 Execute uma vez para cada papel:
 
 ```sh
-sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role web --env-file /root/viperconnect.env
-sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role broker
-sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role video
-sudo bash scripts/install-native-linux.sh --tag v4.0.2 --role worker
+sudo bash scripts/install-native-linux.sh --tag vX.Y.Z --role web --env-file /root/viperconnect.env
+sudo bash scripts/install-native-linux.sh --tag vX.Y.Z --role broker
+sudo bash scripts/install-native-linux.sh --tag vX.Y.Z --role video
+sudo bash scripts/install-native-linux.sh --tag vX.Y.Z --role worker
 ```
 
 As units criadas são:
@@ -72,9 +78,10 @@ ocupou um núcleo por aproximadamente 3min30s até gerar um MP4 de 13,9 MB.
 
 ```text
 /opt/viperconnect/
-  current -> releases/v4.0.2
+  current -> releases/vX.Y.Z
   releases/
-    v4.0.2/
+    vX.Y.Z/
+      vendor/zapo-voip/native/relay-bridge/relay-bridge
 /var/lib/viperconnect/
   data/
 /etc/viperconnect/
@@ -82,9 +89,20 @@ ocupou um núcleo por aproximadamente 3min30s até gerar um MP4 de 13,9 MB.
 ```
 
 O build é realizado numa pasta temporária. O link `current` só muda depois de
-build, poda das dependências de desenvolvimento e validações concluídas.
+build, teste e compilação do `relay-bridge`, poda das dependências de
+desenvolvimento e validações concluídas.
 O `node_modules` usado em produção contém somente o grafo necessário ao runtime
 Zapo.
+
+O instalador preenche, quando ainda ausente, a variável abaixo no
+`EnvironmentFile` compartilhado:
+
+```dotenv
+ZAPO_VOIP_RELAY_BRIDGE_PATH=/opt/viperconnect/current/vendor/zapo-voip/native/relay-bridge/relay-bridge
+```
+
+Uma configuração explícita já existente é preservada, permitindo manter um
+binário externo em instalações personalizadas.
 
 ## Atualização e rollback
 
@@ -109,10 +127,11 @@ journalctl -u viperconnect.service -f
 systemctl status viperconnect-video.service
 systemctl status viperconnect-broker.service
 curl http://127.0.0.1:9876/ping
+test -x /opt/viperconnect/current/vendor/zapo-voip/native/relay-bridge/relay-bridge
 ```
 
 Antes de alterar o host, valide o plano:
 
 ```sh
-bash scripts/install-native-linux.sh --dry-run --tag v4.0.2
+bash scripts/install-native-linux.sh --dry-run --tag vX.Y.Z
 ```
