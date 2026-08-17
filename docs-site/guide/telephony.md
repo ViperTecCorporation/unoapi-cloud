@@ -124,6 +124,13 @@ retorna `line_capacity_exhausted`, sem fallback. A variável
 `VOIP_MAX_CONCURRENT_CALLS` define a capacidade anunciada pelo worker; mantenha
 o valor igual ou acima do configurado nas linhas.
 
+Cada ramal também possui um **Modo de conexão SIP** independente da capacidade
+da linha. **Ramal tradicional** permite uma chamada por registro conectado.
+**Tronco SIP/PBX** permite vários diálogos pelo mesmo registro SIP/RTP, indicado
+para Asterisk, FreePBX, Issabel e outros PABXs. O modo é explícito e nunca é
+deduzido pelo `User-Agent`; configurações antigas permanecem como ramal
+tradicional.
+
 Em validação real de 2026-08-06, duas chamadas de saída simultâneas e duas
 chamadas de entrada simultâneas foram mantidas na mesma linha, com áudio
 bidirecional independente, encerramento normal e zero erro SRTP/Opus.
@@ -239,6 +246,14 @@ avançado válido; ao remover o último destino, o básico é reativado.
 - `DELETE /admin/voip/console/recording/accounts/{accountId}`: remove as
   gravações armazenadas da linha e retorna `deleted` e `bytes`.
 
+Na retenção, `0` desativa a exclusão automática. Um valor maior remove apenas
+a mídia local ou S3 que esteja finalizada, com status `available`, e cuja data
+de término seja anterior ao corte. A limpeza roda ao iniciar o serviço, a cada
+6 horas e depois de salvar a configuração. O histórico da chamada é mantido e
+somente os campos da gravação são limpos; uma falha no storage preserva esses
+campos para nova tentativa. O intervalo pode ser ajustado no serviço VoIP com
+`VOIP_CALL_RECORDING_RETENTION_CLEANUP_INTERVAL_MS`.
+
 A página **Telefonia** do Manager usa abas, grids e modais para empresas,
 linhas, ramais e **Roteamento avançado**. O grid de ramais distingue
 **Automático** de **Avançado** e oculta automáticos offline por padrão.
@@ -253,7 +268,9 @@ quando o campo secreto não é reenviado.
 Não existe estado **Aguardando empresa** nem botão **Ativar linha**. O
 provisionamento é idempotente, preserva empresa, senha, Chatwoot, IA, grupos e
 rotas existentes e usa o número da sessão como usuário. O administrador usa
-**Credenciais** no grid de ramais para recuperar SIP e WebRTC.
+**Credenciais** no grid de ramais para recuperar SIP e WebRTC e selecionar
+**Ramal tradicional** ou **Tronco SIP/PBX**. No automático, somente esse modo é
+alterado; identidade, senha, empresa e vínculos continuam gerenciados.
 
 O mesmo ramal pode ser registrado em vários telefones SIP e navegadores WebRTC.
 Todos tocam na chamada recebida; o primeiro que atende fica com a chamada e as

@@ -585,6 +585,18 @@ export class ViperConnectApp {
       } catch (error) {
         this.showToast(this.messageFor(error))
       }
+    } else if (form.dataset.form === 'voip-sip-mode') {
+      try {
+        const extensionId = `${data.get('extensionId') || ''}`.trim()
+        const sipEndpointMode = data.get('sipEndpointMode') === 'trunk' ? 'trunk' : 'extension'
+        if (!extensionId) throw new Error('extension_id_required')
+        await this.api.voipConsole(`extensions/${encodeURIComponent(extensionId)}/sip-mode`, 'PUT', { sipEndpointMode })
+        this.modal = undefined
+        this.showToast(t('Configuração salva.'))
+        await this.loadVoip()
+      } catch (error) {
+        this.showToast(this.messageFor(error))
+      }
     } else if (form.dataset.form === 'voip-recording-settings') {
       try {
         await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data))
@@ -671,7 +683,7 @@ export class ViperConnectApp {
       payload.basicInboundEnabled = !data.has('disableBasicInbound')
     }
     if (resource === 'extensions') {
-      put('displayName', 'username', 'password', 'companyId', 'type')
+      put('displayName', 'username', 'password', 'companyId', 'type', 'sipEndpointMode')
       const groupIds = values('extensionGroupIds')
       const extensionId = this.modal?.type === 'voip-resource' && this.modal.resource === 'extensions' ? this.modal.id : value('id')
       const current = (this.voip.extensions || []).find((item) => `${item.id}` === extensionId) as any

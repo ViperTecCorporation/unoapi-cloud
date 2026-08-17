@@ -197,6 +197,13 @@ Depois confirme no Manager:
 5. histórico, gravação e configuração persistem após reiniciar o serviço;
 6. o simulador de roteamento resolve a linha e o ramal esperados sem abrir chamada.
 
+Se a retenção de gravações estiver configurada acima de zero, confirme também
+nos logs a execução de `call recording retention cleanup finished`. A rotina
+preserva o histórico, remove somente mídia finalizada e vencida e mantém os
+metadados quando o storage falha, permitindo uma nova tentativa. O intervalo
+padrão é de 6 horas e pode ser alterado por
+`VOIP_CALL_RECORDING_RETENTION_CLEANUP_INTERVAL_MS`.
+
 Em uma instalação dual-stack, faça um teste independente com ramal IPv4 e
 outro IPv6. O segundo deve receber SDP `IN IP6` e manter áudio nos dois sentidos;
 o primeiro deve preservar o SDP IPv4 anterior.

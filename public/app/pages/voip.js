@@ -1,7 +1,7 @@
-import { icon } from '../components/icons.js?v=4.0.18-ae8d08b9';
-import { renderModal } from '../components/modal.js?v=4.0.18-ae8d08b9';
-import { renderStatus } from '../components/status.js?v=4.0.18-ae8d08b9';
-import { escapeHtml } from '../core/html.js?v=4.0.18-ae8d08b9';
+import { icon } from '../components/icons.js?v=4.0.19-1226f45c';
+import { renderModal } from '../components/modal.js?v=4.0.19-1226f45c';
+import { renderStatus } from '../components/status.js?v=4.0.19-1226f45c';
+import { escapeHtml } from '../core/html.js?v=4.0.19-1226f45c';
 const labels = {
     companies: 'Empresas',
     accounts: 'Linhas Zapo',
@@ -346,6 +346,10 @@ const switchField = (name, label, value) => `<label class="voip-check"><input na
 const selectField = (name, label, items, current, required = false, multiple = false) => `<label class="field"><span>${escapeHtml(label)}</span><select name="${name}" ${required ? 'required' : ''} ${multiple ? 'multiple size="5"' : ''}>${multiple ? '' : '<option value="">Selecione</option>'}${options(items, current, multiple)}</select></label>`;
 const textareaField = (name, label, value = '') => `<label class="field wide"><span>${escapeHtml(label)}</span><textarea name="${name}" rows="6">${escapeHtml(`${value ?? ''}`)}</textarea></label>`;
 const configuredSecret = (configured) => configured ? '<p class="muted">Chave configurada. Deixe o campo vazio para manter.</p>' : '';
+const sipEndpointModeField = (value) => {
+    const current = value === 'trunk' ? 'trunk' : 'extension';
+    return `<fieldset class="voip-sip-mode wide"><legend>Modo de conexão SIP</legend><label class="voip-sip-mode__option"><input name="sipEndpointMode" type="radio" value="extension" ${checked(current === 'extension')}><span><strong>Ramal tradicional</strong><small>Uma chamada por dispositivo ou registro SIP.</small></span></label><label class="voip-sip-mode__option"><input name="sipEndpointMode" type="radio" value="trunk" ${checked(current === 'trunk')}><span><strong>Tronco SIP/PBX</strong><small>Permite várias chamadas simultâneas no mesmo registro, respeitando o limite da linha.</small></span></label></fieldset>`;
+};
 export const renderVoipResourceModal = (state, resource, id = '') => {
     const item = asItems(state[resource]).find(value => `${value.id}` === id) || { enabled: true };
     const isNew = !id;
@@ -396,7 +400,7 @@ export const renderVoipResourceModal = (state, resource, id = '') => {
         const typeField = managedAutomatic
             ? `<input type="hidden" name="type" value="both">${field('_typeLabel', 'Transportes (gerenciados)', 'SIP e WebRTC', 'text', false, true)}`
             : `<label class="field"><span>Tipo</span><select name="type"><option value="both" ${selected(item.type, 'both')}>SIP e WebRTC</option><option value="sip" ${selected(item.type, 'sip')}>SIP/RTP</option><option value="webrtc" ${selected(item.type, 'webrtc')}>WebRTC</option></select></label>`;
-        fields += `${field('displayName', 'Nome do ramal', item.displayName, 'text', true)}${field('username', 'Usuário SIP', item.username, 'text', true, managedAutomatic)}${field('password', isNew ? 'Senha SIP' : 'Nova senha SIP (opcional)', '', 'password', isNew)}${companyField}${typeField}${selectField('extensionGroupIds', 'Grupos', extensionGroups, item.extensionGroupIds, false, true)}${distanceFields ? `<h3 class="wide">Distância nos grupos</h3>${distanceFields}<p class="muted wide">Menor número significa maior prioridade de toque dentro dos grupos selecionados.</p>` : ''}`;
+        fields += `${field('displayName', 'Nome do ramal', item.displayName, 'text', true)}${field('username', 'Usuário SIP', item.username, 'text', true, managedAutomatic)}${field('password', isNew ? 'Senha SIP' : 'Nova senha SIP (opcional)', '', 'password', isNew)}${companyField}${typeField}${sipEndpointModeField(item.sipEndpointMode)}${selectField('extensionGroupIds', 'Grupos', extensionGroups, item.extensionGroupIds, false, true)}${distanceFields ? `<h3 class="wide">Distância nos grupos</h3>${distanceFields}<p class="muted wide">Menor número significa maior prioridade de toque dentro dos grupos selecionados.</p>` : ''}`;
     }
     const content = `<form class="form-grid voip-editor-form" data-form="voip-resource-fields"><input type="hidden" name="resource" value="${resource}">${fields}<div class="form-actions wide">${!isNew && !managedAutomatic ? `<button class="btn btn--danger" type="button" data-action="delete-voip-resource" data-resource="${resource}" data-id="${escapeHtml(id)}">${icon('trash')}Excluir</button>` : ''}<button class="btn" type="submit">${icon('save')}Salvar</button></div></form>`;
     return renderModal('voip-resource', `${isNew ? 'Adicionar' : 'Editar'} ${labels[resource].toLowerCase()}`, content, { subtitle: 'Telefonia', wide: true });
@@ -414,6 +418,6 @@ export const renderVoipCredentialsModal = (value) => {
         ['WebSocket local', value.webrtc?.lan_ws_url],
         ['Domínio SIP', value.webrtc?.sip_domain],
     ].filter(([, item]) => item);
-    return renderModal('voip-credentials', 'Credenciais do ramal', `<div class="stack"><p class="muted">Use os mesmos dados em um telefone SIP ou cliente WebRTC. Somente administradores podem revelar a senha.</p><dl class="details-list">${rows.map(([label, item]) => `<div><dt>${escapeHtml(`${label}`)}</dt><dd><code>${escapeHtml(`${item}`)}</code> <button class="btn btn--icon btn--ghost" type="button" data-action="copy-value" data-value="${escapeHtml(`${item}`)}" aria-label="Copiar ${escapeHtml(`${label}`)}">${icon('copy')}</button></dd></div>`).join('')}</dl></div>`, { subtitle: value.displayName || value.username || 'Telefonia', wide: true });
+    return renderModal('voip-credentials', 'Credenciais do ramal', `<div class="stack"><p class="muted">Use os mesmos dados em um telefone SIP ou cliente WebRTC. Somente administradores podem revelar a senha.</p><dl class="details-list">${rows.map(([label, item]) => `<div><dt>${escapeHtml(`${label}`)}</dt><dd><code>${escapeHtml(`${item}`)}</code> <button class="btn btn--icon btn--ghost" type="button" data-action="copy-value" data-value="${escapeHtml(`${item}`)}" aria-label="Copiar ${escapeHtml(`${label}`)}">${icon('copy')}</button></dd></div>`).join('')}</dl><form class="form-grid" data-form="voip-sip-mode"><input type="hidden" name="extensionId" value="${escapeHtml(`${value.extensionId || ''}`)}">${sipEndpointModeField(value.sipEndpointMode)}<div class="form-actions wide"><button class="btn" type="submit">${icon('save')}Salvar modo SIP</button></div></form></div>`, { subtitle: value.displayName || value.username || 'Telefonia', wide: true });
 };
 export const voipResourceItem = (state, resource, id) => asItems(state[resource]).find(item => `${item.id}` === id);
