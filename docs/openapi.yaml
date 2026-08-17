@@ -1869,10 +1869,10 @@ components:
       properties:
         installed_version:
           type: string
-          example: 4.0.18
+          example: 4.0.19
         latest_version:
           type: string
-          example: 4.0.18
+          example: 4.0.19
         update_available:
           type: boolean
         status:

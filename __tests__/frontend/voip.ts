@@ -91,14 +91,21 @@ describe('VoIP manager page', () => {
 
   test('reveals automatic extension credentials without a manual activation flow', () => {
     const credentials = renderVoipCredentialsModal({
+      extensionId: 'automatic-1',
       username: '5566996269251',
       password: 'secret',
       sipUri: 'sip:5566996269251@sip.example.net',
+      sipEndpointMode: 'trunk',
       webrtc: { ws_url: 'wss://sip.example.net/sip/ws' },
     })
     expect(credentials).toContain('secret')
     expect(credentials).toContain('wss://sip.example.net/sip/ws')
     expect(credentials).toContain('data-action="copy-value"')
+    expect(credentials).toContain('data-form="voip-sip-mode"')
+    expect(credentials).toContain('name="extensionId" value="automatic-1"')
+    expect(credentials).toContain('Ramal tradicional')
+    expect(credentials).toContain('Tronco SIP/PBX')
+    expect(credentials).toContain('value="trunk" checked')
   })
 
   test('renders complete company AI settings and keeps redacted secrets blank', () => {
@@ -384,6 +391,7 @@ describe('VoIP manager page', () => {
         companyId: 'company-1',
         username: '5566999554300',
         type: 'both',
+        sipEndpointMode: 'trunk',
         enabled: true,
       }],
       lineGroups: [],
@@ -405,6 +413,8 @@ describe('VoIP manager page', () => {
     expect(extension).toContain('name="username" type="text" value="5566999554300" required readonly')
     expect(extension).toContain('name="type" value="both"')
     expect(extension).toContain('Transportes (gerenciados)')
+    expect(extension).toContain('Modo de conexão SIP')
+    expect(extension).toContain('value="trunk" checked')
     expect(extension).not.toContain('data-action="delete-voip-resource"')
   })
 

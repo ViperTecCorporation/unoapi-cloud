@@ -1253,6 +1253,48 @@ tbody tr:last-child td {
   padding-top: 22px;
 }
 
+.voip-sip-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.voip-sip-mode legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.voip-sip-mode__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.voip-sip-mode__option:has(input:checked) {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+
+.voip-sip-mode__option span {
+  display: grid;
+  gap: 4px;
+}
+
+.voip-sip-mode__option small {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .voip-recording-actions {
   display: grid;
   min-width: 250px;
@@ -1668,6 +1710,10 @@ select[multiple] {
 }
 
 @media (max-width: 640px) {
+  .voip-sip-mode {
+    grid-template-columns: 1fr;
+  }
+
   .queue-filters {
     grid-template-columns: 1fr;
   }

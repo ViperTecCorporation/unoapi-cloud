@@ -266,6 +266,7 @@ export interface VoipBootstrap {
     username?: string
     displayName?: string
     enabled?: boolean
+    sipEndpointMode?: 'extension' | 'trunk'
     provisioningSource?: 'zapo_auto' | string
     status?: 'active' | 'offline' | string
     companyId?: string

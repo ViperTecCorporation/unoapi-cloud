@@ -1,7 +1,9 @@
 import { spawnSync } from 'child_process'
+import { readFileSync } from 'fs'
 import path from 'path'
 
 const installer = path.resolve('scripts/install-native-linux.sh')
+const relayBuilder = path.resolve('scripts/build-native-relay-bridge.sh')
 const installerForBash =
   process.platform === 'win32'
     ? installer.replace(/^([A-Za-z]):\\/, (_match, drive: string) => `/mnt/${drive.toLowerCase()}/`).replace(/\\/g, '/')
@@ -52,6 +54,27 @@ describe('native Linux installer', () => {
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('role: video')
     expect(result.stdout).toContain('unit: viperconnect-video.service')
+  })
+
+  test('builds and validates the native relay helper before publishing a release', () => {
+    const source = readFileSync(installer, 'utf8')
+
+    expect(source).toContain('bash scripts/build-native-relay-bridge.sh')
+    expect(source).toContain('test -x "$RELAY_BRIDGE_RELATIVE"')
+    expect(source).toContain('ZAPO_VOIP_RELAY_BRIDGE_PATH=%s')
+  })
+
+  test('documents the relay builder without downloading a Go toolchain', () => {
+    const relayBuilderForBash = process.platform === 'win32'
+      ? relayBuilder.replace(/^([A-Za-z]):\\/, (_match, drive: string) => `/mnt/${drive.toLowerCase()}/`).replace(/\\/g, '/')
+      : relayBuilder
+    const result = spawnSync(bashCommand, process.platform === 'win32'
+      ? ['bash', relayBuilderForBash, '--help']
+      : [relayBuilderForBash, '--help'], { encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('--output PATH')
+    expect(result.stdout).toContain('--go-series VERSION')
   })
 
   test('rejects unsafe tags before requiring root', () => {
