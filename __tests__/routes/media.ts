@@ -98,6 +98,14 @@ describe('media routes', () => {
     expect(response.headers['content-type']).toContain(mimetype)
   })
 
+  test('returns a controlled gateway error when the media store download fails', async () => {
+    mediaStore.downloadMedia.mockRejectedValueOnce(new Error('storage unavailable'))
+
+    await request(app.server)
+      .get(`/v15.0/download/${phone}/${messageId}.${extension}`)
+      .expect(502)
+  })
+
   test('typebot media endpoint returns uno download url instead of stored signed url', async () => {
     const typebotMessageId = 'abc123XYZ'
     const rawMediaId = `${phone}-${typebotMessageId}`

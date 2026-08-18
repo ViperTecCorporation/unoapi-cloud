@@ -1,21 +1,22 @@
-import { ApiClient, ApiError } from './core/api.js?v=4.0.19-1226f45c';
-import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.19-1226f45c';
-import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.19-1226f45c';
-import { SocketBridge } from './core/socket.js?v=4.0.19-1226f45c';
-import { renderLayout, renderLogin } from './components/layout.js?v=4.0.19-1226f45c';
-import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.19-1226f45c';
-import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.19-1226f45c';
-import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.19-1226f45c';
-import { sessionConfigPayload } from './features/session_config.js?v=4.0.19-1226f45c';
-import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.19-1226f45c';
-import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.19-1226f45c';
-import { renderDashboard } from './pages/dashboard.js?v=4.0.19-1226f45c';
-import { DOCUMENTATION_ORIGIN, renderDocumentationPage } from './pages/documentation.js?v=4.0.19-1226f45c';
-import { renderSessionPage } from './pages/session.js?v=4.0.19-1226f45c';
-import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.19-1226f45c';
-import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.19-1226f45c';
-import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js?v=4.0.19-1226f45c';
-import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.19-1226f45c';
+import { ApiClient, ApiError } from './core/api.js?v=4.0.20-f1b3f88d';
+import { digitsOnly, escapeHtml, messageRecipient } from './core/html.js?v=4.0.20-f1b3f88d';
+import { getLocale, normalizeLocale, setLocale, t } from './core/i18n.js?v=4.0.20-f1b3f88d';
+import { SocketBridge } from './core/socket.js?v=4.0.20-f1b3f88d';
+import { renderLayout, renderLogin } from './components/layout.js?v=4.0.20-f1b3f88d';
+import { isLegacySession, sessionPhone } from './domain/session.js?v=4.0.20-f1b3f88d';
+import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js?v=4.0.20-f1b3f88d';
+import { shouldRenderBackgroundUpdate } from './domain/render_policy.js?v=4.0.20-f1b3f88d';
+import { ContactPictureLoader } from './domain/contact_picture_loader.js?v=4.0.20-f1b3f88d';
+import { sessionConfigPayload } from './features/session_config.js?v=4.0.20-f1b3f88d';
+import { renderConfirmDeregisterModal, renderConnectionModal, renderMessageModal, renderNewSessionModal } from './features/session_modals.js?v=4.0.20-f1b3f88d';
+import { renderWebhookModal, webhookPayload } from './features/webhooks.js?v=4.0.20-f1b3f88d';
+import { renderDashboard } from './pages/dashboard.js?v=4.0.20-f1b3f88d';
+import { DOCUMENTATION_ORIGIN, renderDocumentationPage } from './pages/documentation.js?v=4.0.20-f1b3f88d';
+import { renderSessionPage } from './pages/session.js?v=4.0.20-f1b3f88d';
+import { renderQueuePurgeModal, renderQueuesPage } from './pages/queues.js?v=4.0.20-f1b3f88d';
+import { renderRedisDeleteModal, renderRedisEditorModal, renderRedisPage } from './pages/redis.js?v=4.0.20-f1b3f88d';
+import { CONTACT_SEARCH_MIN_LENGTH, filterContacts, filterGroups } from './features/entities.js?v=4.0.20-f1b3f88d';
+import { renderVoipCredentialsModal, renderVoipPage, renderVoipRecordingSettingsModal, renderVoipResourceModal, } from './pages/voip.js?v=4.0.20-f1b3f88d';
 const TOKEN_KEY = 'whatsappApiToken';
 const THEME_KEY = 'viperconnect_theme';
 const SIDEBAR_KEY = 'viperconnect_sidebar_collapsed';
@@ -99,6 +100,7 @@ export class ViperConnectApp {
         this.versionStatus = emptyVersionStatus();
         this.api = api;
         this.socket = socket;
+        this.contactPictures = new ContactPictureLoader((phone, pictureId) => this.api.profilePicture(phone, pictureId));
         setLocale(normalizeLocale(localStorage.getItem(LOCALE_KEY) || navigator.language));
         document.documentElement.lang = getLocale();
         this.bindEvents();
@@ -848,6 +850,7 @@ export class ViperConnectApp {
         this.view = 'dashboard';
         this.modal = undefined;
         this.socket.clear();
+        this.contactPictures.clear();
         if (this.versionTimer)
             window.clearInterval(this.versionTimer);
         this.versionTimer = undefined;
@@ -972,7 +975,6 @@ export class ViperConnectApp {
         catch (error) {
             this.showToast(this.messageFor(error));
         }
-        await this.loadContacts(true);
     }
     async openSessionTab(tab) {
         this.tab = tab;
@@ -993,6 +995,8 @@ export class ViperConnectApp {
         this.loadingSection = true;
         this.sectionError = '';
         this.render();
+        let contactsToHydrate = [];
+        const requestedPhone = this.selectedPhone;
         try {
             const page = await this.api.contacts(this.selectedPhone, reset ? '0' : this.contacts.cursor, PAGE_SIZE, this.contactsQuery);
             const byId = new Map(this.contacts.items.map((contact) => [contact.user_id, contact]));
@@ -1003,6 +1007,7 @@ export class ViperConnectApp {
                 hasMore: page.has_more,
                 totalCount: page.total_count,
             };
+            contactsToHydrate = page.contacts;
         }
         catch (error) {
             this.sectionError = this.messageFor(error);
@@ -1011,6 +1016,13 @@ export class ViperConnectApp {
             this.loadingSection = false;
             if (shouldRenderBackgroundUpdate(!!this.modal))
                 this.render();
+        }
+        if (contactsToHydrate.length > 0) {
+            void this.contactPictures.hydrate(requestedPhone, contactsToHydrate).then(() => {
+                if (this.selectedPhone === requestedPhone && this.tab === 'contacts' && shouldRenderBackgroundUpdate(!!this.modal)) {
+                    this.render();
+                }
+            });
         }
     }
     async loadGroups(reset) {

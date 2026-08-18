@@ -32,6 +32,7 @@ describe('authenticated profile picture route', () => {
     const blacklist = mock<addToBlacklist>()
     const store = mock<Store>()
     const config = mock<Config>()
+    config.useRedis = false
     mediaStore = mock<MediaStore>()
     store.mediaStore = mediaStore
     config.getStore = jest.fn().mockResolvedValue(store)
@@ -107,6 +108,47 @@ describe('authenticated profile picture route', () => {
       .get(`/v13.0/${session}/profile-pictures/5566999069708`)
       .set('Authorization', 'TOKEN')
     expect(response.status).toBe(404)
+  })
+
+  test('caches a missing picture and avoids repeated storage probes', async () => {
+    mediaStore.getProfilePictureObject = jest.fn().mockResolvedValue(undefined)
+
+    const first = await request(app.server)
+      .get(`/v13.0/${session}/profile-pictures/5566999069708`)
+      .set('Authorization', 'TOKEN')
+    const second = await request(app.server)
+      .get(`/v13.0/${session}/profile-pictures/5566999069708`)
+      .set('Authorization', 'TOKEN')
+
+    expect(first.status).toBe(404)
+    expect(second.status).toBe(404)
+    expect(mediaStore.getProfilePictureObject).toHaveBeenCalledTimes(1)
+  })
+
+  test('coalesces concurrent storage probes for the same missing picture', async () => {
+    let resolveLookup: (value: undefined) => void = () => undefined
+    mediaStore.getProfilePictureObject = jest.fn().mockImplementation(() => new Promise<undefined>((resolve) => {
+      resolveLookup = resolve
+    }))
+
+    const first = request(app.server)
+      .get(`/v13.0/${session}/profile-pictures/5566999069708`)
+      .set('Authorization', 'TOKEN')
+      .then((response) => response)
+    const second = request(app.server)
+      .get(`/v13.0/${session}/profile-pictures/5566999069708`)
+      .set('Authorization', 'TOKEN')
+      .then((response) => response)
+    for (let attempt = 0; attempt < 20 && !mediaStore.getProfilePictureObject.mock.calls.length; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    expect(mediaStore.getProfilePictureObject).toHaveBeenCalledTimes(1)
+    resolveLookup(undefined)
+
+    const [firstResponse, secondResponse] = await Promise.all([first, second])
+    expect(firstResponse.status).toBe(404)
+    expect(secondResponse.status).toBe(404)
+    expect(mediaStore.getProfilePictureObject).toHaveBeenCalledTimes(1)
   })
 
   test('rejects oversized profile pictures before opening the stream', async () => {

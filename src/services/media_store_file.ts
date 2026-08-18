@@ -350,23 +350,37 @@ export const mediaStoreFile = (phone: string, config: Config, getDataStore: getD
   }
 
   mediaStore.downloadMedia = async (res: Response, file: string) => {
-    const stream = await mediaStore.downloadMediaStream(file)
+    const withoutExtension = file.replace(/\.[^/.]+$/, '')
+    const mediaId = withoutExtension.split('/').pop()
+    const dataStore = mediaId ? await getDataStore(phone, config) : undefined
+    const mediaPayload = mediaId ? await dataStore?.loadMediaPayload(mediaId) : undefined
+    const mimeType = mediaPayload?.mime_type || mediaPayload?.content_type
+    let resolvedFile = file
+
+    if (mediaId && mimeType) {
+      const canonicalFile = mediaStore.getFilePath(phone, mediaId, mimeType, mediaPayload?.filename)
+      if (canonicalFile !== file) {
+        if (await mediaStore.hasMedia(canonicalFile)) {
+          resolvedFile = canonicalFile
+          logger.info('Resolved media download extension from requested path: %s -> %s', file, canonicalFile)
+        } else {
+          logger.warn('Canonical media object is unavailable; trying requested path: %s', canonicalFile)
+        }
+      }
+    }
+
+    const stream = await mediaStore.downloadMediaStream(resolvedFile)
     if (!stream) {
-      logger.error('Not retrieve the media: %', file)
+      logger.error('Not retrieve the media: %s', resolvedFile)
       res.sendStatus(404)
       return
     }
-    const withoutExtension = file.replace(/\.[^/.]+$/, '')
-    const mediaId = withoutExtension.split('/')[1]
     if (mediaId) {
-      const dataStore = await getDataStore(phone, config)
-      const mediaPayload = await dataStore.loadMediaPayload(mediaId!)
       if (mediaPayload?.filename) {
         res.setHeader('Content-disposition', `attachment; filename="${encodeURIComponent(mediaPayload.filename)}"`)
       }
-      const contentType = mediaPayload?.mime_type || mediaPayload?.content_type
-      if (contentType) {
-        res.contentType(contentType)
+      if (mimeType) {
+        res.contentType(mimeType)
       }
     }
     stream.pipe(res)

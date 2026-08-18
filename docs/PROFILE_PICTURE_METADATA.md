@@ -85,3 +85,16 @@ Consumers can build a stable change signature from:
 
 Legacy consumers may continue using `picture`; new consumers should prefer the
 authenticated ID route.
+
+## Contact directory
+
+`GET /{session}/contacts` preserves the cached legacy `picture` URL and also
+returns `picture_id`. The directory is intentionally cache-only: a missing URL
+does not trigger a per-contact S3/R2/MinIO lookup. This prevents full contact
+syncs from producing one or more `HeadObject` requests for every PN/LID alias.
+
+The manager frontend requests the authenticated route only for contacts in the
+visible page, limits concurrent downloads and reuses both successful and 404
+results for the current browser session. Webhook payload compatibility is
+unchanged: when available, `picture` continues to accompany `picture_id` and
+`picture_metadata`.

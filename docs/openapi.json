@@ -7054,7 +7054,12 @@
                 },
                 "picture": {
                   "type": "string",
-                  "format": "uri"
+                  "format": "uri",
+                  "description": "URL legada quando já disponível no cache; a listagem não consulta o storage em caso de ausência"
+                },
+                "picture_id": {
+                  "type": "string",
+                  "description": "Identidade estável PN ou LID para download autenticado pela UnoAPI"
                 },
                 "last_updated_ms": {
                   "type": "integer",

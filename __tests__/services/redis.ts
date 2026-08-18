@@ -1,4 +1,22 @@
 const store = new Map<string, string>()
+const sets = new Map<string, Set<string>>()
+
+const addSetMembers = (key: string, members: string | string[]) => {
+  const values = Array.isArray(members) ? members : [members]
+  const target = sets.get(key) || new Set<string>()
+  const before = target.size
+  values.forEach((member) => target.add(member))
+  sets.set(key, target)
+  return target.size - before
+}
+
+const removeSetMembers = (key: string, members: string | string[]) => {
+  const values = Array.isArray(members) ? members : [members]
+  const target = sets.get(key) || new Set<string>()
+  let removed = 0
+  values.forEach((member) => { if (target.delete(member)) removed += 1 })
+  return removed
+}
 
 const mockClient: any = {
   connect: jest.fn(async () => {}),
@@ -22,14 +40,59 @@ const mockClient: any = {
   }),
   del: jest.fn(async (key: string) => (store.delete(key) ? 1 : 0)),
   expire: jest.fn(async () => 1),
+  publish: jest.fn(async () => 1),
+  sAdd: jest.fn(async (key: string, members: string | string[]) => addSetMembers(key, members)),
+  sRem: jest.fn(async (key: string, members: string | string[]) => removeSetMembers(key, members)),
+  sMembers: jest.fn(async (key: string) => [...(sets.get(key) || [])]),
+  mGet: jest.fn(async (keys: string[]) => keys.map((key) => store.get(key) || null)),
+  scan: jest.fn(async () => ({ cursor: '0', keys: [] })),
+  failNextExec: false,
+  multi: jest.fn(() => {
+    const operations: Array<() => unknown> = []
+    const transaction: any = {
+      set: (key: string, value: string) => {
+        operations.push(() => store.set(key, value))
+        return transaction
+      },
+      del: (key: string) => {
+        operations.push(() => store.delete(key))
+        return transaction
+      },
+      sAdd: (key: string, members: string | string[]) => {
+        operations.push(() => addSetMembers(key, members))
+        return transaction
+      },
+      sRem: (key: string, members: string | string[]) => {
+        operations.push(() => removeSetMembers(key, members))
+        return transaction
+      },
+      exec: async () => {
+        if (mockClient.failNextExec) {
+          mockClient.failNextExec = false
+          throw new Error('transaction failed')
+        }
+        return operations.map((operation) => operation())
+      },
+    }
+    return transaction
+  }),
   __reset: () => {
     store.clear()
+    sets.clear()
+    mockClient.failNextExec = false
     mockClient.get.mockClear()
     mockClient.set.mockClear()
     mockClient.del.mockClear()
     mockClient.expire.mockClear()
     mockClient.eval.mockClear()
     mockClient.ping.mockClear()
+    mockClient.publish.mockClear()
+    mockClient.sAdd.mockClear()
+    mockClient.sRem.mockClear()
+    mockClient.sMembers.mockClear()
+    mockClient.mGet.mockClear()
+    mockClient.scan.mockClear()
+    mockClient.multi.mockClear()
   },
 }
 
@@ -52,7 +115,70 @@ import {
   getLidForPn,
   getPnForLid,
   removeJidMapping,
+  setConfig,
+  getConfig,
+  delConfig,
+  sessionPhoneIndexKey,
 } from '../../src/services/redis'
+
+describe('redis session phone index writes', () => {
+  beforeEach(() => {
+    mockClient.__reset()
+  })
+
+  it('atomically persists a new session config and indexes its phone', async () => {
+    const phone = '5566996269251'
+
+    await setConfig(phone, { authToken: 'token', webhooks: [] })
+
+    expect(await getConfig(phone)).toEqual(expect.objectContaining({ authToken: 'token' }))
+    expect(await mockClient.sMembers(sessionPhoneIndexKey())).toContain(phone)
+    expect(mockClient.multi).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps repeated pairing/config writes idempotent in the session index', async () => {
+    const phone = '5566996269251'
+
+    await setConfig(phone, { webhooks: [], provider: 'zapo' })
+    await setConfig(phone, { webhooks: [], provider: 'zapo', name: 'updated' })
+
+    expect(await mockClient.sMembers(sessionPhoneIndexKey())).toEqual([phone])
+    expect(await getConfig(phone)).toEqual(expect.objectContaining({ name: 'updated' }))
+  })
+
+  it('atomically removes the config and its session index member', async () => {
+    const phone = '5566996269251'
+    await setConfig(phone, { webhooks: [] })
+    mockClient.multi.mockClear()
+
+    await delConfig(phone)
+
+    expect(await getConfig(phone)).toBeUndefined()
+    expect(await mockClient.sMembers(sessionPhoneIndexKey())).not.toContain(phone)
+    expect(mockClient.multi).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not leave a partial config or index entry when the transaction fails', async () => {
+    const phone = '5566996269251'
+    mockClient.failNextExec = true
+
+    await expect(setConfig(phone, { webhooks: [] })).rejects.toThrow('transaction failed')
+
+    expect(store.has(`unoapi-config:${phone}`)).toBe(false)
+    expect(await mockClient.sMembers(sessionPhoneIndexKey())).not.toContain(phone)
+  })
+
+  it('keeps direct pairing config reads independent from index scans', async () => {
+    const phone = '5566996269251'
+    await setConfig(phone, { webhooks: [], provider: 'zapo' })
+    mockClient.scan.mockClear()
+    mockClient.sMembers.mockClear()
+
+    await expect(getConfig(phone)).resolves.toEqual(expect.objectContaining({ provider: 'zapo' }))
+    expect(mockClient.scan).not.toHaveBeenCalled()
+    expect(mockClient.sMembers).not.toHaveBeenCalled()
+  })
+})
 
 describe('redis.setUnoId', () => {
   beforeEach(() => {

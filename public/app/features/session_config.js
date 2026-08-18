@@ -1,7 +1,7 @@
-import { escapeHtml } from '../core/html.js?v=4.0.19-1226f45c';
-import { icon } from '../components/icons.js?v=4.0.19-1226f45c';
-import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js?v=4.0.19-1226f45c';
-import { t } from '../core/i18n.js?v=4.0.19-1226f45c';
+import { escapeHtml } from '../core/html.js?v=4.0.20-f1b3f88d';
+import { icon } from '../components/icons.js?v=4.0.20-f1b3f88d';
+import { renderInfoTooltip, renderSecretField, renderSwitchField } from '../components/form_controls.js?v=4.0.20-f1b3f88d';
+import { t } from '../core/i18n.js?v=4.0.20-f1b3f88d';
 export const booleanSessionFields = [
     ['autoConnect', 'Conectar automaticamente', 'Reconecta esta sessão quando o worker for iniciado.'],
     ['ignoreGroupMessages', 'Ignorar mensagens de grupos', 'Não encaminha mensagens recebidas em grupos aos webhooks.'],

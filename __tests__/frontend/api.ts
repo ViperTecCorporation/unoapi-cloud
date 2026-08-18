@@ -72,6 +72,30 @@ describe('frontend API client', () => {
     expect(fetcher).toHaveBeenNthCalledWith(3, 'https://unoapi.example/v15.0/5566/groups?cursor=20&limit=20&search=Comercial', expect.any(Object))
   })
 
+  test('loads a profile picture through the authenticated Uno proxy', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { 'Content-Type': 'image/jpeg' } }),
+    ) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+    api.setToken('admin-token')
+
+    const picture = await api.profilePicture('5566999424178', '53515477086263@lid')
+
+    expect(picture?.type).toBe('image/jpeg')
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://unoapi.example/v13.0/5566999424178/profile-pictures/53515477086263%40lid',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    )
+    expect(new Headers((fetcher as jest.Mock).mock.calls[0][1].headers).get('Authorization')).toBe('Bearer admin-token')
+  })
+
+  test('treats a missing profile picture as an empty lazy result', async () => {
+    const fetcher = jest.fn().mockResolvedValue(new Response(null, { status: 404 })) as unknown as typeof fetch
+    const api = new ApiClient('https://unoapi.example', fetcher)
+
+    await expect(api.profilePicture('5566', '123@lid')).resolves.toBeUndefined()
+  })
+
   test('lists, previews and purges RabbitMQ queues through authenticated backend routes', async () => {
     const fetcher = jest
       .fn()

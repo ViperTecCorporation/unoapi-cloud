@@ -114,10 +114,20 @@ export class MediaController {
     logger.debug('media download params %s', JSON.stringify(req.params))
     logger.debug('media download body %s', JSON.stringify(req.body))
     const { phone, file } = req.params
-    const sessionPhone = await resolveSessionPhoneByMetaId(phone)
-    const config = await this.getConfig(sessionPhone)
-    const store = await config.getStore(sessionPhone, config)
-    const { mediaStore } = store
-    return mediaStore.downloadMedia(res, `${sessionPhone}/${file}`)
+    try {
+      const sessionPhone = await resolveSessionPhoneByMetaId(phone)
+      const config = await this.getConfig(sessionPhone)
+      const store = await config.getStore(sessionPhone, config)
+      const { mediaStore } = store
+      return await mediaStore.downloadMedia(res, `${sessionPhone}/${file}`)
+    } catch (error: any) {
+      const statusCode = error?.$metadata?.httpStatusCode === 404 ||
+        error?.name === 'NotFound' || error?.code === 'NotFound' || error?.Code === 'NotFound'
+        ? 404
+        : 502
+      logger.warn(error as any, 'media proxy download failed for session %s', phone)
+      if (!res.headersSent) res.sendStatus(statusCode)
+      else res.destroy(error)
+    }
   }
 }

@@ -6,6 +6,7 @@ import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
 import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js'
 import { shouldRenderBackgroundUpdate } from './domain/render_policy.js'
+import { ContactPictureLoader } from './domain/contact_picture_loader.js'
 import type {
   ContactDirectoryItem,
   GroupSummary,
@@ -82,6 +83,7 @@ const emptyVersionStatus = (): VersionStatus => ({
 export class ViperConnectApp {
   private readonly api: ApiClient
   private readonly socket: SocketBridge
+  private readonly contactPictures: ContactPictureLoader
   private sessions: SessionConfig[] = []
   private selectedPhone = ''
   private tab: SessionTab = 'overview'
@@ -155,6 +157,7 @@ export class ViperConnectApp {
   ) {
     this.api = api
     this.socket = socket
+    this.contactPictures = new ContactPictureLoader((phone, pictureId) => this.api.profilePicture(phone, pictureId))
     setLocale(normalizeLocale(localStorage.getItem(LOCALE_KEY) || navigator.language))
     document.documentElement.lang = getLocale()
     this.bindEvents()
@@ -810,6 +813,7 @@ export class ViperConnectApp {
     this.view = 'dashboard'
     this.modal = undefined
     this.socket.clear()
+    this.contactPictures.clear()
     if (this.versionTimer) window.clearInterval(this.versionTimer)
     this.versionTimer = undefined
     this.versionStatus = emptyVersionStatus()
@@ -917,7 +921,6 @@ export class ViperConnectApp {
     } catch (error) {
       this.showToast(this.messageFor(error))
     }
-    await this.loadContacts(true)
   }
 
   private async openSessionTab(tab: SessionTab): Promise<void> {
@@ -937,6 +940,8 @@ export class ViperConnectApp {
     this.loadingSection = true
     this.sectionError = ''
     this.render()
+    let contactsToHydrate: ContactDirectoryItem[] = []
+    const requestedPhone = this.selectedPhone
     try {
       const page = await this.api.contacts(this.selectedPhone, reset ? '0' : this.contacts.cursor, PAGE_SIZE, this.contactsQuery)
       const byId = new Map(this.contacts.items.map((contact) => [contact.user_id, contact]))
@@ -947,11 +952,19 @@ export class ViperConnectApp {
         hasMore: page.has_more,
         totalCount: page.total_count,
       }
+      contactsToHydrate = page.contacts
     } catch (error) {
       this.sectionError = this.messageFor(error)
     } finally {
       this.loadingSection = false
       if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
+    }
+    if (contactsToHydrate.length > 0) {
+      void this.contactPictures.hydrate(requestedPhone, contactsToHydrate).then(() => {
+        if (this.selectedPhone === requestedPhone && this.tab === 'contacts' && shouldRenderBackgroundUpdate(!!this.modal)) {
+          this.render()
+        }
+      })
     }
   }
 

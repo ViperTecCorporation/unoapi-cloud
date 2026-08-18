@@ -19,6 +19,7 @@ import { isTransientInfraError } from './error_utils'
 import { version as appVersion } from '../../package.json'
 import { mergeGroupMetadataForCache } from './groups/group_metadata_cache'
 import { normalizeLidJid } from './transformer/jid'
+import { SessionPhoneIndex } from './session_phone_index'
 
 const {
   signalPurgeDeviceListEnabled: SIGNAL_PURGE_DEVICE_LIST_ENABLED,
@@ -894,6 +895,21 @@ export const configKey = (phone: string) => {
   return `${BASE_KEY}config:${phone}`
 }
 
+export const sessionPhoneIndexKey = () => `${BASE_KEY}sessions:index`
+const sessionPhoneIndexReadyKey = () => `${BASE_KEY}sessions:index:ready`
+const sessionPhoneIndexLockKey = () => `${BASE_KEY}sessions:index:migration-lock`
+
+export const getSessionPhones = async (): Promise<string[]> => {
+  const redis = await getRedis()
+  const index = new SessionPhoneIndex(redis, {
+    indexKey: sessionPhoneIndexKey(),
+    readyKey: sessionPhoneIndexReadyKey(),
+    lockKey: sessionPhoneIndexLockKey(),
+    configPrefix: configKey(''),
+  })
+  return index.list()
+}
+
 const configAuthTokenIndexKey = () => {
   return `${BASE_KEY}config:auth-token-index`
 }
@@ -1288,7 +1304,12 @@ export const setConfig = async (phone: string, value: any) => {
   try { (config as any).useRedis = true } catch {}
   try { (config as any).useS3 = true } catch {}
   delete config.overrideWebhooks
-  await redisSetAndExpire(key, JSON.stringify(config), SESSION_TTL)
+  const redis = await getRedis()
+  const transaction = redis.multi()
+  if (SESSION_TTL < 0) transaction.set(key, JSON.stringify(config))
+  else transaction.set(key, JSON.stringify(config), { EX: SESSION_TTL })
+  transaction.sAdd(sessionPhoneIndexKey(), phone)
+  await transaction.exec()
   try {
     const oldToken = (currentConfig as any)?.authToken
     const newToken = (config as any)?.authToken
@@ -1326,7 +1347,11 @@ export const delConfig = async (phone: string) => {
       await client.sRem(configAuthTokenIndexKey(), token)
     }
   } catch {}
-  await redisDel(key)
+  const redis = await getRedis()
+  await redis.multi()
+    .del(key)
+    .sRem(sessionPhoneIndexKey(), phone)
+    .exec()
   await delHistorySyncMarker(phone)
   await delPrivacyBootstrapSync(phone)
   await publishConfigUpdate(phone)

@@ -110,6 +110,24 @@ export class ApiClient {
     return this.request<ContactDirectoryPage>(`/${encodeURIComponent(phone)}/contacts?${query}`)
   }
 
+  async profilePicture(phone: string, pictureId: string): Promise<Blob | undefined> {
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+    const response = await this.fetcher.call(
+      globalThis,
+      `${this.baseUrl}/v13.0/${encodeURIComponent(phone)}/profile-pictures/${encodeURIComponent(pictureId)}`,
+      { headers },
+    )
+    if (response.status === 404) return undefined
+    if (!response.ok) {
+      const text = await response.text()
+      let payload: unknown = text
+      try { payload = text ? JSON.parse(text) : undefined } catch {}
+      throw new ApiError(response.status, errorMessage(payload, response.status), payload)
+    }
+    return response.blob()
+  }
+
   groups(phone: string, cursor = '0', limit = 20, search = ''): Promise<GroupPage> {
     const query = new URLSearchParams({ cursor, limit: `${limit}` })
     if (search.trim()) query.set('search', search.trim())

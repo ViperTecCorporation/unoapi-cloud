@@ -3433,7 +3433,8 @@ components:
               display_name: { type: string }
               push_name: { type: string }
               username: { type: string, description: 'Username opcional sincronizado pela Zapo' }
-              picture: { type: string, format: uri }
+              picture: { type: string, format: uri, description: 'URL legada quando já disponível no cache; a listagem não consulta o storage em caso de ausência' }
+              picture_id: { type: string, description: 'Identidade estável PN ou LID para download autenticado pela UnoAPI' }
               last_updated_ms: { type: integer, format: int64 }
         next_cursor: { type: string }
         has_more: { type: boolean }

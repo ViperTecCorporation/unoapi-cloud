@@ -424,6 +424,15 @@ cursor e tornando divergencias do cache observaveis. A busca por nome,
 username, telefone ou LID começa com 3 caracteres: o front não envia termos
 menores e a rota HTTP os rejeita para evitar varreduras desnecessarias no cache.
 
+A listagem de contatos resolve fotos somente pelo cache Redis e nunca varre o
+storage S3/R2/MinIO contato por contato. Quando a URL legada estiver no cache,
+ela continua em `picture` para retrocompatibilidade; `picture_id` e sempre
+devolvido quando houver uma identidade PN/LID valida. Consumidores novos e o
+frontend carregam somente os avatares visiveis pela rota autenticada
+`GET /v13.0/{session}/profile-pictures/{picture_id}`. Ausencias nessa rota sao
+cacheadas e consultas concorrentes no frontend sao deduplicadas, evitando
+rajadas de `HeadObject` durante sincronizacoes completas.
+
 ## Username
 
 A identidade canonica Zapo e o LID. `senderUsername`, participantes de grupo e eventos

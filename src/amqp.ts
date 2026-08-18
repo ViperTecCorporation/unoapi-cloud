@@ -24,6 +24,7 @@ import { isTransientInfraError } from './services/error_utils'
 import { v1 as uuid } from 'uuid'
 import { providerFromQueueName, providerQueueName } from './services/providers/provider_queue'
 import { isWebhookCircuitOpenError, webhookRetryCount } from './services/webhook_circuit_breaker'
+import { payloadLogSummary } from './services/payload_log_summary'
 
 const withTimeout = (millis, error, promise) => {
   let timeoutPid
@@ -363,12 +364,13 @@ export const amqpPublish = async (
   // Bind before publishing so the first provider message is durable even when
   // the worker has not registered its consumer for this session yet.
   const destiny = await bindPublishRoute(channel, exchangeUsed, queueUsed.queue, routingKey)
-  await channel.publish(exchangeUsed, destiny, Buffer.from(JSON.stringify(payload)), properties)
+  const serializedPayload = JSON.stringify(payload)
+  await channel.publish(exchangeUsed, destiny, Buffer.from(serializedPayload), properties)
   logger.debug(
-    'Published at exchange %s, with binding key: %s, payload: %s, properties: %s',
+    'Published at exchange %s, with binding key: %s, summary: %s, properties: %s',
     exchangeUsed,
     destiny,
-    JSON.stringify(payload),
+    JSON.stringify(payloadLogSummary(payload, serializedPayload)),
     JSON.stringify(properties)
   )
 }
@@ -452,12 +454,13 @@ export const amqpRpc = async <T = unknown>(
       }, { noAck: true })
       consumerTag = consumer.consumerTag
       const destiny = bindingKey(queueMain.queue, routingKey)
-      channel.publish(exchange, destiny, Buffer.from(JSON.stringify(payload)), properties)
+      const serializedPayload = JSON.stringify(payload)
+      channel.publish(exchange, destiny, Buffer.from(serializedPayload), properties)
       logger.debug(
-        'Published RPC at exchange %s, with binding key: %s, payload: %s, properties: %s',
+        'Published RPC at exchange %s, with binding key: %s, summary: %s, properties: %s',
         exchange,
         destiny,
-        JSON.stringify(payload),
+        JSON.stringify(payloadLogSummary(payload, serializedPayload)),
         JSON.stringify(properties)
       )
     } catch (error) {
@@ -515,7 +518,8 @@ export const amqpConsume = async (
         const countRetries = parseInt(headers[UNOAPI_X_COUNT_RETRIES] || '0') + 1
         const isRpc = !!(payload.properties.replyTo && payload.properties.correlationId)
         try {
-          logger.debug('Received in queue %s, with routing key: %s, with message: %s with headers: %s', queue, routingKeyLocal, content, JSON.stringify(payload.properties.headers))
+          const summary = JSON.stringify(payloadLogSummary(data, content))
+          logger.debug('Received in queue %s, with routing key: %s, summary: %s, headers: %s', queue, routingKeyLocal, summary, JSON.stringify(payload.properties.headers))
           if (!isRpc && IGNORED_CONNECTIONS_NUMBERS.includes(routingKeyLocal)) {
             logger.info(`Ignore messages from ${routingKeyLocal}`)
           } else if (!isRpc &&
@@ -525,7 +529,7 @@ export const amqpConsume = async (
           ) {
             logger.info(`Ignore messages to ${extractDestinyPhone((data as any).payload, false)}`)
           } else {
-            const timeoutError = `timeout ${CONSUMER_TIMEOUT_MS} is exceeded consume queue: ${queue}, routing key: ${routingKeyLocal}, payload: ${content}`
+            const timeoutError = `timeout ${CONSUMER_TIMEOUT_MS} is exceeded consume queue: ${queue}, routing key: ${routingKeyLocal}, summary: ${summary}`
             const result = await withTimeout(CONSUMER_TIMEOUT_MS, timeoutError, callback(routingKeyLocal, data, { countRetries, maxRetries }))
             await replyRpc(channel, payload, { ok: true, result })
           }

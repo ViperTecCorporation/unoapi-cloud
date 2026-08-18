@@ -77,7 +77,7 @@ describe('ZapoContactDirectory', () => {
     expect(lookup).toHaveBeenCalled()
   })
 
-  test('regenerates an expired contact picture URL from session storage', async () => {
+  test('does not probe session storage when the Redis picture URL is absent', async () => {
     const redis = {
       scan: jest.fn().mockResolvedValue({
         cursor: '0',
@@ -89,17 +89,12 @@ describe('ZapoContactDirectory', () => {
         last_updated_ms: '10',
       }),
     }
-    const getImageUrl = jest
-      .fn()
-      .mockImplementation(async (jid: string) => (
-        jid === '1@lid' ? 'https://cdn.example/fresh-contact.jpg' : undefined
-      ))
+    const getImageUrl = jest.fn().mockResolvedValue('https://cdn.example/fresh-contact.jpg')
+    const getStore = jest.fn().mockResolvedValue({ dataStore: { getImageUrl } })
     const loadConfig: getConfig = jest.fn().mockResolvedValue({
       ...defaultConfig,
       provider: 'zapo',
-      getStore: jest.fn().mockResolvedValue({
-        dataStore: { getImageUrl },
-      }),
+      getStore,
     })
     const expiredRedisPicture = jest.fn().mockResolvedValue(undefined)
     const directory = new ZapoContactDirectory(
@@ -112,8 +107,12 @@ describe('ZapoContactDirectory', () => {
 
     const page = await directory.list('session', { limit: 20 })
 
-    expect(page.contacts[0].picture).toBe('https://cdn.example/fresh-contact.jpg')
-    expect(getImageUrl).toHaveBeenCalledWith('1@lid')
+    expect(page.contacts[0]).toEqual(expect.objectContaining({
+      picture: undefined,
+      picture_id: '5566999554300',
+    }))
+    expect(getStore).not.toHaveBeenCalled()
+    expect(getImageUrl).not.toHaveBeenCalled()
   })
 
   test('ignores records without a canonical LID', () => {
@@ -147,8 +146,9 @@ describe('ZapoContactDirectory', () => {
           user_id: '2@lid',
           phone_number: '5566999554300',
           picture: 'https://cdn.example/2.jpg',
+          picture_id: '5566999554300',
         }),
-        expect.objectContaining({ user_id: '1@lid', phone_number: '556635211234' }),
+        expect.objectContaining({ user_id: '1@lid', phone_number: '556635211234', picture_id: '556635211234' }),
       ],
       next_cursor: '42',
       has_more: true,
@@ -160,6 +160,56 @@ describe('ZapoContactDirectory', () => {
       MATCH: 'unoapi:zapo:contact:session:*',
       COUNT: 500,
     })
+  })
+
+  test('preserves the legacy picture URL together with the stable picture_id', async () => {
+    const redis = {
+      scan: jest.fn().mockResolvedValue({ cursor: '0', keys: ['unoapi:zapo:contact:session:2@lid'] }),
+      hGetAll: jest.fn().mockResolvedValue({
+        jid: '2@lid',
+        phone_number: '556699554300@s.whatsapp.net',
+        last_updated_ms: '20',
+      }),
+    }
+    const loadConfig: getConfig = jest.fn().mockResolvedValue({ ...defaultConfig, provider: 'zapo' })
+    const pictureLookup = jest.fn().mockResolvedValue('https://cdn.example/legacy.jpg')
+    const directory = new ZapoContactDirectory(
+      loadConfig,
+      async () => redis as never,
+      undefined,
+      pictureLookup,
+      async () => 1,
+    )
+
+    const page = await directory.list('session')
+
+    expect(page.contacts[0]).toEqual(expect.objectContaining({
+      picture: 'https://cdn.example/legacy.jpg',
+      picture_id: '5566999554300',
+    }))
+  })
+
+  test('prefers a valid canonical LID as the stable picture_id', async () => {
+    const lid = '53515477086263@lid'
+    const redis = {
+      scan: jest.fn().mockResolvedValue({ cursor: '0', keys: [`unoapi:zapo:contact:session:${lid}`] }),
+      hGetAll: jest.fn().mockResolvedValue({
+        jid: lid,
+        phone_number: '556699554300@s.whatsapp.net',
+        last_updated_ms: '20',
+      }),
+    }
+    const directory = new ZapoContactDirectory(
+      jest.fn().mockResolvedValue({ ...defaultConfig, provider: 'zapo' }),
+      async () => redis as never,
+      undefined,
+      async () => undefined,
+      async () => 1,
+    )
+
+    const page = await directory.list('session')
+
+    expect(page.contacts[0].picture_id).toBe(lid)
   })
 
   test('enriches and searches contacts by the username index when the Zapo contact hash lacks it', async () => {

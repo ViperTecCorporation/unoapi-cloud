@@ -13,7 +13,7 @@ export const safeImageUrl = (value: unknown): string => {
   try {
     const baseUrl = typeof window === 'undefined' ? 'http://localhost' : window.location.origin
     const parsed = new URL(url, baseUrl)
-    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : ''
+    return ['http:', 'https:', 'blob:'].includes(parsed.protocol) ? parsed.href : ''
   } catch {
     return ''
   }
