@@ -10,8 +10,59 @@ import { Outgoing } from '../../src/services/outgoing'
 import { defaultConfig, getConfig } from '../../src/services/config'
 import type { DataStore } from '../../src/services/data_store'
 import { SendError } from '../../src/services/send_error'
+import { UNOAPI_MEDIA_PUBLIC_URL, UNOAPI_MEDIA_SOURCE, UNOAPI_MEDIA_STORAGE_KEY } from '../../src/services/messages/outgoing_media_input'
 
 describe('incoming job', () => {
+  test('reuses staged Base64 media and keeps internal metadata out of outgoing webhooks', async () => {
+    const incoming = mock<Incoming>()
+    const outgoing = mock<Outgoing>()
+    const dataStore = mock<DataStore>()
+    dataStore.loadProviderId.mockResolvedValue('provider-image-id')
+    incoming.send = jest.fn().mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'provider-image-id' }] },
+    })
+    const mediaStore = {} as any
+    const job = new IncomingJob(incoming, outgoing, async () => ({
+      ...defaultConfig,
+      provider: 'zapo',
+      server: 'server_1',
+      outgoingIdempotency: false,
+      webhooks: [{ ...defaultConfig.webhooks[0], sendNewMessages: true }],
+      getStore: async () => ({ dataStore, mediaStore }) as any,
+    }))
+
+    await job.consume('5566999999999', {
+      id: 'uno-base64-image',
+      payload: {
+        to: '5511999999999',
+        type: 'image',
+        image: {
+          link: '/data/medias/5566999999999/uno-base64-image.jpeg',
+          mime_type: 'image/jpeg',
+          filename: 'foto.jpg',
+          [UNOAPI_MEDIA_STORAGE_KEY]: '5566999999999/uno-base64-image.jpeg',
+          [UNOAPI_MEDIA_SOURCE]: 'base64',
+          [UNOAPI_MEDIA_PUBLIC_URL]: 'https://uno.test/v15.0/download/5566999999999/uno-base64-image.jpeg',
+        },
+      },
+    })
+
+    expect(dataStore.setMediaPayload).toHaveBeenCalledWith('uno-base64-image', expect.objectContaining({
+      id: '5566999999999/uno-base64-image',
+      mime_type: 'image/jpeg',
+      url: 'https://uno.test/v15.0/download/5566999999999/uno-base64-image.jpeg',
+    }))
+    const webhookPayload = (outgoing.sendHttp as jest.Mock).mock.calls
+      .map((call) => call[2])
+      .find((payload) => payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0])
+    const image = webhookPayload.entry[0].changes[0].value.messages[0].image
+    expect(image).not.toHaveProperty('base64')
+    expect(image).not.toHaveProperty(UNOAPI_MEDIA_STORAGE_KEY)
+    expect(image).not.toHaveProperty(UNOAPI_MEDIA_SOURCE)
+    expect(image).not.toHaveProperty(UNOAPI_MEDIA_PUBLIC_URL)
+    expect(image.url).toBe('https://uno.test/v15.0/download/5566999999999/uno-base64-image.jpeg')
+  })
+
   test.each([
     'text',
     'image',

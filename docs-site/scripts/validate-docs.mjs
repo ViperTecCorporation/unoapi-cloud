@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
@@ -72,6 +72,7 @@ for (const example of [
   'text',
   'expiringText',
   'image',
+  'imageBase64',
   'audio',
   'document',
   'statusImage',
@@ -92,8 +93,10 @@ for (const example of [
 for (const schema of ['MessageImage', 'MessageAudio', 'MessageDocument', 'MessageVideo', 'MessageSticker']) {
   const mediaType = schema.replace(/^Message/, '').toLowerCase()
   const branch = spec.components.schemas[schema]?.allOf?.[1]
-  if (!branch?.required?.includes(mediaType) || !branch?.properties?.[mediaType]?.required?.includes('link')) {
-    throw new Error(`${schema} deve exigir ${mediaType}.link`)
+  const sourceBranches = branch?.properties?.[mediaType]?.oneOf || []
+  const requiredSources = new Set(sourceBranches.flatMap((source) => source.required || []))
+  if (!branch?.required?.includes(mediaType) || !requiredSources.has('link') || !requiredSources.has('base64')) {
+    throw new Error(`${schema} deve exigir uma origem ${mediaType}.link ou ${mediaType}.base64`)
   }
 }
 
@@ -113,6 +116,7 @@ for (const line of router.split(/\r?\n/)) {
 if (missing.length) throw new Error(`Rotas dos controllers ausentes no OpenAPI:\n${missing.join('\n')}`)
 
 const markdown = []
+const markdownContents = new Map()
 const walk = async (directory) => {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (['node_modules', '.vitepress', 'public', 'scripts'].includes(entry.name)) continue
@@ -124,8 +128,99 @@ const walk = async (directory) => {
 await walk(docs)
 for (const file of markdown) {
   const content = await readFile(file, 'utf8')
+  markdownContents.set(file, content)
   if (/baileys/i.test(content)) throw new Error(`Termo interno exposto em ${path.relative(root, file)}`)
   if (/\bmeta(?:\s+cloud)?\b/i.test(content)) throw new Error(`Integração não suportada exposta em ${path.relative(root, file)}`)
+}
+
+const routeTarget = (route) => {
+  const pathname = route.split(/[?#]/, 1)[0]
+  if (pathname.startsWith('/examples/')) return path.join(docs, 'public', pathname)
+  if (pathname === '/' || pathname === '/en/') return path.join(docs, pathname === '/' ? 'index.md' : 'en/index.md')
+  return path.join(docs, `${pathname.replace(/^\//, '').replace(/\/$/, '/index')}.md`)
+}
+for (const [file, content] of markdownContents) {
+  const links = [...content.matchAll(/\]\((\/[^)\s]+)\)/g)].map((match) => match[1])
+  for (const link of links) {
+    try {
+      await access(routeTarget(link))
+    } catch {
+      throw new Error(`Link interno quebrado em ${path.relative(root, file)}: ${link}`)
+    }
+  }
+}
+
+const portugueseGuidePages = (await readdir(path.join(docs, 'guide'))).filter((page) => page.endsWith('.md'))
+for (const page of portugueseGuidePages) {
+  try {
+    await access(path.join(docs, 'en', 'guide', page))
+  } catch {
+    throw new Error(`Guia sem página inglesa correspondente: guide/${page}`)
+  }
+}
+
+const englishPages = [
+  'index.md',
+  'api-reference.md',
+  'guide/installation.md',
+  'guide/install-native-linux.md',
+  'guide/install-voip-native-linux.md',
+  'guide/voip-ipv6.md',
+  'guide/docker-compose.md',
+  'guide/docker-swarm.md',
+  'guide/connection.md',
+  'guide/architecture.md',
+  'guide/telephony.md',
+  'guide/messages.md',
+  'guide/contacts.md',
+  'guide/webhooks.md',
+  'guide/quickstart.md',
+  'guide/concepts.md',
+  'guide/troubleshooting.md',
+]
+for (const page of englishPages) {
+  const content = await readFile(path.join(docs, 'en', page), 'utf8')
+  if (!content.trim()) throw new Error(`Página inglesa vazia: en/${page}`)
+}
+const vitePressConfig = await readFile(path.join(docs, '.vitepress', 'config.mts'), 'utf8')
+if (!/root:\s*\{[\s\S]*lang:\s*'pt-BR'/.test(vitePressConfig) || !/en:\s*\{[\s\S]*lang:\s*'en-US'/.test(vitePressConfig)) {
+  throw new Error('VitePress precisa publicar os locales pt-BR e en-US')
+}
+for (const [page, requirements] of Object.entries({
+  'guide/quickstart.md': ['curl --fail-with-body', '/messages', '/guide/webhooks', '/guide/troubleshooting'],
+  'guide/concepts.md': ['user_id', 'statuses[].status', 'base64', '/api-reference'],
+  'guide/troubleshooting.md': ['401 Unauthorized', '400 Bad Request', 'BGSAVE', 'KEYS'],
+})) {
+  for (const localePrefix of ['', 'en/']) {
+    const content = await readFile(path.join(docs, localePrefix, page), 'utf8')
+    for (const requirement of requirements) {
+      if (!content.includes(requirement)) throw new Error(`${localePrefix}${page} sem conteúdo didático obrigatório: ${requirement}`)
+    }
+  }
+}
+const homePt = await readFile(path.join(docs, '.vitepress', 'theme', 'DocsHome.vue'), 'utf8')
+const homeEn = await readFile(path.join(docs, '.vitepress', 'theme', 'DocsHomeEn.vue'), 'utf8')
+if (!homePt.includes('href="/guide/quickstart"') || !homeEn.includes('href="/en/guide/quickstart"')) {
+  throw new Error('A ação principal da home deve abrir o início rápido no idioma atual')
+}
+if (/\b67 operações\b|\b67 operations\b/.test(`${homePt}\n${homeEn}`)) {
+  throw new Error('A home não deve publicar uma contagem manual de operações')
+}
+
+const validateValkeyPersistence = (command, location) => {
+  const normalized = Array.isArray(command) ? command.join(' ') : `${command || ''}`.replace(/\s+/g, ' ')
+  for (const required of [
+    '--appendonly yes',
+    '--appendfsync everysec',
+    '--no-appendfsync-on-rewrite no',
+    '--save 3600 1',
+    '--protected-mode no',
+  ]) {
+    if (!normalized.includes(required)) throw new Error(`${location}: Valkey sem ${required}`)
+  }
+  for (const obsolete of ['--save 900 1', '--save 300 10', '--save 60 10000']) {
+    if (normalized.includes(obsolete)) throw new Error(`${location}: snapshot Valkey obsoleto ${obsolete}`)
+  }
 }
 
 const composeFiles = [
@@ -176,6 +271,7 @@ for (const composeFile of composeFiles) {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
   validateDualStackEnvironment(telephony.environment, path.basename(composeFile))
+  validateValkeyPersistence(compose.services?.['unoapi-redis']?.command, path.basename(composeFile))
   const requiredServices = [
     'unoapi',
     'unoapi-broker',
@@ -249,6 +345,7 @@ for (const swarmFile of swarmFiles) {
   const content = await readFile(swarmFile, 'utf8')
   const stack = parseYaml(content)
   const baseEnvironment = stack['x-base-environment']
+  validateValkeyPersistence(stack.services?.['unoapi-redis']?.command, filename)
 
   if (!baseEnvironment || typeof baseEnvironment !== 'object' || Array.isArray(baseEnvironment)) {
     throw new Error(`${filename}: x-base-environment precisa ser um mapa YAML`)

@@ -78,6 +78,18 @@ Nos dois arquivos, revise:
 - `WEBHOOK_URL`, token e header;
 - credenciais de armazenamento S3 compatível, caso utilizado.
 
+## Persistência do Valkey
+
+Os modelos usam o perfil validado em produção: AOF ativo com `appendfsync
+everysec`, fsync mantido durante regravações (`no-appendfsync-on-rewrite no`) e
+um snapshot RDB de segurança quando houver ao menos uma alteração em uma hora
+(`save 3600 1`). Isso evita os snapshots completos a cada 60–300 segundos que
+geravam escrita excessiva em bases grandes, sem remover a durabilidade do AOF.
+
+`protected-mode no` é usado somente porque o serviço exige senha e não publica
+a porta 6379 para o host. Mantenha a mesma senha em `REDIS_URL`,
+`--requirepass` e no healthcheck.
+
 ## Ambiente completo da telefonia
 
 Os arquivos para download incluem o perfil operacional completo observado na

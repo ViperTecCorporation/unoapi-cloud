@@ -5,6 +5,7 @@ import {
   UNOAPI_EXCHANGE_BROKER_NAME,
   UNOAPI_QUEUE_INCOMING,
   UNOAPI_QUEUE_VIDEO_STAGE,
+  UNOAPI_QUEUE_VIDEO_TRANSCODE,
 } from '../defaults'
 import { v1 as uuid } from 'uuid'
 import { jidToPhoneNumber, normalizeGroupId } from './transformer'
@@ -14,6 +15,7 @@ import { isProviderRuntimeEnabled } from './providers/provider_runtime_policy'
 import { SendError } from './send_error'
 import type { SaveContactInput, SaveContactResponse } from './contacts/contact_book_types'
 import { resolveWhatsAppEngine } from './providers/provider_resolver'
+import { UNOAPI_MEDIA_STORAGE_KEY, UNOAPI_MESSAGE_ID } from './messages/outgoing_media_input'
 
 type GroupManagementAction =
   | 'groupCreate'
@@ -136,7 +138,9 @@ export class IncomingAmqp implements Incoming {
       await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, options }, options)
       return { ok: { success: true } }
     } else if (type) {
-      const id = uuid()
+      const id = `${body?.[UNOAPI_MESSAGE_ID] || uuid()}`
+      const queuedPayload = { ...body }
+      delete queuedPayload[UNOAPI_MESSAGE_ID]
       if (!options['priority']) {
         options['priority'] = 5 // send message without bulk is very important
       }
@@ -144,18 +148,19 @@ export class IncomingAmqp implements Incoming {
       const shouldPrepareVideo =
         resolveWhatsAppEngine(config.provider) === 'zapo' &&
         type === 'video' &&
-        !!`${body?.video?.link || ''}`.trim() &&
+        !!`${queuedPayload?.video?.link || ''}`.trim() &&
         !options['videoPrepared']
       if (shouldPrepareVideo) {
+        const stagedSourceKey = `${queuedPayload?.video?.[UNOAPI_MEDIA_STORAGE_KEY] || ''}`.trim()
         await amqpPublish(
           UNOAPI_EXCHANGE_BROKER_NAME,
-          UNOAPI_QUEUE_VIDEO_STAGE,
+          stagedSourceKey ? UNOAPI_QUEUE_VIDEO_TRANSCODE : UNOAPI_QUEUE_VIDEO_STAGE,
           phone,
-          { payload, id, options },
+          { payload: queuedPayload, id, options, ...(stagedSourceKey ? { sourceKey: stagedSourceKey } : {}) },
           { type: 'topic', priority: 5, maxRetries: 2 },
         )
       } else {
-        await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload, id, options }, options)
+        await amqpPublish(UNOAPI_EXCHANGE_BRIDGE_NAME, this.queue(config), phone, { payload: queuedPayload, id, options }, options)
       }
       const isGroup = body?.recipient_type === 'group' || `${to || ''}`.trim().endsWith('@g.us')
       const target = isGroup ? normalizeGroupId(to) : `${to || ''}`

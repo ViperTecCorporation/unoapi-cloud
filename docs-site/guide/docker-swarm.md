@@ -61,6 +61,12 @@ Revise principalmente:
 - webhook e armazenamento, quando utilizados;
 - IPv4 público, hostname público IPv6 e IP local da telefonia.
 
+O Valkey mantém AOF com fsync a cada segundo e
+`no-appendfsync-on-rewrite no`. O RDB fica como snapshot de segurança em `save
+3600 1`, substituindo os três intervalos antigos que provocavam regravações
+frequentes de todo o dataset. A porta 6379 continua restrita à overlay interna
+e protegida por senha.
+
 ```bash
 openssl rand -hex 32
 ```
@@ -201,7 +207,7 @@ alcançados pelo proxy na overlay externa.
 
 Dentro do cluster, os processos usam os nomes dos serviços:
 
-```env
+```bash
 AMQP_URL=amqp://...@unoapi-rabbitmq:5672
 REDIS_URL=redis://...@unoapi-redis:6379
 VOIP_SERVICE_URL=http://viperconnect-telefonia:3097

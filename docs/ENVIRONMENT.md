@@ -245,6 +245,16 @@ Skip sending the same message again when a job retry happens after a successful 
 - ID normalization: map provider ids to UNO ids before sending to webhooks.
 - Anti-regression/duplicate: ignore lower-rank updates (e.g., Ã¢â‚¬Å“sentÃ¢â‚¬Â after Ã¢â‚¬Å“deliveredÃ¢â‚¬Â) and repeated statuses for the same message id.
 
+## Base64 media input
+
+- `UNOAPI_MEDIA_BASE64_MAX_BYTES` — Maximum decoded size for media supplied in
+  the `base64` field. Default: `33554432` (32 MiB).
+- `UNOAPI_MESSAGES_JSON_LIMIT` — Express JSON limit applied only to
+  `messages` and `marketing_messages` routes. Default: `48mb`.
+- Base64 is decoded and persisted before AMQP publication. RabbitMQ, provider
+  webhooks and application logs receive only the staged media reference.
+- Existing media payloads using `link` are not changed.
+
 ## Profile Pictures
 
 - Overview: The service can enrich webhook payloads with contact and group profile pictures. When enabled, images are stored either on S3 (recommended in production) or on the local filesystem and exposed as URLs in webhook events.

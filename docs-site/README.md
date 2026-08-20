@@ -51,3 +51,33 @@ API_BASE_URL=https://api.exemplo.com API_TOKEN=seu-token npm run test:live
 O build sincroniza `docs/openapi.json`, adiciona rotas registradas em
 `src/router.ts`, valida páginas essenciais e impede a exposição de nomes
 internos na documentação pública.
+
+## Padrão editorial
+
+A navegação é organizada pela jornada do leitor, e não pela estrutura interna
+do código:
+
+1. **Primeiros passos**: resultado funcional em poucos minutos e modelo mental;
+2. **Implantação**: escolha do ambiente e operação da infraestrutura;
+3. **Mensageria**: tarefas que o integrador executa pela API;
+4. **Operação**: diagnóstico, arquitetura e comportamento assíncrono;
+5. **Telefonia**: domínio separado para SIP, RTP e WebRTC;
+6. **Referência**: contrato exato gerado do OpenAPI.
+
+Todo guia novo deve começar dizendo o que o leitor concluirá, declarar
+pré-requisitos, usar exemplos copiáveis, mostrar o resultado esperado, explicar
+falhas comuns e terminar com o próximo passo. Campos e schemas completos devem
+ficar na referência interativa; guias ensinam decisões e fluxos.
+
+Não publique contagens manuais de endpoints. A validação confere rotas, links
+internos, páginas correspondentes em inglês, conteúdo essencial do quickstart e
+os exemplos de implantação.
+
+## Idiomas
+
+Português brasileiro permanece na raiz (`/`) e inglês usa o prefixo `/en/`.
+O seletor nativo do VitePress preserva a página equivalente ao trocar o
+idioma. Ao adicionar um guia público à navegação, crie também o arquivo
+correspondente em `docs-site/en/`; `scripts/validate-docs.mjs` verifica a
+cobertura mínima dos dois idiomas. O Manager abre automaticamente `/en/` na
+aba Documentação quando sua interface estiver em inglês.

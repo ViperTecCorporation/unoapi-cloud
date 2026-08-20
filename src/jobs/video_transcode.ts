@@ -7,6 +7,7 @@ import { isProviderRuntimeEnabled } from '../services/providers/provider_runtime
 import { VideoPreparationService } from '../services/video_preparation'
 import type { VideoPreparationJobData } from '../services/video_preparation_types'
 import type { VideoPreparationFailureReporter } from '../services/video_preparation_failure'
+import { UNOAPI_MEDIA_PUBLIC_URL, UNOAPI_MEDIA_SOURCE, UNOAPI_MEDIA_STORAGE_KEY } from '../services/messages/outgoing_media_input'
 
 type RetryContext = { countRetries: number; maxRetries: number }
 
@@ -25,15 +26,25 @@ export class VideoTranscodeJob {
       const { mediaStore } = await config.getStore(phone, config)
       const prepared = await this.preparation.prepare(mediaStore, phone, data.id, data.sourceKey)
       const originalVideo = data.payload?.video || {}
+      const stagedFromBase64 = originalVideo[UNOAPI_MEDIA_SOURCE] === 'base64'
+      const publicVideo = { ...originalVideo }
+      delete publicVideo[UNOAPI_MEDIA_STORAGE_KEY]
+      delete publicVideo[UNOAPI_MEDIA_SOURCE]
+      delete publicVideo[UNOAPI_MEDIA_PUBLIC_URL]
       const originalFilename = `${originalVideo.filename || 'video.mp4'}`
       const filename = originalFilename.replace(/\.[^.]+$/, '') + '.mp4'
       const payload = {
         ...data.payload,
         video: {
-          ...originalVideo,
+          ...publicVideo,
           link: prepared.link,
           mime_type: 'video/mp4',
           filename,
+          ...(stagedFromBase64 ? {
+            [UNOAPI_MEDIA_STORAGE_KEY]: prepared.key,
+            [UNOAPI_MEDIA_SOURCE]: 'base64',
+            [UNOAPI_MEDIA_PUBLIC_URL]: prepared.link,
+          } : {}),
         },
       }
       const options = { ...(data.options || {}), videoPrepared: true, priority: 5, type: 'direct' as const }

@@ -451,6 +451,21 @@ indice temporal; ausencia no cache preserva o payload anterior sem erro.
 
 ## Preparacao de video para envio Zapo
 
+### Entrada alternativa de mídia em Base64
+
+O contrato HTTP mantém `link` como origem compatível com a Cloud API e aceita,
+como extensão ViperConnect, `base64` puro ou Data URI em imagem, áudio, vídeo,
+documento e sticker. O processo web decodifica e valida a entrada, salva os
+bytes no media store e substitui o Base64 por uma referência interna antes da
+publicação AMQP. A Zapo recebe a origem documentada `Uint8Array | string`; em
+storage local usa o caminho persistido e em storage S3 compatível usa a URL
+assinada gerada pelo SDK.
+
+Base64 nunca deve aparecer em logs, webhooks ou mensagens RabbitMQ. Vídeo já
+persistido por esse fluxo entra diretamente na fila de transcode com a chave do
+objeto, sem repetir download no estágio. `link` continua seguindo exatamente o
+fluxo anterior.
+
 Videos com link externo nao entram diretamente na fila serial da sessao. O broker
 usa duas filas globais separadas:
 

@@ -241,6 +241,12 @@ body {
   gap: 14px;
   margin-top: 34px;
 }
+.docs-card-grid--paths {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.docs-card-grid--paths .docs-card {
+  min-height: 205px;
+}
 .docs-card {
   display: flex;
   min-height: 220px;
@@ -488,6 +494,20 @@ body {
   }
   .api-reference-page .VPPage {
     padding-left: 0 !important;
+  }
+}
+@media (min-width: 901px) and (max-width: 1180px) {
+  .docs-home {
+    padding: 36px 28px 80px;
+  }
+  .docs-hero {
+    grid-template-columns: 1fr;
+  }
+  .docs-code-window {
+    transform: none;
+  }
+  .docs-card-grid--paths {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 900px) {

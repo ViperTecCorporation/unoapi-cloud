@@ -7,7 +7,7 @@ mensagens continuam funcionando e a telefonia aparece como indisponível.
 
 ## Configuração da Uno
 
-```env
+```bash
 VOIP_SERVICE_URL=http://host.docker.internal:3097
 VOIP_BRIDGE_URL=wss://voip.seudominio.com.br/v1/bridge/zapo
 VOIP_SERVICE_TOKEN=gere-um-token-longo
@@ -21,7 +21,7 @@ local sem TLS ela pode ser omitida; nesse caso a Uno deriva
 
 ## Configuração do serviço VoIP
 
-```env
+```bash
 PORT=3097
 VOIP_SERVICE_TOKEN=gere-um-token-longo
 VOIP_BRIDGE_TOKEN=gere-um-token-longo

@@ -1,9 +1,43 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { useData } from 'vitepress'
 import '@scalar/api-reference/style.css'
 import { managerOriginFromBrowser, normalizeApiServerUrl, normalizeAuthorizationValue } from './api_reference_config.mjs'
 
 const container = ref<HTMLElement>()
+const { lang } = useData()
+const isEnglish = computed(() => lang.value.toLowerCase().startsWith('en'))
+const copy = computed(() => isEnglish.value ? {
+  models: 'Data structures',
+  invalid: 'Invalid configuration',
+  unavailable: 'OpenAPI unavailable',
+  invalidContract: 'The OpenAPI contract is invalid',
+  loadFailure: 'Could not load the reference',
+  eyebrow: 'INTERACTIVE REFERENCE',
+  subtitle: 'Endpoints synchronized directly from controllers',
+  endpoint: 'Installation endpoint',
+  endpointPlaceholder: 'https://api.example.com',
+  tokenPlaceholder: 'Access token',
+  apply: 'Apply',
+  loading: 'Loading API reference…',
+  failureTitle: 'Could not load the reference.',
+  download: 'Download OpenAPI',
+} : {
+  models: 'Estruturas de dados',
+  invalid: 'Configuração inválida',
+  unavailable: 'OpenAPI indisponível',
+  invalidContract: 'O contrato OpenAPI é inválido',
+  loadFailure: 'Não foi possível carregar a referência',
+  eyebrow: 'REFERÊNCIA INTERATIVA',
+  subtitle: 'Endpoints sincronizados diretamente dos controllers',
+  endpoint: 'Endpoint da instalação',
+  endpointPlaceholder: 'https://unoapi.exemplo.com',
+  tokenPlaceholder: 'Token de acesso',
+  apply: 'Aplicar',
+  loading: 'Carregando referência da API…',
+  failureTitle: 'Não foi possível carregar a referência.',
+  download: 'Baixar OpenAPI',
+})
 const loading = ref(true)
 const error = ref('')
 const settingsError = ref('')
@@ -14,6 +48,11 @@ let cleanup: (() => void) | undefined
 let openApiContent: Record<string, unknown> | undefined
 let createReference: (typeof import('@scalar/api-reference'))['createApiReference'] | undefined
 const SERVER_STORAGE_KEY = 'viperconnect_api_reference_server'
+const serverValidationMessages = computed(() => isEnglish.value ? {
+  required: 'Enter the installation URL',
+  complete: 'Use a complete URL starting with http:// or https://',
+  safe: 'Use an HTTP or HTTPS URL without embedded credentials',
+} : undefined)
 const scalarCss = `
 .scalar-app {
   --scalar-font: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -75,7 +114,7 @@ const renderReference = () => {
     hideDarkModeToggle: true,
     agent: { disabled: true },
     mcp: { disabled: true },
-    modelsSectionLabel: 'Estruturas de dados',
+    modelsSectionLabel: copy.value.models,
     defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
     withDefaultFonts: false,
     persistAuth: false,
@@ -92,21 +131,21 @@ const renderReference = () => {
 
 const applySettings = (persistServer = true) => {
   try {
-    const normalized = normalizeApiServerUrl(serverInput.value)
+    const normalized = normalizeApiServerUrl(serverInput.value, serverValidationMessages.value)
     serverUrl.value = normalized
     serverInput.value = normalized
     settingsError.value = ''
     if (persistServer) localStorage.setItem(SERVER_STORAGE_KEY, normalized)
     renderReference()
   } catch (cause) {
-    settingsError.value = cause instanceof Error ? cause.message : 'Configuração inválida'
+    settingsError.value = cause instanceof Error ? cause.message : copy.value.invalid
   }
 }
 
 const receiveManagerConfig = (event: MessageEvent) => {
   if (event.source !== window.parent || event.data?.type !== 'viperconnect:docs-config') return
   try {
-    const managerUrl = normalizeApiServerUrl(event.data.apiUrl)
+    const managerUrl = normalizeApiServerUrl(event.data.apiUrl, serverValidationMessages.value)
     if (new URL(managerUrl).origin !== event.origin) return
     serverInput.value = managerUrl
     tokenInput.value = typeof event.data.token === 'string' ? event.data.token : ''
@@ -118,9 +157,9 @@ onMounted(async () => {
   try {
     window.addEventListener('message', receiveManagerConfig)
     const response = await fetch('/openapi.json')
-    if (!response.ok) throw new Error(`OpenAPI indisponível: HTTP ${response.status}`)
+    if (!response.ok) throw new Error(`${copy.value.unavailable}: HTTP ${response.status}`)
     openApiContent = await response.json()
-    if (!openApiContent?.openapi || !openApiContent?.paths) throw new Error('O contrato OpenAPI é inválido')
+    if (!openApiContent?.openapi || !openApiContent?.paths) throw new Error(copy.value.invalidContract)
 
     const scalar = await import('@scalar/api-reference')
     createReference = scalar.createApiReference
@@ -136,7 +175,7 @@ onMounted(async () => {
     applySettings(false)
     if (window.parent !== window) window.parent.postMessage({ type: 'viperconnect:docs-ready' }, '*')
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Não foi possível carregar a referência'
+    error.value = cause instanceof Error ? cause.message : copy.value.loadFailure
   } finally {
     loading.value = false
   }
@@ -152,29 +191,29 @@ onBeforeUnmount(() => {
   <section class="api-reference-shell">
     <header class="api-reference-toolbar">
       <div>
-        <span>REFERÊNCIA INTERATIVA</span>
+        <span>{{ copy.eyebrow }}</span>
         <strong>ViperConnect API</strong>
-        <small>Endpoints sincronizados diretamente dos controllers</small>
+        <small>{{ copy.subtitle }}</small>
       </div>
       <form class="api-reference-settings" @submit.prevent="applySettings()">
         <label>
-          <span>Endpoint da instalação</span>
-          <input v-model="serverInput" name="server" type="url" placeholder="https://unoapi.exemplo.com" required />
+          <span>{{ copy.endpoint }}</span>
+          <input v-model="serverInput" name="server" type="url" :placeholder="copy.endpointPlaceholder" required />
         </label>
         <label>
           <span>Token</span>
-          <input v-model="tokenInput" name="token" type="password" autocomplete="off" placeholder="Token de acesso" />
+          <input v-model="tokenInput" name="token" type="password" autocomplete="off" :placeholder="copy.tokenPlaceholder" />
         </label>
-        <button type="submit">Aplicar</button>
+        <button type="submit">{{ copy.apply }}</button>
         <a href="/openapi.json" download="viperconnect-openapi.json">↓ OpenAPI</a>
       </form>
     </header>
     <p v-if="settingsError" class="api-reference-settings-error" role="alert">{{ settingsError }}</p>
-    <div v-if="loading" class="api-reference-state">Carregando referência da API…</div>
+    <div v-if="loading" class="api-reference-state">{{ copy.loading }}</div>
     <div v-if="error" class="api-reference-state api-reference-error">
-      <strong>Não foi possível carregar a referência.</strong>
+      <strong>{{ copy.failureTitle }}</strong>
       <span>{{ error }}</span>
-      <a href="/openapi.json" download="openapi.json">Baixar OpenAPI</a>
+      <a href="/openapi.json" download="openapi.json">{{ copy.download }}</a>
     </div>
     <div ref="container" class="scalar-host" />
   </section>

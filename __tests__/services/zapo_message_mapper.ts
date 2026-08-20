@@ -56,6 +56,19 @@ describe('Zapo message mapper', () => {
     expect(mockFetch).toHaveBeenCalledTimes(5)
   })
 
+  test('passes an internally staged file path to the documented Zapo media source', async () => {
+    const mapped = await toZapoMessageContent(client, {
+      type: 'image',
+      image: { link: '/data/medias/5566/base64-image.jpeg', mime_type: 'image/jpeg' },
+    })
+    expect(mapped.content).toEqual(expect.objectContaining({
+      type: 'image',
+      media: '/data/medias/5566/base64-image.jpeg',
+      mimetype: 'image/jpeg',
+    }))
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   test('maps voice-note audio to Zapo audio content with the ptt flag', async () => {
     await expect(toZapoMessageContent(client, { type: 'audio', audio: { link: 'https://example.test/a.ogg', ptt: true } }))
       .resolves.toEqual(expect.objectContaining({ content: expect.objectContaining({ type: 'audio', ptt: true }) }))

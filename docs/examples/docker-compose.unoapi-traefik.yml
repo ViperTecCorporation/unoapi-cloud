@@ -171,9 +171,8 @@ services:
       valkey-server
       --appendonly yes
       --appendfsync everysec
-      --save 900 1
-      --save 300 10
-      --save 60 10000
+      --no-appendfsync-on-rewrite no
+      --save 3600 1
       --requirepass "TROQUE_A_SENHA"
       --protected-mode no
     volumes:

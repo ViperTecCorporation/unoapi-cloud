@@ -13,6 +13,7 @@ import { VideoStageJob } from '../../src/jobs/video_stage'
 import { VideoTranscodeJob } from '../../src/jobs/video_transcode'
 import { defaultConfig } from '../../src/services/config'
 import { VideoPreparationFailureReporter } from '../../src/services/video_preparation_failure'
+import { UNOAPI_MEDIA_PUBLIC_URL, UNOAPI_MEDIA_SOURCE, UNOAPI_MEDIA_STORAGE_KEY } from '../../src/services/messages/outgoing_media_input'
 
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
 
@@ -93,6 +94,45 @@ describe('video preparation jobs', () => {
       },
       expect.objectContaining({ type: 'direct', videoPrepared: true }),
     )
+  })
+
+  test('replaces Base64 video staging metadata with the prepared media reference', async () => {
+    const preparation = {
+      prepare: jest.fn().mockResolvedValue({
+        key: '5566/id-base64.prepared.mp4',
+        link: 'https://uno.example/id-base64.prepared.mp4',
+        sizeBytes: 1000,
+        transcoded: false,
+      }),
+    }
+    const getConfig = async () => ({
+      ...defaultConfig,
+      server: 'server_1',
+      provider: 'zapo' as const,
+      getStore: async () => ({ mediaStore: {} }),
+    })
+    const job = new VideoTranscodeJob(getConfig as any, preparation as any)
+
+    await job.consume('5566', {
+      id: 'id-base64',
+      sourceKey: '5566/id-base64.video-source',
+      payload: {
+        to: '5577',
+        type: 'video',
+        video: {
+          link: '/data/medias/5566/id-base64.video-source',
+          filename: 'camera.mov',
+          [UNOAPI_MEDIA_STORAGE_KEY]: '5566/id-base64.video-source',
+          [UNOAPI_MEDIA_SOURCE]: 'base64',
+        },
+      },
+    })
+
+    const queued = amqpPublishMock.mock.calls[0][3] as any
+    expect(queued.payload.video[UNOAPI_MEDIA_STORAGE_KEY]).toBe('5566/id-base64.prepared.mp4')
+    expect(queued.payload.video[UNOAPI_MEDIA_SOURCE]).toBe('base64')
+    expect(queued.payload.video[UNOAPI_MEDIA_PUBLIC_URL]).toBe('https://uno.example/id-base64.prepared.mp4')
+    expect(queued.payload.video.link).toBe('https://uno.example/id-base64.prepared.mp4')
   })
 
   test('reports a failed status only when preparation exhausts its retries', async () => {

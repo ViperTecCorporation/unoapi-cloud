@@ -75,6 +75,14 @@ describe('frontend pages', () => {
     expect(DOCUMENTATION_ORIGIN).toBe('https://viperconnect.vipertec.net')
   })
 
+  test('opens the English documentation when the Manager language is English', () => {
+    setLocale('en')
+    const html = renderDocumentationPage()
+
+    expect(html).toContain('src="https://viperconnect.vipertec.net/en/"')
+    expect(html).toContain('title="Documentation"')
+  })
+
   test('offers only removal for a suppressed Baileys session', () => {
     const html = renderSessionPage({
       session: { phone: '5566', provider: 'baileys', status: 'offline' },

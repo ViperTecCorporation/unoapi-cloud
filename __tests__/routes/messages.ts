@@ -130,6 +130,57 @@ describe('messages routes', () => {
     )
   })
 
+  test('accepts Base64 media above the default Express JSON limit and queues only a staged reference', async () => {
+    const bytes = Buffer.alloc(128 * 1024, 7)
+    const mediaStore = {
+      getFilePath: jest.fn().mockReturnValue(`${phone}/base64-image.jpeg`),
+      saveMediaBuffer: jest.fn().mockResolvedValue(true),
+      getFileUrl: jest.fn().mockResolvedValue(`/data/medias/${phone}/base64-image.jpeg`),
+      getDownloadUrl: jest.fn().mockResolvedValue(`https://uno.test/v15.0/download/${phone}/base64-image.jpeg`),
+      type: 'file',
+    }
+    ;(store as any).mediaStore = mediaStore
+    jest.spyOn(incoming, 'send').mockResolvedValue({
+      ok: { messaging_product: 'whatsapp', messages: [{ id: 'queued' }] },
+    })
+
+    const res = await request(app.server).post(`/v15.0/${phone}/messages`).send({
+      messaging_product: 'whatsapp',
+      to: '5566999999999',
+      type: 'image',
+      image: {
+        base64: bytes.toString('base64'),
+        mime_type: 'image/jpeg',
+        filename: 'foto.jpg',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    expect(mediaStore.saveMediaBuffer).toHaveBeenCalledWith(
+      `${phone}/base64-image.jpeg`,
+      bytes,
+      'image/jpeg',
+    )
+    const queuedPayload = (incoming.send as jest.Mock).mock.calls[0][1]
+    expect(queuedPayload.image).not.toHaveProperty('base64')
+    expect(queuedPayload.image.link).toBe(`/data/medias/${phone}/base64-image.jpeg`)
+  })
+
+  test('rejects a Base64 media payload that also provides a link', async () => {
+    const res = await request(app.server).post(`/v15.0/${phone}/messages`).send({
+      messaging_product: 'whatsapp',
+      to: '5566999999999',
+      type: 'image',
+      image: {
+        link: 'https://example.test/image.jpg',
+        base64: Buffer.from('image').toString('base64'),
+        mime_type: 'image/jpeg',
+      },
+    })
+    expect(res.status).toBe(400)
+    expect(incoming.send).not.toHaveBeenCalled()
+  })
+
   test('delivery recovery route forces session refresh for the original message id', async () => {
     const recoverSpy = jest.spyOn(incoming, 'recoverDelivery').mockResolvedValue({
       ok: {
