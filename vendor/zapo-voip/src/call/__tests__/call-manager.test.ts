@@ -1144,11 +1144,12 @@ test('relay election applies the announced relay id to media egress', async () =
     assert.equal(selectedRelayId, 1)
 })
 
-test('media path is confirmed only after remote SRTP authentication succeeds', async () => {
+test('outgoing media path is confirmed immediately after remote SRTP authentication succeeds', async () => {
     const { deps, stores } = createMockDeps()
     const manager = new WaCallManager({ deps, stores })
     const callId = await manager.startCall({ peerJid: '2222222222@lid' })
     const session = (manager as any).calls.get(callId)
+    assert.equal(session.info.direction, CallDirection.Outgoing)
     const peerSsrc = session.peerSsrcs[0]
     const packet = new Uint8Array(12)
     packet[0] = 0x80
@@ -1185,6 +1186,69 @@ test('media path is confirmed only after remote SRTP authentication succeeds', a
     session.onRelayData(packet, 'relay-valid')
 
     assert.deepEqual(selected, [{ connectionId: 'relay-valid', confirmed: true }])
+})
+
+test('incoming media keeps relay fanout until ten authenticated frames establish the path', async () => {
+    const { deps, stores } = createMockDeps()
+    const manager = new WaCallManager({ deps, stores })
+    const callId = await manager.startCall({ peerJid: '2222222222@lid' })
+    const session = (manager as any).calls.get(callId)
+    const peerSsrc = session.peerSsrcs[0]
+    const packet = new Uint8Array(12)
+    packet[0] = 0x80
+    packet[1] = 120
+    packet[8] = (peerSsrc >>> 24) & 0xff
+    packet[9] = (peerSsrc >>> 16) & 0xff
+    packet[10] = (peerSsrc >>> 8) & 0xff
+    packet[11] = peerSsrc & 0xff
+    const selected: Array<{ connectionId: string; confirmed: boolean }> = []
+    let sequenceNumber = 0
+
+    session.info.direction = CallDirection.Incoming
+    session.info.stateData.state = CallState.Active
+    session.acceptSent = true
+    session.sctpRelay.selectMediaConnection = (connectionId: string, confirmed: boolean) => {
+        selected.push({ connectionId, confirmed })
+        return true
+    }
+    session.opusCodec = {
+        decode: () => new Float32Array(960),
+        getStats: () => ({ success: sequenceNumber, errors: 0 }),
+        destroy: () => undefined
+    }
+    session.srtpSession = {
+        unprotect: () => ({
+            header: {
+                sequenceNumber: ++sequenceNumber,
+                timestamp: sequenceNumber * 960,
+                ssrc: peerSsrc
+            },
+            payload: new Uint8Array([0xf8, 0xff, 0xfe])
+        })
+    }
+
+    try {
+        session.onRelayData(packet, 'relay-a')
+        session.noteRemoteMediaProgress()
+        assert.deepEqual(selected, [])
+        assert.equal(session.remoteMediaEstablished, false)
+
+        for (let frame = 2; frame <= 9; frame++) {
+            session.onRelayData(packet, frame < 6 ? 'relay-a' : 'relay-b')
+            session.noteRemoteMediaProgress()
+        }
+        assert.deepEqual(selected, [])
+        assert.equal(session.remoteMediaEstablished, false)
+
+        session.onRelayData(packet, 'relay-b')
+        session.noteRemoteMediaProgress()
+
+        assert.deepEqual(selected, [{ connectionId: 'relay-b', confirmed: true }])
+        assert.equal(session.remoteMediaEstablished, true)
+        assert.equal(session.pendingInboundMediaConnectionId, 'relay-b')
+    } finally {
+        session.cleanup()
+    }
 })
 
 test('startCall blocks when maxConcurrentCalls is reached', async () => {

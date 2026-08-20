@@ -124,6 +124,7 @@ export class WaCallMediaSession implements AudioSender {
     private relayAttemptStartedAt = 0
     private relayAttemptAudioBaseCount = 0
     private lastAuthenticatedAudioCount = 0
+    private pendingInboundMediaConnectionId: string | null = null
     private readonly debeEnabled = true
 
     private audioSendCount = 0
@@ -1224,6 +1225,7 @@ export class WaCallMediaSession implements AudioSender {
         this.relayAttemptStartedAt = 0
         this.relayAttemptAudioBaseCount = 0
         this.lastAuthenticatedAudioCount = 0
+        this.pendingInboundMediaConnectionId = null
     }
 
     private async sendOutgoingPostAcceptSignaling(acceptingDeviceJid: string): Promise<void> {
@@ -1560,7 +1562,16 @@ export class WaCallMediaSession implements AudioSender {
             const rtpPacket = this.srtpSession.unprotect(data)
             const opusPayload = rtpPacket.payload
 
-            this.sctpRelay.selectMediaConnection(connectionId, true)
+            if (this.info.direction === CallDirection.Incoming) {
+                // Keep startup fanout active until inbound media is proven
+                // stable. Some mobile-network calls authenticate one packet
+                // on a relay and then continue through another advertised
+                // connection. Confirming the first packet would prematurely
+                // pin egress and disable fanout.
+                this.pendingInboundMediaConnectionId = connectionId
+            } else {
+                this.sctpRelay.selectMediaConnection(connectionId, true)
+            }
             if (opusPayload.length === 0) return
 
             // Counts only authenticated/decrypted WhatsApp Opus payloads. Relay
@@ -1830,19 +1841,27 @@ export class WaCallMediaSession implements AudioSender {
         this.lastRemoteMediaProgressAt = 0
         this.relayAttemptAudioBaseCount = this.audioRecvCount
         this.lastAuthenticatedAudioCount = 0
+        this.pendingInboundMediaConnectionId = null
         this.firstRelayRtpLogged = false
         this.firstAudioRecvLogged = false
     }
 
     private markRemoteMediaEstablished(authenticatedAudio: number): void {
         if (this.remoteMediaEstablished) return
+        const pendingConnectionId = this.pendingInboundMediaConnectionId
+        const inboundConnectionConfirmed =
+            this.info.direction !== CallDirection.Incoming || pendingConnectionId === null
+                ? undefined
+                : this.sctpRelay.selectMediaConnection(pendingConnectionId, true)
         this.remoteMediaEstablished = true
         this.stopRemoteMediaWatchdog(false)
         this.logger.info('remote media established; relay recovery watchdog stopped', {
             callId: this.info.callId,
             attempt: this.relayCandidateIndex + 1,
             authenticatedAudio,
-            threshold: REMOTE_MEDIA_ESTABLISHED_AUDIO_FRAMES
+            threshold: REMOTE_MEDIA_ESTABLISHED_AUDIO_FRAMES,
+            inboundMediaConnectionId: pendingConnectionId ?? undefined,
+            inboundConnectionConfirmed
         })
     }
 

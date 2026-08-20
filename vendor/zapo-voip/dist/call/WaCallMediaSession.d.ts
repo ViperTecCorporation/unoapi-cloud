@@ -56,6 +56,7 @@ export declare class WaCallMediaSession implements AudioSender {
     private relayAttemptStartedAt;
     private relayAttemptAudioBaseCount;
     private lastAuthenticatedAudioCount;
+    private pendingInboundMediaConnectionId;
     private readonly debeEnabled;
     private audioSendCount;
     private audioDropCount;
