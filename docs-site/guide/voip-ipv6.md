@@ -109,10 +109,11 @@ endereço externo e o relay normalmente são o mesmo AAAA resolvido.
 ## Limites desta entrega
 
 O WebSocket interno worker Zapo → VoIP continua na rede Docker existente. O
-socket de sinalização/HTTP do worker Zapo para o WhatsApp não foi forçado para
-IPv6. Isso não limita o relay de mídia, que já aceita endpoints IPv4 e IPv6
-numéricos de forma independente. Não altere o WebSocket interno nem force o
-egress de sinalização ao habilitar o dual-stack de SIP/mídia.
+egress do worker para o WhatsApp pode preferir IPv4 ou IPv6 separadamente no
+WebSocket, upload/download e link preview pelas variáveis `ZAPO_*_IP_FAMILY`.
+Essa preferência não altera o relay de mídia de chamada, que aceita endpoints
+IPv4 e IPv6 numéricos de forma independente, nem muda a família do WebSocket
+interno. Veja [Docker Compose](/guide/docker-compose#família-ip-das-conexões-zapo).
 
 ## Validação
 

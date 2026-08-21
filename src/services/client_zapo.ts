@@ -25,6 +25,11 @@ import { Template } from './template'
 import {
   PASSKEY_BRIDGE_TTL_SECONDS,
   ZAPO_REDIS_MAINTENANCE_INTERVAL_MS,
+  ZAPO_NETWORK_IP_FAMILY,
+  ZAPO_CHAT_SOCKET_IP_FAMILY,
+  ZAPO_MEDIA_UPLOAD_IP_FAMILY,
+  ZAPO_MEDIA_DOWNLOAD_IP_FAMILY,
+  ZAPO_LINK_PREVIEW_IP_FAMILY,
   ZAPO_SESSION_LEASE_RENEW_MS,
   ZAPO_SESSION_LEASE_TTL_MS,
   UNOAPI_SERVER_NAME,
@@ -908,7 +913,13 @@ export class ClientZapo implements Client {
     const client = this.clientFactory({
       store: zapoStore,
       sessionId: this.phone,
-      proxy: createZapoProxyOptions(this.config.proxyUrl),
+      proxy: createZapoProxyOptions(this.config.proxyUrl, undefined, {
+        network: ZAPO_NETWORK_IP_FAMILY,
+        chatSocket: ZAPO_CHAT_SOCKET_IP_FAMILY,
+        mediaUpload: ZAPO_MEDIA_UPLOAD_IP_FAMILY,
+        mediaDownload: ZAPO_MEDIA_DOWNLOAD_IP_FAMILY,
+        linkPreview: ZAPO_LINK_PREVIEW_IP_FAMILY,
+      }),
       markOnlineOnConnect: this.config.markOnlineOnConnect,
       recoverFromClientTooOld: true,
       history: {

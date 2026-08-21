@@ -303,6 +303,33 @@ Skip sending the same message again when a job retry happens after a successful 
   the WhatsApp WebSocket, media CDN upload/download and link-preview fetches.
   - Example: `PROXY_URL=socks5://user:pass@proxy.local:1080`
 
+## Zapo outbound IP family
+
+- `ZAPO_NETWORK_IP_FAMILY` — global policy for Zapo outbound channels. Default:
+  `auto`. Accepted values: `auto`, `ipv6first`, `ipv4first`.
+- `ZAPO_CHAT_SOCKET_IP_FAMILY` — optional WhatsApp WebSocket override.
+- `ZAPO_MEDIA_UPLOAD_IP_FAMILY` — optional media CDN upload override.
+- `ZAPO_MEDIA_DOWNLOAD_IP_FAMILY` — optional media CDN download override.
+- `ZAPO_LINK_PREVIEW_IP_FAMILY` — optional link-preview HTTP(S) override.
+
+An empty channel override inherits `ZAPO_NETWORK_IP_FAMILY`. `ipv6first` and
+`ipv4first` only change address order: Node family autoselection remains enabled,
+so the alternate family is retained as a connection fallback. `auto` creates no
+custom agent and preserves the previous runtime path exactly. Invalid values stop
+the Zapo session startup with an explicit configuration error.
+
+```env
+# Prefer IPv6 on every direct Zapo channel, with IPv4 fallback.
+ZAPO_NETWORK_IP_FAMILY=ipv6first
+
+# Optional exception: keep media download IPv4-first.
+ZAPO_MEDIA_DOWNLOAD_IP_FAMILY=ipv4first
+```
+
+When `PROXY_URL` is configured, the SOCKS agent remains authoritative for every
+channel. In particular, `socks5h` resolves the destination at the proxy, so local
+family-order settings cannot force the proxy's DNS result or egress family.
+
 ## Webhooks & Notifications
 
 - `WEBHOOK_SESSION` Ã¢â‚¬â€ Receive session notifications (QR, status) via HTTP.

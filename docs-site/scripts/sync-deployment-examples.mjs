@@ -10,6 +10,7 @@ const output = path.join(docsSite, 'public', 'examples')
 const examples = [
   'docker-compose.unoapi-nginx.yml',
   'docker-compose.unoapi-traefik.yml',
+  'docker-compose.unoapi-ipv6.override.yml',
   'docker-stack.unoapi-nginx.yml',
   'docker-stack.unoapi-traefik.yml',
 ]

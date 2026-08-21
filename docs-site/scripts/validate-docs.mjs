@@ -166,6 +166,7 @@ const englishPages = [
   'guide/install-native-linux.md',
   'guide/install-voip-native-linux.md',
   'guide/voip-ipv6.md',
+  'guide/network-ipv6.md',
   'guide/docker-compose.md',
   'guide/docker-swarm.md',
   'guide/connection.md',
@@ -227,6 +228,18 @@ const composeFiles = [
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-nginx.yml'),
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-traefik.yml'),
 ]
+const ipv6OverrideFile = path.join(docs, 'public', 'examples', 'docker-compose.unoapi-ipv6.override.yml')
+const ipv6Override = parseYaml(await readFile(ipv6OverrideFile, 'utf8'))
+const ipv6Network = ipv6Override.networks?.unoapi
+const ipv6Subnets = (ipv6Network?.ipam?.config || []).map((entry) => entry.subnet)
+if (
+  ipv6Network?.enable_ipv6 !== true ||
+  ipv6Network?.driver !== 'bridge' ||
+  !ipv6Subnets.some((subnet) => /^fd[0-9a-f]{2}:/i.test(`${subnet}`)) ||
+  !ipv6Subnets.some((subnet) => /^172\./.test(`${subnet}`))
+) {
+  throw new Error('Override Docker IPv6 precisa preservar uma bridge dual-stack com IPv4 privado e ULA')
+}
 const validateDualStackEnvironment = (environment, location) => {
   if (environment?.SIP_RTP_BIND_IPV4 !== '0.0.0.0') {
     throw new Error(`${location}: SIP_RTP_BIND_IPV4 precisa preservar o bind IPv4`)
@@ -240,6 +253,21 @@ const validateDualStackEnvironment = (environment, location) => {
   for (const legacy of ['SIP_RTP_BIND_HOST', 'SIP_RTP_PUBLIC_IP', 'SIP_RTP_PUBLIC_ADVERTISE_IP']) {
     if (environment?.[legacy] !== undefined) {
       throw new Error(`${location}: exemplo novo não deve ensinar a variável legada ${legacy}`)
+    }
+  }
+}
+const validateZapoNetworkEnvironment = (environment, location) => {
+  if (environment?.ZAPO_NETWORK_IP_FAMILY !== 'auto') {
+    throw new Error(`${location}: ZAPO_NETWORK_IP_FAMILY público precisa preservar auto como padrão`)
+  }
+  for (const key of [
+    'ZAPO_CHAT_SOCKET_IP_FAMILY',
+    'ZAPO_MEDIA_UPLOAD_IP_FAMILY',
+    'ZAPO_MEDIA_DOWNLOAD_IP_FAMILY',
+    'ZAPO_LINK_PREVIEW_IP_FAMILY',
+  ]) {
+    if (environment?.[key] !== '') {
+      throw new Error(`${location}: ${key} precisa ficar vazio para herdar a política global`)
     }
   }
 }
@@ -257,6 +285,7 @@ for (const composeFile of composeFiles) {
   if (workerEnvironment?.UNOAPI_PROCESS_ROLE !== 'worker' || workerEnvironment?.UNOAPI_WORKER_ENGINE !== 'zapo') {
     throw new Error(`Worker Zapo inválido: ${path.basename(composeFile)}`)
   }
+  validateZapoNetworkEnvironment(workerEnvironment, path.basename(composeFile))
   const brokerEnvironment = compose.services?.['unoapi-broker']?.environment
   const videoEnvironment = compose.services?.['unoapi-video-worker']?.environment
   if (brokerEnvironment?.UNOAPI_VIDEO_WORKER_MODE !== 'dedicated' || videoEnvironment?.UNOAPI_PROCESS_ROLE !== 'video') {
@@ -388,6 +417,8 @@ for (const swarmFile of swarmFiles) {
     }
   }
 
+  validateZapoNetworkEnvironment(stack.services['unoapi-worker-zapo'].environment, filename)
+
   for (const internalService of ['unoapi-redis', 'unoapi-rabbitmq']) {
     if (stack.services[internalService].ports?.length) {
       throw new Error(`${filename}: ${internalService} não pode publicar portas`)
@@ -493,6 +524,22 @@ for (const requiredText of [
 ]) {
   if (!dualStackGuide.includes(requiredText)) {
     throw new Error(`Guia dual-stack sem contrato obrigatório: ${requiredText}`)
+  }
+}
+
+for (const localePrefix of ['', 'en/']) {
+  const networkGuide = await readFile(path.join(docs, localePrefix, 'guide', 'network-ipv6.md'), 'utf8')
+  for (const requiredText of [
+    'enable_ipv6',
+    'fd42:756e:6f61::/64',
+    '[::]:443',
+    'ZAPO_NETWORK_IP_FAMILY',
+    'docker compose config',
+    'curl -6',
+  ]) {
+    if (!networkGuide.includes(requiredText)) {
+      throw new Error(`${localePrefix}guide/network-ipv6.md sem conteúdo obrigatório: ${requiredText}`)
+    }
   }
 }
 

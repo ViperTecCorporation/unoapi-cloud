@@ -35,6 +35,7 @@ const portugueseTheme = {
         { text: 'Docker Compose', link: '/guide/docker-compose' },
         { text: 'Docker Swarm', link: '/guide/docker-swarm' },
         { text: 'Linux nativo', link: '/guide/install-native-linux' },
+        { text: 'Rede IPv4 e IPv6', link: '/guide/network-ipv6' },
       ],
     },
     {
@@ -110,6 +111,7 @@ const englishTheme = {
         { text: 'Docker Compose', link: '/en/guide/docker-compose' },
         { text: 'Docker Swarm', link: '/en/guide/docker-swarm' },
         { text: 'Native Linux', link: '/en/guide/install-native-linux' },
+        { text: 'IPv4 and IPv6 network', link: '/en/guide/network-ipv6' },
       ],
     },
     {

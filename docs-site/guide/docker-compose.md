@@ -66,6 +66,35 @@ o entrypoint do Traefik e o `certresolver` nas labels para os nomes usados pelo
 seu Traefik. Esse `entrypoint` pertence ao roteador Traefik e não é o
 `entrypoint` do container ViperConnect.
 
+## Rede Docker IPv4 e IPv6
+
+O IPv6 público da API e o IPv6 de saída do worker são necessidades diferentes.
+Para dar IPv6 aos containers da rede interna, use o override dual-stack:
+
+<a class="compose-download" href="/examples/docker-compose.unoapi-ipv6.override.yml" download="docker-compose.unoapi-ipv6.override.yml">↓ Baixar override de rede IPv6</a>
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.unoapi-ipv6.override.yml \
+  config
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.unoapi-ipv6.override.yml \
+  up -d --force-recreate
+```
+
+Uma rede Docker já criada não muda de subnet. Em instalação existente, programe
+uma janela para recriar os containers e a rede, sem usar `down -v`; as sessões
+reconectam e os volumes permanecem. O prefixo `fd42:756e:6f61::/64` é ULA
+interno e não depende do prefixo público do provedor.
+
+Para publicar o Manager/API em IPv6, prefira Nginx ou Traefik ouvindo em
+`[::]:443` e encaminhando para a porta 9876. Isso não exige atribuir um IPv6
+global diretamente ao container. Veja o procedimento, firewall e validação no
+[guia de rede IPv4 e IPv6](/guide/network-ipv6).
+
 ## O que alterar antes de subir
 
 Nos dois arquivos, revise:
@@ -155,6 +184,28 @@ o serviço correspondente estiver realmente instalado.
 Essas portas devem estar liberadas nos firewalls IPv4 e IPv6. Como a telefonia
 usa rede host, `ss -lunp` deve mostrar listeners em `0.0.0.0` e `[::]` para SIP
 e para as portas RTP alocadas.
+
+## Família IP das conexões Zapo
+
+O worker Zapo aceita uma política global e overrides independentes para o
+WebSocket do WhatsApp, upload, download e link preview:
+
+```yaml
+ZAPO_NETWORK_IP_FAMILY: "auto"
+ZAPO_CHAT_SOCKET_IP_FAMILY: ""
+ZAPO_MEDIA_UPLOAD_IP_FAMILY: ""
+ZAPO_MEDIA_DOWNLOAD_IP_FAMILY: ""
+ZAPO_LINK_PREVIEW_IP_FAMILY: ""
+```
+
+Os valores aceitos são `auto`, `ipv6first` e `ipv4first`. Um override vazio
+herda o valor global. As opções `ipv6first` e `ipv4first` preservam fallback
+para a outra família; não são modos exclusivos. Para preferir IPv6 em todos os
+canais, altere somente `ZAPO_NETWORK_IP_FAMILY` para `ipv6first`.
+
+`auto` não instala agente adicional e mantém o comportamento anterior. Quando
+`PROXY_URL` estiver preenchida, o SOCKS continua prioritário; com `socks5h`, o
+DNS e a família de saída são decididos pelo proxy remoto.
 
 ## Arquitetura do modelo
 

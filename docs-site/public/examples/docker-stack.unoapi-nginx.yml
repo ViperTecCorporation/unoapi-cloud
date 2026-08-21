@@ -149,6 +149,11 @@ services:
       <<: *base-environment
       UNOAPI_PROCESS_ROLE: "worker"
       UNOAPI_WORKER_ENGINE: "zapo"
+      ZAPO_NETWORK_IP_FAMILY: "auto"
+      ZAPO_CHAT_SOCKET_IP_FAMILY: ""
+      ZAPO_MEDIA_UPLOAD_IP_FAMILY: ""
+      ZAPO_MEDIA_DOWNLOAD_IP_FAMILY: ""
+      ZAPO_LINK_PREVIEW_IP_FAMILY: ""
     deploy:
       replicas: 1
       restart_policy:

@@ -104,6 +104,29 @@ ZAPO_VOIP_RELAY_BRIDGE_PATH=/opt/viperconnect/current/vendor/zapo-voip/native/re
 Uma configuração explícita já existente é preservada, permitindo manter um
 binário externo em instalações personalizadas.
 
+Para controlar a família das conexões de saída da sessão Zapo sem fixar o
+prefixo IPv6 do host, adicione ao mesmo `EnvironmentFile`:
+
+```dotenv
+ZAPO_NETWORK_IP_FAMILY=auto
+# Overrides opcionais; vazio herda a política global.
+ZAPO_CHAT_SOCKET_IP_FAMILY=
+ZAPO_MEDIA_UPLOAD_IP_FAMILY=
+ZAPO_MEDIA_DOWNLOAD_IP_FAMILY=
+ZAPO_LINK_PREVIEW_IP_FAMILY=
+```
+
+Use `ipv6first` para preferir IPv6 com fallback IPv4. Essa alteração exige
+reiniciar somente o processo que possui as sessões Zapo; as sessões reconectam.
+
+### Entrada IPv6 da API
+
+No modo nativo, o worker usa diretamente a rota IPv6 do host. A publicação da
+API deve terminar TLS em um proxy reverso que ouça em IPv4 e `[::]:443` e
+encaminhe para `127.0.0.1:9876`. Não é necessário expor a porta Node diretamente
+na Internet. O roteiro de rede, DNS, Nginx e firewall está em
+[`docs-site/guide/network-ipv6.md`](../docs-site/guide/network-ipv6.md).
+
 ## Atualização e rollback
 
 Para atualizar, execute o instalador com uma tag nova. Releases anteriores não

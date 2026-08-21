@@ -104,6 +104,11 @@ export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '
 export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')
 export const CONNECT_COUNT_CACHE_TTL_MS = parseInt(process.env.CONNECT_COUNT_CACHE_TTL_MS || '2000')
 export const PROXY_URL = process.env.PROXY_URL
+export const ZAPO_NETWORK_IP_FAMILY = process.env.ZAPO_NETWORK_IP_FAMILY || 'auto'
+export const ZAPO_CHAT_SOCKET_IP_FAMILY = process.env.ZAPO_CHAT_SOCKET_IP_FAMILY
+export const ZAPO_MEDIA_UPLOAD_IP_FAMILY = process.env.ZAPO_MEDIA_UPLOAD_IP_FAMILY
+export const ZAPO_MEDIA_DOWNLOAD_IP_FAMILY = process.env.ZAPO_MEDIA_DOWNLOAD_IP_FAMILY
+export const ZAPO_LINK_PREVIEW_IP_FAMILY = process.env.ZAPO_LINK_PREVIEW_IP_FAMILY
 
 // behavior of unoapi
 export const UNOAPI_SERVER_NAME = process.env.UNOAPI_SERVER_NAME || 'server_1'

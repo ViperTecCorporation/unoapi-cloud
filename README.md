@@ -3,7 +3,7 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0.19-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.19)
+[![Version](https://img.shields.io/badge/version-4.0.20-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.20)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
 [![Documentação](https://img.shields.io/badge/docs-viperconnect.vipertec.net-9d3836)](https://viperconnect.vipertec.net/)
 
@@ -52,6 +52,7 @@ Escolha o modo de instalação na documentação oficial:
 - [Docker Compose](https://viperconnect.vipertec.net/guide/docker-compose)
 - [Docker Swarm](https://viperconnect.vipertec.net/guide/docker-swarm)
 - [Instalador nativo para Linux](https://viperconnect.vipertec.net/guide/install-native-linux)
+- [Rede IPv4 e IPv6](https://viperconnect.vipertec.net/guide/network-ipv6)
 
 ### Manager
 
@@ -193,6 +194,12 @@ O runtime de comunicação do ViperConnect utiliza o
 [Zapo](https://github.com/vinikjkkj/zapo), com adapters próprios para preservar
 o contrato HTTP, os webhooks, os contatos, as mídias e as integrações do
 ViperConnect.
+
+As conexões de saída da Zapo permanecem dual-stack. `auto` preserva a seleção
+nativa do Node; `ipv6first` e `ipv4first` podem ser aplicados globalmente ou,
+de forma independente, ao WebSocket do WhatsApp, upload, download e link
+preview, sempre com fallback para a outra família. Consulte
+[variáveis de ambiente](docs/ENVIRONMENT.md#zapo-outbound-ip-family).
 
 - [Repositório oficial](https://github.com/vinikjkkj/zapo)
 - [Documentação oficial](https://zapo.to/pt-br)

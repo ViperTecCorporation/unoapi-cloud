@@ -48,7 +48,8 @@ Validate registration and bidirectional audio separately with an IPv4 client
 and an IPv6 client. Coturn must also have IPv4 and IPv6 listeners and relays;
 keep its relay range separate from SIP/RTP and WebRTC media ranges.
 
-The worker's WhatsApp signaling/HTTP egress is not forced to IPv6. That is
-separate from relay media, which accepts numeric IPv4 and IPv6 endpoints. The
-internal Zapo worker-to-VoIP WebSocket also remains on the existing Docker
-network.
+The worker's WhatsApp WebSocket, media HTTP and link-preview egress can use the
+independent `ZAPO_*_IP_FAMILY` preferences documented in
+[Docker Compose](/en/guide/docker-compose#zapo-outbound-ip-family). This remains
+separate from call relay media, which accepts numeric IPv4 and IPv6 endpoints.
+The internal Zapo worker-to-VoIP WebSocket stays on the existing Docker network.
