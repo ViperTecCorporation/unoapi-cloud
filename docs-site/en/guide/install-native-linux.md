@@ -2,7 +2,9 @@
 
 The native installer targets Debian 12 and Ubuntu 24.04. It installs Node.js
 24, checks out an immutable release, builds the runtime and manages it through
-systemd while retaining previous releases for rollback.
+systemd while retaining previous releases for rollback. It also installs FFmpeg
+and `qpdf`; `qpdf` is invoked only when the worker detects a legacy Oracle
+Reports PDF during document upload.
 
 ## Required services
 

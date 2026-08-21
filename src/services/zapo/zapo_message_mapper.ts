@@ -7,6 +7,7 @@ import { getMimetype, toBaileysMessageContent } from '../transformer'
 import { SendError } from '../send_error'
 import { SEND_AUDIO_MESSAGE_AS_PTT } from '../../defaults'
 import { zapoMediaProcessor } from './zapo_media_processor'
+import { zapoLegacyPdfNormalizer } from './zapo_legacy_pdf'
 
 const mediaTypes = ['image', 'audio', 'document', 'video', 'sticker'] as const
 
@@ -240,8 +241,11 @@ const interactiveHeader = async (client: WaClient, header: any) => {
   if (!response.ok) throw new SendError(11, `interactive_header_download_failed: HTTP ${response.status}`)
   const mimetype = media.mime_type || media.mimetype || response.headers.get('content-type') || getMimetype({ type, [type]: { link } })
   const bytes = new Uint8Array(await response.arrayBuffer())
+  const uploadBytes = type === 'document'
+    ? await zapoLegacyPdfNormalizer.normalizeForWhatsApp(bytes, mimetype)
+    : bytes
   const [upload, processedImage] = await Promise.all([
-    client.message.upload(bytes, { type, mimetype }),
+    client.message.upload(uploadBytes, { type, mimetype }),
     type === 'image'
       ? zapoMediaProcessor.generateImageThumbnail?.(bytes, 100)
       : undefined,
@@ -382,11 +386,16 @@ export const toZapoMessageContent = async (
     const link = `${media.link || ''}`.trim()
     if (!link) throw new SendError(11, `invalid_${type}_payload: missing link`)
     const isPtt = type === 'audio' && (SEND_AUDIO_MESSAGE_AS_PTT || media.ptt === true || payload?.ptt === true)
+    const mimetype = media.mime_type || media.mimetype || getMimetype(payload) || undefined
+    const resolvedMedia = await resolveMedia(type, link)
+    const uploadMedia = type === 'document'
+      ? await zapoLegacyPdfNormalizer.normalizeForWhatsApp(resolvedMedia, mimetype)
+      : resolvedMedia
     return {
       content: {
         type,
-        media: await resolveMedia(type, link),
-        mimetype: media.mime_type || media.mimetype || getMimetype(payload) || undefined,
+        media: uploadMedia,
+        mimetype,
         ...(isPtt ? { ptt: true } : {}),
         ...(media.caption ? { caption: customMessageCharactersFunction(media.caption) } : {}),
         ...(media.filename ? { fileName: media.filename } : {}),

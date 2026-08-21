@@ -1,6 +1,6 @@
 jest.mock('../../src/defaults', () => ({
   ...jest.requireActual('../../src/defaults'),
-  UNOAPI_MEDIA_BASE64_MAX_BYTES: 8,
+  UNOAPI_MEDIA_BASE64_MAX_BYTES: 512,
 }))
 
 import { prepareOutgoingMediaInput, outgoingMediaLogSummary, UNOAPI_MEDIA_PUBLIC_URL, UNOAPI_MEDIA_SOURCE, UNOAPI_MEDIA_STORAGE_KEY, UNOAPI_MESSAGE_ID } from '../../src/services/messages/outgoing_media_input'
@@ -58,7 +58,7 @@ describe('outgoing Base64 media input', () => {
   })
 
   test('accepts a Data URI and infers its MIME type', async () => {
-    const bytes = Buffer.from([1, 2, 3])
+    const bytes = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n')
     const prepared = await prepareOutgoingMediaInput('5566', {
       type: 'document',
       document: { base64: `data:application/pdf;base64,${bytes.toString('base64')}`, filename: 'a.pdf' },
@@ -88,16 +88,17 @@ describe('outgoing Base64 media input', () => {
   })
 
   test.each([
-    ['audio', 'audio/ogg'],
-    ['video', 'video/mp4'],
-    ['sticker', 'image/webp'],
-  ])('supports Base64 for %s without changing the common payload envelope', async (type, mimeType) => {
+    ['audio', 'audio/ogg', Buffer.from('OggS\x00\x02', 'binary')],
+    ['video', 'video/mp4', Buffer.from('000000186674797069736F6D', 'hex')],
+    ['sticker', 'image/webp', Buffer.from('524946460400000057454250', 'hex')],
+  ])('supports Base64 for %s without changing the common payload envelope', async (type, mimeType, bytes) => {
     const prepared = await prepareOutgoingMediaInput('5566', {
       messaging_product: 'whatsapp',
       to: '5577',
       type,
-      [type]: { base64: Buffer.from([1, 2, 3]).toString('base64'), mime_type: mimeType },
+      [type]: { base64: bytes.toString('base64'), mime_type: mimeType },
     }, getConfig as any)
+    expect(mediaStore.saveMediaBuffer).toHaveBeenCalledWith('5566/message.jpeg', bytes, mimeType)
     expect(prepared.payload).toEqual(expect.objectContaining({
       messaging_product: 'whatsapp',
       to: '5577',
@@ -112,7 +113,7 @@ describe('outgoing Base64 media input', () => {
     [{ type: 'image', image: { base64: 'AQID', mime_type: 'application/pdf' } }, 'invalid_image_mime_type'],
     [{ type: 'image', image: { base64: 'data:image/png;base64,AQID', mime_type: 'image/jpeg' } }, 'mime_type_mismatch'],
     [{ type: 'image', image: { base64: 'AQID', mime_type: 'image/jpeg', link: 'https://example.test/a.jpg' } }, 'only_one'],
-    [{ type: 'document', document: { base64: Buffer.alloc(9).toString('base64'), mime_type: 'application/pdf' } }, 'too_large'],
+    [{ type: 'document', document: { base64: Buffer.alloc(513).toString('base64'), mime_type: 'application/pdf' } }, 'too_large'],
   ])('rejects invalid or ambiguous Base64 input', async (payload, error) => {
     await expect(prepareOutgoingMediaInput('5566', payload, getConfig as any)).rejects.toThrow(error)
   })

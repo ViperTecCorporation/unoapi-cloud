@@ -325,6 +325,7 @@ paths:
         - Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.
         - Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.
         - Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.
+        - PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       requestBody:

@@ -40,6 +40,7 @@ describe('Zapo-only runtime artifacts', () => {
     expect(dockerfile).toContain('FROM runtime-base AS legacy-runtime')
     expect(dockerfile).toContain('FROM runtime-base AS runtime')
     expect(dockerfile).toContain('COPY --from=production-dependencies /app/node_modules ./node_modules')
+    expect(dockerfile).toMatch(/apt-get install[^\n]+ffmpeg qpdf wget/)
     expect(compose.services['worker-zapo'].environment.UNOAPI_WORKER_ENGINE).toBe('zapo')
     expect(compose.services.voip.environment.UNOAPI_PROCESS_ROLE).toBe('voip')
     expect(compose.services.voip.image).toBe('ghcr.io/viperteccorporation/viperconnect:latest')

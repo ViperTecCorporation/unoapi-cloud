@@ -106,6 +106,13 @@ media store configurado e coloca somente a referência interna nas filas. O
 Base64 não é incluído nos logs, webhooks ou payloads do RabbitMQ. Vídeos seguem
 o mesmo worker de preparação e conversão usado por vídeos enviados por link.
 
+PDFs legados produzidos pelo Oracle Reports podem abrir no aplicativo móvel e
+aparecer como indisponíveis no WhatsApp Web. O worker detecta exclusivamente
+essa assinatura e normaliza o PDF com `qpdf` antes do upload ao WhatsApp. Isso
+vale tanto para `link` quanto para `base64`; o arquivo original no storage não é
+alterado. PDFs comuns não iniciam conversão, e documentos criptografados,
+assinados digitalmente ou com formulário são preservados sem modificação.
+
 O limite padrão é 32 MiB depois da decodificação e pode ser ajustado por
 `UNOAPI_MEDIA_BASE64_MAX_BYTES`. O limite do JSON da rota de mensagens é
 controlado separadamente por `UNOAPI_MESSAGES_JSON_LIMIT`, cujo padrão é

@@ -2,7 +2,9 @@
 
 O instalador oficial prepara o ViperConnect em Debian ou Ubuntu com Node.js 24,
 build Zapo-only, dependências de produção, o helper nativo de mídia
-`relay-bridge` e serviço `systemd`.
+`relay-bridge`, FFmpeg, `qpdf` e serviço `systemd`. O `qpdf` é usado somente
+quando o worker detecta um PDF legado gerado pelo Oracle Reports; documentos
+comuns não executam conversão.
 
 O helper é testado e compilado com um toolchain Go 1.25 oficial temporário. O
 instalador valida o SHA-256 publicado em `go.dev` e remove o toolchain ao final;

@@ -3,7 +3,8 @@
 O script `scripts/install-native-linux.sh` instala ou atualiza o ViperConnect
 em Debian/Ubuntu. Ele instala Node.js 24 e as dependências de compilação, cria um
 usuário de serviço, compila uma tag imutável e só troca a release ativa depois
-de todas as validações.
+de todas as validações. FFmpeg e `qpdf` também são instalados; `qpdf` permanece
+ocioso e só é chamado para normalizar PDFs Oracle legados detectados no envio.
 
 Valkey/Redis e RabbitMQ são externos e precisam estar acessíveis antes de
 iniciar o serviço.
