@@ -3,7 +3,8 @@
 O script `scripts/install-native-linux.sh` instala ou atualiza o ViperConnect
 em Debian/Ubuntu. Ele instala Node.js 24 e as dependências de compilação, cria um
 usuário de serviço, compila uma tag imutável e só troca a release ativa depois
-de todas as validações.
+de todas as validações. FFmpeg e `qpdf` também são instalados; `qpdf` permanece
+ocioso e só é chamado para normalizar PDFs Oracle legados detectados no envio.
 
 Valkey/Redis e RabbitMQ são externos e precisam estar acessíveis antes de
 iniciar o serviço.
@@ -42,12 +43,34 @@ BASE_URL=https://unoapi.seudominio.com.br
 UNOAPI_AUTH_TOKEN=TOKEN_LONGO_E_ALEATORIO
 WHATSAPP_ENGINE=zapo
 UNOAPI_WORKER_ENGINE=zapo
+ZAPO_NETWORK_IP_FAMILY=auto
+# Overrides opcionais; vazio herda a política global.
+ZAPO_CHAT_SOCKET_IP_FAMILY=
+ZAPO_MEDIA_UPLOAD_IP_FAMILY=
+ZAPO_MEDIA_DOWNLOAD_IP_FAMILY=
+ZAPO_LINK_PREVIEW_IP_FAMILY=
 UNOAPI_VIDEO_WORKER_MODE=dedicated
 PORT=9876
 LOG_LEVEL=info
 UNO_LOG_LEVEL=info
 BASE_STORE=/var/lib/viperconnect/data
 ```
+
+`ipv6first` prefere IPv6 no WebSocket, upload/download e link preview, mas
+preserva fallback IPv4. Use os overrides quando um canal precisar de ordem
+diferente. Se `PROXY_URL` estiver configurada, o proxy continua decidindo DNS e
+família de saída.
+
+## Publicar a API nativa em IPv6
+
+No Linux nativo não existe bridge Docker: o worker usa diretamente a rota IPv6
+do host. Valide primeiro `ip -6 route`, DNS e `curl -6`. Para a API pública,
+termine TLS no Nginx ou Traefik com listeners IPv4 e `[::]:443` e encaminhe para
+`127.0.0.1:9876`. Assim, o processo Node permanece protegido como backend e o
+proxy controla certificados, limites e firewall.
+
+O procedimento completo, incluindo AAAA DNS-only, exemplo Nginx e testes, está
+no [guia de rede IPv4 e IPv6](/guide/network-ipv6).
 
 ## 3. Conferir sem alterar o servidor
 

@@ -16,6 +16,8 @@ import { toError } from 'zapo-js/util'
 import type { WaCallManager } from '../call/WaCallManager.js'
 import type { WaVoipDeps } from '../types.js'
 
+import { summarizeCallEnvelope } from './signaling-diagnostics.js'
+
 const RECEIPT_CALL_TAGS = new Set([
     'offer',
     'accept',
@@ -111,6 +113,16 @@ export async function routeCallStanza(
         return tag
     }
 
+    log.debug('voip_diag inbound_call_envelope', {
+        callId: inner.attrs?.['call-id'],
+        tag,
+        rawPeerJid: peerJid,
+        normalizedPeerJid,
+        responseDeferred: deferResponseUntilHandled,
+        received: summarizeCallEnvelope(node),
+        response: summarizeCallEnvelope(response)
+    })
+
     switch (tag) {
         case 'offer':
             await manager.handleCallOffer(node, normalizedPeerJid)
@@ -150,25 +162,52 @@ export async function routeCallStanza(
     return tag
 }
 
-export async function routeCallAck(manager: WaCallManager, node: BinaryNode): Promise<void> {
+export async function routeCallAck(
+    manager: WaCallManager,
+    node: BinaryNode,
+    logger?: Logger
+): Promise<void> {
+    const log = logger ?? createNoopLogger()
+    log.debug('voip_diag inbound_call_ack_envelope', {
+        stanzaId: node.attrs?.id,
+        type: node.attrs?.type,
+        error: node.attrs?.error,
+        from: node.attrs?.from,
+        to: node.attrs?.to,
+        envelope: summarizeCallEnvelope(node)
+    })
     await manager.handleCallAck(node)
 }
 
-export async function routeCallReceipt(deps: WaVoipDeps, node: BinaryNode): Promise<boolean> {
+export async function routeCallReceipt(
+    deps: WaVoipDeps,
+    node: BinaryNode,
+    logger?: Logger
+): Promise<boolean> {
     const inner = getFirstNodeChild(node)
     if (!inner) return false
     if (!RECEIPT_CALL_TAGS.has(inner.tag)) return false
 
     const peerJid = node.attrs.from
-    await deps.lowLevelCoordinator.sendNode(
-        buildAckNode({
-            kind: 'custom',
-            ackClass: 'receipt',
-            to: peerJid,
-            id: node.attrs.id,
-            type: node.attrs.type || 'retry'
-        })
-    )
+    const response = buildAckNode({
+        kind: 'custom',
+        ackClass: 'receipt',
+        to: peerJid,
+        id: node.attrs.id,
+        type: node.attrs.type || 'retry'
+    })
+    await deps.lowLevelCoordinator.sendNode(response)
+
+    const log = logger ?? createNoopLogger()
+    log.debug('voip_diag inbound_call_receipt_envelope', {
+        stanzaId: node.attrs?.id,
+        type: node.attrs?.type,
+        innerTag: inner.tag,
+        from: node.attrs?.from,
+        to: node.attrs?.to,
+        received: summarizeCallEnvelope(node),
+        response: summarizeCallEnvelope(response)
+    })
 
     return true
 }

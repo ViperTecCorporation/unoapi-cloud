@@ -20,6 +20,25 @@ família na mesma porta lógica:
 A seleção LAN/NAT de endereços privados continua exclusiva do IPv4. Ela não é
 aplicada a peers IPv6.
 
+## Relay de mídia do WhatsApp
+
+O dual-stack da telefonia e o dual-stack do relay WhatsApp são camadas
+independentes. O worker Zapo preserva os endpoints `te2` IPv4 e IPv6 anunciados
+no offer e abre um socket explícito da família correspondente para cada
+candidato (`udp4` ou `udp6`). O helper nativo termina UDP, DTLS, SCTP e o
+DataChannel; depois disso, somente PCM trafega pelo bridge interno.
+
+Por isso, um relay WhatsApp IPv6 pode alimentar um ramal SIP IPv4, e o caminho
+inverso também é válido. Não há NAT64 de pacotes de mídia. Uma resposta `452
+Xor Relayed Address Mismatch` coloca somente o candidato IPv6 incompatível em
+quarentena e preserva os candidatos IPv4 paralelos.
+
+Em 2026-08-21, uma chamada inbound por dados móveis recebeu RTP remoto pelo
+IPv6 autenticado de `bsb1c01`; a regressão por Wi-Fi recebeu RTP pelo IPv4 de
+`gru2c01`. As duas tiveram áudio bidirecional e zero erro SRTP/Opus. A
+validação foi realizada no hostpatch 09 do worker e ainda precisa ser incluída
+em uma imagem unificada antes de ser considerada release publicada.
+
 ## Configuração
 
 ```dotenv
@@ -90,9 +109,11 @@ endereço externo e o relay normalmente são o mesmo AAAA resolvido.
 ## Limites desta entrega
 
 O WebSocket interno worker Zapo → VoIP continua na rede Docker existente. O
-egress do worker Zapo para o WhatsApp também não foi migrado para IPv6. Essas
-duas comunicações não devem ser alteradas ao habilitar o dual-stack de
-SIP/mídia.
+egress do worker para o WhatsApp pode preferir IPv4 ou IPv6 separadamente no
+WebSocket, upload/download e link preview pelas variáveis `ZAPO_*_IP_FAMILY`.
+Essa preferência não altera o relay de mídia de chamada, que aceita endpoints
+IPv4 e IPv6 numéricos de forma independente, nem muda a família do WebSocket
+interno. Veja [Docker Compose](/guide/docker-compose#família-ip-das-conexões-zapo).
 
 ## Validação
 

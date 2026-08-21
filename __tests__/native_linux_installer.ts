@@ -62,6 +62,7 @@ describe('native Linux installer', () => {
     expect(source).toContain('bash scripts/build-native-relay-bridge.sh')
     expect(source).toContain('test -x "$RELAY_BRIDGE_RELATIVE"')
     expect(source).toContain('ZAPO_VOIP_RELAY_BRIDGE_PATH=%s')
+    expect(source).toMatch(/python3 ffmpeg qpdf/)
   })
 
   test('documents the relay builder without downloading a Go toolchain', () => {

@@ -9,6 +9,7 @@ const util_1 = require("zapo-js/util");
 const encryption_js_1 = require("../crypto/encryption.js");
 const WaAudioEngine_js_1 = require("../media/WaAudioEngine.js");
 const relay_ack_js_1 = require("../relay/relay-ack.js");
+const relay_diagnostics_js_1 = require("../relay/relay-diagnostics.js");
 const signaling_js_1 = require("../signaling/signaling.js");
 const voip_settings_js_1 = require("../signaling/voip-settings.js");
 const types_js_1 = require("../types.js");
@@ -172,6 +173,7 @@ class WaCallManager extends node_events_1.EventEmitter {
         const callCreator = nodeInfo.innerNode.attrs?.['call-creator'] || peerJid;
         const isVideo = (0, transport_1.hasNodeChild)(nodeInfo.innerNode, 'video');
         const callKey = await (0, signaling_js_1.decryptCallKey)(this.deps, nodeInfo.innerNode, peerJid, this.logger.child({ component: 'signaling' }));
+        const relaySignaling = (0, relay_diagnostics_js_1.summarizeRelaySignaling)(nodeInfo.innerNode);
         const { relays, participantJids, selfParticipantJid, peerParticipantJid, uuid, selfPid, peerPid, hbhKey } = (0, relay_ack_js_1.parseRelayFromAck)(nodeInfo.innerNode);
         const mediaType = isVideo ? types_js_1.CallMediaType.Video : types_js_1.CallMediaType.Audio;
         const info = call_state_js_1.CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType);
@@ -200,6 +202,7 @@ class WaCallManager extends node_events_1.EventEmitter {
             isVideo,
             hasCallKey: !!callKey,
             relayCount: relays.length,
+            relaySignaling,
             participantJids,
             selfParticipantJid,
             peerParticipantJid,

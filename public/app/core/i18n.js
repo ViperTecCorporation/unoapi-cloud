@@ -9,6 +9,7 @@ const english = {
     Ramais: 'Extensions',
     Ramal: 'Extension',
     Salvar: 'Save',
+    'Salvando…': 'Saving…',
     Adicionar: 'Add',
     Transferir: 'Transfer',
     'Transferir para': 'Transfer to',

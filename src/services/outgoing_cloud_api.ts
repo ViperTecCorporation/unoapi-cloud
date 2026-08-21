@@ -10,6 +10,7 @@ import { addToBlacklist, isInBlacklist } from './blacklist'
 import type { PublishOption } from '../amqp'
 import { acquireWebhookCircuitProbe, isWebhookCircuitOpen, isWebhookCircuitRecovering, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
 import { WebhookCircuitOpenError } from './webhook_circuit_breaker'
+import { payloadLogSummary } from './payload_log_summary'
 
 export const isWebhookCircuitFailureStatus = (status: number) => (
   status === 408 || status === 425 || status === 429 || status >= 500
@@ -507,7 +508,7 @@ export class OutgoingCloudApi implements Outgoing {
         logger.info('WEBHOOK_CB half-open: probing endpoint (phone=%s webhook=%s)', phone, cbId)
       }
     }
-    logger.debug(`Send url ${url} with headers %s and body %s`, JSON.stringify(headers), body)
+    logger.debug('Send webhook url=%s summary=%s', url, JSON.stringify(payloadLogSummary(message, body)))
     let response: Response
     try {
       const options: RequestInit = { method: 'POST', body, headers }
@@ -516,7 +517,7 @@ export class OutgoingCloudApi implements Outgoing {
       }
       response = await fetch(url, options)
     } catch (error) {
-      logger.error('Error on send to url %s with headers %s and body %s', url, JSON.stringify(headers), body)
+      logger.error('Error on send to url %s summary=%s', url, JSON.stringify(payloadLogSummary(message, body)))
       logger.error(error)
       if (cbEnabled) {
         const opened = await this.handleCircuitFailure(phone, cbId, cbKey, error as any, probeMs)

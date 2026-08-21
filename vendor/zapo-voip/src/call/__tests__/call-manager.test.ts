@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import type { Logger } from 'zapo-js'
 import type { BinaryNode } from 'zapo-js/transport'
 
 import {
@@ -60,6 +61,35 @@ function createMockDeps(): { deps: WaVoipDeps; stores: WaVoipStores; sent: Binar
     } as unknown as WaVoipStores
 
     return { deps, stores, sent }
+}
+
+function createCaptureLogger(): {
+    logger: Logger
+    entries: Array<{ level: string; message: string; context: Record<string, unknown> }>
+} {
+    const entries: Array<{
+        level: string
+        message: string
+        context: Record<string, unknown>
+    }> = []
+    const createLogger = (bindings: Record<string, unknown>): Logger => {
+        const capture =
+            (level: string) =>
+            (message: string, context: Readonly<Record<string, unknown>> = {}) => {
+                entries.push({ level, message, context: { ...bindings, ...context } })
+            }
+        return {
+            level: 'trace',
+            trace: capture('trace'),
+            debug: capture('debug'),
+            info: capture('info'),
+            warn: capture('warn'),
+            error: capture('error'),
+            child: (childBindings) => createLogger({ ...bindings, ...childBindings })
+        }
+    }
+
+    return { logger: createLogger({}), entries }
 }
 
 function buildOfferNode(callId: string, from = '2222222222:0@lid'): BinaryNode {
@@ -939,9 +969,10 @@ test('ten authenticated Opus frames establish media and stop relay recovery', as
     session.cleanup()
 })
 
-test('incoming relaylatency is answered per probe without destination routing', async () => {
+test('incoming relaylatency skips a relay absent from the authenticated offer', async () => {
     const { deps, stores, sent } = createMockDeps()
-    const manager = new WaCallManager({ deps, stores })
+    const { logger, entries } = createCaptureLogger()
+    const manager = new WaCallManager({ deps, stores, logger })
     const callId = 'INCOMING-RELAYLATENCY-MEOW'
     const peer = '2222222222:28@lid'
 
@@ -972,21 +1003,138 @@ test('incoming relaylatency is answered per probe without destination routing', 
         peer
     )
 
+    assert.equal(sent.length, 0)
+    const session = (manager as any).calls.get(callId)
+    assert.equal(session.info.relayData.endpoints[0].relayName, 'gru1c01')
+
+    const offerLog = entries.find((entry) => entry.message === 'voip_diag incoming_offer_identity')
+    const offerSummary = offerLog?.context.relaySignaling as
+        | { candidateNodeCount: number; candidates: Array<{ tokenBytes: number }> }
+        | undefined
+    assert.equal(offerSummary?.candidateNodeCount, 1)
+    assert.equal(offerSummary?.candidates[0]?.tokenBytes, 3)
+
+    const latencyLog = entries.find(
+        (entry) => entry.message === 'voip_diag inbound_relaylatency_received'
+    )
+    const latencySummary = latencyLog?.context.relaySignaling as
+        | {
+              probeCount: number
+              probes: Array<{
+                  relayName: string
+                  ip?: string
+                  port?: number
+                  addressBytes: number
+              }>
+          }
+        | undefined
+    assert.equal(latencySummary?.probeCount, 1)
+    assert.deepEqual(latencySummary?.probes[0], {
+        relayName: 'bsb1c01',
+        encodedLatency: 0x2000000 + 42,
+        latency: 42,
+        addressBytes: 6,
+        addressFamily: 'ipv4',
+        ip: '57.144.137.57',
+        port: 3478,
+        parseOutcome: 'parsed_ipv4'
+    })
+    const responseLog = entries.find(
+        (entry) => entry.message === 'voip_diag outbound_relaylatency_response'
+    )
+    assert.equal(responseLog, undefined)
+    const skippedLog = entries.find(
+        (entry) => entry.message === 'voip_diag unauthenticated_relaylatency_skipped'
+    )
+    assert.equal(skippedLog?.context.relayName, 'bsb1c01')
+    assert.equal(skippedLog?.context.latency, 42)
+    assert.deepEqual(skippedLog?.context.availableRelayNames, ['gru1c01'])
+    const completedLog = entries.find(
+        (entry) => entry.message === 'voip_diag inbound_relaylatency_responded'
+    )
+    assert.equal(completedLog?.context.probeCount, 1)
+    assert.equal(completedLog?.context.responded, 0)
+    assert.equal(completedLog?.context.skipped, 1)
+})
+
+test('incoming relaylatency answers authenticated probes and skips unknown probes independently', async () => {
+    const { deps, stores, sent } = createMockDeps()
+    const { logger, entries } = createCaptureLogger()
+    const manager = new WaCallManager({ deps, stores, logger })
+    const callId = 'INCOMING-RELAYLATENCY-MIXED'
+    const peer = '2222222222:28@lid'
+
+    const offerNode = buildOfferNode(callId, peer)
+    const relay = (buildRelayOfferAck(callId).content as BinaryNode[])[0]
+    ;((offerNode.content as BinaryNode[])[0].content as BinaryNode[]).push(relay)
+    await manager.handleCallOffer(offerNode, peer)
+    sent.length = 0
+
+    await manager.handleCallRelaylatency(
+        {
+            tag: 'call',
+            attrs: { from: peer, id: 'RELAYLATENCY-MIXED-MSG' },
+            content: [
+                {
+                    tag: 'relaylatency',
+                    attrs: { 'call-id': callId, 'call-creator': peer },
+                    content: [
+                        {
+                            tag: 'te',
+                            attrs: {
+                                relay_name: 'fcgb9c01',
+                                latency: String(0x2000000 + 27)
+                            },
+                            content: new Uint8Array([201, 26, 223, 32, 0x0d, 0x96])
+                        },
+                        {
+                            tag: 'te',
+                            attrs: {
+                                relay_name: 'gru1c01',
+                                latency: String(0x2000000 + 41)
+                            },
+                            content: new Uint8Array([192, 168, 1, 1, 0x0d, 0x96])
+                        }
+                    ]
+                }
+            ]
+        },
+        peer
+    )
+
     assert.equal(sent.length, 1)
     assert.equal(sent[0]?.attrs.to, peer)
     const response = (sent[0]?.content as BinaryNode[])[0]
     const responseChildren = response.content as BinaryNode[]
     assert.equal(response.tag, 'relaylatency')
     assert.equal(responseChildren.some((child) => child.tag === 'destination'), false)
-    assert.equal(responseChildren[0]?.attrs.relay_name, 'bsb1c01')
-    assert.equal(responseChildren[0]?.attrs.latency, String(0x2000000 + 42))
-    const session = (manager as any).calls.get(callId)
-    assert.equal(session.info.relayData.endpoints[0].relayName, 'gru1c01')
+    assert.equal(responseChildren[0]?.attrs.relay_name, 'gru1c01')
+    assert.equal(responseChildren[0]?.attrs.latency, String(0x2000000 + 41))
+
+    const skippedLog = entries.find(
+        (entry) => entry.message === 'voip_diag unauthenticated_relaylatency_skipped'
+    )
+    assert.equal(skippedLog?.context.relayName, 'fcgb9c01')
+    const responseLog = entries.find(
+        (entry) => entry.message === 'voip_diag outbound_relaylatency_response'
+    )
+    assert.equal(responseLog?.context.stanzaId, sent[0]?.attrs.id)
+    assert.equal(responseLog?.context.relayName, 'gru1c01')
+    assert.equal(responseLog?.context.authenticatedRelay, true)
+    assert.deepEqual(responseLog?.context.authenticatedRelayIds, [1])
+    assert.deepEqual(responseLog?.context.authenticatedAddressFamilies, [4])
+    const completedLog = entries.find(
+        (entry) => entry.message === 'voip_diag inbound_relaylatency_responded'
+    )
+    assert.equal(completedLog?.context.probeCount, 2)
+    assert.equal(completedLog?.context.responded, 1)
+    assert.equal(completedLog?.context.skipped, 1)
 })
 
-test('incoming relaylatency applies a nested relay allocation before media starts', async () => {
+test('incoming relaylatency applies a nested authenticated relay before media starts', async () => {
     const { deps, stores, sent } = createMockDeps()
-    const manager = new WaCallManager({ deps, stores })
+    const { logger, entries } = createCaptureLogger()
+    const manager = new WaCallManager({ deps, stores, logger })
     const callId = 'INCOMING-RELAYLATENCY-RELAY-PATCH'
     const peer = '2222222222:28@lid'
     const offerNode = buildOfferNode(callId, peer)
@@ -1030,6 +1178,13 @@ test('incoming relaylatency applies a nested relay allocation before media start
     assert.equal(session.info.relayData.endpoints[0].relayId, 2)
     assert.equal(session.info.relayData.endpoints[0].ip, '31.13.91.133')
     assert.equal(sent.length, 1)
+    const responseLog = entries.find(
+        (entry) => entry.message === 'voip_diag outbound_relaylatency_response'
+    )
+    assert.equal(responseLog?.context.relayName, 'gig4c02')
+    assert.equal(responseLog?.context.authenticatedRelay, true)
+    assert.deepEqual(responseLog?.context.authenticatedRelayIds, [2])
+    assert.deepEqual(responseLog?.context.authenticatedAddressFamilies, [4])
 })
 
 test('incoming transport understands a nested relay allocation', async () => {
@@ -1810,7 +1965,28 @@ test('incoming relaylatency responds to every probe without destination nodes', 
     await manager.handleCallOffer(buildOfferNode(callId, peer), peer)
     const session = (manager as any).calls.get(callId)
     session.info.relayData = {
-        endpoints: [],
+        endpoints: [
+            {
+                ip: '1.2.3.4',
+                port: 3478,
+                addressFamily: 4,
+                token: 'token-1',
+                rawToken: new Uint8Array([1]),
+                key: 'key-1',
+                relayId: 0,
+                relayName: 'gru2c01'
+            },
+            {
+                ip: '5.6.7.8',
+                port: 3478,
+                addressFamily: 4,
+                token: 'token-2',
+                rawToken: new Uint8Array([2]),
+                key: 'key-2',
+                relayId: 1,
+                relayName: 'gru2c02'
+            }
+        ],
         participantJids: ['1111111111:59@lid', peer],
         uuid: ''
     }

@@ -14,6 +14,7 @@ import { buildProviderSendFailureResponse, shouldReturnProviderSendFailure } fro
 import { resolveWhatsAppEngine } from '../services/providers/provider_resolver'
 import { interactiveForChatwootWebhook, withOrderDetailsPixCopyButton } from '../services/transformer/interactive'
 import { resolveProfilePictureId } from '../services/profile_picture_identity'
+import { UNOAPI_MEDIA_PUBLIC_URL, UNOAPI_MEDIA_SOURCE, UNOAPI_MEDIA_STORAGE_KEY } from '../services/messages/outgoing_media_input'
 
 type RetryContext = {
   countRetries: number
@@ -342,7 +343,18 @@ export class IncomingJob {
         const mimetype = getMimetype(payload)
         const extension = mime.extension(mimetype)
         const fileName = `${mediaKey}.${extension}`
-        if (link && link.trim()) {
+        const stagedStorageKey = `${payload?.[payload.type]?.[UNOAPI_MEDIA_STORAGE_KEY] || ''}`.trim()
+        const stagedPublicUrl = `${payload?.[payload.type]?.[UNOAPI_MEDIA_PUBLIC_URL] || link}`.trim()
+        if (stagedStorageKey) {
+          messagePayload = {
+            filename: payload[payload.type].filename,
+            caption: payload[payload.type].caption,
+            id: mediaKey,
+            mime_type: mimetype,
+            url: stagedPublicUrl,
+          }
+          await dataStore.setMediaPayload(idUno, messagePayload)
+        } else if (link && link.trim()) {
           const response: Response = await fetch(link, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), method: 'GET' })
           const buffer = toBuffer(await response.arrayBuffer())
           await mediaStore.saveMediaBuffer(fileName, buffer)
@@ -356,6 +368,12 @@ export class IncomingJob {
           await dataStore.setMediaPayload(idUno, messagePayload)
         } else {
           logger.warn('Incoming media without link for %s type=%s; skipping media download/cache', idUno, payload.type)
+        }
+        if (messagePayload && typeof messagePayload === 'object') {
+          delete messagePayload[UNOAPI_MEDIA_STORAGE_KEY]
+          delete messagePayload[UNOAPI_MEDIA_SOURCE]
+          delete messagePayload[UNOAPI_MEDIA_PUBLIC_URL]
+          delete messagePayload.base64
         }
       }
       await this.sendOutgoingMessageWebhooks(phone, config.webhooks, payload, idUno, timestamp, messagePayload)

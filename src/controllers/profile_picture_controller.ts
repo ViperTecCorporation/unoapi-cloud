@@ -4,6 +4,8 @@ import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 import { normalizeProfilePictureId } from '../services/profile_picture_identity'
 import logger from '../services/logger'
 import { PROFILE_PICTURE_MAX_BYTES } from '../services/profile_picture_content'
+import { ProfilePictureMissCache } from '../services/profile_picture_miss_cache'
+import type { ProfilePictureObject } from '../services/media_store'
 
 const PROFILE_PICTURE_CACHE_CONTROL = 'private, max-age=86400, must-revalidate'
 
@@ -15,6 +17,9 @@ const etagMatches = (header: string | undefined, etag: string): boolean => {
 }
 
 export class ProfilePictureController {
+  private readonly missCaches = new Map<string, ProfilePictureMissCache>()
+  private readonly pendingLookups = new Map<string, Promise<ProfilePictureObject | undefined>>()
+
   constructor(private readonly getConfig: getConfig) {}
 
   public async download(req: Request, res: Response) {
@@ -24,9 +29,28 @@ export class ProfilePictureController {
     const sessionPhone = await resolveSessionPhoneByMetaId(req.params.session)
     try {
       const config = await this.getConfig(sessionPhone)
+      const missCacheKey = `${sessionPhone}:${config.useRedis ? 'redis' : 'memory'}`
+      let missCache = this.missCaches.get(missCacheKey)
+      if (!missCache) {
+        missCache = new ProfilePictureMissCache({ useRedis: !!config.useRedis })
+        this.missCaches.set(missCacheKey, missCache)
+      }
+      if (await missCache.has(sessionPhone, pictureId)) return res.sendStatus(404)
+
       const store = await config.getStore(sessionPhone, config)
-      const picture = await store.mediaStore.getProfilePictureObject?.(pictureId)
-      if (!picture) return res.sendStatus(404)
+      const lookupKey = `${sessionPhone}:${pictureId}`
+      let lookup = this.pendingLookups.get(lookupKey)
+      if (!lookup) {
+        lookup = Promise.resolve(store.mediaStore.getProfilePictureObject?.(pictureId))
+          .finally(() => this.pendingLookups.delete(lookupKey))
+        this.pendingLookups.set(lookupKey, lookup)
+      }
+      const picture = await lookup
+      if (!picture) {
+        await missCache.mark(sessionPhone, pictureId)
+        return res.sendStatus(404)
+      }
+      await missCache.invalidate(sessionPhone, pictureId)
 
       const metadata = picture.metadata || {}
       const contentType = `${metadata.content_type || ''}`.split(';')[0].trim().toLowerCase()

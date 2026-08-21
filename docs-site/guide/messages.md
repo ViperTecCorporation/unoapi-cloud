@@ -13,6 +13,28 @@ Authorization: Bearer SEU_TOKEN
 Content-Type: application/json
 ```
 
+## Escolha o formato
+
+Todas as mensagens usam o mesmo endpoint. O campo `type` define o bloco de
+conteúdo que deve existir no payload.
+
+| Quero enviar | `type` | Continue em |
+| --- | --- | --- |
+| texto simples ou resposta | `text` | [Texto](#texto) |
+| imagem, vídeo, áudio, documento ou figurinha | tipo da mídia | [Mídia](#imagem-video-audio-e-documento) |
+| respostas rápidas | `interactive` | [Botões de resposta](#botoes-de-resposta) |
+| link, telefone ou copiar código | `interactive` | [Botões de ação](#botoes-de-acao) |
+| menu de opções | `interactive` | [Lista](#lista) |
+| votação | `poll` | [Enquete](#enquete) |
+| sequência de cards | `interactive` | [Carrossel](#carrossel) |
+| cobrança, pedido ou atualização | `interactive` | [Pedidos e pagamentos](#pedidos-e-pagamentos) |
+
+::: info Compatibilidade
+`link` e `id` preservam o contrato existente. `base64` é uma extensão do
+ViperConnect e aparece identificada como tal. Não envie mais de uma origem na
+mesma mídia.
+:::
+
 ## Texto
 
 ```json
@@ -28,6 +50,8 @@ Content-Type: application/json
 
 ## Imagem, vídeo, áudio e documento
 
+O formato oficial por `link` continua disponível sem alterações:
+
 ```json
 {
   "messaging_product": "whatsapp",
@@ -39,6 +63,60 @@ Content-Type: application/json
   }
 }
 ```
+
+### Envio direto por Base64
+
+Como extensão do ViperConnect, `image`, `video`, `audio`, `document` e
+`sticker` também aceitam `base64`. A aplicação cliente não precisa publicar o
+arquivo em uma URL nem enviá-lo antes para o storage. Use apenas uma origem por
+mensagem: `link`, `id` ou `base64`.
+
+Base64 puro:
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "5511912008012",
+  "type": "image",
+  "image": {
+    "base64": "/9j/4AAQSkZJRgABAQ...",
+    "mime_type": "image/jpeg",
+    "filename": "foto.jpg",
+    "caption": "Legenda"
+  }
+}
+```
+
+Data URI, com MIME embutido:
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "5511912008012",
+  "type": "document",
+  "document": {
+    "base64": "data:application/pdf;base64,JVBERi0xLjQK...",
+    "filename": "contrato.pdf"
+  }
+}
+```
+
+A UnoAPI valida e decodifica o conteúdo, persiste temporariamente os bytes no
+media store configurado e coloca somente a referência interna nas filas. O
+Base64 não é incluído nos logs, webhooks ou payloads do RabbitMQ. Vídeos seguem
+o mesmo worker de preparação e conversão usado por vídeos enviados por link.
+
+PDFs legados produzidos pelo Oracle Reports podem abrir no aplicativo móvel e
+aparecer como indisponíveis no WhatsApp Web. O worker detecta exclusivamente
+essa assinatura e normaliza o PDF com `qpdf` antes do upload ao WhatsApp. Isso
+vale tanto para `link` quanto para `base64`; o arquivo original no storage não é
+alterado. PDFs comuns não iniciam conversão, e documentos criptografados,
+assinados digitalmente ou com formulário são preservados sem modificação.
+
+O limite padrão é 32 MiB depois da decodificação e pode ser ajustado por
+`UNOAPI_MEDIA_BASE64_MAX_BYTES`. O limite do JSON da rota de mensagens é
+controlado separadamente por `UNOAPI_MESSAGES_JSON_LIMIT`, cujo padrão é
+`48mb`.
 
 ```json
 {

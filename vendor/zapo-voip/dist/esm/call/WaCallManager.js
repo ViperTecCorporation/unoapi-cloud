@@ -6,6 +6,7 @@ import { resolvePositive, toError } from 'zapo-js/util';
 import { generateCallKey } from '../crypto/encryption.js';
 import { WaAudioEngine } from '../media/WaAudioEngine.js';
 import { parseRelayFromAck } from '../relay/relay-ack.js';
+import { summarizeRelaySignaling } from '../relay/relay-diagnostics.js';
 import { buildOfferStanza, decryptCallKey, extractNodeInfo, generateCallId } from '../signaling/signaling.js';
 import { parseVoipSettingsFromNode } from '../signaling/voip-settings.js';
 import { CallDirection, CallMediaType, CallState, EndCallReason } from '../types.js';
@@ -169,6 +170,7 @@ export class WaCallManager extends EventEmitter {
         const callCreator = nodeInfo.innerNode.attrs?.['call-creator'] || peerJid;
         const isVideo = hasNodeChild(nodeInfo.innerNode, 'video');
         const callKey = await decryptCallKey(this.deps, nodeInfo.innerNode, peerJid, this.logger.child({ component: 'signaling' }));
+        const relaySignaling = summarizeRelaySignaling(nodeInfo.innerNode);
         const { relays, participantJids, selfParticipantJid, peerParticipantJid, uuid, selfPid, peerPid, hbhKey } = parseRelayFromAck(nodeInfo.innerNode);
         const mediaType = isVideo ? CallMediaType.Video : CallMediaType.Audio;
         const info = CallInfo.newIncoming(callId, peerJid, callCreator, undefined, mediaType);
@@ -197,6 +199,7 @@ export class WaCallManager extends EventEmitter {
             isVideo,
             hasCallKey: !!callKey,
             relayCount: relays.length,
+            relaySignaling,
             participantJids,
             selfParticipantJid,
             peerParticipantJid,

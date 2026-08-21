@@ -4,6 +4,19 @@ Escolha o formato de implantação da Uno. A telefonia pode acompanhar a imagem
 única no Docker ou usar seu pacote nativo versionado separadamente. Os dois
 modos mantêm o mesmo contrato entre Uno e serviço VoIP.
 
+## Qual opção escolher?
+
+| Cenário | Recomendação | Motivo |
+| --- | --- | --- |
+| uma VPS ou ambiente de homologação | [Docker Compose](/guide/docker-compose) | menor quantidade de peças para operar |
+| cluster com serviços distribuídos | [Docker Swarm](/guide/docker-swarm) | placement, overlay e atualização por serviço |
+| execução sem Docker | [Linux nativo](/guide/install-native-linux) | releases imutáveis, `systemd` e rollback |
+| telefonia diretamente no host | [Telefonia Linux nativa](/guide/install-voip-native-linux) | acesso previsível às portas SIP e de mídia |
+
+Se esta é sua primeira instalação, comece por Docker Compose. Depois de o
+serviço responder, siga o [início rápido](/guide/quickstart); não é necessário
+ler todos os guias de implantação antes de testar a API.
+
 ## Instalador Linux oficial
 
 Indicado para Debian 12 ou Ubuntu 24.04. O instalador prepara Node.js 24, compila
@@ -44,3 +57,10 @@ host-mode das portas individuais, com faixas compactas para mídia RTP/WebRTC.
 
 Não publique Valkey ou RabbitMQ na internet. O TLS e o domínio devem permanecer
 no proxy de borda.
+
+## Critério de conclusão
+
+Antes de integrar, confirme que a API responde em HTTPS, `/sessions` aceita o
+token, os volumes são persistentes e os workers necessários estão saudáveis.
+Telefonia e worker de vídeo podem ser validados separadamente do primeiro envio
+de texto.

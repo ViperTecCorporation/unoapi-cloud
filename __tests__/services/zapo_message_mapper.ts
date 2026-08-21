@@ -4,9 +4,15 @@ jest.mock('../../src/services/zapo/zapo_media_processor', () => ({
     generateImageThumbnail: jest.fn(),
   },
 }))
+jest.mock('../../src/services/zapo/zapo_legacy_pdf', () => ({
+  zapoLegacyPdfNormalizer: {
+    normalizeForWhatsApp: jest.fn(async (input) => input),
+  },
+}))
 
 import { toZapoMessageContent } from '../../src/services/zapo/zapo_message_mapper'
 import { zapoMediaProcessor } from '../../src/services/zapo/zapo_media_processor'
+import { zapoLegacyPdfNormalizer } from '../../src/services/zapo/zapo_legacy_pdf'
 import { mockDeep } from 'jest-mock-extended'
 import { proto } from 'zapo-js'
 import type { WaClient } from 'zapo-js'
@@ -16,9 +22,11 @@ describe('Zapo message mapper', () => {
   const client = mockDeep<WaClient>()
   const mockFetch = fetch as unknown as jest.Mock
   const mockGenerateImageThumbnail = zapoMediaProcessor.generateImageThumbnail as jest.Mock
+  const mockNormalizePdf = zapoLegacyPdfNormalizer.normalizeForWhatsApp as jest.Mock
 
   beforeEach(() => {
     jest.clearAllMocks()
+    mockNormalizePdf.mockImplementation(async (input) => input)
     mockGenerateImageThumbnail.mockResolvedValue({
       jpegThumbnail: Uint8Array.from([9, 8, 7]),
       width: 1024,
@@ -54,6 +62,50 @@ describe('Zapo message mapper', () => {
       }))
     }
     expect(mockFetch).toHaveBeenCalledTimes(5)
+    expect(mockNormalizePdf).toHaveBeenCalledTimes(1)
+    expect(mockNormalizePdf).toHaveBeenCalledWith(Uint8Array.from([1, 2, 3]), 'application/octet-stream')
+  })
+
+  test('uses the normalized PDF bytes for URL and internally staged Base64 documents', async () => {
+    const normalized = Uint8Array.from([9, 9, 9])
+    mockNormalizePdf.mockResolvedValue(normalized)
+
+    const byUrl = await toZapoMessageContent(client, {
+      type: 'document',
+      document: { link: 'https://example.test/oracle.pdf', mime_type: 'application/pdf' },
+    })
+    const staged = await toZapoMessageContent(client, {
+      type: 'document',
+      document: { link: './data/medias/5566/oracle.pdf', mime_type: 'application/pdf' },
+    })
+
+    expect((byUrl.content as any).media).toBe(normalized)
+    expect((staged.content as any).media).toBe(normalized)
+    expect(mockNormalizePdf).toHaveBeenNthCalledWith(1, Uint8Array.from([1, 2, 3]), 'application/pdf')
+    expect(mockNormalizePdf).toHaveBeenNthCalledWith(2, './data/medias/5566/oracle.pdf', 'application/pdf')
+  })
+
+  test('does not send image, video, audio or sticker media through PDF normalization', async () => {
+    for (const type of ['image', 'video', 'audio', 'sticker']) {
+      await toZapoMessageContent(client, {
+        type,
+        [type]: { link: `https://example.test/${type}`, mime_type: 'application/octet-stream' },
+      })
+    }
+    expect(mockNormalizePdf).not.toHaveBeenCalled()
+  })
+
+  test('passes an internally staged file path to the documented Zapo media source', async () => {
+    const mapped = await toZapoMessageContent(client, {
+      type: 'image',
+      image: { link: '/data/medias/5566/base64-image.jpeg', mime_type: 'image/jpeg' },
+    })
+    expect(mapped.content).toEqual(expect.objectContaining({
+      type: 'image',
+      media: '/data/medias/5566/base64-image.jpeg',
+      mimetype: 'image/jpeg',
+    }))
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   test('maps voice-note audio to Zapo audio content with the ptt flag', async () => {
@@ -167,6 +219,27 @@ describe('Zapo message mapper', () => {
       },
       options: {},
     })
+  })
+
+  test('normalizes a PDF used as an interactive document header before upload', async () => {
+    const normalized = Uint8Array.from([7, 7, 7])
+    mockNormalizePdf.mockResolvedValue(normalized)
+    client.message.upload.mockResolvedValue({ url: 'uploaded' } as never)
+
+    await toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        header: {
+          type: 'document',
+          document: { link: 'https://example.test/oracle.pdf', mime_type: 'application/pdf' },
+        },
+        action: { buttons: [{ type: 'reply', reply: { id: 'ok', title: 'OK' } }] },
+      },
+    })
+
+    expect(mockNormalizePdf).toHaveBeenCalledWith(Uint8Array.from([1, 2, 3]), 'application/pdf')
+    expect(client.message.upload).toHaveBeenCalledWith(normalized, { type: 'document', mimetype: 'application/pdf' })
   })
 
   test('maps a Zapo PIX payment request to the isolated payment_info native flow', async () => {

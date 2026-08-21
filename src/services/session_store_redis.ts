@@ -1,19 +1,14 @@
 import { SessionStore, sessionStatus } from './session_store'
-import { configKey, authKey, redisKeys, getSessionStatus, setSessionStatus, sessionStatusKey, redisGet, getConnectCount, setConnectCount, delAuth, clearConnectCount, getAllAuthTokens, addAuthTokensToIndex, getAuthKeyCount } from './redis'
+import { configKey, authKey, redisKeys, getSessionPhones, getSessionStatus, setSessionStatus, sessionStatusKey, redisGet, getConnectCount, setConnectCount, delAuth, clearConnectCount, getAllAuthTokens, addAuthTokensToIndex, getAuthKeyCount } from './redis'
 import logger from './logger'
 import { MAX_CONNECT_RETRY, MAX_CONNECT_TIME } from '../defaults'
 
-const toReplaceConfig = configKey('')
 const toReplaceStatus = sessionStatusKey('')
 
 export class SessionStoreRedis extends SessionStore {
   async getPhones(): Promise<string[]> {
     try {
-      const pattern = configKey('*')
-      const keys = await redisKeys(pattern)
-      return keys
-        .map((key: string) => key.replace(toReplaceConfig, ''))
-        .filter((phone: string) => phone !== 'auth-token-index')
+      return await getSessionPhones()
     } catch (error) {
       logger.error(error, 'Erro on get phones')
       throw error

@@ -11,7 +11,9 @@ import {
   UNOAPI_EXCHANGE_BROKER_NAME,
   UNOAPI_QUEUE_INCOMING,
   UNOAPI_QUEUE_VIDEO_STAGE,
+  UNOAPI_QUEUE_VIDEO_TRANSCODE,
 } from '../../src/defaults'
+import { UNOAPI_MEDIA_STORAGE_KEY, UNOAPI_MESSAGE_ID } from '../../src/services/messages/outgoing_media_input'
 
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
 const amqpRpcMock = amqpRpc as jest.MockedFunction<typeof amqpRpc>
@@ -82,6 +84,34 @@ describe('service incoming amqp', () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
+    )
+  })
+
+  test('sends a staged Base64 video directly to transcoding without carrying Base64 through RabbitMQ', async () => {
+    const incoming = new IncomingAmqp(async () => ({ ...defaultConfig, server: 'server_1', provider: 'zapo' }))
+    const messageId = 'base64-video-id'
+    const response = await incoming.send('556600000000', {
+      to: '5566999999999',
+      type: 'video',
+      [UNOAPI_MESSAGE_ID]: messageId,
+      video: {
+        link: '/data/medias/556600000000/base64-video.mp4',
+        mime_type: 'video/mp4',
+        [UNOAPI_MEDIA_STORAGE_KEY]: '556600000000/base64-video.mp4',
+      },
+    })
+
+    expect(response.ok.messages[0].id).toBe(messageId)
+    expect(amqpPublishMock).toHaveBeenCalledWith(
+      UNOAPI_EXCHANGE_BROKER_NAME,
+      UNOAPI_QUEUE_VIDEO_TRANSCODE,
+      '556600000000',
+      expect.objectContaining({
+        id: messageId,
+        sourceKey: '556600000000/base64-video.mp4',
+        payload: expect.not.objectContaining({ [UNOAPI_MESSAGE_ID]: expect.anything() }),
+      }),
+      { type: 'topic', priority: 5, maxRetries: 2 },
     )
   })
 

@@ -24,13 +24,17 @@ const frame = (kind: number, payload = Buffer.alloc(0)) => {
 
 test('native relay transport preserves binary packet boundaries in both directions', () => {
         const child = new FakeChild()
+        let spawnedArgs: readonly string[] = []
         const written: Buffer[] = []
         child.stdin.on('data', (chunk) => written.push(Buffer.from(chunk)))
         const transport = new NativeRelayTransport({
             host: '157.240.226.133',
             port: 3478,
             binaryPath: '/fake/relay-bridge',
-            spawnBridge: (() => child) as never
+            spawnBridge: ((_command, args) => {
+                spawnedArgs = args
+                return child as never
+            }) as never
         })
         const packets: Uint8Array[] = []
         transport.on('message', (packet) => packets.push(packet))
@@ -39,10 +43,60 @@ test('native relay transport preserves binary packet boundaries in both directio
         child.stdout.write(Buffer.concat([frame(1).subarray(3), frame(2, Buffer.from([0x80, 1, 2]))]))
 
         assert.equal(transport.isOpen, true)
+        assert.deepEqual(spawnedArgs, [
+            '--host',
+            '157.240.226.133',
+            '--port',
+            '3478',
+            '--network',
+            'udp4'
+        ])
         assert.deepEqual(packets.map((packet) => [...packet]), [[0x80, 1, 2]])
         assert.equal(transport.send(new Uint8Array([0, 4, 5])), true)
         assert.deepEqual(Buffer.concat(written), frame(2, Buffer.from([0, 4, 5])))
         transport.close()
+})
+
+test('native relay transport selects an explicit udp6 socket for IPv6', () => {
+    const child = new FakeChild()
+    let spawnedArgs: readonly string[] = []
+    const transport = new NativeRelayTransport({
+        host: '2001:db8::1',
+        port: 3478,
+        binaryPath: '/fake/relay-bridge',
+        spawnBridge: ((_command, args) => {
+            spawnedArgs = args
+            return child as never
+        }) as never
+    })
+
+    assert.deepEqual(spawnedArgs, [
+        '--host',
+        '2001:db8::1',
+        '--port',
+        '3478',
+        '--network',
+        'udp6'
+    ])
+    transport.close()
+})
+
+test('native relay transport rejects invalid hosts before spawning the helper', () => {
+    let spawnCount = 0
+    assert.throws(
+        () =>
+            new NativeRelayTransport({
+                host: 'relay.example.net',
+                port: 3478,
+                binaryPath: '/fake/relay-bridge',
+                spawnBridge: (() => {
+                    spawnCount++
+                    return new FakeChild() as never
+                }) as never
+            }),
+        /invalid numeric relay address/
+    )
+    assert.equal(spawnCount, 0)
 })
 
 test('native relay transport surfaces a framed native error without opening', () => {

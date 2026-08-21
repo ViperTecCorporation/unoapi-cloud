@@ -281,7 +281,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
 
   const findProfilePicture = async (jid: string) => {
     const ids = await profilePictureIdsFor(jid)
-    logger.debug('S3 profile picture path candidate ids: %s (from %s)', ids.join(','), sanitizeProfileId(jid))
+    logger.trace('S3 profile picture path candidate ids: %s (from %s)', ids.join(','), sanitizeProfileId(jid))
     for (const id of ids) {
       const fileName = `${phone}/${PROFILE_PICTURE_FOLDER}/${profilePictureFileName(id)}`
       let head: HeadObjectCommandOutput
@@ -292,7 +292,7 @@ export const mediaStoreS3 = (phone: string, config: Config, getDataStore: getDat
         )
       } catch (error: any) {
         if (isS3NotFound(error)) {
-          logger.debug('PROFILE_PICTURE S3 not found: %s', fileName)
+          logger.trace('PROFILE_PICTURE S3 not found: %s', fileName)
           continue
         }
         throw error

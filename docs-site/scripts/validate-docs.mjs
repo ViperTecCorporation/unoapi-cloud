@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
@@ -72,6 +72,7 @@ for (const example of [
   'text',
   'expiringText',
   'image',
+  'imageBase64',
   'audio',
   'document',
   'statusImage',
@@ -92,8 +93,10 @@ for (const example of [
 for (const schema of ['MessageImage', 'MessageAudio', 'MessageDocument', 'MessageVideo', 'MessageSticker']) {
   const mediaType = schema.replace(/^Message/, '').toLowerCase()
   const branch = spec.components.schemas[schema]?.allOf?.[1]
-  if (!branch?.required?.includes(mediaType) || !branch?.properties?.[mediaType]?.required?.includes('link')) {
-    throw new Error(`${schema} deve exigir ${mediaType}.link`)
+  const sourceBranches = branch?.properties?.[mediaType]?.oneOf || []
+  const requiredSources = new Set(sourceBranches.flatMap((source) => source.required || []))
+  if (!branch?.required?.includes(mediaType) || !requiredSources.has('link') || !requiredSources.has('base64')) {
+    throw new Error(`${schema} deve exigir uma origem ${mediaType}.link ou ${mediaType}.base64`)
   }
 }
 
@@ -113,6 +116,7 @@ for (const line of router.split(/\r?\n/)) {
 if (missing.length) throw new Error(`Rotas dos controllers ausentes no OpenAPI:\n${missing.join('\n')}`)
 
 const markdown = []
+const markdownContents = new Map()
 const walk = async (directory) => {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (['node_modules', '.vitepress', 'public', 'scripts'].includes(entry.name)) continue
@@ -124,14 +128,118 @@ const walk = async (directory) => {
 await walk(docs)
 for (const file of markdown) {
   const content = await readFile(file, 'utf8')
+  markdownContents.set(file, content)
   if (/baileys/i.test(content)) throw new Error(`Termo interno exposto em ${path.relative(root, file)}`)
   if (/\bmeta(?:\s+cloud)?\b/i.test(content)) throw new Error(`Integração não suportada exposta em ${path.relative(root, file)}`)
+}
+
+const routeTarget = (route) => {
+  const pathname = route.split(/[?#]/, 1)[0]
+  if (pathname.startsWith('/examples/')) return path.join(docs, 'public', pathname)
+  if (pathname === '/' || pathname === '/en/') return path.join(docs, pathname === '/' ? 'index.md' : 'en/index.md')
+  return path.join(docs, `${pathname.replace(/^\//, '').replace(/\/$/, '/index')}.md`)
+}
+for (const [file, content] of markdownContents) {
+  const links = [...content.matchAll(/\]\((\/[^)\s]+)\)/g)].map((match) => match[1])
+  for (const link of links) {
+    try {
+      await access(routeTarget(link))
+    } catch {
+      throw new Error(`Link interno quebrado em ${path.relative(root, file)}: ${link}`)
+    }
+  }
+}
+
+const portugueseGuidePages = (await readdir(path.join(docs, 'guide'))).filter((page) => page.endsWith('.md'))
+for (const page of portugueseGuidePages) {
+  try {
+    await access(path.join(docs, 'en', 'guide', page))
+  } catch {
+    throw new Error(`Guia sem página inglesa correspondente: guide/${page}`)
+  }
+}
+
+const englishPages = [
+  'index.md',
+  'api-reference.md',
+  'guide/installation.md',
+  'guide/install-native-linux.md',
+  'guide/install-voip-native-linux.md',
+  'guide/voip-ipv6.md',
+  'guide/network-ipv6.md',
+  'guide/docker-compose.md',
+  'guide/docker-swarm.md',
+  'guide/connection.md',
+  'guide/architecture.md',
+  'guide/telephony.md',
+  'guide/messages.md',
+  'guide/contacts.md',
+  'guide/webhooks.md',
+  'guide/quickstart.md',
+  'guide/concepts.md',
+  'guide/troubleshooting.md',
+]
+for (const page of englishPages) {
+  const content = await readFile(path.join(docs, 'en', page), 'utf8')
+  if (!content.trim()) throw new Error(`Página inglesa vazia: en/${page}`)
+}
+const vitePressConfig = await readFile(path.join(docs, '.vitepress', 'config.mts'), 'utf8')
+if (!/root:\s*\{[\s\S]*lang:\s*'pt-BR'/.test(vitePressConfig) || !/en:\s*\{[\s\S]*lang:\s*'en-US'/.test(vitePressConfig)) {
+  throw new Error('VitePress precisa publicar os locales pt-BR e en-US')
+}
+for (const [page, requirements] of Object.entries({
+  'guide/quickstart.md': ['curl --fail-with-body', '/messages', '/guide/webhooks', '/guide/troubleshooting'],
+  'guide/concepts.md': ['user_id', 'statuses[].status', 'base64', '/api-reference'],
+  'guide/troubleshooting.md': ['401 Unauthorized', '400 Bad Request', 'BGSAVE', 'KEYS'],
+})) {
+  for (const localePrefix of ['', 'en/']) {
+    const content = await readFile(path.join(docs, localePrefix, page), 'utf8')
+    for (const requirement of requirements) {
+      if (!content.includes(requirement)) throw new Error(`${localePrefix}${page} sem conteúdo didático obrigatório: ${requirement}`)
+    }
+  }
+}
+const homePt = await readFile(path.join(docs, '.vitepress', 'theme', 'DocsHome.vue'), 'utf8')
+const homeEn = await readFile(path.join(docs, '.vitepress', 'theme', 'DocsHomeEn.vue'), 'utf8')
+if (!homePt.includes('href="/guide/quickstart"') || !homeEn.includes('href="/en/guide/quickstart"')) {
+  throw new Error('A ação principal da home deve abrir o início rápido no idioma atual')
+}
+if (/\b67 operações\b|\b67 operations\b/.test(`${homePt}\n${homeEn}`)) {
+  throw new Error('A home não deve publicar uma contagem manual de operações')
+}
+
+const validateValkeyPersistence = (command, location) => {
+  const normalized = Array.isArray(command) ? command.join(' ') : `${command || ''}`.replace(/\s+/g, ' ')
+  for (const required of [
+    '--appendonly yes',
+    '--appendfsync everysec',
+    '--no-appendfsync-on-rewrite no',
+    '--save 3600 1',
+    '--protected-mode no',
+  ]) {
+    if (!normalized.includes(required)) throw new Error(`${location}: Valkey sem ${required}`)
+  }
+  for (const obsolete of ['--save 900 1', '--save 300 10', '--save 60 10000']) {
+    if (normalized.includes(obsolete)) throw new Error(`${location}: snapshot Valkey obsoleto ${obsolete}`)
+  }
 }
 
 const composeFiles = [
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-nginx.yml'),
   path.join(docs, 'public', 'examples', 'docker-compose.unoapi-traefik.yml'),
 ]
+const ipv6OverrideFile = path.join(docs, 'public', 'examples', 'docker-compose.unoapi-ipv6.override.yml')
+const ipv6Override = parseYaml(await readFile(ipv6OverrideFile, 'utf8'))
+const ipv6Network = ipv6Override.networks?.unoapi
+const ipv6Subnets = (ipv6Network?.ipam?.config || []).map((entry) => entry.subnet)
+if (
+  ipv6Network?.enable_ipv6 !== true ||
+  ipv6Network?.driver !== 'bridge' ||
+  !ipv6Subnets.some((subnet) => /^fd[0-9a-f]{2}:/i.test(`${subnet}`)) ||
+  !ipv6Subnets.some((subnet) => /^172\./.test(`${subnet}`))
+) {
+  throw new Error('Override Docker IPv6 precisa preservar uma bridge dual-stack com IPv4 privado e ULA')
+}
 const validateDualStackEnvironment = (environment, location) => {
   if (environment?.SIP_RTP_BIND_IPV4 !== '0.0.0.0') {
     throw new Error(`${location}: SIP_RTP_BIND_IPV4 precisa preservar o bind IPv4`)
@@ -145,6 +253,21 @@ const validateDualStackEnvironment = (environment, location) => {
   for (const legacy of ['SIP_RTP_BIND_HOST', 'SIP_RTP_PUBLIC_IP', 'SIP_RTP_PUBLIC_ADVERTISE_IP']) {
     if (environment?.[legacy] !== undefined) {
       throw new Error(`${location}: exemplo novo não deve ensinar a variável legada ${legacy}`)
+    }
+  }
+}
+const validateZapoNetworkEnvironment = (environment, location) => {
+  if (environment?.ZAPO_NETWORK_IP_FAMILY !== 'auto') {
+    throw new Error(`${location}: ZAPO_NETWORK_IP_FAMILY público precisa preservar auto como padrão`)
+  }
+  for (const key of [
+    'ZAPO_CHAT_SOCKET_IP_FAMILY',
+    'ZAPO_MEDIA_UPLOAD_IP_FAMILY',
+    'ZAPO_MEDIA_DOWNLOAD_IP_FAMILY',
+    'ZAPO_LINK_PREVIEW_IP_FAMILY',
+  ]) {
+    if (environment?.[key] !== '') {
+      throw new Error(`${location}: ${key} precisa ficar vazio para herdar a política global`)
     }
   }
 }
@@ -162,6 +285,7 @@ for (const composeFile of composeFiles) {
   if (workerEnvironment?.UNOAPI_PROCESS_ROLE !== 'worker' || workerEnvironment?.UNOAPI_WORKER_ENGINE !== 'zapo') {
     throw new Error(`Worker Zapo inválido: ${path.basename(composeFile)}`)
   }
+  validateZapoNetworkEnvironment(workerEnvironment, path.basename(composeFile))
   const brokerEnvironment = compose.services?.['unoapi-broker']?.environment
   const videoEnvironment = compose.services?.['unoapi-video-worker']?.environment
   if (brokerEnvironment?.UNOAPI_VIDEO_WORKER_MODE !== 'dedicated' || videoEnvironment?.UNOAPI_PROCESS_ROLE !== 'video') {
@@ -176,6 +300,7 @@ for (const composeFile of composeFiles) {
     throw new Error(`Telefonia não usa a imagem única em host: ${path.basename(composeFile)}`)
   }
   validateDualStackEnvironment(telephony.environment, path.basename(composeFile))
+  validateValkeyPersistence(compose.services?.['unoapi-redis']?.command, path.basename(composeFile))
   const requiredServices = [
     'unoapi',
     'unoapi-broker',
@@ -249,6 +374,7 @@ for (const swarmFile of swarmFiles) {
   const content = await readFile(swarmFile, 'utf8')
   const stack = parseYaml(content)
   const baseEnvironment = stack['x-base-environment']
+  validateValkeyPersistence(stack.services?.['unoapi-redis']?.command, filename)
 
   if (!baseEnvironment || typeof baseEnvironment !== 'object' || Array.isArray(baseEnvironment)) {
     throw new Error(`${filename}: x-base-environment precisa ser um mapa YAML`)
@@ -290,6 +416,8 @@ for (const swarmFile of swarmFiles) {
       }
     }
   }
+
+  validateZapoNetworkEnvironment(stack.services['unoapi-worker-zapo'].environment, filename)
 
   for (const internalService of ['unoapi-redis', 'unoapi-rabbitmq']) {
     if (stack.services[internalService].ports?.length) {
@@ -396,6 +524,22 @@ for (const requiredText of [
 ]) {
   if (!dualStackGuide.includes(requiredText)) {
     throw new Error(`Guia dual-stack sem contrato obrigatório: ${requiredText}`)
+  }
+}
+
+for (const localePrefix of ['', 'en/']) {
+  const networkGuide = await readFile(path.join(docs, localePrefix, 'guide', 'network-ipv6.md'), 'utf8')
+  for (const requiredText of [
+    'enable_ipv6',
+    'fd42:756e:6f61::/64',
+    '[::]:443',
+    'ZAPO_NETWORK_IP_FAMILY',
+    'docker compose config',
+    'curl -6',
+  ]) {
+    if (!networkGuide.includes(requiredText)) {
+      throw new Error(`${localePrefix}guide/network-ipv6.md sem conteúdo obrigatório: ${requiredText}`)
+    }
   }
 }
 

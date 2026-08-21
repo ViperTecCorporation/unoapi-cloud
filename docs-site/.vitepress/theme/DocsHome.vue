@@ -22,13 +22,13 @@ const curlExample = `curl --request POST \\
           processe webhooks com um contrato único, documentado e testável.
         </p>
         <div class="docs-actions">
-          <a class="docs-button docs-button--primary" href="/guide/installation">Começar agora <span>→</span></a>
+          <a class="docs-button docs-button--primary" href="/guide/quickstart">Enviar a primeira mensagem <span>→</span></a>
           <a class="docs-button" href="/api-reference">Explorar endpoints</a>
         </div>
         <div class="docs-meta">
           <span><i /> API operacional</span>
-          <span>67 operações</span>
-          <span>Runtime Zapo</span>
+          <span>PT-BR e English</span>
+          <span>Contrato validado no build</span>
         </div>
       </div>
 
@@ -48,37 +48,45 @@ const curlExample = `curl --request POST \\
 
     <section class="docs-section">
       <div class="docs-section__heading">
-        <span class="docs-eyebrow">Tudo que você precisa</span>
-        <h2>Da instalação às operações avançadas</h2>
-        <p>Guias diretos, exemplos copiáveis e referência sincronizada com o código real.</p>
+        <span class="docs-eyebrow">Escolha seu caminho</span>
+        <h2>Encontre a resposta pelo que você quer fazer</h2>
+        <p>Comece pelo resultado esperado e aprofunde somente quando precisar.</p>
       </div>
-      <div class="docs-card-grid">
-        <a class="docs-card docs-card--featured" href="/guide/installation">
-          <span>01</span><h3>Instalação completa</h3>
-          <p>Linux, Docker, Valkey ou Redis, RabbitMQ e proxy de borda.</p><strong>Abrir guia →</strong>
+      <div class="docs-card-grid docs-card-grid--paths">
+        <a class="docs-card docs-card--featured" href="/guide/quickstart">
+          <span>01</span><h3>Primeira integração</h3>
+          <p>Valide o token, envie texto e confirme o webhook ponta a ponta.</p><strong>Começar →</strong>
         </a>
-        <a class="docs-card" href="/guide/connection">
-          <span>02</span><h3>Conectar sessão</h3>
-          <p>QR Code, pairing code e eventos Socket.IO corretamente ordenados.</p><strong>Conectar →</strong>
+        <a class="docs-card" href="/guide/installation">
+          <span>02</span><h3>Implantar a plataforma</h3>
+          <p>Escolha Compose, Swarm ou Linux nativo com os componentes corretos.</p><strong>Escolher implantação →</strong>
+        </a>
+        <a class="docs-card" href="/guide/messages">
+          <span>03</span><h3>Enviar mensagens</h3>
+          <p>Texto, mídia, Base64, interativas, enquetes, pedidos e pagamentos.</p><strong>Ver formatos →</strong>
+        </a>
+        <a class="docs-card" href="/guide/webhooks">
+          <span>04</span><h3>Receber eventos</h3>
+          <p>Mensagens, status, identidades, segurança, deduplicação e retries.</p><strong>Entender webhooks →</strong>
         </a>
         <a class="docs-card" href="/api-reference">
-          <span>03</span><h3>Referência interativa</h3>
-          <p>49 caminhos, 67 operações e playground alimentado pelo OpenAPI.</p><strong>Ver endpoints →</strong>
+          <span>05</span><h3>Testar a API</h3>
+          <p>Troque URL e token e execute exemplos gerados pelo OpenAPI.</p><strong>Abrir playground →</strong>
         </a>
         <a class="docs-card docs-card--featured" href="/guide/telephony">
-          <span>04</span><h3>Telefonia Zapo</h3>
-          <p>Imagem única, SIP/WebRTC/RTP, ramais, transferência, gravações e modo avançado.</p><strong>Abrir Telefonia →</strong>
+          <span>06</span><h3>Ativar telefonia</h3>
+          <p>SIP, WebRTC, RTP, ramais, troncos, gravações e dual-stack.</p><strong>Abrir telefonia →</strong>
         </a>
       </div>
     </section>
 
     <section class="docs-callout">
       <div>
-        <span class="docs-eyebrow">Fonte verificada</span>
-        <h2>Documentação fiel ao runtime Zapo</h2>
-        <p>O build compara o OpenAPI com router e controllers e falha se uma rota pública ficar de fora.</p>
+        <span class="docs-eyebrow">Documentação verificável</span>
+        <h2>Guias para aprender. Referência para conferir.</h2>
+        <p>O build valida rotas, exemplos, links, idiomas e modelos de implantação antes da publicação.</p>
       </div>
-      <div><span>VitePress</span><span>Scalar</span><span>Docker</span><span>Socket.IO</span></div>
+      <div><span>Quickstart</span><span>Guias por tarefa</span><span>OpenAPI</span><span>Troubleshooting</span></div>
     </section>
   </div>
 </template>

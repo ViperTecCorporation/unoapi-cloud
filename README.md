@@ -3,7 +3,7 @@
 # ViperConnect
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-orange)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0.19-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.19)
+[![Version](https://img.shields.io/badge/version-4.0.22-blue)](https://github.com/ViperTecCorporation/ViperConnect/releases/tag/v4.0.22)
 [![Docker](https://img.shields.io/badge/GHCR-viperconnect-blue)](https://github.com/ViperTecCorporation/ViperConnect/pkgs/container/viperconnect)
 [![Documentação](https://img.shields.io/badge/docs-viperconnect.vipertec.net-9d3836)](https://viperconnect.vipertec.net/)
 
@@ -52,6 +52,7 @@ Escolha o modo de instalação na documentação oficial:
 - [Docker Compose](https://viperconnect.vipertec.net/guide/docker-compose)
 - [Docker Swarm](https://viperconnect.vipertec.net/guide/docker-swarm)
 - [Instalador nativo para Linux](https://viperconnect.vipertec.net/guide/install-native-linux)
+- [Rede IPv4 e IPv6](https://viperconnect.vipertec.net/guide/network-ipv6)
 
 ### Manager
 
@@ -194,6 +195,12 @@ O runtime de comunicação do ViperConnect utiliza o
 o contrato HTTP, os webhooks, os contatos, as mídias e as integrações do
 ViperConnect.
 
+As conexões de saída da Zapo permanecem dual-stack. `auto` preserva a seleção
+nativa do Node; `ipv6first` e `ipv4first` podem ser aplicados globalmente ou,
+de forma independente, ao WebSocket do WhatsApp, upload, download e link
+preview, sempre com fallback para a outra família. Consulte
+[variáveis de ambiente](docs/ENVIRONMENT.md#zapo-outbound-ip-family).
+
 - [Repositório oficial](https://github.com/vinikjkkj/zapo)
 - [Documentação oficial](https://zapo.to/pt-br)
 
@@ -208,6 +215,33 @@ O runtime VoIP do ViperConnect é híbrido e possui adaptações próprias; não
 uma cópia pura do Zapo nem do Meow Caller. As diferenças e os pontos de
 compatibilidade estão registrados na
 [auditoria técnica de VoIP](docs/voip-meowcaller-audit.md).
+
+### Protocolo VoIP do ViperConnect
+
+O áudio 1:1 usa um protocolo próprio e versionado dentro do ViperConnect:
+
+- a Zapo continua sendo dona da sessão, credenciais, Signal, JIDs/LIDs e
+  eventos de chamada;
+- o Meow Caller fornece referências públicas para o aceite direto, framing,
+  RTP/SRTP, SSRC, Allocate STUN e transporte UDP → DTLS → SCTP → DataChannel;
+- o vendor `@vipertec/zapo-voip` integra esses contratos ao cliente Zapo e
+  acrescenta bridge PCM/SIP, seleção de codec, proteção da perna local,
+  recuperação e telemetria segura de relay;
+- um `relaylatency` inbound sempre recebe ACK, mas só é devolvido ao peer
+  quando o relay possui protocolo suportado, chave e token no offer atual;
+- relays WhatsApp IPv4 e IPv6 são mantidos em paralelo com sockets explícitos
+  `udp4` e `udp6`; a família do relay é independente da família SIP/RTP do
+  ramal e não existe NAT64 de pacotes.
+
+Em 2026-08-21, o caminho foi validado ao vivo em entrada por dados móveis com
+RTP remoto pelo IPv6 de um relay autenticado e, em seguida, por Wi-Fi com RTP
+remoto pelo IPv4. Os dois canários tiveram áudio bidirecional e zero erro
+SRTP/Opus. Essa revisão está validada como hostpatch do worker Zapo; ela só deve
+ser descrita como incorporada à imagem após a próxima publicação unificada sem
+mounts sobre `dist`.
+
+Consulte também o [runtime VoIP Zapo](docs/voip-zapo-runtime.md) e o
+[guia dual-stack](docs-site/guide/voip-ipv6.md).
 
 ## Créditos
 

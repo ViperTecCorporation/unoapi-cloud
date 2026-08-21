@@ -75,6 +75,7 @@ export interface ContactDirectoryItem {
   push_name?: string
   username?: string
   picture?: string
+  picture_id?: string
   last_updated_ms: number
 }
 

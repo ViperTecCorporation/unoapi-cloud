@@ -160,13 +160,13 @@ export class WaVoipCoordinator {
                 if (node.attrs.class !== 'call') {
                     return false;
                 }
-                await routeCallAck(this.manager, node);
+                await routeCallAck(this.manager, node, this.logger);
                 return true;
             }
         }), ctx.registerIncomingHandler({
             tag: WA_MESSAGE_TAGS.RECEIPT,
             prepend: true,
-            handler: async (node) => routeCallReceipt(this.deps, node)
+            handler: async (node) => routeCallReceipt(this.deps, node, this.logger)
         }));
     }
     wireClientEvents(ctx) {

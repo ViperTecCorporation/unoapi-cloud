@@ -144,7 +144,7 @@ COPY --from=voip-builder /app/package-lock.json ./voip/package-lock.json
 COPY --from=voip-updater /out ./voip/updater
 COPY ./scripts/container-entrypoint.sh ./container-entrypoint.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg wget \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg qpdf wget \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p data/medias data/sessions data/stores data/logs voip/data \
     && printf '%s\n' "${VOIP_SOURCE_SHA}" > voip/SOURCE_REVISION \

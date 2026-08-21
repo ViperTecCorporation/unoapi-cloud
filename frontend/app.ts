@@ -6,6 +6,7 @@ import { renderLayout, renderLogin } from './components/layout.js'
 import { isLegacySession, sessionPhone } from './domain/session.js'
 import { mergeRedisTreeLevel, redisParentPrefix } from './domain/redis_tree.js'
 import { shouldRenderBackgroundUpdate } from './domain/render_policy.js'
+import { ContactPictureLoader } from './domain/contact_picture_loader.js'
 import type {
   ContactDirectoryItem,
   GroupSummary,
@@ -38,6 +39,7 @@ import {
   renderVoipResourceModal,
   type VoipResourceName,
 } from './pages/voip.js'
+import { icon } from './components/icons.js'
 
 const TOKEN_KEY = 'whatsappApiToken'
 const THEME_KEY = 'viperconnect_theme'
@@ -50,6 +52,21 @@ const QUEUE_REFRESH_SECONDS = 30
 const QUEUE_MESSAGE_PAGE_SIZE = 20
 const QUEUE_MESSAGE_MAX = 200
 const VOIP_REFRESH_SECONDS = 15
+const SAVE_FORM_NAMES = new Set([
+  'session-config',
+  'webhook',
+  'redis-save',
+  'voip-resource',
+  'voip-console-json',
+  'voip-resource-fields',
+  'voip-sip-mode',
+  'voip-recording-settings',
+])
+
+type ToastState = {
+  message: string
+  tone: 'info' | 'success' | 'error'
+}
 
 type ModalState =
   | { type: 'new-session' }
@@ -82,6 +99,7 @@ const emptyVersionStatus = (): VersionStatus => ({
 export class ViperConnectApp {
   private readonly api: ApiClient
   private readonly socket: SocketBridge
+  private readonly contactPictures: ContactPictureLoader
   private sessions: SessionConfig[] = []
   private selectedPhone = ''
   private tab: SessionTab = 'overview'
@@ -140,7 +158,7 @@ export class ViperConnectApp {
   private connectionLoading = false
   private collapsed = localStorage.getItem(SIDEBAR_KEY) === 'true'
   private mobileOpen = false
-  private toast = ''
+  private toast?: ToastState
   private versionStatus = emptyVersionStatus()
   private refreshTimer?: number
   private versionTimer?: number
@@ -155,6 +173,7 @@ export class ViperConnectApp {
   ) {
     this.api = api
     this.socket = socket
+    this.contactPictures = new ContactPictureLoader((phone, pictureId) => this.api.profilePicture(phone, pictureId))
     setLocale(normalizeLocale(localStorage.getItem(LOCALE_KEY) || navigator.language))
     document.documentElement.lang = getLocale()
     this.bindEvents()
@@ -497,131 +516,136 @@ export class ViperConnectApp {
     if (!(form instanceof HTMLFormElement) || !form.dataset.form) return
     event.preventDefault()
     const data = new FormData(form)
+    const finishSubmitFeedback = SAVE_FORM_NAMES.has(form.dataset.form) ? this.beginSubmitFeedback(form) : undefined
 
-    if (form.dataset.form === 'login') {
-      await this.login(`${data.get('token') || ''}`)
-    } else if (form.dataset.form === 'new-session') {
-      await this.createSession(data)
-    } else if (form.dataset.form === 'session-config') {
-      await this.saveSessionConfig(data)
-    } else if (form.dataset.form === 'webhook') {
-      await this.saveWebhook(data, Number(form.dataset.webhookIndex))
-    } else if (form.dataset.form === 'test-message') {
-      await this.sendTestMessage(data)
-    } else if (form.dataset.form === 'queue-purge') {
-      await this.purgeQueue(data)
-    } else if (form.dataset.form === 'redis-save') {
-      await this.saveRedisKey(data)
-    } else if (form.dataset.form === 'redis-delete') {
-      await this.deleteRedisKey(data)
-    } else if (form.dataset.form === 'redis-delete-prefix') {
-      await this.deleteRedisPrefix(data)
-    } else if (form.dataset.form === 'redis-query') {
-      await this.runRedisQuery(data)
-    } else if (form.dataset.form === 'voip-call') {
-      try {
-        await this.api.voipStartCall(`${data.get('session') || ''}`, `${data.get('peerJid') || ''}`, `${data.get('extensionId') || ''}`)
-        this.showToast(t('Chamada iniciada.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-transfer') {
-      try {
-        await this.api.voipTransfer(`${data.get('callId') || ''}`, `${data.get('targetExtensionId') || ''}`)
-        this.showToast(t('Transferência iniciada.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-resource') {
-      try {
-        const resource = `${data.get('resource') || ''}`
-        const id = `${data.get('id') || ''}`.trim()
-        const payload = JSON.parse(`${data.get('payload') || '{}'}`)
-        if (!resource || !id) throw new Error('resource_and_id_required')
-        await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', payload)
-        this.showToast(t('Configuração salva.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-resource-delete') {
-      try {
-        const resource = `${data.get('resource') || ''}`
-        const id = `${data.get('id') || ''}`
-        await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'DELETE')
-        this.showToast(t('Configuração removida.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-console-json') {
-      try {
-        await this.api.voipConsole(`${data.get('path') || ''}`, 'PUT', JSON.parse(`${data.get('payload') || '{}'}`))
-        this.showToast(t('Configuração salva.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-resource-fields') {
-      try {
-        const resource = `${data.get('resource') || ''}` as VoipResourceName
-        const editingId = this.modal?.type === 'voip-resource' && this.modal.resource === resource ? this.modal.id : ''
-        const id = editingId || `${data.get('id') || ''}`.trim()
-        if (!resource || !id) throw new Error('resource_and_id_required')
-        const payload = this.voipResourcePayload(resource, data)
-        payload.id = id
-        await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', payload)
-        const transferAudioFile = data.get('transferAudioFile')
-        if (resource === 'extensionGroups' && transferAudioFile instanceof File && transferAudioFile.size > 0) {
-          const supported = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav', 'application/octet-stream']
-          if (transferAudioFile.type && !supported.includes(transferAudioFile.type)) throw new Error('unsupported_transfer_audio_type')
-          await this.api.voipUploadTransferAudio(id, transferAudioFile)
+    try {
+      if (form.dataset.form === 'login') {
+        await this.login(`${data.get('token') || ''}`)
+      } else if (form.dataset.form === 'new-session') {
+        await this.createSession(data)
+      } else if (form.dataset.form === 'session-config') {
+        await this.saveSessionConfig(data)
+      } else if (form.dataset.form === 'webhook') {
+        await this.saveWebhook(data, Number(form.dataset.webhookIndex))
+      } else if (form.dataset.form === 'test-message') {
+        await this.sendTestMessage(data)
+      } else if (form.dataset.form === 'queue-purge') {
+        await this.purgeQueue(data)
+      } else if (form.dataset.form === 'redis-save') {
+        await this.saveRedisKey(data)
+      } else if (form.dataset.form === 'redis-delete') {
+        await this.deleteRedisKey(data)
+      } else if (form.dataset.form === 'redis-delete-prefix') {
+        await this.deleteRedisPrefix(data)
+      } else if (form.dataset.form === 'redis-query') {
+        await this.runRedisQuery(data)
+      } else if (form.dataset.form === 'voip-call') {
+        try {
+          await this.api.voipStartCall(`${data.get('session') || ''}`, `${data.get('peerJid') || ''}`, `${data.get('extensionId') || ''}`)
+          this.showToast(t('Chamada iniciada.'))
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error))
         }
-        this.modal = undefined
-        this.showToast(t('Configuração salva.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
+      } else if (form.dataset.form === 'voip-transfer') {
+        try {
+          await this.api.voipTransfer(`${data.get('callId') || ''}`, `${data.get('targetExtensionId') || ''}`)
+          this.showToast(t('Transferência iniciada.'))
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error))
+        }
+      } else if (form.dataset.form === 'voip-resource') {
+        try {
+          const resource = `${data.get('resource') || ''}`
+          const id = `${data.get('id') || ''}`.trim()
+          const payload = JSON.parse(`${data.get('payload') || '{}'}`)
+          if (!resource || !id) throw new Error('resource_and_id_required')
+          await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', payload)
+          this.showToast(t('Configuração salva.'), 'success')
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error), 'error')
+        }
+      } else if (form.dataset.form === 'voip-resource-delete') {
+        try {
+          const resource = `${data.get('resource') || ''}`
+          const id = `${data.get('id') || ''}`
+          await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'DELETE')
+          this.showToast(t('Configuração removida.'))
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error))
+        }
+      } else if (form.dataset.form === 'voip-console-json') {
+        try {
+          await this.api.voipConsole(`${data.get('path') || ''}`, 'PUT', JSON.parse(`${data.get('payload') || '{}'}`))
+          this.showToast(t('Configuração salva.'), 'success')
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error), 'error')
+        }
+      } else if (form.dataset.form === 'voip-resource-fields') {
+        try {
+          const resource = `${data.get('resource') || ''}` as VoipResourceName
+          const editingId = this.modal?.type === 'voip-resource' && this.modal.resource === resource ? this.modal.id : ''
+          const id = editingId || `${data.get('id') || ''}`.trim()
+          if (!resource || !id) throw new Error('resource_and_id_required')
+          const payload = this.voipResourcePayload(resource, data)
+          payload.id = id
+          await this.api.voipConsole(`${encodeURIComponent(resource)}/${encodeURIComponent(id)}`, 'PUT', payload)
+          const transferAudioFile = data.get('transferAudioFile')
+          if (resource === 'extensionGroups' && transferAudioFile instanceof File && transferAudioFile.size > 0) {
+            const supported = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav', 'application/octet-stream']
+            if (transferAudioFile.type && !supported.includes(transferAudioFile.type)) throw new Error('unsupported_transfer_audio_type')
+            await this.api.voipUploadTransferAudio(id, transferAudioFile)
+          }
+          this.modal = undefined
+          this.showToast(t('Configuração salva.'), 'success')
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error), 'error')
+        }
+      } else if (form.dataset.form === 'voip-sip-mode') {
+        try {
+          const extensionId = `${data.get('extensionId') || ''}`.trim()
+          const sipEndpointMode = data.get('sipEndpointMode') === 'trunk' ? 'trunk' : 'extension'
+          if (!extensionId) throw new Error('extension_id_required')
+          await this.api.voipConsole(`extensions/${encodeURIComponent(extensionId)}/sip-mode`, 'PUT', { sipEndpointMode })
+          this.modal = undefined
+          this.showToast(t('Configuração salva.'), 'success')
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error), 'error')
+        }
+      } else if (form.dataset.form === 'voip-recording-settings') {
+        try {
+          await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data))
+          this.modal = undefined
+          this.showToast(t('Configuração salva.'), 'success')
+          await this.loadVoip()
+        } catch (error) {
+          this.showToast(this.messageFor(error), 'error')
+        }
+      } else if (form.dataset.form === 'voip-history-filter') {
+        await this.loadVoipHistory(1, {
+          search: `${data.get('search') || ''}`.trim(),
+          startDate: `${data.get('startDate') || ''}`.trim(),
+          endDate: `${data.get('endDate') || ''}`.trim(),
+        })
+      } else if (form.dataset.form === 'voip-router-inbound') {
+        await this.simulateVoipRoute('inbound', {
+          sessionId: `${data.get('sessionId') || ''}`,
+          callId: `console-${Date.now()}`,
+        })
+      } else if (form.dataset.form === 'voip-router-outbound') {
+        await this.simulateVoipRoute('outbound', {
+          extensionId: `${data.get('extensionId') || ''}`,
+          target: `${data.get('target') || ''}`,
+        })
       }
-    } else if (form.dataset.form === 'voip-sip-mode') {
-      try {
-        const extensionId = `${data.get('extensionId') || ''}`.trim()
-        const sipEndpointMode = data.get('sipEndpointMode') === 'trunk' ? 'trunk' : 'extension'
-        if (!extensionId) throw new Error('extension_id_required')
-        await this.api.voipConsole(`extensions/${encodeURIComponent(extensionId)}/sip-mode`, 'PUT', { sipEndpointMode })
-        this.modal = undefined
-        this.showToast(t('Configuração salva.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-recording-settings') {
-      try {
-        await this.api.voipConsole('recording/settings', 'PUT', this.voipRecordingSettingsPayload(data))
-        this.modal = undefined
-        this.showToast(t('Configuração salva.'))
-        await this.loadVoip()
-      } catch (error) {
-        this.showToast(this.messageFor(error))
-      }
-    } else if (form.dataset.form === 'voip-history-filter') {
-      await this.loadVoipHistory(1, {
-        search: `${data.get('search') || ''}`.trim(),
-        startDate: `${data.get('startDate') || ''}`.trim(),
-        endDate: `${data.get('endDate') || ''}`.trim(),
-      })
-    } else if (form.dataset.form === 'voip-router-inbound') {
-      await this.simulateVoipRoute('inbound', {
-        sessionId: `${data.get('sessionId') || ''}`,
-        callId: `console-${Date.now()}`,
-      })
-    } else if (form.dataset.form === 'voip-router-outbound') {
-      await this.simulateVoipRoute('outbound', {
-        extensionId: `${data.get('extensionId') || ''}`,
-        target: `${data.get('target') || ''}`,
-      })
+    } finally {
+      finishSubmitFeedback?.()
     }
   }
 
@@ -810,6 +834,7 @@ export class ViperConnectApp {
     this.view = 'dashboard'
     this.modal = undefined
     this.socket.clear()
+    this.contactPictures.clear()
     if (this.versionTimer) window.clearInterval(this.versionTimer)
     this.versionTimer = undefined
     this.versionStatus = emptyVersionStatus()
@@ -917,7 +942,6 @@ export class ViperConnectApp {
     } catch (error) {
       this.showToast(this.messageFor(error))
     }
-    await this.loadContacts(true)
   }
 
   private async openSessionTab(tab: SessionTab): Promise<void> {
@@ -937,6 +961,8 @@ export class ViperConnectApp {
     this.loadingSection = true
     this.sectionError = ''
     this.render()
+    let contactsToHydrate: ContactDirectoryItem[] = []
+    const requestedPhone = this.selectedPhone
     try {
       const page = await this.api.contacts(this.selectedPhone, reset ? '0' : this.contacts.cursor, PAGE_SIZE, this.contactsQuery)
       const byId = new Map(this.contacts.items.map((contact) => [contact.user_id, contact]))
@@ -947,11 +973,19 @@ export class ViperConnectApp {
         hasMore: page.has_more,
         totalCount: page.total_count,
       }
+      contactsToHydrate = page.contacts
     } catch (error) {
       this.sectionError = this.messageFor(error)
     } finally {
       this.loadingSection = false
       if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
+    }
+    if (contactsToHydrate.length > 0) {
+      void this.contactPictures.hydrate(requestedPhone, contactsToHydrate).then(() => {
+        if (this.selectedPhone === requestedPhone && this.tab === 'contacts' && shouldRenderBackgroundUpdate(!!this.modal)) {
+          this.render()
+        }
+      })
     }
   }
 
@@ -1023,9 +1057,9 @@ export class ViperConnectApp {
     try {
       const updated = await this.api.register(this.selectedPhone, sessionConfigPayload(data))
       this.replaceSession(this.selectedPhone, { ...this.findSession(this.selectedPhone), ...updated })
-      this.showToast(t('Configuração salva.'))
+      this.showToast(t('Configuração salva.'), 'success')
     } catch (error) {
-      this.showToast(this.messageFor(error))
+      this.showToast(this.messageFor(error), 'error')
     }
     this.render()
   }
@@ -1041,9 +1075,9 @@ export class ViperConnectApp {
       const updated = await this.api.saveWebhooks(this.selectedPhone, webhooks)
       this.replaceSession(this.selectedPhone, { ...session, ...updated, webhooks })
       this.modal = undefined
-      this.showToast(t('Webhook salvo.'))
+      this.showToast(t('Webhook salvo.'), 'success')
     } catch (error) {
-      this.showToast(this.messageFor(error))
+      this.showToast(this.messageFor(error), 'error')
     }
     this.render()
   }
@@ -1304,11 +1338,11 @@ export class ViperConnectApp {
     try {
       await this.api.saveRedisKey(key, `${data.get('type') || 'string'}` as RedisKeyType, value, Number(data.get('ttlSeconds') ?? -1))
       this.modal = undefined
-      this.showToast(t('Chave salva.'))
+      this.showToast(t('Chave salva.'), 'success')
       await this.loadRedisKeys()
       await this.loadRedisKey(key)
     } catch (error) {
-      this.showToast(this.messageFor(error))
+      this.showToast(this.messageFor(error), 'error')
     }
   }
 
@@ -1507,7 +1541,7 @@ export class ViperConnectApp {
         activeView: this.view,
       }) +
       this.renderModal() +
-      (this.toast ? `<div class="toast" role="status">${escapeHtml(this.toast)}</div>` : '')
+      this.renderToastHtml()
   }
 
   private renderModal(): string {
@@ -1545,12 +1579,45 @@ export class ViperConnectApp {
     else this.sessions[index] = session
   }
 
-  private showToast(message: string): void {
-    this.toast = message
+  private beginSubmitFeedback(form: HTMLFormElement): () => void {
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')
+    if (!button) return () => undefined
+    const originalHtml = button.innerHTML
+    const wasDisabled = button.disabled
+    button.disabled = true
+    button.classList.add('btn--loading')
+    button.setAttribute('aria-busy', 'true')
+    button.innerHTML = `${icon('refresh')}${t('Salvando…')}`
+    return () => {
+      if (!button.isConnected) return
+      button.disabled = wasDisabled
+      button.classList.remove('btn--loading')
+      button.removeAttribute('aria-busy')
+      button.innerHTML = originalHtml
+    }
+  }
+
+  private renderToastHtml(): string {
+    if (!this.toast) return ''
+    const role = this.toast.tone === 'error' ? 'alert' : 'status'
+    const symbol = this.toast.tone === 'success' ? icon('check') : this.toast.tone === 'error' ? icon('warning') : icon('info')
+    return `<div class="toast toast--${this.toast.tone}" data-toast role="${role}" aria-live="polite">${symbol}<span>${escapeHtml(this.toast.message)}</span></div>`
+  }
+
+  private renderToast(): void {
+    this.root.querySelector('[data-toast]')?.remove()
+    const html = this.renderToastHtml()
+    if (html) this.root.insertAdjacentHTML('beforeend', html)
+  }
+
+  private showToast(message: string, tone: ToastState['tone'] = 'info'): void {
+    const toast = { message, tone }
+    this.toast = toast
+    this.renderToast()
     window.setTimeout(() => {
-      if (this.toast === message) {
-        this.toast = ''
-        if (shouldRenderBackgroundUpdate(!!this.modal)) this.render()
+      if (this.toast === toast) {
+        this.toast = undefined
+        this.root.querySelector('[data-toast]')?.remove()
       }
     }, 4_000)
   }

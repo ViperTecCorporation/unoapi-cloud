@@ -120,6 +120,19 @@ unico transporte e o entrega explicitamente aos quatro canais oficiais da Zapo:
 Assim, WebSocket, upload/download no CDN e busca de preview seguem a mesma
 saida de rede. Sem URL configurada, a propriedade `proxy` e omitida.
 
+Sem proxy, a família IP pode ser controlada globalmente por
+`ZAPO_NETWORK_IP_FAMILY=auto|ipv6first|ipv4first` e sobrescrita por canal com
+`ZAPO_CHAT_SOCKET_IP_FAMILY`, `ZAPO_MEDIA_UPLOAD_IP_FAMILY`,
+`ZAPO_MEDIA_DOWNLOAD_IP_FAMILY` e `ZAPO_LINK_PREVIEW_IP_FAMILY`. Override vazio
+herda a política global. `auto` preserva o caminho nativo sem agente adicional;
+as duas preferências mantêm `autoSelectFamily`, portanto IPv4 e IPv6 continuam
+disponíveis como fallback. O agente direto suporta HTTP, HTTPS e WSS e é
+reutilizado no processo por política efetiva.
+
+Com `PROXY_URL`, o agente SOCKS existente continua prioritário e nunca é
+contornado por uma política de família. Em `socks5h`, DNS e família de saída são
+decididos pelo proxy remoto.
+
 Para cada endpoint dependente do WhatsApp:
 
 1. Manter o caso de teste atual como contrato comum.
@@ -424,6 +437,15 @@ cursor e tornando divergencias do cache observaveis. A busca por nome,
 username, telefone ou LID começa com 3 caracteres: o front não envia termos
 menores e a rota HTTP os rejeita para evitar varreduras desnecessarias no cache.
 
+A listagem de contatos resolve fotos somente pelo cache Redis e nunca varre o
+storage S3/R2/MinIO contato por contato. Quando a URL legada estiver no cache,
+ela continua em `picture` para retrocompatibilidade; `picture_id` e sempre
+devolvido quando houver uma identidade PN/LID valida. Consumidores novos e o
+frontend carregam somente os avatares visiveis pela rota autenticada
+`GET /v13.0/{session}/profile-pictures/{picture_id}`. Ausencias nessa rota sao
+cacheadas e consultas concorrentes no frontend sao deduplicadas, evitando
+rajadas de `HeadObject` durante sincronizacoes completas.
+
 ## Username
 
 A identidade canonica Zapo e o LID. `senderUsername`, participantes de grupo e eventos
@@ -441,6 +463,21 @@ sincronizacao. O username nativo do evento ou do contato sempre tem prioridade s
 indice temporal; ausencia no cache preserva o payload anterior sem erro.
 
 ## Preparacao de video para envio Zapo
+
+### Entrada alternativa de mídia em Base64
+
+O contrato HTTP mantém `link` como origem compatível com a Cloud API e aceita,
+como extensão ViperConnect, `base64` puro ou Data URI em imagem, áudio, vídeo,
+documento e sticker. O processo web decodifica e valida a entrada, salva os
+bytes no media store e substitui o Base64 por uma referência interna antes da
+publicação AMQP. A Zapo recebe a origem documentada `Uint8Array | string`; em
+storage local usa o caminho persistido e em storage S3 compatível usa a URL
+assinada gerada pelo SDK.
+
+Base64 nunca deve aparecer em logs, webhooks ou mensagens RabbitMQ. Vídeo já
+persistido por esse fluxo entra diretamente na fila de transcode com a chave do
+objeto, sem repetir download no estágio. `link` continua seguindo exatamente o
+fluxo anterior.
 
 Videos com link externo nao entram diretamente na fila serial da sessao. O broker
 usa duas filas globais separadas:

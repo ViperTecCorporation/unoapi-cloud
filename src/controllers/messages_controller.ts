@@ -43,15 +43,19 @@ import { allowSend } from '../services/rate_limit'
 import { resolveSessionPhoneByMetaId } from '../services/meta_alias'
 import { sendGraphError } from '../services/graph_error'
 import { statusRecipients } from '../services/status/status_recipients'
+import type { getConfig } from '../services/config'
+import { outgoingMediaLogSummary, prepareOutgoingMediaInput } from '../services/messages/outgoing_media_input'
 
 export class MessagesController {
   protected endpoint = 'messages'
   private incoming: Incoming
   private outgoing: Outgoing
+  private getConfig: getConfig
 
-  constructor(incoming: Incoming, outgoing: Outgoing) {
+  constructor(incoming: Incoming, outgoing: Outgoing, getConfig: getConfig) {
     this.incoming = incoming
     this.outgoing = outgoing
+    this.getConfig = getConfig
   }
 
   private normalizeBaileysRawPayload(payload: any) {
@@ -74,16 +78,21 @@ export class MessagesController {
 
   public async index(req: Request, res: Response) {
     logger.debug('%s method %s', this.endpoint, req.method)
-    logger.debug('%s headers %s', this.endpoint, JSON.stringify(req.headers))
+    logger.debug('%s headers summary %s', this.endpoint, JSON.stringify({
+      content_type: req.headers['content-type'],
+      content_length: req.headers['content-length'],
+      request_id: req.headers['x-request-id'] || req.headers['x-correlation-id'],
+    }))
     logger.debug('%s params %s', this.endpoint, JSON.stringify(req.params))
-    logger.debug('%s body %s', this.endpoint, JSON.stringify(req.body))
+    logger.debug('%s body summary %s', this.endpoint, JSON.stringify(outgoingMediaLogSummary(req.body)))
     const phone = `${req.params.phone || req.params.phone_number_id || ''}`
     const sessionPhone = await resolveSessionPhoneByMetaId(phone)
-    const payload: any = this.normalizeBaileysRawPayload(req.body)
+    let payload: any = this.normalizeBaileysRawPayload(req.body)
     const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
     const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
     payload._requestId = requestId
     try {
+      payload = (await prepareOutgoingMediaInput(sessionPhone, payload, this.getConfig)).payload
       const options: any = { endpoint: this.endpoint }
       options.requestId = requestId
       res.setHeader('x-request-id', requestId)
@@ -159,12 +168,12 @@ export class MessagesController {
   public async recoverDelivery(req: Request, res: Response) {
     logger.debug('%s recover_delivery method %s', this.endpoint, req.method)
     logger.debug('%s recover_delivery params %s', this.endpoint, JSON.stringify(req.params))
-    logger.debug('%s recover_delivery body %s', this.endpoint, JSON.stringify(req.body))
+    logger.debug('%s recover_delivery body summary %s', this.endpoint, JSON.stringify(outgoingMediaLogSummary(req.body)))
     const phone = `${req.params.phone || req.params.phone_number_id || ''}`
     const sessionPhone = await resolveSessionPhoneByMetaId(phone)
     const requestIdHeader = req.headers['x-request-id'] || req.headers['x-correlation-id']
     const requestId = `${Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader || randomUUID()}`
-    const payload: any = this.normalizeBaileysRawPayload({
+    let payload: any = this.normalizeBaileysRawPayload({
       ...(req.body || {}),
       message_id: req.params.messageId || req.body?.message_id || req.body?.messageId || req.body?.id,
     })
@@ -178,6 +187,7 @@ export class MessagesController {
       useUserDevicesCache: false,
     }
     try {
+      payload = (await prepareOutgoingMediaInput(sessionPhone, payload, this.getConfig)).payload
       res.setHeader('x-request-id', requestId)
       if (typeof this.incoming.recoverDelivery !== 'function') {
         return sendGraphError(res, 400, 'delivery_recovery_not_supported', { code: 131000, type: 'GraphMethodException' })

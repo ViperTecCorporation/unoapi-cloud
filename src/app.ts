@@ -17,6 +17,7 @@ import { Logout } from './services/logout'
 import { ContactDummy } from './services/contact_dummy'
 import { Contact } from './services/contact'
 import { middlewareNext } from './services/middleware_next'
+import { UNOAPI_MESSAGES_JSON_LIMIT } from './defaults'
 
 export class App {
   public readonly server: HttpServer
@@ -40,6 +41,12 @@ export class App {
   ) {
     this.app = express()
     this.app.use(cors({ origin: ['*'] }))
+    // Media sent as Base64 is accepted only by message routes. Other JSON
+    // endpoints keep Express' conservative default limit.
+    this.app.use(
+      /^\/[^/]+\/[^/]+\/(?:messages|marketing_messages)(?:\/[^/]+\/recover_delivery|\/recover_delivery)?\/?$/,
+      express.json({ limit: UNOAPI_MESSAGES_JSON_LIMIT }),
+    )
     this.app.use(express.json())
     this.app.use(express.urlencoded({ extended: true }))
     this.server = createServer(this.app)

@@ -8,6 +8,7 @@ import { resolvePositive, toError } from 'zapo-js/util'
 import { generateCallKey } from '../crypto/encryption.js'
 import { WaAudioEngine } from '../media/WaAudioEngine.js'
 import { parseRelayFromAck } from '../relay/relay-ack.js'
+import { summarizeRelaySignaling } from '../relay/relay-diagnostics.js'
 import {
     buildOfferStanza,
     decryptCallKey,
@@ -256,6 +257,7 @@ export class WaCallManager extends EventEmitter {
             this.logger.child({ component: 'signaling' })
         )
 
+        const relaySignaling = summarizeRelaySignaling(nodeInfo.innerNode)
         const {
             relays,
             participantJids,
@@ -297,6 +299,7 @@ export class WaCallManager extends EventEmitter {
             isVideo,
             hasCallKey: !!callKey,
             relayCount: relays.length,
+            relaySignaling,
             participantJids,
             selfParticipantJid,
             peerParticipantJid,

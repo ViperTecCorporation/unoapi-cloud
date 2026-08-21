@@ -8,6 +8,7 @@ import { base64ToBytes, bytesToBase64 } from 'zapo-js/util'
 
 import { TEXT_DECODER, TEXT_ENCODER } from '../bytes.js'
 import type { RelayEndpoint } from '../types.js'
+import { parseRelayAddressBytes } from './relay-address.js'
 
 function getDescendantNodes(root: BinaryNode): BinaryNode[] {
     const nodes: BinaryNode[] = []
@@ -152,18 +153,14 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
             const protocol = rcNode.attrs?.protocol ? parseInt(rcNode.attrs.protocol, 10) : 0
             const isFna = rcNode.attrs?.is_fna === '1'
 
-            if (!(rcNode.content instanceof Uint8Array) || rcNode.content.length < 6) continue
+            if (!(rcNode.content instanceof Uint8Array)) continue
 
-            const addrBytes = rcNode.content
-            const addressBytes = new Uint8Array(addrBytes)
-
-            if (addrBytes.length === 6) {
-                const ip = `${addrBytes[0]}.${addrBytes[1]}.${addrBytes[2]}.${addrBytes[3]}`
-                const port = (addrBytes[4] << 8) | addrBytes[5]
-
+            const address = parseRelayAddressBytes(rcNode.content)
+            if (address) {
                 relays.push({
-                    ip,
-                    port,
+                    ip: address.ip,
+                    port: address.port,
+                    addressFamily: address.addressFamily,
                     token,
                     authToken,
                     rawAuthToken: authTokenId ? rawAuthTokens.get(authTokenId) : undefined,
@@ -173,7 +170,7 @@ export function parseRelayFromAck(ackNode: BinaryNode): {
                     protocol,
                     c2rRtt: rcNode.attrs?.c2r_rtt ? parseInt(rcNode.attrs.c2r_rtt, 10) : undefined,
                     relayName,
-                    addressBytes,
+                    addressBytes: address.addressBytes,
                     tokenId,
                     authTokenId: authTokenId || undefined,
                     isFna

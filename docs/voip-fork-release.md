@@ -67,8 +67,8 @@ Principais ajustes locais:
   de a chamada entrar em estado ativo;
 - preservacao da ordem original dos filhos `te2` recebidos no wire, sem ordenar
   por RTT antes da escolha do relay;
-- selecao de um unico relay: FNA para entrada; nao-FNA autenticado para saida,
-  com fallback para o primeiro nao-FNA anunciado;
+- selecao logica FNA para entrada e nao-FNA autenticado para saida, com
+  preservacao dos candidatos IPv4 e IPv6 anunciados para o mesmo relay;
 - recuperacao sequencial local dos demais relays anunciados, sempre com um
   unico candidato logico ativo. O outbound pode avancar por falta de
   transporte/controle, primeiro Opus ou stall; o inbound retém o primeiro relay
@@ -89,18 +89,39 @@ a decisao depois do caller-preaccept.
 
 O relay ativo usa exatamente a porta anunciada no ACK (normalmente `3478`). A
 selecao 1:1 chama o normalizador com o fallback sintetico desabilitado, portanto
-nao cria uma variante `3480` nem abre todos os endpoints em paralelo. O helper
-exportado ainda preserva essa variante opcional para consumidores explicitos.
+nao cria uma variante `3480`. No inbound, os endpoints IPv4 e IPv6 realmente
+anunciados podem ser preconectados em paralelo ate a midia SRTP autenticada
+confirmar o caminho; no outbound a recuperacao continua sequencial. Enderecos
+`te2` de 6 bytes usam `udp4` e os de 18 bytes usam `udp6`, sempre com bind
+explicito da mesma familia. O helper exportado ainda preserva a variante 3480
+opcional para consumidores explicitos.
+No atributo WASM `0x0016`, o endereco IPv6 aplica o magic cookie e depois o
+transaction ID em tres palavras `uint32` little-endian. O caminho IPv4 nao foi
+alterado. A quarentena de um eventual `452` permanece limitada ao candidato
+IPv6 rejeitado.
 O build multi-stage compila
 `vendor/zapo-voip/native/relay-bridge/relay-bridge`; em instalacao nativa, o
 caminho pode ser informado por `ZAPO_VOIP_RELAY_BRIDGE_PATH`.
 
+O suporte IPv6 do relay WhatsApp nao muda a familia do ramal SIP. O worker
+termina a perna DTLS/SCTP do WhatsApp e entrega PCM pelo WebSocket interno
+existente; o servico VoIP pode manter RTP/SIP IPv4 para o ramal. Nao ha NAT64
+de pacotes. Em 2026-08-21, uma entrada por dados moveis confirmou RTP remoto
+pelo IPv6 de `bsb1c01`; uma entrada Wi-Fi de regressao confirmou RTP pelo IPv4
+de `gru2c01`. Ambas tiveram audio bidirecional e zero erro SRTP/Opus. Essa
+validacao ocorreu no hostpatch 09 e ainda precisa ser incorporada a uma imagem
+unificada antes da promocao definitiva.
+
 ## Estado de verificacao e deploy
 
-- `176/176` testes do plugin vendorizado passaram no runtime usado para a
+- `201/201` testes do plugin vendorizado passaram no runtime usado para a
   verificacao local;
 - os builds CommonJS e ESM incluem a negociacao de codec e o guard da perna
   local espelhada;
+- o hostpatch `hostpatch-zapo-relay-authenticated-latency-20260820-09` foi
+  aplicado somente ao worker Zapo sobre a imagem `4.0.20`. Ele preserva o ACK
+  de `relaylatency`, ignora somente probes sem credencial no offer e foi
+  validado em dados moveis/IPv6 e Wi-Fi/IPv4; o rollback e a revisao 08;
 - o hostpath `zapo-voip-relay-recovery-20260805-02` foi aplicado sobre a imagem
   `4.0.7`, e somente o container do worker Zapo foi recriado;
 - o roteamento sem slots foi validado com o hostpath

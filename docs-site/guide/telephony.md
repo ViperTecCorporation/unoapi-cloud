@@ -7,7 +7,7 @@ mensagens continuam funcionando e a telefonia aparece como indisponível.
 
 ## Configuração da Uno
 
-```env
+```bash
 VOIP_SERVICE_URL=http://host.docker.internal:3097
 VOIP_BRIDGE_URL=wss://voip.seudominio.com.br/v1/bridge/zapo
 VOIP_SERVICE_TOKEN=gere-um-token-longo
@@ -21,7 +21,7 @@ local sem TLS ela pode ser omitida; nesse caso a Uno deriva
 
 ## Configuração do serviço VoIP
 
-```env
+```bash
 PORT=3097
 VOIP_SERVICE_TOKEN=gere-um-token-longo
 VOIP_BRIDGE_TOKEN=gere-um-token-longo
@@ -90,6 +90,13 @@ O transporte de relay segue contratos públicos validados para chamadas 1:1,
 mas a sessão e a sinalização pertencem integralmente à Zapo. Entre os dois
 processos trafegam apenas comandos de chamada e PCM mono a 16 kHz pelo bridge
 autenticado.
+
+O relay WhatsApp suporta endpoints IPv4 e IPv6 em paralelo, com sockets
+`udp4`/`udp6` explícitos. Essa família é independente do SIP/RTP do ramal: um
+relay IPv6 pode alimentar um ramal IPv4 sem NAT64. O protocolo híbrido usa a
+Zapo como dona da sessão, contratos públicos do Meow Caller como referência de
+fio e extensões próprias do ViperConnect para bridge, codec, dual-stack,
+recuperação e telemetria. Veja [VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
 
 ## Fluxo de chamada
 

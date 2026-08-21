@@ -107,7 +107,7 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  ca-certificates curl git gnupg build-essential python3 ffmpeg
+  ca-certificates curl git gnupg build-essential python3 ffmpeg qpdf
 
 NODE_MAJOR="$(node -p 'process.versions.node.split(`.`)[0]' 2>/dev/null || true)"
 if [[ "$NODE_MAJOR" != "24" ]]; then

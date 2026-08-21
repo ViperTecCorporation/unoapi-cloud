@@ -16,6 +16,7 @@ describe('frontend core', () => {
 
   test('accepts safe image URLs and rejects executable schemes', () => {
     expect(safeImageUrl('https://cdn.example/avatar.jpg')).toBe('https://cdn.example/avatar.jpg')
+    expect(safeImageUrl('blob:https://uno.example/avatar-id')).toBe('blob:https://uno.example/avatar-id')
     expect(safeImageUrl('javascript:alert(1)')).toBe('')
   })
 

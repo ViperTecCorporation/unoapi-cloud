@@ -1,19 +1,24 @@
 import { escapeHtml } from '../core/html.js'
-import { t } from '../core/i18n.js'
+import { getLocale, t } from '../core/i18n.js'
 
 export const DOCUMENTATION_URL = 'https://viperconnect.vipertec.net/'
 export const DOCUMENTATION_ORIGIN = new URL(DOCUMENTATION_URL).origin
+export const localizedDocumentationUrl = (): string =>
+  getLocale() === 'en' ? new URL('/en/', DOCUMENTATION_URL).toString() : DOCUMENTATION_URL
 
-export const renderDocumentationPage = (): string => `
+export const renderDocumentationPage = (): string => {
+  const documentationUrl = localizedDocumentationUrl()
+  return `
   <section class="documentation-embed" aria-label="${escapeHtml(t('Documentação'))}">
     <iframe
       class="documentation-embed__frame"
-      src="${DOCUMENTATION_URL}"
+      src="${documentationUrl}"
       title="${escapeHtml(t('Documentação'))}"
       loading="eager"
       referrerpolicy="strict-origin-when-cross-origin"
     >
-      <a href="${DOCUMENTATION_URL}" target="_blank" rel="noopener">${escapeHtml(t('Documentação'))}</a>
+      <a href="${documentationUrl}" target="_blank" rel="noopener">${escapeHtml(t('Documentação'))}</a>
     </iframe>
   </section>
 `
+}

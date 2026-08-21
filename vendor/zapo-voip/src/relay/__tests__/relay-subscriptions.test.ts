@@ -80,6 +80,137 @@ test('relay keepalive reuses the exact initial WASM allocate packet', () => {
     assert.deepEqual(sent[0].subarray(8, 20), sent[1].subarray(8, 20))
 })
 
+test('relay logs safe IPv6 allocate wire telemetry without relay credentials', () => {
+    const debugEntries: Array<{
+        message: string
+        context?: Readonly<Record<string, unknown>>
+    }> = []
+    const logger = {
+        level: 'debug',
+        trace() {},
+        debug(message: string, context?: Readonly<Record<string, unknown>>) {
+            debugEntries.push({ message, context })
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child() {
+            return this
+        }
+    }
+    const relay = new WaSctpRelay({ logger: logger as never })
+    relay.setStreamSsrcs(Array.from({ length: 9 }, (_, index) => 0x21000000 + index))
+
+    const sent: Uint8Array[] = []
+    ;(relay as any).sendToChannel = (_conn: unknown, data: ArrayBuffer) => {
+        sent.push(new Uint8Array(data).slice())
+        return true
+    }
+
+    const relayInfo = {
+        ip: '2001:db8::1',
+        port: 3478,
+        rawToken: new Uint8Array([1, 2, 3, 4]),
+        key: 'relay-key',
+        tokenId: '7',
+        authTokenId: '8'
+    }
+    const conn = {
+        state: 'Open',
+        nativeTransport: { isOpen: true },
+        cachedAllocate: null
+    }
+
+    ;(relay as any).sendStunAllocateOnOpen(conn, relayInfo)
+
+    const wire = debugEntries.find((entry) => entry.message === 'voip_diag relay_allocate_wire')
+    assert.ok(wire?.context)
+    assert.equal(wire.context.relayAddressFamily, 6)
+    assert.equal(wire.context.endpointAttributeLength, 20)
+    assert.equal(wire.context.endpointAddressFamily, 2)
+    assert.equal(wire.context.requestTransactionId, Buffer.from(sent[0].subarray(8, 20)).toString('hex'))
+    assert.equal(typeof wire.context.endpointAttributeHex, 'string')
+    assert.equal('rawToken' in wire.context, false)
+    assert.equal('key' in wire.context, false)
+})
+
+test('relay logs the first RTP once per connection without relay credentials', () => {
+    const debugEntries: Array<{
+        message: string
+        context?: Readonly<Record<string, unknown>>
+    }> = []
+    const logger = {
+        level: 'debug',
+        trace() {},
+        debug(message: string, context?: Readonly<Record<string, unknown>>) {
+            debugEntries.push({ message, context })
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child() {
+            return this
+        }
+    }
+    const relay = new WaSctpRelay({ logger: logger as never })
+    const relayInfo = {
+        id: '[2001:db8::1]:3478#8',
+        ip: '2001:db8::1',
+        port: 3478,
+        token: 'secret-token',
+        rawToken: new Uint8Array([1, 2, 3]),
+        key: 'secret-key',
+        relayId: 7,
+        name: 'test6c01',
+        tokenId: '7',
+        authTokenId: '8'
+    }
+    const conn = {
+        state: 'Open',
+        nativeTransport: { isOpen: true },
+        buffer: [],
+        bufferedBytes: 0,
+        id: relayInfo.id,
+        relayInfo,
+        connectionTimeout: null,
+        hasReceivedFirstPacket: false,
+        hasReceivedFirstRtp: false,
+        stableRoutingConnId: 0n,
+        cachedAllocate: null,
+        stats: { sentPackets: 0, receivedPackets: 0, sentBytes: 0, receivedBytes: 0 }
+    }
+    const packet = new Uint8Array(12)
+    packet[0] = 0x80
+    packet[1] = 120
+    packet[2] = 0x12
+    packet[3] = 0x34
+    packet[8] = 0x11
+    packet[9] = 0x22
+    packet[10] = 0x33
+    packet[11] = 0x44
+
+    ;(relay as any).handleRelayMessage(packet, relayInfo, conn)
+    ;(relay as any).handleRelayMessage(packet, relayInfo, conn)
+
+    const entries = debugEntries.filter(
+        (entry) => entry.message === 'voip_diag first_relay_rtp_on_connection'
+    )
+    assert.equal(entries.length, 1)
+    assert.deepEqual(entries[0]?.context, {
+        connectionId: relayInfo.id,
+        relayName: 'test6c01',
+        relayId: 7,
+        addressFamily: 6,
+        tokenId: '7',
+        authTokenId: '8',
+        sequence: 0x1234,
+        ssrc: '0x11223344'
+    })
+    assert.equal('token' in entries[0]!.context!, false)
+    assert.equal('rawToken' in entries[0]!.context!, false)
+    assert.equal('key' in entries[0]!.context!, false)
+})
+
 test('non-FNA relay opens through the native DTLS/SCTP transport', async () => {
     class FakeNativeTransport extends EventEmitter {
         state = 'connecting'
@@ -173,6 +304,100 @@ test('native transport error emits relay_failed and removes the dead connection'
         port: 3478,
         reason: 'native_transport_error'
     })
+    relay.cleanup()
+})
+
+test('IPv6 allocate mismatch quarantines only the rejected candidate', async () => {
+    class FakeNativeTransport extends EventEmitter {
+        state = 'connecting'
+        isOpen = false
+        sent: Uint8Array[] = []
+        closeCount = 0
+        send(data: Uint8Array) {
+            this.sent.push(data.slice())
+            return true
+        }
+        close() {
+            this.closeCount++
+            this.state = 'closed'
+            this.isOpen = false
+        }
+        open() {
+            this.state = 'open'
+            this.isOpen = true
+            this.emit('open')
+        }
+    }
+
+    const natives = [new FakeNativeTransport(), new FakeNativeTransport()]
+    let nextNative = 0
+    const relay = new WaSctpRelay({
+        nativeTransportFactory: (() => natives[nextNative++]) as never
+    })
+    relay.setStreamSsrcs(Array.from({ length: 9 }, (_, index) => 0x30600000 + index))
+
+    const failures: any[] = []
+    relay.on('relay_failed', (event) => failures.push(event))
+
+    await relay.configureRelays([
+        {
+            ip: '57.144.137.57',
+            port: 3478,
+            token: 'relay-token-v4',
+            rawToken: new Uint8Array([1, 2, 3]),
+            key: 'relay-key-v4',
+            relayId: 0,
+            name: 'bsb1c01',
+            authTokenId: '0'
+        },
+        {
+            ip: '2a03:2880:f344:139:face:b00c:0:6749',
+            port: 3478,
+            token: 'relay-token-v6',
+            rawToken: new Uint8Array([4, 5, 6]),
+            key: 'relay-key-v6',
+            relayId: 0,
+            name: 'bsb1c01',
+            authTokenId: '0'
+        }
+    ])
+    natives.forEach((native) => native.open())
+
+    const allocateMismatch = new Uint8Array(28)
+    allocateMismatch.set([0x01, 0x13, 0x00, 0x08, 0x21, 0x12, 0xa4, 0x42])
+    allocateMismatch.set([0x00, 0x09, 0x00, 0x04, 0x00, 0x00, 0x04, 0x34], 20)
+    natives[1].emit('message', allocateMismatch)
+
+    assert.equal(relay.hasConnection(), true)
+    assert.equal((relay as any).connections.size, 1)
+    assert.equal(
+        (relay as any).connections.has('57.144.137.57:3478#0'),
+        true
+    )
+    assert.equal(
+        (relay as any).keepaliveTimers.has(
+            '[2a03:2880:f344:139:face:b00c:0:6749]:3478#0'
+        ),
+        false
+    )
+    assert.equal(natives[0].closeCount, 0)
+    assert.equal(natives[1].closeCount, 1)
+    assert.deepEqual(failures, [
+        {
+            connectionId: '[2a03:2880:f344:139:face:b00c:0:6749]:3478#0',
+            relayId: 0,
+            relayName: 'bsb1c01',
+            ip: '2a03:2880:f344:139:face:b00c:0:6749',
+            port: 3478,
+            reason: 'allocate_address_mismatch'
+        }
+    ])
+
+    natives[0].emit('message', allocateMismatch)
+    assert.equal(relay.hasConnection(), true)
+    assert.equal((relay as any).connections.size, 1)
+    assert.equal(natives[0].closeCount, 0)
+    assert.equal(failures.length, 1)
     relay.cleanup()
 })
 

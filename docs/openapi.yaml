@@ -324,6 +324,8 @@ paths:
         - Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.
         - Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.
         - Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.
+        - Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.
+        - PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.
       parameters:
         - $ref: '#/components/parameters/PhonePath'
       requestBody:
@@ -384,6 +386,17 @@ paths:
                   type: image
                   image:
                     link: 'https://exemplo.com/imagem.jpg'
+                    caption: 'Legenda opcional'
+              imageBase64:
+                summary: Imagem por Base64 (extensão ViperConnect)
+                value:
+                  messaging_product: whatsapp
+                  to: '5511999999999'
+                  type: image
+                  image:
+                    base64: '/9j/4AAQSkZJRgABAQ...'
+                    mime_type: image/jpeg
+                    filename: foto.jpg
                     caption: 'Legenda opcional'
               document:
                 summary: Documento
@@ -2514,9 +2527,16 @@ components:
             type: { const: image }
             image:
               type: object
-              required: [link]
+              description: Use somente uma origem, `link` ou `base64`.
+              oneOf:
+                - required: [link]
+                - required: [base64]
               properties:
                 link: { type: string, format: uri }
+                base64:
+                  type: string
+                  writeOnly: true
+                  description: 'Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type.'
                 caption: { type: string }
                 filename: { type: string }
                 mime_type: { type: string, example: image/jpeg }
@@ -2530,10 +2550,18 @@ components:
             type: { const: video }
             video:
               type: object
-              required: [link]
+              description: Use somente uma origem, `link` ou `base64`.
+              oneOf:
+                - required: [link]
+                - required: [base64]
               properties:
                 link: { type: string, format: uri }
+                base64:
+                  type: string
+                  writeOnly: true
+                  description: 'Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type.'
                 caption: { type: string }
+                filename: { type: string }
                 mime_type: { type: string, example: video/mp4 }
 
     MessageSticker:
@@ -2545,12 +2573,19 @@ components:
             type: { const: sticker }
             sticker:
               type: object
-              required: [link]
+              description: Use somente uma origem, `link` ou `base64`.
+              oneOf:
+                - required: [link]
+                - required: [base64]
               properties:
                 link:
                   type: string
                   format: uri
                   description: 'PNG/JPG/GIF are auto-converted to WEBP before sending'
+                base64:
+                  type: string
+                  writeOnly: true
+                  description: 'Extensão ViperConnect. Figurinha em Base64 ou Data URI com mime_type image/webp.'
                 mime_type: { type: string, example: image/webp }
 
     MessageAudio:
@@ -2562,9 +2597,17 @@ components:
             type: { const: audio }
             audio:
               type: object
-              required: [link]
+              description: Use somente uma origem, `link` ou `base64`.
+              oneOf:
+                - required: [link]
+                - required: [base64]
               properties:
                 link: { type: string, format: uri }
+                base64:
+                  type: string
+                  writeOnly: true
+                  description: 'Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type.'
+                filename: { type: string }
                 mime_type: { type: string, example: audio/ogg }
                 ptt:
                   type: boolean
@@ -2579,9 +2622,16 @@ components:
             type: { const: document }
             document:
               type: object
-              required: [link]
+              description: Use somente uma origem, `link` ou `base64`.
+              oneOf:
+                - required: [link]
+                - required: [base64]
               properties:
                 link: { type: string, format: uri }
+                base64:
+                  type: string
+                  writeOnly: true
+                  description: 'Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type.'
                 filename: { type: string }
                 caption: { type: string }
                 mime_type: { type: string, example: application/pdf }
@@ -3433,7 +3483,8 @@ components:
               display_name: { type: string }
               push_name: { type: string }
               username: { type: string, description: 'Username opcional sincronizado pela Zapo' }
-              picture: { type: string, format: uri }
+              picture: { type: string, format: uri, description: 'URL legada quando já disponível no cache; a listagem não consulta o storage em caso de ausência' }
+              picture_id: { type: string, description: 'Identidade estável PN ou LID para download autenticado pela UnoAPI' }
               last_updated_ms: { type: integer, format: int64 }
         next_cursor: { type: string }
         has_more: { type: boolean }

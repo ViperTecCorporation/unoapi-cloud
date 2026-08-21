@@ -557,7 +557,7 @@
     "/v15.0/{phone}/messages": {
       "post": {
         "summary": "Enviar mensagem (WhatsApp Cloud shape)",
-        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n",
+        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/PhonePath"
@@ -638,6 +638,20 @@
                     "type": "image",
                     "image": {
                       "link": "https://exemplo.com/imagem.jpg",
+                      "caption": "Legenda opcional"
+                    }
+                  }
+                },
+                "imageBase64": {
+                  "summary": "Imagem por Base64 (extensão ViperConnect)",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "image",
+                    "image": {
+                      "base64": "/9j/4AAQSkZJRgABAQ...",
+                      "mime_type": "image/jpeg",
+                      "filename": "foto.jpg",
                       "caption": "Legenda opcional"
                     }
                   }
@@ -4951,13 +4965,28 @@
               },
               "image": {
                 "type": "object",
-                "required": [
-                  "link"
+                "description": "Use somente uma origem, `link` ou `base64`.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "link"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "base64"
+                    ]
+                  }
                 ],
                 "properties": {
                   "link": {
                     "type": "string",
                     "format": "uri"
+                  },
+                  "base64": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type."
                   },
                   "caption": {
                     "type": "string"
@@ -4991,15 +5020,33 @@
               },
               "video": {
                 "type": "object",
-                "required": [
-                  "link"
+                "description": "Use somente uma origem, `link` ou `base64`.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "link"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "base64"
+                    ]
+                  }
                 ],
                 "properties": {
                   "link": {
                     "type": "string",
                     "format": "uri"
                   },
+                  "base64": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type."
+                  },
                   "caption": {
+                    "type": "string"
+                  },
+                  "filename": {
                     "type": "string"
                   },
                   "mime_type": {
@@ -5028,14 +5075,29 @@
               },
               "sticker": {
                 "type": "object",
-                "required": [
-                  "link"
+                "description": "Use somente uma origem, `link` ou `base64`.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "link"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "base64"
+                    ]
+                  }
                 ],
                 "properties": {
                   "link": {
                     "type": "string",
                     "format": "uri",
                     "description": "PNG/JPG/GIF are auto-converted to WEBP before sending"
+                  },
+                  "base64": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Extensão ViperConnect. Figurinha em Base64 ou Data URI com mime_type image/webp."
                   },
                   "mime_type": {
                     "type": "string",
@@ -5063,13 +5125,31 @@
               },
               "audio": {
                 "type": "object",
-                "required": [
-                  "link"
+                "description": "Use somente uma origem, `link` ou `base64`.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "link"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "base64"
+                    ]
+                  }
                 ],
                 "properties": {
                   "link": {
                     "type": "string",
                     "format": "uri"
+                  },
+                  "base64": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type."
+                  },
+                  "filename": {
+                    "type": "string"
                   },
                   "mime_type": {
                     "type": "string",
@@ -5101,13 +5181,28 @@
               },
               "document": {
                 "type": "object",
-                "required": [
-                  "link"
+                "description": "Use somente uma origem, `link` ou `base64`.",
+                "oneOf": [
+                  {
+                    "required": [
+                      "link"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "base64"
+                    ]
+                  }
                 ],
                 "properties": {
                   "link": {
                     "type": "string",
                     "format": "uri"
+                  },
+                  "base64": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Extensão ViperConnect. Aceita Base64 puro ou Data URI. Para Base64 puro, informe mime_type."
                   },
                   "filename": {
                     "type": "string"
@@ -7054,7 +7149,12 @@
                 },
                 "picture": {
                   "type": "string",
-                  "format": "uri"
+                  "format": "uri",
+                  "description": "URL legada quando já disponível no cache; a listagem não consulta o storage em caso de ausência"
+                },
+                "picture_id": {
+                  "type": "string",
+                  "description": "Identidade estável PN ou LID para download autenticado pela UnoAPI"
                 },
                 "last_updated_ms": {
                   "type": "integer",

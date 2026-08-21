@@ -2,6 +2,7 @@ import { createNoopLogger } from 'zapo-js';
 import { isLidJid, normalizeDeviceJid, toUserJid, WA_CALL_RECEIPT_PAYLOAD_TAGS } from 'zapo-js/protocol';
 import { buildAckNode, buildReceiptNode, getFirstNodeChild } from 'zapo-js/transport';
 import { toError } from 'zapo-js/util';
+import { summarizeCallEnvelope } from './signaling-diagnostics.js';
 const RECEIPT_CALL_TAGS = new Set([
     'offer',
     'accept',
@@ -84,6 +85,15 @@ export async function routeCallStanza(manager, deps, node, logger) {
         });
         return tag;
     }
+    log.debug('voip_diag inbound_call_envelope', {
+        callId: inner.attrs?.['call-id'],
+        tag,
+        rawPeerJid: peerJid,
+        normalizedPeerJid,
+        responseDeferred: deferResponseUntilHandled,
+        received: summarizeCallEnvelope(node),
+        response: summarizeCallEnvelope(response)
+    });
     switch (tag) {
         case 'offer':
             await manager.handleCallOffer(node, normalizedPeerJid);
@@ -122,22 +132,42 @@ export async function routeCallStanza(manager, deps, node, logger) {
     }
     return tag;
 }
-export async function routeCallAck(manager, node) {
+export async function routeCallAck(manager, node, logger) {
+    const log = logger ?? createNoopLogger();
+    log.debug('voip_diag inbound_call_ack_envelope', {
+        stanzaId: node.attrs?.id,
+        type: node.attrs?.type,
+        error: node.attrs?.error,
+        from: node.attrs?.from,
+        to: node.attrs?.to,
+        envelope: summarizeCallEnvelope(node)
+    });
     await manager.handleCallAck(node);
 }
-export async function routeCallReceipt(deps, node) {
+export async function routeCallReceipt(deps, node, logger) {
     const inner = getFirstNodeChild(node);
     if (!inner)
         return false;
     if (!RECEIPT_CALL_TAGS.has(inner.tag))
         return false;
     const peerJid = node.attrs.from;
-    await deps.lowLevelCoordinator.sendNode(buildAckNode({
+    const response = buildAckNode({
         kind: 'custom',
         ackClass: 'receipt',
         to: peerJid,
         id: node.attrs.id,
         type: node.attrs.type || 'retry'
-    }));
+    });
+    await deps.lowLevelCoordinator.sendNode(response);
+    const log = logger ?? createNoopLogger();
+    log.debug('voip_diag inbound_call_receipt_envelope', {
+        stanzaId: node.attrs?.id,
+        type: node.attrs?.type,
+        innerTag: inner.tag,
+        from: node.attrs?.from,
+        to: node.attrs?.to,
+        received: summarizeCallEnvelope(node),
+        response: summarizeCallEnvelope(response)
+    });
     return true;
 }

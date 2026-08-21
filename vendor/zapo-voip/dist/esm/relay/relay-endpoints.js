@@ -87,6 +87,7 @@ export function normalizeRelayEndpoints(endpoints, options = {}) {
             {
                 ip: endpoint.ip,
                 port: advertisedPort,
+                addressFamily: endpoint.addressFamily,
                 token: endpoint.token,
                 authToken: endpoint.authToken,
                 rawAuthToken: endpoint.rawAuthToken,
@@ -105,6 +106,7 @@ export function normalizeRelayEndpoints(endpoints, options = {}) {
             variants.push({
                 ip: endpoint.ip,
                 port: WEB_RELAY_PORT,
+                addressFamily: endpoint.addressFamily,
                 token: endpoint.token,
                 authToken: undefined,
                 rawAuthToken: undefined,

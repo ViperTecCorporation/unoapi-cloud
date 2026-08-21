@@ -4,6 +4,7 @@ import { getProfilePicture, getRedis } from '../redis'
 import { SendError } from '../send_error'
 import type { ContactDirectory, ContactDirectoryItem, ContactDirectoryPage, ContactDirectoryQuery } from '../contacts/contact_directory_types'
 import { profilePictureCacheIds } from '../profile_picture_cache'
+import { resolveProfilePictureId } from '../profile_picture_identity'
 import { resolveZapoRedisKeyPrefix } from './zapo_store'
 import { normalizeContactPhoneNumber } from './zapo_contact_phone'
 import { zapoUsernameIndex } from './zapo_username_index'
@@ -120,18 +121,6 @@ export class ZapoContactDirectory implements ContactDirectory {
     const redis = await this.redisFactory()
     const pattern = `${this.prefix}contact:${escapeRedisGlob(phone)}:*`
     const contactCounts = this.counter(redis, pattern)
-    let storePromise: ReturnType<typeof config.getStore> | undefined
-    const pictureLookup: PictureLookup = async (sessionPhone, cacheId) => {
-      const cached = await this.pictureLookup(sessionPhone, cacheId)
-      if (cached) return cached
-      try {
-        storePromise ||= config.getStore(phone, config)
-        const store = await storePromise
-        return store.dataStore.getImageUrl(cacheId)
-      } catch {
-        return undefined
-      }
-    }
     let nextCursor = cursor
     const mapped: ContactDirectoryItem[] = []
     const search = `${query.search || ''}`.trim().toLowerCase()
@@ -173,7 +162,8 @@ export class ZapoContactDirectory implements ContactDirectory {
     const contacts = await Promise.all(
       mapped.map(async (contact) => ({
         ...contact,
-        picture: await findCachedContactPicture(phone, contact, pictureLookup),
+        picture_id: resolveProfilePictureId(contact.user_id, contact.phone_number),
+        picture: await findCachedContactPicture(phone, contact, this.pictureLookup),
       })),
     )
     contacts.sort((left, right) => right.last_updated_ms - left.last_updated_ms)

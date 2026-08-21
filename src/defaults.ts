@@ -104,6 +104,11 @@ export const CONFIG_CACHE_TTL_MS = parseInt(process.env.CONFIG_CACHE_TTL_MS || '
 export const SESSION_STATUS_CACHE_TTL_MS = parseInt(process.env.SESSION_STATUS_CACHE_TTL_MS || '5000')
 export const CONNECT_COUNT_CACHE_TTL_MS = parseInt(process.env.CONNECT_COUNT_CACHE_TTL_MS || '2000')
 export const PROXY_URL = process.env.PROXY_URL
+export const ZAPO_NETWORK_IP_FAMILY = process.env.ZAPO_NETWORK_IP_FAMILY || 'auto'
+export const ZAPO_CHAT_SOCKET_IP_FAMILY = process.env.ZAPO_CHAT_SOCKET_IP_FAMILY
+export const ZAPO_MEDIA_UPLOAD_IP_FAMILY = process.env.ZAPO_MEDIA_UPLOAD_IP_FAMILY
+export const ZAPO_MEDIA_DOWNLOAD_IP_FAMILY = process.env.ZAPO_MEDIA_DOWNLOAD_IP_FAMILY
+export const ZAPO_LINK_PREVIEW_IP_FAMILY = process.env.ZAPO_LINK_PREVIEW_IP_FAMILY
 
 // behavior of unoapi
 export const UNOAPI_SERVER_NAME = process.env.UNOAPI_SERVER_NAME || 'server_1'
@@ -120,6 +125,8 @@ export const UNOAPI_RETRY_REQUEST_DELAY_MS = parseInt(process.env.UNOAPI_RETRY_R
 // export const MAX_QRCODE_GENERATE = process.env.MAX_QRCODE_GENERATE || 6
 export const DATA_TTL: number = parseInt(process.env.DATA_TTL || `${60 * 60 * 24 * 30}`) // a month
 export const DATA_URL_TTL: number = parseInt(process.env.DATA_URL_TTL || `${60 * 60 * 24 * 3}`) // tree days
+export const UNOAPI_MEDIA_BASE64_MAX_BYTES = parseInt(process.env.UNOAPI_MEDIA_BASE64_MAX_BYTES || `${32 * 1024 * 1024}`)
+export const UNOAPI_MESSAGES_JSON_LIMIT = process.env.UNOAPI_MESSAGES_JSON_LIMIT || '48mb'
 export const SESSION_TTL: number = parseInt(process.env.SESSION_TTL || '-1')
 export const UNOAPI_X_COUNT_RETRIES: string = process.env.UNOAPI_X_COUNT_RETRIES || 'x-unoapi-count-retries'
 export const UNOAPI_X_MAX_RETRIES: string = process.env.UNOAPI_X_MAX_RETRIES || 'x-unoapi-max-retries'

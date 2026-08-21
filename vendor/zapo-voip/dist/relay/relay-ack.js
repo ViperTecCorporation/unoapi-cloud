@@ -4,6 +4,7 @@ exports.parseRelayFromAck = parseRelayFromAck;
 const transport_1 = require("zapo-js/transport");
 const util_1 = require("zapo-js/util");
 const bytes_js_1 = require("../bytes.js");
+const relay_address_js_1 = require("./relay-address.js");
 function getDescendantNodes(root) {
     const nodes = [];
     const pending = [root];
@@ -129,16 +130,14 @@ function parseRelayFromAck(ackNode) {
             const relayName = rcNode.attrs?.relay_name || '';
             const protocol = rcNode.attrs?.protocol ? parseInt(rcNode.attrs.protocol, 10) : 0;
             const isFna = rcNode.attrs?.is_fna === '1';
-            if (!(rcNode.content instanceof Uint8Array) || rcNode.content.length < 6)
+            if (!(rcNode.content instanceof Uint8Array))
                 continue;
-            const addrBytes = rcNode.content;
-            const addressBytes = new Uint8Array(addrBytes);
-            if (addrBytes.length === 6) {
-                const ip = `${addrBytes[0]}.${addrBytes[1]}.${addrBytes[2]}.${addrBytes[3]}`;
-                const port = (addrBytes[4] << 8) | addrBytes[5];
+            const address = (0, relay_address_js_1.parseRelayAddressBytes)(rcNode.content);
+            if (address) {
                 relays.push({
-                    ip,
-                    port,
+                    ip: address.ip,
+                    port: address.port,
+                    addressFamily: address.addressFamily,
                     token,
                     authToken,
                     rawAuthToken: authTokenId ? rawAuthTokens.get(authTokenId) : undefined,
@@ -148,7 +147,7 @@ function parseRelayFromAck(ackNode) {
                     protocol,
                     c2rRtt: rcNode.attrs?.c2r_rtt ? parseInt(rcNode.attrs.c2r_rtt, 10) : undefined,
                     relayName,
-                    addressBytes,
+                    addressBytes: address.addressBytes,
                     tokenId,
                     authTokenId: authTokenId || undefined,
                     isFna

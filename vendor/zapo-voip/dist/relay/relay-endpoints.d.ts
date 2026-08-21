@@ -2,6 +2,7 @@ import type { RelayEndpoint } from '../types.js';
 export interface NormalizedRelayEndpoint {
     ip: string;
     port: number;
+    addressFamily?: 4 | 6;
     token: string;
     authToken?: string;
     rawAuthToken?: Uint8Array;

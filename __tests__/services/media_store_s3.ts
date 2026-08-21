@@ -32,9 +32,10 @@ import { mock } from 'jest-mock-extended'
 import { DataStore } from '../../src/services/data_store'
 import { getDataStore } from '../../src/services/data_store'
 import { Readable } from 'stream'
+import type { Response } from 'express'
 import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { HeadObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 
 const fetchMock = fetch as unknown as jest.Mock
 const amqpPublishMock = amqpPublish as jest.MockedFunction<typeof amqpPublish>
@@ -205,6 +206,34 @@ describe('service media store s3', () => {
 
     expect(payload.url).toBe(`https://uno.example.test/v15.0/download/${phone}/${mediaId}.mp4`)
     expect(mockS3Send).toHaveBeenCalledTimes(1)
+  })
+
+  test('downloads the canonical S3 object when the requested filename uses a MIME alias extension', async () => {
+    const mediaId = 'certificate-media'
+    const bytes = Buffer.from('pkcs12-bytes')
+    dataStore.loadMediaPayload.mockResolvedValue({
+      id: `${phone}/${mediaId}`,
+      url: 'https://r2.example.test/certificate.p12?X-Amz-Signature=stored',
+      mime_type: 'application/x-pkcs12',
+      filename: 'certificate.pfx',
+    })
+    mockS3Send
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Body: Readable.from(bytes) })
+    const mediaStore = mediaStoreS3(phone, defaultConfig, getTestDataStore)
+    const response = mock<Response>()
+
+    await mediaStore.downloadMedia(response, `${phone}/${mediaId}.pfx`)
+
+    expect(mockS3Send).toHaveBeenCalledTimes(2)
+    expect(GetObjectCommand).toHaveBeenCalledWith(expect.objectContaining({
+      Key: `${phone}/${mediaId}.p12`,
+    }))
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-disposition',
+      'attachment; filename="certificate.pfx"',
+    )
+    expect(response.contentType).toHaveBeenCalledWith('application/x-pkcs12')
   })
 
   test('falls back to the stored URL when the S3-compatible object is missing', async () => {

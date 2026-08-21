@@ -1,0 +1,11 @@
+# Override opcional para habilitar IPv4 e IPv6 na rede interna da UnoAPI.
+# Use sempre junto do Compose principal. Ajuste os subnets se houver conflito.
+networks:
+  unoapi:
+    name: unoapi-dualstack
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.23.0.0/16
+        - subnet: fd42:756e:6f61::/64

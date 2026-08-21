@@ -10,6 +10,7 @@ import {
     writeUInt32BE
 } from '../bytes.js'
 import { hmacSha1, randomBytes } from '../crypto/primitives.js'
+import { parseIpAddressBytes } from './relay-address.js'
 
 const STUN_MAGIC_COOKIE = 0x2112a442
 const STUN_FINGERPRINT_XOR = 0x5354554e
@@ -217,14 +218,41 @@ export function buildWasmStreamDescriptors(streamSsrcs: readonly number[]): Uint
     return concatBytes(descriptors)
 }
 
-function encodeXorRelayedAddress(ip: string, port: number): Uint8Array {
-    const data = new Uint8Array(8)
+function encodeXorRelayedAddress(
+    ip: string,
+    port: number,
+    transactionId: Uint8Array
+): Uint8Array {
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+        throw new Error(`invalid relay port: ${port}`)
+    }
+    if (transactionId.length !== 12) {
+        throw new Error(`STUN transaction ID must contain 12 bytes, got ${transactionId.length}`)
+    }
+
+    const address = parseIpAddressBytes(ip)
+    const data = new Uint8Array(address.addressFamily === 4 ? 8 : 20)
     data[0] = 0x00
-    data[1] = 0x01
+    data[1] = address.addressFamily === 4 ? 0x01 : 0x02
     writeUInt16BE(data, port ^ (STUN_MAGIC_COOKIE >>> 16), 2)
-    const parts = ip.split('.').map(Number)
-    const ipNum = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0
-    writeUInt32BE(data, (ipNum ^ STUN_MAGIC_COOKIE) >>> 0, 4)
+
+    const xorMask = new Uint8Array(16)
+    writeUInt32BE(xorMask, STUN_MAGIC_COOKIE, 0)
+    if (address.addressFamily === 6) {
+        // WhatsApp's custom WASM endpoint attribute reads the 96-bit STUN
+        // transaction ID as three little-endian uint32 words. This differs
+        // from the byte-order used by RFC 5389 XOR-MAPPED-ADDRESS.
+        for (let wordOffset = 0; wordOffset < transactionId.length; wordOffset += 4) {
+            for (let byteOffset = 0; byteOffset < 4; byteOffset++) {
+                xorMask[4 + wordOffset + byteOffset] = transactionId[wordOffset + 3 - byteOffset]
+            }
+        }
+    } else {
+        xorMask.set(transactionId, 4)
+    }
+    address.bytes.forEach((byte, index) => {
+        data[4 + index] = byte ^ xorMask[index]
+    })
     return data
 }
 
@@ -243,7 +271,10 @@ export function buildAllocateForRelay(
 
     if (relayIp && relayPort) {
         parts.push(
-            encodeAttribute(ATTR_XOR_RELAYED_ADDRESS, encodeXorRelayedAddress(relayIp, relayPort))
+            encodeAttribute(
+                ATTR_XOR_RELAYED_ADDRESS,
+                encodeXorRelayedAddress(relayIp, relayPort, transactionId)
+            )
         )
     }
 

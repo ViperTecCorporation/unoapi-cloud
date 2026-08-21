@@ -3,6 +3,7 @@ jest.mock('../../src/services/redis', () => ({
   authKey: (key: string) => `unoapi-auth-${key}`,
   sessionStatusKey: (phone: string) => `unoapi-status-${phone}`,
   redisKeys: jest.fn(),
+  getSessionPhones: jest.fn(),
   getSessionStatus: jest.fn(),
   setSessionStatus: jest.fn(),
   redisGet: jest.fn(),
@@ -19,9 +20,34 @@ import { SessionStoreRedis } from '../../src/services/session_store_redis'
 import {
   delAuth,
   getAuthKeyCount,
+  getSessionPhones,
   getSessionStatus,
+  redisKeys,
   redisGet,
 } from '../../src/services/redis'
+
+describe('SessionStoreRedis session inventory', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('uses the maintained session index without scanning the config keyspace', async () => {
+    ;(getSessionPhones as jest.Mock).mockResolvedValue(['5566996269251', '5566999424178'])
+    const store = new SessionStoreRedis()
+
+    await expect(store.getPhones()).resolves.toEqual(['5566996269251', '5566999424178'])
+    expect(getSessionPhones).toHaveBeenCalledTimes(1)
+    expect(redisKeys).not.toHaveBeenCalled()
+  })
+
+  it('propagates an index migration failure instead of falling back to KEYS', async () => {
+    ;(getSessionPhones as jest.Mock).mockRejectedValue(new Error('migration failed'))
+    const store = new SessionStoreRedis()
+
+    await expect(store.getPhones()).rejects.toThrow('migration failed')
+    expect(redisKeys).not.toHaveBeenCalled()
+  })
+})
 
 describe('SessionStoreRedis provider-aware startup sync', () => {
   beforeEach(() => {

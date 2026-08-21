@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaSctpRelay = exports.WA_RELAY_DATA_CHANNEL_LABEL = exports.WA_RELAY_DATA_CHANNEL_ID = void 0;
 const node_events_1 = require("node:events");
+const node_net_1 = require("node:net");
 const zapo_js_1 = require("zapo-js");
 const util_1 = require("zapo-js/util");
 const bytes_js_1 = require("../bytes.js");
@@ -31,6 +32,16 @@ var ConnectionState;
     ConnectionState["Closed"] = "Closed";
     ConnectionState["Failed"] = "Failed";
 })(ConnectionState || (ConnectionState = {}));
+function describeAllocateWire(packet) {
+    const info = (0, stun_js_1.parseStunResponse)(packet);
+    const endpoint = info?.attributes.find((attribute) => attribute.type === 0x0016);
+    return {
+        requestTransactionId: info?.transactionId,
+        endpointAttributeLength: endpoint?.length,
+        endpointAddressFamily: endpoint?.data[1],
+        endpointAttributeHex: endpoint ? (0, util_1.bytesToHex)(endpoint.data) : undefined
+    };
+}
 class WaSctpRelay extends node_events_1.EventEmitter {
     logger;
     nativeTransportFactory;
@@ -230,6 +241,7 @@ class WaSctpRelay extends node_events_1.EventEmitter {
             relayInfo,
             connectionTimeout: null,
             hasReceivedFirstPacket: false,
+            hasReceivedFirstRtp: false,
             stableRoutingConnId: 0n,
             cachedAllocate: null,
             stats: { sentPackets: 0, receivedPackets: 0, sentBytes: 0, receivedBytes: 0 }
@@ -365,6 +377,11 @@ class WaSctpRelay extends node_events_1.EventEmitter {
         if (!conn.cachedAllocate) {
             const streamDescriptors = (0, stun_js_1.buildWasmStreamDescriptors)(this.streamSsrcs);
             conn.cachedAllocate = (0, stun_js_1.buildAllocateForRelay)(relayInfo.rawToken, streamDescriptors, bytes_js_1.TEXT_ENCODER.encode(relayInfo.key), relayInfo.ip, relayInfo.port);
+            this.logger.debug('voip_diag relay_allocate_wire', {
+                connectionId,
+                relayAddressFamily: (0, node_net_1.isIP)(relayInfo.ip),
+                ...describeAllocateWire(conn.cachedAllocate)
+            });
         }
         const allocate = conn.cachedAllocate;
         this.sendToChannel(conn, (0, bytes_js_1.toArrayBuffer)(allocate));
@@ -539,6 +556,21 @@ class WaSctpRelay extends node_events_1.EventEmitter {
             conn.hasReceivedFirstPacket = true;
             this.logger.trace('first packet received from relay', { connectionId: conn.id });
         }
+        if (isRtp && !conn.hasReceivedFirstRtp) {
+            conn.hasReceivedFirstRtp = true;
+            this.logger.debug('voip_diag first_relay_rtp_on_connection', {
+                connectionId: conn.id,
+                relayName: relayInfo.name,
+                relayId: relayInfo.relayId,
+                addressFamily: (0, node_net_1.isIP)(relayInfo.ip),
+                tokenId: relayInfo.tokenId,
+                authTokenId: relayInfo.authTokenId,
+                sequence: data.length >= 4 ? (data[2] << 8) | data[3] : undefined,
+                ssrc: data.length >= 12
+                    ? `0x${(0, bytes_js_1.readUInt32BE)(data, 8).toString(16).padStart(8, '0')}`
+                    : undefined
+            });
+        }
         const shouldLog = conn.stats.receivedPackets <= 50 ||
             conn.stats.receivedPackets % 25 === 0 ||
             isRtp ||
@@ -607,11 +639,28 @@ class WaSctpRelay extends node_events_1.EventEmitter {
                         });
                     }
                     if (stunInfo.isError) {
+                        const requestWire = conn.cachedAllocate
+                            ? describeAllocateWire(conn.cachedAllocate)
+                            : {};
                         this.logger.warn('stun error response', {
                             connectionId: conn.id,
                             errorCode: stunInfo.errorCode,
-                            errorReason: stunInfo.errorReason || ''
+                            errorReason: stunInfo.errorReason || '',
+                            responseTransactionId: stunInfo.transactionId,
+                            ...requestWire
                         });
+                        if (stunInfo.method === 'allocate' &&
+                            stunInfo.errorCode === 452 &&
+                            (0, node_net_1.isIP)(relayInfo.ip) === 6) {
+                            this.logger.warn('ipv6 relay allocation rejected; quarantining candidate', {
+                                connectionId: conn.id,
+                                relayName: relayInfo.name,
+                                relayId: relayInfo.relayId,
+                                errorCode: stunInfo.errorCode
+                            });
+                            this.failConnection(conn, 'allocate_address_mismatch');
+                            return;
+                        }
                     }
                     for (const attr of stunInfo.attributes) {
                         this.logger.trace('stun attribute', {

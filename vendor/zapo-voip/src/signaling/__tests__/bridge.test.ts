@@ -5,7 +5,7 @@ import type { BinaryNode } from 'zapo-js/transport'
 
 import type { WaCallManager } from '../../call/WaCallManager.js'
 import type { WaVoipDeps } from '../../types.js'
-import { routeCallReceipt, routeCallStanza } from '../bridge.js'
+import { routeCallAck, routeCallReceipt, routeCallStanza } from '../bridge.js'
 
 function mocks() {
     const sent: BinaryNode[] = []
@@ -30,6 +30,7 @@ function mocks() {
         handleCallTransport: async () => void dispatched.push('transport'),
         handleCallTerminate: async () => void dispatched.push('terminate'),
         handleCallRelaylatency: async () => void dispatched.push('relaylatency'),
+        handleCallAck: async () => void dispatched.push('ack'),
         handleCallMuteV2: async () => void dispatched.push('mute_v2'),
         handleCallReject: async () => void dispatched.push('reject'),
         handleRelayElection: () => void dispatched.push('relay_election')
@@ -68,6 +69,64 @@ test('routeCallStanza sends the Zapo call receipt and dispatches the offer', asy
             attrs: { 'call-id': 'CID', 'call-creator': '5511:0@lid' }
         }
     ])
+})
+
+test('routeCallStanza logs a redacted inbound envelope without changing routing', async () => {
+    const { sent, dispatched, deps, manager } = mocks()
+    const debugEntries: Array<{
+        message: string
+        context?: Readonly<Record<string, unknown>>
+    }> = []
+    const logger = {
+        level: 'debug',
+        trace() {},
+        debug(message: string, context?: Readonly<Record<string, unknown>>) {
+            debugEntries.push({ message, context })
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child() {
+            return this
+        }
+    }
+    const node: BinaryNode = {
+        tag: 'call',
+        attrs: { from: '5511:0@lid', id: 'STANZA1' },
+        content: [
+            {
+                tag: 'offer',
+                attrs: {
+                    'call-id': 'CID',
+                    'call-creator': '5511:0@lid',
+                    secret: 'secret-attribute-value'
+                },
+                content: [
+                    {
+                        tag: 'enc',
+                        attrs: { type: 'pkmsg', secret: 'secret-encryption-metadata' },
+                        content: new Uint8Array([1, 2, 3, 4])
+                    }
+                ]
+            }
+        ]
+    }
+
+    await routeCallStanza(manager, deps, node, logger as never)
+
+    assert.deepEqual(dispatched, ['offer'])
+    assert.equal(sent.length, 1)
+    const entry = debugEntries.find(
+        (candidate) => candidate.message === 'voip_diag inbound_call_envelope'
+    )
+    assert.ok(entry?.context)
+    assert.equal(entry.context.rawPeerJid, '5511:0@lid')
+    assert.equal(entry.context.normalizedPeerJid, '5511@lid')
+    assert.equal(entry.context.tag, 'offer')
+    const serialized = JSON.stringify(entry.context)
+    assert.equal(serialized.includes('secret-attribute-value'), false)
+    assert.equal(serialized.includes('secret-encryption-metadata'), false)
+    assert.equal(serialized.includes('"contentBytes":4'), true)
 })
 
 test('routeCallStanza sends exactly one receipt for accept', async () => {
@@ -168,4 +227,86 @@ test('routeCallReceipt acks receipt-class call tags and skips others', async () 
     const skipped = mocks()
     assert.equal(await routeCallReceipt(skipped.deps, receipt('message')), false)
     assert.equal(skipped.sent.length, 0)
+})
+
+test('routeCallAck logs a redacted envelope and preserves manager dispatch', async () => {
+    const { dispatched, manager } = mocks()
+    const entries: Array<{ message: string; context?: Readonly<Record<string, unknown>> }> = []
+    const logger = {
+        level: 'debug',
+        trace() {},
+        debug(message: string, context?: Readonly<Record<string, unknown>>) {
+            entries.push({ message, context })
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child() {
+            return this
+        }
+    }
+    const node: BinaryNode = {
+        tag: 'ack',
+        attrs: {
+            class: 'call',
+            type: 'relaylatency',
+            id: 'OUTBOUND-RELAYLATENCY-1',
+            from: '5511:0@lid',
+            error: '0',
+            secret: 'must-not-be-logged'
+        },
+        content: [
+            {
+                tag: 'relaylatency',
+                attrs: { 'call-id': 'CID', secret: 'nested-secret' },
+                content: new Uint8Array([1, 2, 3])
+            }
+        ]
+    }
+
+    await routeCallAck(manager, node, logger as never)
+
+    assert.deepEqual(dispatched, ['ack'])
+    const entry = entries.find(
+        (candidate) => candidate.message === 'voip_diag inbound_call_ack_envelope'
+    )
+    assert.equal(entry?.context?.stanzaId, 'OUTBOUND-RELAYLATENCY-1')
+    assert.equal(entry?.context?.type, 'relaylatency')
+    assert.equal(entry?.context?.error, '0')
+    const serialized = JSON.stringify(entry?.context)
+    assert.equal(serialized.includes('must-not-be-logged'), false)
+    assert.equal(serialized.includes('nested-secret'), false)
+    assert.equal(serialized.includes('"contentBytes":3'), true)
+})
+
+test('routeCallReceipt logs the handled call receipt without changing its ack', async () => {
+    const handled = mocks()
+    const entries: Array<{ message: string; context?: Readonly<Record<string, unknown>> }> = []
+    const logger = {
+        level: 'debug',
+        trace() {},
+        debug(message: string, context?: Readonly<Record<string, unknown>>) {
+            entries.push({ message, context })
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child() {
+            return this
+        }
+    }
+    const receipt: BinaryNode = {
+        tag: 'receipt',
+        attrs: { from: '5511:0@lid', id: 'RECEIPT-1', type: 'delivery' },
+        content: [{ tag: 'relaylatency', attrs: { 'call-id': 'CID' } }]
+    }
+
+    assert.equal(await routeCallReceipt(handled.deps, receipt, logger as never), true)
+    assert.equal(handled.sent.length, 1)
+    assert.equal(handled.sent[0].attrs.id, 'RECEIPT-1')
+    const entry = entries.find(
+        (candidate) => candidate.message === 'voip_diag inbound_call_receipt_envelope'
+    )
+    assert.equal(entry?.context?.stanzaId, 'RECEIPT-1')
+    assert.equal(entry?.context?.innerTag, 'relaylatency')
 })
