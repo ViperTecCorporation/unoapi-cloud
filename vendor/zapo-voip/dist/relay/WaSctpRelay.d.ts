@@ -34,6 +34,7 @@ interface Connection {
     relayInfo: RelayInfo;
     connectionTimeout: NodeJS.Timeout | null;
     hasReceivedFirstPacket: boolean;
+    hasReceivedFirstRtp: boolean;
     stableRoutingConnId: bigint;
     cachedAllocate: Uint8Array | null;
     stats: {

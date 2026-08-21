@@ -209,6 +209,33 @@ uma cópia pura do Zapo nem do Meow Caller. As diferenças e os pontos de
 compatibilidade estão registrados na
 [auditoria técnica de VoIP](docs/voip-meowcaller-audit.md).
 
+### Protocolo VoIP do ViperConnect
+
+O áudio 1:1 usa um protocolo próprio e versionado dentro do ViperConnect:
+
+- a Zapo continua sendo dona da sessão, credenciais, Signal, JIDs/LIDs e
+  eventos de chamada;
+- o Meow Caller fornece referências públicas para o aceite direto, framing,
+  RTP/SRTP, SSRC, Allocate STUN e transporte UDP → DTLS → SCTP → DataChannel;
+- o vendor `@vipertec/zapo-voip` integra esses contratos ao cliente Zapo e
+  acrescenta bridge PCM/SIP, seleção de codec, proteção da perna local,
+  recuperação e telemetria segura de relay;
+- um `relaylatency` inbound sempre recebe ACK, mas só é devolvido ao peer
+  quando o relay possui protocolo suportado, chave e token no offer atual;
+- relays WhatsApp IPv4 e IPv6 são mantidos em paralelo com sockets explícitos
+  `udp4` e `udp6`; a família do relay é independente da família SIP/RTP do
+  ramal e não existe NAT64 de pacotes.
+
+Em 2026-08-21, o caminho foi validado ao vivo em entrada por dados móveis com
+RTP remoto pelo IPv6 de um relay autenticado e, em seguida, por Wi-Fi com RTP
+remoto pelo IPv4. Os dois canários tiveram áudio bidirecional e zero erro
+SRTP/Opus. Essa revisão está validada como hostpatch do worker Zapo; ela só deve
+ser descrita como incorporada à imagem após a próxima publicação unificada sem
+mounts sobre `dist`.
+
+Consulte também o [runtime VoIP Zapo](docs/voip-zapo-runtime.md) e o
+[guia dual-stack](docs-site/guide/voip-ipv6.md).
+
 ## Créditos
 
 - Mantenedora: ViperTec Corporation <suporte@vipertec.com.br>

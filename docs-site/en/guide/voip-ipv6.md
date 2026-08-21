@@ -14,6 +14,24 @@ IPv4 peers receive `IN IP4` SDP and the configured public IPv4 address. IPv6
 peers receive bracketed SIP URIs and `IN IP6` SDP. IPv4 private-address NAT
 rules are not applied to IPv6 peers.
 
+## WhatsApp media relay
+
+Telephony dual-stack and WhatsApp relay dual-stack are independent layers. The
+Zapo worker preserves the IPv4 and IPv6 `te2` endpoints from the offer and
+opens an explicit socket for each candidate family (`udp4` or `udp6`). The
+native helper terminates UDP, DTLS, SCTP and the DataChannel; only PCM then
+crosses the internal bridge.
+
+An IPv6 WhatsApp relay can therefore feed an IPv4 SIP extension without packet
+level NAT64. A `452 Xor Relayed Address Mismatch` response quarantines only the
+incompatible IPv6 candidate and keeps parallel IPv4 candidates available.
+
+On 2026-08-21, an inbound mobile-data call received remote RTP through the
+authenticated IPv6 endpoint of `bsb1c01`. A Wi-Fi regression call received RTP
+through the IPv4 endpoint of `gru2c01`. Both had bidirectional audio and no
+SRTP/Opus errors. This was validated with worker hostpatch 09 and is not yet a
+published unified-image result.
+
 Do not bake a delegated IPv6 prefix into the image or Compose model. Point a
 DNS-only AAAA hostname to the current address and configure that hostname as
 the public IPv6 identity.
@@ -29,3 +47,8 @@ dig +short AAAA sip6.yourdomain.com
 Validate registration and bidirectional audio separately with an IPv4 client
 and an IPv6 client. Coturn must also have IPv4 and IPv6 listeners and relays;
 keep its relay range separate from SIP/RTP and WebRTC media ranges.
+
+The worker's WhatsApp signaling/HTTP egress is not forced to IPv6. That is
+separate from relay media, which accepts numeric IPv4 and IPv6 endpoints. The
+internal Zapo worker-to-VoIP WebSocket also remains on the existing Docker
+network.

@@ -163,13 +163,13 @@ class WaVoipCoordinator {
                 if (node.attrs.class !== 'call') {
                     return false;
                 }
-                await (0, bridge_js_1.routeCallAck)(this.manager, node);
+                await (0, bridge_js_1.routeCallAck)(this.manager, node, this.logger);
                 return true;
             }
         }), ctx.registerIncomingHandler({
             tag: protocol_1.WA_MESSAGE_TAGS.RECEIPT,
             prepend: true,
-            handler: async (node) => (0, bridge_js_1.routeCallReceipt)(this.deps, node)
+            handler: async (node) => (0, bridge_js_1.routeCallReceipt)(this.deps, node, this.logger)
         }));
     }
     wireClientEvents(ctx) {

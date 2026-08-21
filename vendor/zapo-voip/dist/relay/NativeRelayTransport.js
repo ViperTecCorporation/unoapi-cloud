@@ -6,6 +6,7 @@ const node_child_process_1 = require("node:child_process");
 const node_fs_1 = require("node:fs");
 const node_path_1 = require("node:path");
 const node_events_1 = require("node:events");
+const node_net_1 = require("node:net");
 const zapo_js_1 = require("zapo-js");
 const util_1 = require("zapo-js/util");
 const FRAME_READY = 1;
@@ -43,13 +44,27 @@ class NativeRelayTransport extends node_events_1.EventEmitter {
     closedByOwner = false;
     constructor(options) {
         super();
+        const addressFamily = (0, node_net_1.isIP)(options.host);
+        if (addressFamily !== 4 && addressFamily !== 6) {
+            throw new Error(`invalid numeric relay address: ${options.host}`);
+        }
+        if (!Number.isSafeInteger(options.port) || options.port < 1 || options.port > 65535) {
+            throw new Error(`invalid relay port: ${options.port}`);
+        }
         this.logger = options.logger ?? (0, zapo_js_1.createNoopLogger)();
         const binary = resolveRelayBridgeBinary(options.binaryPath);
         const spawnBridge = options.spawnBridge ??
             ((command, args) => (0, node_child_process_1.spawn)(command, [...args], {
                 stdio: ['pipe', 'pipe', 'pipe']
             }));
-        this.process = spawnBridge(binary, ['--host', options.host, '--port', String(options.port)]);
+        this.process = spawnBridge(binary, [
+            '--host',
+            options.host,
+            '--port',
+            String(options.port),
+            '--network',
+            addressFamily === 4 ? 'udp4' : 'udp6'
+        ]);
         this.process.stdout.on('data', (chunk) => this.consumeStdout(chunk));
         this.process.stderr.on('data', (chunk) => {
             const message = Buffer.from(chunk).toString('utf8').trim();

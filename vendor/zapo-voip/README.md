@@ -47,7 +47,29 @@ Peer dependencies:
 | `libmlow-wasm` | yes            | MLow/RFC Opus encode/decode (WASM, no native build step) |
 | `ffmpeg` (CLI) | optional       | Decode pre-recorded audio files (`loadAudio`)   |
 
-The relay helper is compiled from `native/relay-bridge` by the ViperConnect Docker build and does not require a WebRTC Node package.
+The relay helper is compiled from `native/relay-bridge` by the ViperConnect Docker build and does not require a WebRTC Node package. Relay offers carrying a 6-byte IPv4 endpoint or an 18-byte IPv6 endpoint are supported. The helper opens an explicit `udp4` or `udp6` socket for each numeric endpoint and rejects a mismatched family instead of relying on an implicit dual-stack bind.
+If a WhatsApp relay rejects an IPv6 Allocate with `452 Xor Relayed Address
+Mismatch`, only that IPv6 candidate is quarantined. Its keepalive and repeated
+Allocate traffic stop immediately while parallel IPv4 candidates remain active.
+
+For live signaling comparison, `voip_diag inbound_call_envelope` records only
+the stanza tree, an explicit allowlist of routing attributes and content byte
+lengths. Unknown attribute values, encrypted content, relay tokens and keys are
+never serialized. `voip_diag inbound_accept_sent` includes the same redacted
+shape for the direct accept. These diagnostics do not alter stanza ordering or
+media behavior.
+
+Relay negotiation can be correlated without exposing credentials:
+`voip_diag outbound_relaylatency_response` records the outgoing stanza ID,
+relay name, whether that relay was authenticated by the offer and its available
+address families. `voip_diag inbound_call_ack_envelope` and
+`voip_diag inbound_call_receipt_envelope` record only allowlisted routing
+attributes and bounded node shape, allowing the response to be matched by ID.
+For inbound calls, the outer `relaylatency` stanza is still acknowledged, but
+the plugin only sends a latency response for relay names backed by a usable
+offer endpoint (supported protocol, relay key and binary token). Probes for an
+unknown relay are recorded as `voip_diag unauthenticated_relaylatency_skipped`
+and are not advertised back to the peer.
 
 Node **20.9+**. `libmlow-wasm` is ESM-only; the codec loads it via dynamic `import()`.
 
@@ -206,23 +228,32 @@ loop still instantiates MLow and signals a fixed 16 kHz rate. ViperConnect
 intentionally treats only offer/ACK as authoritative and ignores a late accept
 setting after caller preaccept.
 
-Relay candidates keep the original wire order of the received `te2` children;
-they are not sorted by RTT before selection. For a call between two sessions in
+Relay candidates keep the original wire order of the received `te2` children,
+including parallel IPv4 and IPv6 addresses; they are not sorted by RTT before
+selection. The IPv6 relay address is also encoded in the Allocate STUN using
+the magic cookie followed by the transaction ID interpreted as three
+little-endian 32-bit words, as required by WhatsApp's custom WASM endpoint
+attribute. IPv4 keeps its previous byte-for-byte encoding. For a call between two sessions in
 the same worker, an inbound mirrored leg is stopped locally when the accepting
 device matches either the session `meLid` or `meJid`. That guard only cleans the
 mirrored local leg and does not send a WhatsApp `terminate`.
 
-Inbound 1:1 keeps its first selected relay while the control plane remains
-alive. Initial zero RTP or a short media stall must not silently re-elect a
-different relay after accept; only a real transport/control failure may advance
-the candidate. Outbound recovery remains sequential and opens only one logical
-relay at a time.
+Inbound 1:1 preconnects the advertised candidates and fans out startup media
+until authenticated remote SRTP confirms the working path. This allows an
+IPv4-only SIP extension to keep its existing RTP leg while the independent
+WhatsApp relay leg uses IPv6. The internal worker-to-VoIP WebSocket remains on
+the current Docker network; this is media termination by the bridge, not packet
+level NAT64. Outbound recovery remains sequential and opens only one candidate
+at a time. On 2026-08-21, inbound relay media was validated live over IPv6 on
+mobile data and over IPv4 on Wi-Fi, both with bidirectional audio and no
+SRTP/Opus errors. That result is active as a worker hostpatch and remains an
+image-release gate until it ships without `dist` mounts.
 
 No `koffi` or bundled native codec libraries are required.
 
 The signaling and media stack (RTP/SRTP, SCTP relay, codec, audio engine) is internal to the package; use `client.voip` and the events above.
 
-The vendored suite currently has `176/176` passing tests. On 2026-08-05, eight
+The vendored suite currently has `201/201` passing tests. On 2026-08-05, eight
 live calls (two inbound and two outbound on an iPhone 16, then the same matrix
 on a Galaxy S9e) completed with bidirectional audio and no SRTP or Opus error.
 All used the first relay candidate; forced live failover remains a separate

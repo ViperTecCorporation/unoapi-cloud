@@ -1,6 +1,6 @@
 # Runtime VoIP Zapo: dependencias, protocolo e solucao de midia
 
-Estado consolidado em 2026-08-06. Este documento e a fonte canonica para
+Estado consolidado em 2026-08-21. Este documento e a fonte canonica para
 entender onde cada parte da telefonia executa, quais dependencias pertencem a
 cada processo e quais correcoes estabilizaram o audio 1:1.
 
@@ -25,8 +25,26 @@ ramais
   ramais, roteamento, gravacao e conversao de audio;
 - o transporte de relay e implementado pelo vendor da ViperTec e pelo helper
   nativo empacotado na imagem; nao existe processo externo de chamada;
+- cada endereco numerico anunciado pelo relay WhatsApp abre um socket explicito
+  da propria familia (`udp4` em `0.0.0.0` ou `udp6` em `::`); IPv4 e IPv6 podem
+  coexistir na perna WhatsApp sem alterar a familia SIP/RTP do ramal;
+- uma resposta `452 Xor Relayed Address Mismatch` no `Allocate` IPv6 coloca
+  somente aquele candidato em quarentena, encerra seu keepalive e preserva os
+  candidatos IPv4 paralelos; isso evita retry continuo e interferencia no
+  relay valido;
+- no atributo WASM `0x0016`, o IPv6 usa o magic cookie seguido do transaction
+  ID interpretado como tres palavras `uint32` little-endian. Esse formato foi
+  derivado pela correlacao exata entre request e resposta `452`; o IPv4
+  preserva o encoding anterior sem qualquer alteracao;
 - RabbitMQ nao transporta audio. O bridge usa JSON para controle e frames
   binarios `VPA1` para PCM.
+
+O WebSocket worker Zapo -> VoIP continua na rede Docker atual. O bridge termina
+as duas pernas de midia independentemente, portanto um relay WhatsApp IPv6 pode
+alimentar um ramal SIP IPv4 sem NAT64. O caminho de relay IPv6 foi validado ao
+vivo em 2026-08-21, depois dos KATs de `te2`, STUN, bind e rejeicao de familia
+incompativel. A validacao atual pertence ao hostpatch do worker; a promocao para
+release ainda exige uma imagem unificada sem mounts sobre `dist`.
 
 ## Fontes de verdade do build
 
@@ -241,6 +259,35 @@ permite avancar para o proximo candidato.
 Os vetores publicos fornecem a referencia para a escolha inicial e os contratos
 de fio, mas esse failover depois da abertura e uma extensao local.
 
+Para investigar diferencas entre Wi-Fi e dados moveis sem mudar o protocolo,
+`voip_diag inbound_call_envelope` correlaciona o JID bruto com o JID normalizado,
+tag, arvore de filhos, nomes de atributos e tamanhos de conteudo. Apenas uma
+allowlist de atributos de roteamento tem valores registrados. Conteudo
+criptografado, texto, tokens e chaves nunca entram no log. O accept direto usa
+o mesmo resumo em `voip_diag inbound_accept_sent`.
+
+Para diagnosticar a eleicao de relay, cada resposta enviada ao
+`relaylatency` gera `voip_diag outbound_relaylatency_response` com o stanza ID,
+nome do relay e a indicacao `authenticatedRelay`. ACKs e receipts de chamada
+geram `voip_diag inbound_call_ack_envelope` e
+`voip_diag inbound_call_receipt_envelope`; a correlacao e feita pelo stanza ID.
+Tokens, chaves, conteudos e valores de atributos fora da allowlist continuam
+fora dos logs.
+
+No fluxo inbound, o ACK da stanza `relaylatency` continua sendo enviado para
+preservar o protocolo. A resposta de medicao e limitada aos nomes de relay que
+possuem endpoint utilizavel no offer corrente: protocolo suportado, chave e
+token binario. Um probe sem essas credenciais nao e convertido em candidato e
+gera `voip_diag unauthenticated_relaylatency_skipped`; os demais probes da
+mesma stanza continuam sendo respondidos normalmente.
+
+O A/B de 2026-08-21 confirmou a causa operacional: em dados moveis, o peer
+media `fcgb9c01` com menor latencia, mas o offer autenticava somente outros
+relays. Depois que apenas a resposta desse probe sem credencial foi omitida, o
+primeiro RTP chegou pelo IPv6 autenticado de `bsb1c01`. No Wi-Fi, todos os
+probes pertenciam ao offer e o primeiro RTP continuou chegando normalmente
+pelo IPv4 de `gru2c01`.
+
 ## Superficies administrativas da imagem integrada
 
 A Uno expoe uma fachada autenticada em `/admin/voip` e nunca entrega o token do
@@ -273,6 +320,20 @@ administrativas omitem os segredos; campos secretos vazios preservam os valores
 ja salvos.
 
 ## Evidencia de validacao
+
+Em 2026-08-21, a revisao 09 foi validada em duas entradas consecutivas na mesma
+sessao e ramal, sem reiniciar o processo VoIP:
+
+| Rede | Relay confirmado | Familia | Worker | Ponte SIP | Resultado |
+| --- | --- | ---: | --- | --- | --- |
+| dados moveis | `bsb1c01` | IPv6 | `recvOk=245`, `opusOk=245`, `srtpErrors=0` | 1.722 pacotes recebidos e 1.704 enviados | bidirecional |
+| Wi-Fi | `gru2c01` | IPv4 | `recvOk=116`, `opusOk=116`, `srtpErrors=0` | 1.024 pacotes recebidos e 1.013 enviados | bidirecional |
+
+O relay sem credencial `fcgb9c01` foi apenas ignorado na resposta de latencia;
+o ACK do evento original, as respostas dos relays autenticados, accept,
+receipt, SIP e WebSocket permaneceram ativos. Isso comprova IPv4/IPv6 no relay
+WhatsApp e regressao Wi-Fi sem atribuir o resultado a uma imagem ainda nao
+publicada.
 
 Em 2026-08-05, o hostpath da revisao corrente foi validado em oito chamadas de
 audio bidirecional:

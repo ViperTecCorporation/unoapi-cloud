@@ -91,6 +91,13 @@ mas a sessão e a sinalização pertencem integralmente à Zapo. Entre os dois
 processos trafegam apenas comandos de chamada e PCM mono a 16 kHz pelo bridge
 autenticado.
 
+O relay WhatsApp suporta endpoints IPv4 e IPv6 em paralelo, com sockets
+`udp4`/`udp6` explícitos. Essa família é independente do SIP/RTP do ramal: um
+relay IPv6 pode alimentar um ramal IPv4 sem NAT64. O protocolo híbrido usa a
+Zapo como dona da sessão, contratos públicos do Meow Caller como referência de
+fio e extensões próprias do ViperConnect para bridge, codec, dual-stack,
+recuperação e telemetria. Veja [VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
+
 ## Fluxo de chamada
 
 1. A sessão Zapo abre o bridge autenticado após ficar online.

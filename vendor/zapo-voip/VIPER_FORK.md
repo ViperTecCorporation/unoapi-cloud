@@ -50,6 +50,19 @@ maintain the media fixes without following a complete Zapo repository fork.
 - encerra somente a perna inbound espelhada de chamada local quando o device que
   aceitou coincide com `meLid` ou `meJid`, sem enviar `terminate`;
 - preserva a ordem wire dos filhos `te2`, sem ordenar os relays por RTT;
+- registra a estrutura redigida das stanzas inbound e do accept direto para
+  comparar Wi-Fi e rede movel: somente atributos de roteamento permitidos,
+  nomes de atributos e tamanhos; nunca conteudo, token ou chave;
+- correlaciona cada resposta outbound de `relaylatency` pelo stanza ID com ACKs
+  e receipts inbound, e marca quando o relay consultado nao pertence ao
+  conjunto autenticado do offer;
+- preserva o ACK do `relaylatency` inbound, mas so devolve medicao para relays
+  utilizaveis do offer (protocolo suportado, chave e token binario); relay sem
+  credencial e registrado como `unauthenticated_relaylatency_skipped`;
+- preserva candidatos IPv4 e IPv6 do offer em paralelo, usa sockets `udp4` e
+  `udp6` explicitos e mantem a familia do relay WhatsApp independente da perna
+  SIP/RTP; o A/B live de 2026-08-21 validou IPv6 em dados moveis e IPv4 no
+  Wi-Fi sem erro SRTP/Opus;
 - aceita RTP de audio PT 120 e 121 e mantem o marker para a primeira fala real,
   sem consumi-lo em DTX/priming.
 

@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
+import { isIP } from 'node:net'
 
 import { createNoopLogger, type Logger } from 'zapo-js'
 import { toError } from 'zapo-js/util'
@@ -64,6 +65,13 @@ export class NativeRelayTransport extends EventEmitter {
 
     constructor(options: NativeRelayTransportOptions) {
         super()
+        const addressFamily = isIP(options.host)
+        if (addressFamily !== 4 && addressFamily !== 6) {
+            throw new Error(`invalid numeric relay address: ${options.host}`)
+        }
+        if (!Number.isSafeInteger(options.port) || options.port < 1 || options.port > 65535) {
+            throw new Error(`invalid relay port: ${options.port}`)
+        }
         this.logger = options.logger ?? createNoopLogger()
         const binary = resolveRelayBridgeBinary(options.binaryPath)
         const spawnBridge =
@@ -73,7 +81,14 @@ export class NativeRelayTransport extends EventEmitter {
                     stdio: ['pipe', 'pipe', 'pipe']
                 }))
 
-        this.process = spawnBridge(binary, ['--host', options.host, '--port', String(options.port)])
+        this.process = spawnBridge(binary, [
+            '--host',
+            options.host,
+            '--port',
+            String(options.port),
+            '--network',
+            addressFamily === 4 ? 'udp4' : 'udp6'
+        ])
         this.process.stdout.on('data', (chunk: Buffer | Uint8Array) => this.consumeStdout(chunk))
         this.process.stderr.on('data', (chunk: Buffer | Uint8Array) => {
             const message = Buffer.from(chunk).toString('utf8').trim()

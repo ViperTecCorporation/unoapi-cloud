@@ -28,6 +28,16 @@ function stunAttributeTypes(packet: Uint8Array): number[] {
     return types
 }
 
+function stunAttribute(packet: Uint8Array, expectedType: number): Uint8Array | undefined {
+    for (let offset = 20; offset + 4 <= packet.length; ) {
+        const type = (packet[offset] << 8) | packet[offset + 1]
+        const length = (packet[offset + 2] << 8) | packet[offset + 3]
+        if (type === expectedType) return packet.subarray(offset + 4, offset + 4 + length)
+        offset += 4 + length + ((4 - (length % 4)) % 4)
+    }
+    return undefined
+}
+
 test('buildWhatsAppPing emits a 20-byte STUN-like packet', () => {
     const ping = buildWhatsAppPing()
     assert.equal(ping.length, 20)
@@ -132,6 +142,54 @@ test('WASM allocate advertises token, nine stream descriptors and relay endpoint
 
     assert.deepEqual(stunAttributeTypes(packet), [0x4000, 0x4024, 0x0016, 0x0008])
     assert.ok(descriptors.length > 9 * 4)
+})
+
+test('WASM allocate encodes IPv6 using WhatsApp little-endian transaction words', () => {
+    const transactionId = new Uint8Array(Buffer.from('a0a1a2a3a4a5a6a7a8a9aaab', 'hex'))
+    const packet = buildAllocateForRelay(
+        new Uint8Array([1, 2, 3]),
+        buildWasmStreamDescriptors(Array.from({ length: 9 }, (_, index) => index + 1)),
+        TEXT_ENCODER.encode('relay-key'),
+        '2001:db8::1',
+        3478,
+        transactionId
+    )
+
+    assert.equal(
+        Buffer.from(stunAttribute(packet, 0x0016) ?? []).toString('hex'),
+        '00022c840113a9faa3a2a1a0a7a6a5a4abaaa9a9'
+    )
+})
+
+test('WhatsApp IPv6 XOR dialect reverses each transaction ID uint32 independently', () => {
+    const transactionId = new Uint8Array(Buffer.from('5d3393373302694baece8cdb', 'hex'))
+    const packet = buildAllocateForRelay(
+        new Uint8Array([1, 2, 3]),
+        buildWasmStreamDescriptors(Array.from({ length: 9 }, (_, index) => index + 1)),
+        TEXT_ENCODER.encode('relay-key'),
+        '2001:db8:1234:5678:9abc:def0:1234:5678',
+        3478,
+        transactionId
+    )
+
+    assert.equal(
+        Buffer.from(stunAttribute(packet, 0x0016) ?? []).toString('hex'),
+        '00022c840113a9fa25a76525d1d5dcc3c9b898d6'
+    )
+})
+
+test('WASM allocate rejects an incompatible non-numeric relay address', () => {
+    assert.throws(
+        () =>
+            buildAllocateForRelay(
+                new Uint8Array([1]),
+                buildWasmStreamDescriptors(Array.from({ length: 9 }, (_, index) => index + 1)),
+                TEXT_ENCODER.encode('relay-key'),
+                'relay.example.net',
+                3478
+            ),
+        /invalid numeric relay address/
+    )
 })
 
 test('WASM stream descriptors require exactly nine valid SSRCs', () => {

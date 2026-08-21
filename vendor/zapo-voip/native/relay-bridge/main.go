@@ -76,12 +76,41 @@ func readFrame(r *bufio.Reader) (byte, []byte, error) {
 	return header[0], payload, nil
 }
 
-func connect(host string, port int) (net.PacketConn, net.Conn, *sctp.Association, *datachannel.DataChannel, error) {
-	remote, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, fmt.Sprint(port)))
+func resolveUDPNetwork(host string, requested string) (string, net.IP, error) {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "", nil, fmt.Errorf("relay host must be a numeric IPv4 or IPv6 address: %q", host)
+	}
+
+	inferred := "udp6"
+	bindIP := net.IPv6unspecified
+	if ip.To4() != nil {
+		inferred = "udp4"
+		bindIP = net.IPv4zero
+	}
+
+	if requested == "" {
+		return inferred, bindIP, nil
+	}
+	if requested != "udp4" && requested != "udp6" {
+		return "", nil, fmt.Errorf("unsupported UDP network %q", requested)
+	}
+	if requested != inferred {
+		return "", nil, fmt.Errorf("relay address family %s is incompatible with %s", inferred, requested)
+	}
+	return requested, bindIP, nil
+}
+
+func connect(host string, port int, requestedNetwork string) (net.PacketConn, net.Conn, *sctp.Association, *datachannel.DataChannel, error) {
+	network, bindIP, err := resolveUDPNetwork(host, requestedNetwork)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	remote, err := net.ResolveUDPAddr(network, net.JoinHostPort(host, fmt.Sprint(port)))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("resolve relay: %w", err)
 	}
-	udp, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	udp, err := net.ListenUDP(network, &net.UDPAddr{IP: bindIP, Port: 0})
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("bind udp: %w", err)
 	}
@@ -120,8 +149,8 @@ func connect(host string, port int) (net.PacketConn, net.Conn, *sctp.Association
 	return udp, dtlsConn, assoc, dc, nil
 }
 
-func run(host string, port int) error {
-	udp, dtlsConn, assoc, dc, err := connect(host, port)
+func run(host string, port int, network string) error {
+	udp, dtlsConn, assoc, dc, err := connect(host, port, network)
 	if err != nil {
 		return err
 	}
@@ -191,13 +220,14 @@ func run(host string, port int) error {
 func main() {
 	host := flag.String("host", "", "relay IPv4 or IPv6 address")
 	port := flag.Int("port", 0, "relay UDP port")
+	network := flag.String("network", "", "relay UDP family: udp4 or udp6 (inferred when omitted)")
 	flag.Parse()
 
 	if *host == "" || *port < 1 || *port > 65535 {
 		fmt.Fprintln(os.Stderr, "relay-bridge: --host and a valid --port are required")
 		os.Exit(2)
 	}
-	if err := run(*host, *port); err != nil {
+	if err := run(*host, *port, *network); err != nil {
 		writer := &framedWriter{w: bufio.NewWriter(os.Stdout)}
 		_ = writer.write(frameError, []byte(err.Error()))
 		fmt.Fprintf(os.Stderr, "relay-bridge: %v\n", err)

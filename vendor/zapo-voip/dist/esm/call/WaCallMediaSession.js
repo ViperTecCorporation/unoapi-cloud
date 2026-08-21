@@ -10,10 +10,12 @@ import { MLowCodec } from '../media/mlow-codec.js';
 import { isOpusDtxPayload, isWhatsappOpusPayloadType, RtpSession } from '../media/rtp.js';
 import { WaAudioEngine } from '../media/WaAudioEngine.js';
 import { parseRelayFromAck } from '../relay/relay-ack.js';
+import { summarizeRelaySignaling } from '../relay/relay-diagnostics.js';
 import { orderMediaRelayCandidates } from '../relay/relay-endpoints.js';
 import { isRtpPacket, isStunPacket } from '../relay/stun.js';
 import { WaSctpRelay } from '../relay/WaSctpRelay.js';
 import { buildDirectAcceptStanza, buildIncomingPreacceptStanza, buildMuteV2Stanza, buildOutgoingPreacceptStanza, buildRejectStanza, buildRelayLatencyStanza, buildTerminateStanza, buildTransportStanza, decryptCallKey, extractNodeInfo, extractRelayEndpoints, needsDecryption } from '../signaling/signaling.js';
+import { summarizeCallEnvelope } from '../signaling/signaling-diagnostics.js';
 import { parseVoipSettings, parseVoipSettingsFromNode } from '../signaling/voip-settings.js';
 import { CallDirection, CallMediaType, CallState, EndCallReason, SRTP_AUTH_TAG_LEN, SRTP_RECV_AUTH_TAG_LEN, SRTP_SEND_AUTH_TAG_LEN } from '../types.js';
 const REMOTE_MEDIA_FIRST_PACKET_TIMEOUT_MS = 1500;
@@ -548,6 +550,7 @@ export class WaCallMediaSession {
                     relayId: relay.relayId,
                     ip: relay.ip,
                     port: relay.port,
+                    addressFamily: relay.addressFamily,
                     protocol: relay.protocol ?? 0,
                     c2rRtt: relay.c2rRtt,
                     isFna: relay.isFna === true,
@@ -574,6 +577,7 @@ export class WaCallMediaSession {
                     relayId: relay.relayId,
                     ip: relay.ip,
                     port: relay.port,
+                    addressFamily: relay.addressFamily,
                     protocol: relay.protocol ?? 0,
                     c2rRtt: relay.c2rRtt,
                     isFna: relay.isFna === true,
@@ -649,6 +653,7 @@ export class WaCallMediaSession {
         if (!nodeInfo || this.info.direction !== CallDirection.Incoming)
             return;
         this.ingestIncomingRelayUpdate(node, 'relaylatency');
+        const relaySignaling = summarizeRelaySignaling(node);
         const inner = nodeInfo.innerNode;
         const callId = inner.attrs?.['call-id'] || this.info.callId;
         const callCreator = inner.attrs?.['call-creator'] || this.info.callCreator;
@@ -659,9 +664,19 @@ export class WaCallMediaSession {
             callId,
             peerJid,
             relayNames: teNodes.map((te) => te.attrs?.relay_name || '').filter(Boolean),
-            probeCount: teNodes.length
+            probeCount: teNodes.length,
+            relaySignaling
         });
+        const usableOfferRelays = (this.info.relayData?.endpoints ?? []).filter((candidate) => (candidate.protocol ?? 0) === 0 &&
+            Boolean(candidate.key) &&
+            Boolean(candidate.rawToken?.length));
+        const availableRelayNames = [
+            ...new Set(usableOfferRelays
+                .map((candidate) => candidate.relayName || '')
+                .filter(Boolean))
+        ];
         let responded = 0;
+        let skipped = 0;
         for (const te of teNodes) {
             const relayName = te.attrs?.relay_name || '';
             if (!relayName)
@@ -670,6 +685,18 @@ export class WaCallMediaSession {
             const latency = Number.isFinite(encodedLatency)
                 ? Math.max(0, encodedLatency >= 0x2000000 ? encodedLatency - 0x2000000 : encodedLatency)
                 : 0;
+            const authenticatedCandidates = usableOfferRelays.filter((candidate) => candidate.relayName === relayName);
+            if (authenticatedCandidates.length === 0) {
+                skipped++;
+                this.logger.debug('voip_diag unauthenticated_relaylatency_skipped', {
+                    callId,
+                    peerJid,
+                    relayName,
+                    latency,
+                    availableRelayNames
+                });
+                continue;
+            }
             try {
                 const response = buildRelayLatencyStanza(peerJid, callId, callCreator, [
                     {
@@ -679,6 +706,21 @@ export class WaCallMediaSession {
                     }
                 ], []);
                 await this.deps.lowLevelCoordinator.sendNode(response);
+                this.logger.debug('voip_diag outbound_relaylatency_response', {
+                    callId,
+                    peerJid,
+                    stanzaId: response.attrs.id,
+                    relayName,
+                    latency,
+                    authenticatedRelay: authenticatedCandidates.length > 0,
+                    authenticatedRelayIds: [
+                        ...new Set(authenticatedCandidates.map((candidate) => candidate.relayId))
+                    ],
+                    authenticatedAddressFamilies: [
+                        ...new Set(authenticatedCandidates.map((candidate) => candidate.addressFamily))
+                    ],
+                    envelope: summarizeCallEnvelope(response)
+                });
                 responded++;
             }
             catch (err) {
@@ -694,16 +736,16 @@ export class WaCallMediaSession {
             callId,
             peerJid,
             probeCount: teNodes.length,
-            responded
+            responded,
+            skipped
         });
     }
     ingestIncomingRelayUpdate(node, source) {
+        const relaySignaling = summarizeRelaySignaling(node);
         const parsed = parseRelayFromAck(node);
-        if (parsed.relays.length === 0)
-            return [];
         const current = this.info.relayData;
         const connectionStarted = this.relayCandidates.length > 0 || this.sctpRelay.hasConnection();
-        if (!connectionStarted) {
+        if (parsed.relays.length > 0 && !connectionStarted) {
             this.info.relayData = {
                 endpoints: parsed.relays,
                 participantJids: parsed.participantJids.length > 0
@@ -717,22 +759,26 @@ export class WaCallMediaSession {
                 hbhKey: parsed.hbhKey ?? current?.hbhKey
             };
         }
-        this.logger.debug('voip_diag inbound_relay_update_received', {
-            callId: this.info.callId,
-            source,
-            applied: !connectionStarted,
-            connectionStarted,
-            relayCount: parsed.relays.length,
-            relayCandidates: parsed.relays.map((relay) => ({
-                relayName: relay.relayName,
-                relayId: relay.relayId,
-                ip: relay.ip,
-                port: relay.port,
-                isFna: relay.isFna === true,
-                tokenId: relay.tokenId,
-                authTokenId: relay.authTokenId
-            }))
-        });
+        if (parsed.relays.length > 0 || source === 'transport') {
+            this.logger.debug('voip_diag inbound_relay_update_received', {
+                callId: this.info.callId,
+                source,
+                applied: parsed.relays.length > 0 && !connectionStarted,
+                connectionStarted,
+                relayCount: parsed.relays.length,
+                relaySignaling,
+                relayCandidates: parsed.relays.map((relay) => ({
+                    relayName: relay.relayName,
+                    relayId: relay.relayId,
+                    ip: relay.ip,
+                    port: relay.port,
+                    addressFamily: relay.addressFamily,
+                    isFna: relay.isFna === true,
+                    tokenId: relay.tokenId,
+                    authTokenId: relay.authTokenId
+                }))
+            });
+        }
         return parsed.relays;
     }
     handleRelayElection(node) {
@@ -1162,7 +1208,8 @@ export class WaCallMediaSession {
                 selfMediaJid: this.selfMediaJid,
                 peerSsrcs: this.peerSsrcs.map((value) => `0x${value.toString(16).padStart(8, '0')}`),
                 selfPid: this.info.relayData?.selfPid,
-                peerPid: this.info.relayData?.peerPid
+                peerPid: this.info.relayData?.peerPid,
+                envelope: summarizeCallEnvelope(acceptStanza)
             });
             this.armRemoteMediaWatchdog();
         }
@@ -1215,6 +1262,7 @@ export class WaCallMediaSession {
                 this.logger.debug('voip_diag first_relay_rtp_seen', {
                     callId: this.info.callId,
                     direction: this.info.direction,
+                    connectionId,
                     payloadType: pt,
                     sequence: data.length >= 4 ? (data[2] << 8) | data[3] : 0,
                     ssrc: `0x${ssrc.toString(16).padStart(8, '0')}`,
@@ -1357,6 +1405,7 @@ export class WaCallMediaSession {
                 relayId: candidate.relayId,
                 ip: candidate.ip,
                 port: candidate.port,
+                addressFamily: candidate.addressFamily,
                 tokenId: candidate.tokenId,
                 authTokenId: candidate.authTokenId,
                 isFna: candidate.isFna === true
@@ -1384,7 +1433,8 @@ export class WaCallMediaSession {
                     candidateCount: candidates.length,
                     provisionalRelayId: first.relayId,
                     relayIds: candidates.map((candidate) => candidate.relayId),
-                    relayNames: candidates.map((candidate) => candidate.name)
+                    relayNames: candidates.map((candidate) => candidate.name),
+                    relayAddressFamilies: candidates.map((candidate) => candidate.addressFamily)
                 });
                 await this.sctpRelay.configureRelays(candidates);
                 const provisionalApplied = this.sctpRelay.selectMediaConnectionByRelayId(first.relayId);
@@ -1431,6 +1481,7 @@ export class WaCallMediaSession {
             relayId: candidate.relayId,
             ip: candidate.ip,
             port: candidate.port,
+            addressFamily: candidate.addressFamily,
             tokenId: candidate.tokenId,
             authTokenId: candidate.authTokenId,
             isFna: candidate.isFna === true

@@ -69,6 +69,7 @@ test('parseRelayFromAck extracts relay metadata, participants and hbh key', () =
     const relay = result.relays[0]
     assert.equal(relay.ip, '192.168.1.1')
     assert.equal(relay.port, 3478)
+    assert.equal(relay.addressFamily, 4)
     assert.equal(relay.key, 'RELAYKEY')
     assert.equal(relay.relayId, 2)
     assert.equal(relay.protocol, 1)
@@ -123,6 +124,39 @@ test('parseRelayFromAck skips te2 entries with a short address', () => {
     }
 
     assert.deepEqual(parseRelayFromAck(ack).relays, [])
+})
+
+test('parseRelayFromAck preserves parallel IPv4 and IPv6 candidates', () => {
+    const ack = buildRelayAck()
+    const relay = (ack.content as BinaryNode[]).find((child) => child.tag === 'relay')
+    assert.ok(relay && Array.isArray(relay.content))
+    relay.content.push({
+        tag: 'te2',
+        attrs: {
+            token_id: '1',
+            auth_token_id: '9',
+            relay_name: 'r1',
+            protocol: '1',
+            relay_id: '2'
+        },
+        content: new Uint8Array([
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x0d, 0x96
+        ])
+    })
+
+    const result = parseRelayFromAck(ack)
+    assert.deepEqual(
+        result.relays.map(({ ip, port, addressFamily, relayId }) => ({
+            ip,
+            port,
+            addressFamily,
+            relayId
+        })),
+        [
+            { ip: '192.168.1.1', port: 3478, addressFamily: 4, relayId: 2 },
+            { ip: '2001:db8:0:0:0:0:0:1', port: 3478, addressFamily: 6, relayId: 2 }
+        ]
+    )
 })
 
 test('parseRelayFromAck returns an empty result for a childless ack', () => {

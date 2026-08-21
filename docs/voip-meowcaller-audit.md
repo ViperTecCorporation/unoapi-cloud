@@ -81,12 +81,13 @@ decodificador nem à ponte SIP; portanto, o sintoma estava antes dessa camada.
 | destino do signaling | varia por tipo de stanza | accept usa o peer recebido; transport/mute pós-accept preservam o device que atendeu | híbrido e testado |
 | reject remoto | encerra imediatamente | agora encerra, emite estado e remove a chamada | corrigido |
 | ACK com erro | falha e encerra a chamada | agora encerra e libera o slot | corrigido |
-| relaylatency | encaminha medidas dos relays | outbound envia um stanza por relay no preaccept, com destinations quando disponíveis | adaptação ativa |
+| relaylatency | encaminha medidas dos relays | outbound envia um stanza por relay no preaccept; inbound preserva o ACK e só responde probes respaldados por protocolo, chave e token do offer | adaptação ViperConnect testada ao vivo |
 | ordem de `te2` | consome os candidatos na ordem recebida | parser preserva a ordem wire e não reordena por RTT | alinhado e testado |
 | escolha do relay | inbound prefere FNA; outbound prefere non-FNA com `auth_token_id`; usa um relay | mesma seleção e somente um relay | alinhado e testado |
 | recuperação de relay 1:1 | não implementa failover depois que o transporte abre | extensão local: preserva os `te2` e configura um por vez; outbound pode avançar por ausência de transporte/controle, ausência do primeiro Opus autenticado ou stall; inbound retém o primeiro relay enquanto o controle estiver vivo, mesmo sem RTP ou durante stall, e só avança por falha real de transporte/controle; após 10 frames autenticados, encerra definitivamente o watchdog; suspende em mute/on-hold e preserva RTP/SRTP/codec | extensão local testada |
 | ids de token | `token_id` e `auth_token_id` são independentes | parser não confunde mais os dois; aceita token binário ou string | corrigido |
 | transporte FNA/non-FNA | ambos usam UDP -> DTLS -> SCTP -> DataChannel | ambos usam o helper nativo; removido UDP cru do FNA | corrigido |
+| família do relay | referência analisada usa o endpoint anunciado | preserva endpoints IPv4 e IPv6 paralelos, abre `udp4`/`udp6` explícitos e rejeita família incompatível | extensão dual-stack testada ao vivo |
 | pilha Pion | datachannel 1.6.0, dtls 3.1.2, logging 0.2.4, sctp 1.9.4 | mesmas bibliotecas e versões | alinhado |
 | DataChannel | negotiated, id 0, label `pre-negotiated` | mesmo contrato | alinhado e testado |
 | allocate | token `0x4000`, 9 streams `0x4024`, endpoint `0x0016`, MI, sem fingerprint | mesmo KAT byte a byte | alinhado e testado |
@@ -225,6 +226,22 @@ simultâneas e duas saídas simultâneas na mesma linha, todas com áudio
 bidirecional e sem erro SRTP/Opus; os call IDs e tempos de sobreposição estão
 registrados em `docs/voip-zapo-runtime.md`.
 
+Em 2026-08-21, um A/B adicional isolou a falha intermitente de entrada por
+dados móveis. O aparelho media `fcgb9c01` como o relay mais rápido, embora esse
+nome não tivesse token/chave no offer. Responder a esse probe permitia que o
+peer mantivesse um caminho que o worker não podia autenticar. A revisão 09
+preservou o ACK da stanza, deixou de devolver somente o relay sem credencial e
+manteve as respostas para os relays autenticados.
+
+| Rede do aparelho | Caminho remoto confirmado | `recvOk`/`opusOk` | Resultado |
+| --- | --- | ---: | --- |
+| dados móveis | `bsb1c01` por IPv6 | `245/245` | áudio bidirecional, zero erro SRTP/Opus |
+| Wi-Fi | `gru2c01` por IPv4 | `116/116` | áudio bidirecional, zero erro SRTP/Opus |
+
+Esse A/B valida o dual-stack do relay WhatsApp e o filtro de `relaylatency`. O
+serviço SIP/VoIP permaneceu em IPv4 nos dois canários, comprovando que as duas
+pernas são terminadas independentemente e não dependem de NAT64.
+
 ## Roteiro para novos canários
 
 Executar uma chamada de saída e uma de entrada com destino externo ao conjunto de
@@ -260,15 +277,19 @@ capacidade recebe contrato, adaptador, teste e documentação próprios.
 
 ## Verificação do estado atual
 
-- 176/176 testes do plugin incorporado passaram no mesmo runtime Node usado na verificação;
+- 201/201 testes do plugin incorporado passaram no mesmo runtime Node usado na verificação;
 - builds TypeScript CommonJS e ESM do plugin passaram;
 - `git diff --check` passou nos arquivos da auditoria;
-- o hostpath foi aplicado sobre a imagem `4.0.7` e somente o worker Zapo foi
-  recriado;
+- a revisão 09 foi aplicada como hostpatch somente no worker Zapo sobre a
+  imagem `4.0.20`; o serviço VoIP não foi reiniciado;
 - as oito chamadas reais descritas acima passaram com áudio bidirecional em
   iPhone 16 e Galaxy S9e;
 - o serviço SIP/VoIP não precisou ser reiniciado porque a mudança validada está
   no plugin incorporado executado pelo worker.
+
+A revisão 09 ainda não está incorporada a uma imagem publicada. A promoção
+exige uma nova imagem unificada, os mesmos testes e execução sem mounts sobre
+`dist`; até lá, o rollback operacional é a revisão 08 do hostpatch.
 
 Os testes automatizados provam envelopes, vetores, recuperação e contratos
 locais. Os canários provam o caminho normal com relay vivo e duas chamadas
