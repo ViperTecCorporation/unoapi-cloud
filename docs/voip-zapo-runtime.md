@@ -72,8 +72,9 @@ atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
 repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
 para o checkout do SHA exato.
 
-A imagem unificada `v4.0.22` incorpora o VoIP `v0.1.63`, revisão
-`1e7a72a661130019c4fc97a708a1cc8324d50665`, com SIP, RTP, media bridge,
+A imagem unificada `v4.0.25` incorpora o VoIP `v0.1.64`, revisão
+`1a2af2050862e9d5cccaf49a3132ae3a4fd09790`. O SHA exato é resolvido e gravado pelo
+workflow no label e em `SOURCE_REVISION`. Ela mantém SIP, RTP, media bridge,
 internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece
 ativo e o endereço público IPv6 é configurado por hostname/ENV, sem gravar o
 prefixo dinâmico da Starlink na imagem.
@@ -103,14 +104,16 @@ As dependencias que formam o caminho de chamada sao:
 
 | Pacote/componente | Versao | Papel |
 | --- | --- | --- |
-| `zapo-js` | `1.7.0` | cliente Zapo, sessao, transporte e primitivas de protocolo |
-| `@vipertec/zapo-voip` | `file:vendor/zapo-voip` | plugin vendorizado de sinalizacao e midia VoIP |
+| `zapo-js` | `1.8.0` | cliente Zapo, sessão, transporte e primitivas de protocolo |
+| `@vipertec/zapo-voip` | `1.0.0-viper.5` (`file:vendor/zapo-voip`) | plugin vendorizado de sinalização e mídia VoIP |
 | `libmlow-wasm` | `0.1.1` | encode/decode MLow e RFC Opus selecionado por chamada |
 | `ws` | `^8.21.1` | bridge autenticado com o processo de telefonia |
 | `relay-bridge` | binario Go estatico | UDP, DTLS, SCTP e DataChannel direto com o relay |
 
 O pacote `@vipertec/zapo-voip` declara somente `zapo-js` e `libmlow-wasm` como
-peer dependencies. Ele nao depende de uma implementacao Node de WebRTC.
+peer dependencies. Ele não depende de uma implementação Node de WebRTC. A atualização
+Zapo 1.8.0 não modificou o contrato de chamadas usado pelo vendor; a versão VoIP 0.1.64
+é coordenada para tornar a composição da imagem reproduzível.
 
 O helper nativo e compilado no Docker com estas versoes Pion fixadas no
 `go.mod`:

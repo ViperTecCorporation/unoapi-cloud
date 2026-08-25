@@ -15,6 +15,9 @@ jest.mock('../../src/services/status/status_recipients', () => ({
     touch: jest.fn().mockResolvedValue(undefined),
   },
 }))
+jest.mock('../../src/services/zapo/zapo_poll_addon_decrypt', () => ({
+  decryptZapoPollVoteWithJidFallback: jest.fn().mockResolvedValue(null),
+}))
 
 import { mockDeep } from 'jest-mock-extended'
 import { proto, type WaClient, type WaStore, type WaStoreSession } from 'zapo-js'
@@ -29,6 +32,7 @@ import type { MediaStore } from '../../src/services/media_store'
 import { updatePasskeyBridgeSession } from '../../src/services/passkey_bridge'
 import { voipPlugin } from '@vipertec/zapo-voip'
 import { zapoUsernameIndex } from '../../src/services/zapo/zapo_username_index'
+import { decryptZapoPollVoteWithJidFallback } from '../../src/services/zapo/zapo_poll_addon_decrypt'
 
 describe('ClientZapo', () => {
   const phone = '5566999999999'
@@ -82,6 +86,8 @@ describe('ClientZapo', () => {
         invalid: false,
       },
     ] as never)
+    client.profile.resolveUsername.mockResolvedValue({ status: 'not-found' } as never)
+    jest.mocked(decryptZapoPollVoteWithJidFallback).mockResolvedValue(null)
     client.message.requestHistorySync.mockResolvedValue({ messageId: 'history-1' } as never)
     client.auth.requestPairingCode.mockResolvedValue('1234-5678')
     client.group.queryAllGroups.mockResolvedValue([])
@@ -226,6 +232,56 @@ describe('ClientZapo', () => {
     lookup.mockRestore()
   })
 
+  test('learns the peer recipientUsername from a self-authored direct message', async () => {
+    const touch = jest.spyOn(zapoUsernameIndex, 'touch').mockResolvedValue()
+    await service.connect(1)
+
+    await handlers.message({
+      key: {
+        id: 'username-recipient-1',
+        remoteJid: '149396209594612@lid',
+        remoteJidAlt: '573106677588@s.whatsapp.net',
+        recipientUsername: 'cliente.teste',
+        fromMe: true,
+        isGroup: false,
+        isNewsletter: false,
+      },
+      timestampSeconds: 1,
+      message: { conversation: 'oi' },
+    })
+
+    expect(touch).toHaveBeenCalledWith(phone, 'cliente.teste', '149396209594612@lid')
+    touch.mockRestore()
+  })
+
+  test('learns participantUsername from group receipts', async () => {
+    const touch = jest.spyOn(zapoUsernameIndex, 'touch').mockResolvedValue()
+    await service.connect(1)
+
+    await handlers.receipt({
+      messageIds: ['group-username-1'],
+      chatJid: '120363@g.us',
+      participantJid: '149396209594612@lid',
+      participantUsername: 'cliente.grupo',
+      status: 'delivered',
+      timestampMs: 2_000,
+    })
+
+    expect(touch).toHaveBeenCalledWith(phone, 'cliente.grupo', '149396209594612@lid')
+    touch.mockRestore()
+  })
+
+  test('keeps the official own_username event in the temporal index', async () => {
+    const touch = jest.spyOn(zapoUsernameIndex, 'touch').mockResolvedValue()
+    session.auth.load.mockResolvedValue({ meJid: `${phone}@s.whatsapp.net`, meLid: '999@lid' } as never)
+    await service.connect(1)
+
+    await handlers.own_username({ kind: 'set', username: 'empresa.oficial' })
+
+    expect(touch).toHaveBeenCalledWith(phone, 'empresa.oficial', '999@lid')
+    touch.mockRestore()
+  })
+
   test('marks incoming messages as read on receipt when configured', async () => {
     config.readOnReceipt = true
     await service.connect(1)
@@ -287,6 +343,7 @@ describe('ClientZapo', () => {
     })
 
     expect(client.message.tryDecryptAddon).toHaveBeenCalledTimes(1)
+    expect(decryptZapoPollVoteWithJidFallback).not.toHaveBeenCalled()
     expect(listener.process).toHaveBeenCalledTimes(1)
     expect(listener.process).toHaveBeenCalledWith(phone, [expect.objectContaining({
       message: {
@@ -295,6 +352,60 @@ describe('ClientZapo', () => {
         }),
       },
     })], 'notify')
+  })
+
+  test('uses the legacy poll decryptor only after the official Zapo path produces no addon', async () => {
+    jest.mocked(decryptZapoPollVoteWithJidFallback).mockResolvedValue({
+      key: {
+        id: 'poll-vote-legacy-1',
+        remoteJid: '120363@g.us',
+        participant: '94047083475061@lid',
+        fromMe: false,
+        isGroup: true,
+        isNewsletter: false,
+      },
+      targetMessageId: 'poll-parent-1',
+      kind: 'poll_vote',
+      decrypted: {
+        kind: 'poll_vote',
+        pollVote: {},
+        selectedOptionNames: ['Fallback'],
+      },
+    } as never)
+    await service.connect(1)
+
+    await handlers.message({
+      key: {
+        id: 'poll-vote-legacy-1',
+        remoteJid: '120363@g.us',
+        participant: '94047083475061@lid',
+        fromMe: false,
+        isGroup: true,
+        isNewsletter: false,
+      },
+      message: {
+        pollUpdateMessage: {
+          pollCreationMessageKey: { id: 'poll-parent-1' },
+          vote: { encPayload: Uint8Array.from([1]), encIv: Uint8Array.from([2]) },
+        },
+      },
+    })
+
+    expect(client.message.tryDecryptAddon).toHaveBeenCalledTimes(1)
+    expect(decryptZapoPollVoteWithJidFallback).toHaveBeenCalledTimes(1)
+    expect(listener.process).toHaveBeenCalledWith(
+      phone,
+      [
+        expect.objectContaining({
+          message: {
+            pollUpdateMessage: expect.objectContaining({
+              vote: expect.objectContaining({ selectedOptionNames: ['Fallback'] }),
+            }),
+          },
+        }),
+      ],
+      'notify',
+    )
   })
 
   test('keeps the encrypted poll update as a fallback when Zapo emits no addon', async () => {
@@ -702,6 +813,7 @@ describe('ClientZapo', () => {
   })
 
   test('enriches the recipient of a phone-authored direct message from its LID', async () => {
+    const touch = jest.spyOn(zapoUsernameIndex, 'touch').mockResolvedValue()
     session.contacts.getByJid.mockResolvedValue({ phoneNumber: '5566991112222' } as never)
     await service.connect(1)
 
@@ -729,6 +841,8 @@ describe('ClientZapo', () => {
       '5566991112222@s.whatsapp.net',
       '123456789@lid',
     )
+    expect(touch).not.toHaveBeenCalled()
+    touch.mockRestore()
   })
 
   test('enriches an incoming direct message when Zapo only provides its LID', async () => {
@@ -892,6 +1006,40 @@ describe('ClientZapo', () => {
     ])
     expect(lookup).toHaveBeenCalledWith(phone, '111@lid', expect.any(Number), false)
     lookup.mockRestore()
+  })
+
+  test('resolves an uncached username through the official Zapo profile coordinator', async () => {
+    const lookup = jest.spyOn(zapoUsernameIndex, 'resolve').mockResolvedValue(undefined)
+    const touch = jest.spyOn(zapoUsernameIndex, 'touch').mockResolvedValue()
+    client.profile.resolveUsername.mockResolvedValue({
+      status: 'found',
+      jid: '149396209594612@lid',
+      username: 'cliente.teste',
+      isBusiness: true,
+      pnJid: '573106677588@s.whatsapp.net',
+    } as never)
+    session.contacts.getByJid.mockResolvedValue(undefined)
+    await service.connect(1)
+
+    await expect(service.contacts(['@cliente.teste'])).resolves.toEqual([
+      expect.objectContaining({
+        input: '@cliente.teste',
+        user_id: '149396209594612@lid',
+        username: 'cliente.teste',
+        status: 'valid',
+      }),
+    ])
+    expect(client.profile.resolveUsername).toHaveBeenCalledWith({ username: '@cliente.teste' })
+    expect(touch).toHaveBeenCalledWith(phone, 'cliente.teste', '149396209594612@lid')
+    expect(session.contacts.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jid: '149396209594612@lid',
+        phoneNumber: '573106677588',
+        username: 'cliente.teste',
+      }),
+    )
+    lookup.mockRestore()
+    touch.mockRestore()
   })
 
   test('does not send while the Zapo socket is still pairing', async () => {

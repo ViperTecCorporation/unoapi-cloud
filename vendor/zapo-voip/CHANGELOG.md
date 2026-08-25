@@ -1,5 +1,11 @@
 # @vipertec/zapo-voip
 
+## 1.0.0-viper.5
+
+- Valida o contrato vendorizado de sinalização, relay, mídia, IPv4/IPv6 e
+  compatibilidade MeowCaller com `zapo-js` 1.8.x.
+- Restringe a peer dependency para a linha Zapo efetivamente validada.
+
 ## 1.0.0-viper.4
 
 ### ViperConnect fixes

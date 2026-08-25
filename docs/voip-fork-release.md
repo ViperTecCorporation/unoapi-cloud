@@ -4,7 +4,7 @@ A UnoAPI usa o pacote `@vipertec/zapo-voip`, mantido diretamente em
 `vendor/zapo-voip` dentro do ViperConnect. Ele nao depende de acompanhar um fork
 completo do repositorio Zapo.
 
-Versao atualmente integrada: `1.0.0-viper.4`.
+Versão atualmente integrada: `1.0.0-viper.5`.
 
 O pacote e incorporado ao build por `file:vendor/zapo-voip`. A pasta contem o
 codigo-fonte auditavel e o `dist` usado em producao, tornando a imagem

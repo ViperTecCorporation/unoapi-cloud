@@ -50,6 +50,7 @@ import { createZapoProxyOptions } from './zapo/zapo_proxy'
 import { isZapoOwnershipConflict, zapoReconnectDelay } from './zapo/zapo_reconnect_policy'
 import { reviveZapoMediaBinaryFields } from './zapo/zapo_media'
 import { zapoMediaOptions } from './zapo/zapo_media_processor'
+import { downloadZapoMediaBytes } from './zapo/zapo_media_reupload'
 import { ZapoContactBook } from './zapo/zapo_contact_book'
 import { ZapoContactIdentityResolver } from './zapo/zapo_contact_identity'
 import type { SaveContactInput } from './contacts/contact_book_types'
@@ -266,19 +267,32 @@ export class ClientZapo implements Client {
     if (!id) return false
 
     this.decryptedAddonIds.delete(id)
+    let officialError: unknown
+    try {
+      await client.message.tryDecryptAddon(event)
+    } catch (error) {
+      officialError = error
+    }
+
+    if (this.decryptedAddonIds.delete(id)) {
+      logger.info('ZAPO_ADDON_DECRYPT phone=%s id=%s path=official', this.phone, id)
+      return true
+    }
+
     try {
       const pollVote = await decryptZapoPollVoteWithJidFallback(event, this.zapoSession)
       if (pollVote) {
+        logger.warn('ZAPO_ADDON_DECRYPT phone=%s id=%s path=legacy_poll_fallback', this.phone, id)
         await this.processAddonEvent(pollVote)
         return true
       }
-      await client.message.tryDecryptAddon(event)
-    } catch (error) {
-      logger.warn(error as any, 'Zapo addon decryption failed phone=%s id=%s', this.phone, id)
-      return false
+    } catch (fallbackError) {
+      logger.warn(fallbackError as any, 'Zapo legacy poll fallback failed phone=%s id=%s', this.phone, id)
     }
 
-    if (this.decryptedAddonIds.delete(id)) return true
+    if (officialError) {
+      logger.warn(officialError as any, 'Zapo official addon decryption failed phone=%s id=%s', this.phone, id)
+    }
     logger.warn('Zapo addon decryption produced no event phone=%s id=%s', this.phone, id)
     return false
   }
@@ -302,6 +316,22 @@ export class ClientZapo implements Client {
 
   private enrichMessageUsername(message: { key?: object }) {
     return enrichZapoMessageUsername(this.phone, message, !this.config.useRedis)
+  }
+
+  private async learnMessageUsername(event: any) {
+    if (event.key?.isNewsletter) return
+    const isGroup = event.key?.isGroup || `${event.key?.remoteJid || ''}`.endsWith('@g.us')
+    const username = `${(
+      event.key?.fromMe && !isGroup
+        ? event.key?.recipientUsername
+        : event.key?.participantUsername || event.key?.senderUsername || event.key?.remoteJidUsername
+    ) || ''}`.trim()
+    if (!username) return
+    const candidates = isGroup
+      ? [event.key?.participant, event.key?.participantAlt]
+      : [event.key?.remoteJid, event.key?.remoteJidAlt, event.key?.participant]
+    const lid = candidates.map((value) => `${value || ''}`).find((value) => value.endsWith('@lid'))
+    if (lid) await zapoUsernameIndex.touch(this.phone, username, lid)
   }
 
   private beginPairingCodeRequest(client: ZapoClient, forceRefresh = false) {
@@ -428,6 +458,7 @@ export class ClientZapo implements Client {
       if (await this.forwardDecryptedAddon(client, event)) return
 
       const message = toUnoMessageEvent(event)
+      await this.learnMessageUsername(event)
       await this.enrichMessageUsername(message)
       await this.enrichDirectPhoneAlias(message, event)
       if (event.key.isGroup || `${event.key.remoteJid || ''}`.endsWith('@g.us')) {
@@ -466,10 +497,6 @@ export class ClientZapo implements Client {
             logger.warn(error as any, 'Zapo status recipient index update failed for %s', this.phone)
           })
         }
-        const senderLid = [event.key.participant, event.key.remoteJid].map((jid) => `${jid || ''}`).find((jid) => jid.endsWith('@lid'))
-        if (event.key.senderUsername && senderLid) {
-          void zapoUsernameIndex.touch(this.phone, event.key.senderUsername, senderLid)
-        }
       }
       if (message.key.remoteJid && message.key.id) {
         await this.unoStore?.dataStore.setKey(message.key.id, message.key as never)
@@ -496,6 +523,10 @@ export class ClientZapo implements Client {
     })
     onCurrent('receipt', async (event) => {
       const isGroup = `${event.chatJid || ''}`.endsWith('@g.us')
+      const receiptLid = [event.participantJid, event.chatJid].map((value) => `${value || ''}`).find((value) => value.endsWith('@lid'))
+      if (event.participantUsername && receiptLid) {
+        await zapoUsernameIndex.touch(this.phone, event.participantUsername, receiptLid)
+      }
       if (isGroup && this.config.ignoreGroupIndividualReceipts && event.participantJid) return
       if (isGroup && this.config.groupOnlyDeliveredStatus && event.status !== 'delivered') return
       const contact = event.chatJid && this.zapoSession ? await this.zapoSession.contacts.getByJid(event.chatJid) : undefined
@@ -509,6 +540,15 @@ export class ClientZapo implements Client {
     })
     onCurrent('message_addon', async (event) => {
       await this.processAddonEvent(event)
+    })
+    onCurrent('own_username', async (event) => {
+      const ownLid = `${(await this.zapoSession?.auth.load())?.meLid || ''}`
+      if (!ownLid.endsWith('@lid') || event.kind === 'modify') return
+      if (event.kind === 'set' && event.username) {
+        await zapoUsernameIndex.touch(this.phone, event.username, ownLid)
+      } else if (event.kind === 'delete') {
+        await zapoUsernameIndex.removeByLid(this.phone, ownLid)
+      }
     })
     onCurrent('message_protocol', async (event) => {
       const message = toUnoMessageEvent(event)
@@ -527,7 +567,7 @@ export class ClientZapo implements Client {
         event.kind,
         `${event.resendRequested === true}`,
       )
-      // Zapo 1.7 can recover a plain placeholder from the primary device. In
+      // Zapo can recover a plain placeholder from the primary device. In
       // that case the real message arrives later with the same key, so emitting
       // a fallback now would create duplicate content in the integration.
       if (event.resendRequested === true) return
@@ -1064,7 +1104,8 @@ export class ClientZapo implements Client {
     reviveZapoMediaBinaryFields(value)
     if (this.unoStore?.mediaStore) {
       await normalizeInteractiveMediaForWebhook(this.phone, value, this.unoStore.mediaStore, {
-        downloadBytes: async (content) => this.socket!.message.downloadBytes(content as any),
+        downloadBytes: async (content) =>
+          downloadZapoMediaBytes(this.socket!.message, content, { phone: this.phone, retryContext: { key: value.key } }),
       })
     }
     const content: any = normalizeMessageContent(value?.message)
@@ -1072,8 +1113,10 @@ export class ClientZapo implements Client {
     if (!mediaKey) return enriched
     const media = content[mediaKey]
     if (`${media?.url || ''}`.startsWith('data:')) return enriched
-    const source = event || content
-    const bytes = await this.socket.message.downloadBytes(source as any)
+    const bytes = await downloadZapoMediaBytes(this.socket.message, content, {
+      phone: this.phone,
+      retryContext: { key: event?.key || value.key },
+    })
     value.__unoapiMediaBytes = Buffer.from(bytes)
     return enriched
   }
@@ -1084,13 +1127,39 @@ export class ClientZapo implements Client {
     const numeric = numbers.map((value, index) => ({ value: `${value || ''}`.trim(), index })).filter(({ value }) => !value.startsWith('@'))
     const usernames = numbers.map((value, index) => ({ value: `${value || ''}`.trim(), index })).filter(({ value }) => value.startsWith('@'))
     for (const { value, index } of usernames) {
-      const lid = await zapoUsernameIndex.resolve(this.phone, value)
+      const normalizedUsername = value
+        .replace(/^@/, '')
+        .replace(/:\d{4}$/, '')
+        .toLowerCase()
+      let lid = await zapoUsernameIndex.resolve(this.phone, normalizedUsername)
+      let resolvedUsername = normalizedUsername
+      if (!lid) {
+        try {
+          const resolved = await this.socket.profile.resolveUsername({ username: value })
+          if (resolved.status === 'found' && `${resolved.jid}`.endsWith('@lid')) {
+            lid = resolved.jid
+            resolvedUsername = `${resolved.username || normalizedUsername}`
+            await zapoUsernameIndex.touch(this.phone, resolvedUsername, lid)
+            const stored = await this.zapoSession.contacts.getByJid(lid)
+            await this.zapoSession.contacts.upsert({
+              ...(stored || { jid: lid }),
+              jid: lid,
+              lid,
+              username: resolvedUsername,
+              ...(resolved.pnJid ? { phoneNumber: resolved.pnJid.split('@')[0] } : {}),
+              lastUpdatedMs: Date.now(),
+            })
+          }
+        } catch (error) {
+          logger.warn(error as any, 'Zapo username lookup failed phone=%s username=%s', this.phone, normalizedUsername)
+        }
+      }
       const stored = lid ? await this.zapoSession.contacts.getByJid(lid) : undefined
       output[index] = {
         input: numbers[index],
         wa_id: stored?.phoneNumber,
         user_id: lid,
-        username: value.replace(/^@/, '').toLowerCase(),
+        username: resolvedUsername,
         display_name: stored?.displayName,
         push_name: stored?.pushName,
         status: lid ? 'valid' : 'failed',
