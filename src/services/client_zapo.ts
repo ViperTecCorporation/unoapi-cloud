@@ -321,11 +321,11 @@ export class ClientZapo implements Client {
   private async learnMessageUsername(event: any) {
     if (event.key?.isNewsletter) return
     const isGroup = event.key?.isGroup || `${event.key?.remoteJid || ''}`.endsWith('@g.us')
-    const username = `${
+    const username = `${(
       event.key?.fromMe && !isGroup
         ? event.key?.recipientUsername
-        : event.key?.participantUsername || event.key?.senderUsername || event.key?.remoteJidUsername || ''
-    }`.trim()
+        : event.key?.participantUsername || event.key?.senderUsername || event.key?.remoteJidUsername
+    ) || ''}`.trim()
     if (!username) return
     const candidates = isGroup
       ? [event.key?.participant, event.key?.participantAlt]
