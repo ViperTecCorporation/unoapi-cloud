@@ -338,6 +338,13 @@ expoe um texto como `*Voto em enquete*: Pizza` e inclui `context.message_id` com
 enquete original. A ordem e a grafia das opcoes devem ser preservadas, conforme o
 [guia oficial de mensagens interativas](https://zapo.to/en/guides/interactive-messages).
 
+Desde `zapo-js` 1.8.0, a descriptografia oficial da própria Zapo é sempre a primeira
+tentativa para addons. O fallback legado de voto permanece temporariamente apenas quando
+a tentativa oficial não emite um addon legível. Os logs resumidos
+`ZAPO_ADDON_DECRYPT path=official` e `path=legacy_poll_fallback` permitem medir o uso do
+fallback sem registrar conteúdo, segredo ou payload descriptografado. O evento sensível
+`debug_decrypted_payload` não é habilitado pela UnoAPI.
+
 ### Edicao de mensagens Zapo
 
 O payload publico permanece `type: message_edit`, com o ID UnoAPI original em
@@ -370,6 +377,19 @@ Falha de consulta ou mídia não bloqueia a conversa. O pedido sai com
 `resolution_status=failed` ou `summary`; quando há itens, sai como `resolved`.
 `orderRequestMessageId` é convertido de ID Zapo para ID UnoAPI antes de preencher
 `context.message_id`.
+
+### Recuperação de mídia expirada
+
+Ao baixar uma mídia de mensagem, a UnoAPI usa primeiro o fluxo normal da Zapo. Somente
+quando o CDN responde explicitamente HTTP `404` ou `410`, o adapter solicita uma vez o
+reupload autenticado por `client.message.requestMediaReupload()` e repete o download com
+o novo `directPath`. A mensagem original não é alterada.
+
+Timeout, HTTP `5xx`, falha genérica, mídia de newsletter e respostas `not_found`,
+`decryption_error` ou `general_error` não entram em ciclo de retry. Esse limite evita
+duplicidade, rajadas de rede e tentativas incompatíveis com o contrato oficial. Os logs
+informam apenas sessão, ID da mensagem e resultado; chave de mídia, URL e conteúdo não
+são registrados.
 
 O contrato e exemplos fictícios estão em [CATALOG_WEBHOOKS.md](CATALOG_WEBHOOKS.md).
 
@@ -449,10 +469,16 @@ rajadas de `HeadObject` durante sincronizacoes completas.
 ## Username
 
 A identidade canonica Zapo e o LID. `senderUsername`, participantes de grupo e eventos
-MEX alimentam um indice temporal `username -> LID`. A API aceita envio/consulta por
-`@username` quando esse alias ja foi aprendido. A documentacao oficial oferece consulta
-LID -> username, mas nao username -> LID; portanto alias desconhecido retorna erro claro
-e nunca e convertido por heuristica em telefone.
+MEX alimentam um indice temporal `username -> LID`. A partir de `zapo-js` 1.8.0, os
+campos oficiais `recipientUsername` e `participantUsername`, além do evento
+`own_username`, também atualizam o índice quando há um LID correspondente.
+
+A API aceita envio/consulta por `@username`. O índice local continua sendo a primeira
+fonte; somente uma consulta explícita de contato por username ainda desconhecido usa
+`client.profile.resolveUsername()`. Resultado `found` persiste username, LID e PN no
+store oficial. `not-found`, `key-required` ou erro de rede retornam contato inválido sem
+inventar telefone por heurística. O enriquecimento rotineiro de webhooks nunca consulta
+a rede apenas para descobrir username.
 
 Quando a Zapo omite o username em uma mensagem posterior, a Uno consulta somente esse
 indice local, sem fazer uma nova consulta à rede do WhatsApp, e enriquece
@@ -461,6 +487,13 @@ historico. O mesmo fallback LID -> username e aplicado em `GET /{phone}/contacts
 `POST /{phone}/contacts` e nos lotes internos `contacts.update` enviados pelo job de
 sincronizacao. O username nativo do evento ou do contato sempre tem prioridade sobre o
 indice temporal; ausencia no cache preserva o payload anterior sem erro.
+
+## Histórico Zapo 1.8
+
+O contrato HTTP, o replay e o filtro por idade permanecem inalterados. A atualização para
+`zapo-js` 1.8.0 passa a consumir o histórico de pareamento por streaming, mantendo
+somente o lote necessário durante a persistência e o ACK. Isso reduz o pico de memória
+sem alterar `history_sync_chunk`, deduplicação, IDs UnoAPI ou encaminhamento de webhook.
 
 ## Preparacao de video para envio Zapo
 

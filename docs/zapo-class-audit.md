@@ -1,7 +1,7 @@
 # Auditoria classe a classe: Baileys e Zapo
 
-Data da revisao: 2026-07-22. Fonte Zapo validada: repositorio oficial
-`vinikjkkj/zapo`, commit `2a415d9524365c986b1b11a4b10667b504e9ac92`, versao 1.6.1.
+Data da revisão inicial: 2026-07-22. Compatibilidade atualizada em 2026-08-24
+contra a versão oficial `zapo-js` 1.8.0.
 
 ## Criterio
 
@@ -156,13 +156,19 @@ Revisados sem mudanca de provider: `blacklist`, `broadcast`, `broadcast_amqp`,
 `message_addon`, `message_unavailable`, `receipt`, `group`, `picture`, `mex_notification`,
 `history_sync_chunk`, `offline_resume`, `stream_failure`, `stanza_error`,
 `debug_client_error`, `debug_unhandled_stanza`, `debug_privacy_token` e
-`voip_call_incoming`. History sync e app-state sao persistidos pelos stores/coordinators
+`voip_call_incoming`. O evento sensível `debug_decrypted_payload` não é habilitado.
+History sync e app-state são persistidos pelos stores/coordinators
 oficiais. Presence e Status usam coordinators dedicados; a Uno nao assina `presence` e
 `chatstate` recebidos porque nao mantem subscriptions de contatos.
 
-Eventos MEX de username atualizam o indice temporal, `lid_change` move o contato oficial
+Eventos MEX e `own_username`, além de `senderUsername`, `recipientUsername` e
+`participantUsername`, atualizam o índice temporal. `lid_change` move o contato oficial
 e renova o mapping PN/LID, e `message_capping` gera alerta operacional com uso e quota.
 `message_protocol` encaminha edits/revokes ao mesmo listener Cloud API das mensagens.
+
+Mídia expirada usa `requestMediaReupload` somente após HTTP 404/410, com uma única
+tentativa autenticada e sem retry genérico. Addons usam primeiro `tryDecryptAddon`; o
+decriptador legado de enquete permanece como fallback temporário e observável.
 
 ## Fotos de perfil na Zapo
 

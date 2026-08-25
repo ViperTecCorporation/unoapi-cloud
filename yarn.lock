@@ -1922,7 +1922,7 @@
   integrity sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==
 
 "@vipertec/zapo-voip@file:vendor/zapo-voip":
-  version "1.0.0-viper.4"
+  version "1.0.0-viper.5"
 
 "@wasm-audio-decoders/common@9.0.7":
   version "9.0.7"
@@ -1976,15 +1976,15 @@
   resolved "https://registry.yarnpkg.com/@zapo-js/media-utils/-/media-utils-1.0.0.tgz#2c33c342cce61630ac1f414d1b463750da3d582c"
   integrity sha512-u8IcoLloaP1kKSCgKsmaeEbOLVWHKYsdKOelIn8n9Xa+bFCCVC5XefeZUcksFr3eiB2optUzewlZYjZxNXHmHg==
 
-"@zapo-js/store-redis@1.2.0":
-  version "1.2.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.2.0.tgz#cbbf0108c25a002acd7ce7145ae43335fd4194cc"
-  integrity sha512-bBoflDaoCRreF8lP/plpEPJyMGjQmOpPXsWRll1nw2HRMHmiiCU1+olycBWI33gHd6ri8cGVf14nYoEVP/N08A==
+"@zapo-js/store-redis@1.3.0":
+  version "1.3.0"
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-redis/-/store-redis-1.3.0.tgz#8c09d13f10f1a0542adfc7c99bcf10cadba39bd7"
+  integrity sha512-s4Ep8u1IoTpVKE+kWhJS4Cq31ip3ZbT8pUuCyAq0GPicHqdH4juZxAmT9anoQTcBbzxbRUF8LJTN8hy53VsRlw==
 
-"@zapo-js/store-sqlite@1.1.0":
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.1.0.tgz#0685bf76939e256e142c6f171ab2a1311809ab39"
-  integrity sha512-leoHja38lB7kBxVlcbktIMZjbocropExyjL2LPun6Ofd8gnr0+mcx9xyYpsj4htLM95OFMfd2jd5zbU6IqjgDQ==
+"@zapo-js/store-sqlite@1.2.0":
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/@zapo-js/store-sqlite/-/store-sqlite-1.2.0.tgz#2434135cb1f3fb0c9c73f772ac9bc175f4a7cda6"
+  integrity sha512-nO4EazLYMI4wf7jMD4BdIO0+NAVf7TSZ8yC+VubHu4cFi+/u4lQMOQyWaEbi8qNeKUqHJsN2kcQkMJwCo3WTjw==
 
 accepts@~1.3.4, accepts@~1.3.8:
   version "1.3.8"
@@ -6503,7 +6503,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zapo-js@1.7.1:
-  version "1.7.1"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.7.1.tgz#71fd862b1ced9e44122375378af315a1b81ba08c"
-  integrity sha512-tnPxZh406SbXL3TAG4AE7fxHjZ3vm3nNoz88oqIMt75DM16aXhdi78VJbdaSjS6kvsmnl3XYoEwpo1iZtFOQLg==
+zapo-js@1.8.0:
+  version "1.8.0"
+  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.8.0.tgz#747e9eec4dbf07ead04b325594a1822bfc418026"
+  integrity sha512-ZT0TKqsQi/B2LFm8Nk39LG9EXogQbdQ4TECwIbwQ7l/+UnTwKZFooPuPi7OO0usmkDasGsbrRYZynP3t3QjuIQ==
