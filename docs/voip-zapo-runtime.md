@@ -72,7 +72,7 @@ atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
 repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
 para o checkout do SHA exato.
 
-A imagem unificada `v4.0.23` incorpora o VoIP `v0.1.64`, revisão
+A imagem unificada `v4.0.24` incorpora o VoIP `v0.1.64`, revisão
 `1a2af2050862e9d5cccaf49a3132ae3a4fd09790`. O SHA exato é resolvido e gravado pelo
 workflow no label e em `SOURCE_REVISION`. Ela mantém SIP, RTP, media bridge,
 internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece

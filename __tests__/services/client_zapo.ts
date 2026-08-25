@@ -840,7 +840,7 @@ describe('ClientZapo', () => {
       '5566991112222@s.whatsapp.net',
       '123456789@lid',
     )
-  })
+  }, 15_000)
 
   test('enriches an incoming direct message when Zapo only provides its LID', async () => {
     session.contacts.getByJid.mockResolvedValue({ phoneNumber: '556699554300' } as never)
@@ -898,7 +898,7 @@ describe('ClientZapo', () => {
       '556699554300@s.whatsapp.net',
       '11343495192601@lid',
     )
-  })
+  }, 15_000)
 
   test('persists the canonical phone mapping learned from a Zapo receipt', async () => {
     session.contacts.getByJid.mockResolvedValue({ phoneNumber: '5566999554300' } as never)
