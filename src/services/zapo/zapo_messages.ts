@@ -10,6 +10,7 @@ import { toZapoMessageContent } from './zapo_message_mapper'
 import { resolveProviderMessageId } from '../message_id_map'
 import logger from '../logger'
 import { getZapoRecipientIdentity, getZapoStoredPhone } from './zapo_recipient'
+import type { YouTubeLinkPreviewResolver } from '../messages/youtube_link_preview'
 
 type ZapoMessagesOptions = {
   customMessageCharactersFunction?: (message: string) => string
@@ -18,6 +19,7 @@ type ZapoMessagesOptions = {
   store?: WaStoreSession
   phone?: string
   bindTemplate?: (payload: any) => Promise<any>
+  youtubeLinkPreviewResolver?: YouTubeLinkPreviewResolver
 }
 
 const toJid = (value: string) => {
@@ -48,6 +50,7 @@ export class ZapoMessages {
   private readonly readOnReply: boolean
   private readonly phone: string
   private readonly bindTemplate?: (payload: any) => Promise<any>
+  private readonly youtubeLinkPreviewResolver?: YouTubeLinkPreviewResolver
 
   constructor(
     private readonly client: WaClient,
@@ -59,6 +62,7 @@ export class ZapoMessages {
     this.readOnReply = options.readOnReply || false
     this.phone = options.phone || ''
     this.bindTemplate = options.bindTemplate
+    this.youtubeLinkPreviewResolver = options.youtubeLinkPreviewResolver
     this.store = options.store
     if (options.store) this.identity = new ZapoIdentity(client, options.store, options.phone || '')
   }
@@ -254,7 +258,7 @@ export class ZapoMessages {
     let content: WaSendMessageContent | undefined
     let mappedOptions: Record<string, unknown> = {}
     if (payload?.type) {
-      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction)
+      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction, this.youtubeLinkPreviewResolver)
       content = mapped.content
       mappedOptions = mapped.options
     } else {
@@ -303,7 +307,7 @@ export class ZapoMessages {
 
     if (type === 'message_edit') {
       const edit = await this.buildEditTarget(payload)
-      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction)
+      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction, this.youtubeLinkPreviewResolver)
       target = edit.target
       content = mapped.content
       Object.assign(options, mapped.options, { editKey: edit.editKey })
@@ -320,7 +324,7 @@ export class ZapoMessages {
       target = key.remoteJid
       content = { type: 'reaction' as const, emoji: `${payload?.reaction?.emoji ?? payload?.reaction?.text ?? ''}`, target: key }
     } else {
-      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction)
+      const mapped = await toZapoMessageContent(this.client, payload, this.customMessageCharactersFunction, this.youtubeLinkPreviewResolver)
       content = mapped.content
       Object.assign(options, mapped.options)
       if (Array.isArray(options.mentions)) {

@@ -8,6 +8,8 @@ import { SendError } from '../send_error'
 import { SEND_AUDIO_MESSAGE_AS_PTT } from '../../defaults'
 import { zapoMediaProcessor } from './zapo_media_processor'
 import { zapoLegacyPdfNormalizer } from './zapo_legacy_pdf'
+import { normalizeAutomaticLinkPreview } from '../messages/automatic_link_preview'
+import type { YouTubeLinkPreviewResolver } from '../messages/youtube_link_preview'
 
 const mediaTypes = ['image', 'audio', 'document', 'video', 'sticker'] as const
 
@@ -399,14 +401,22 @@ export const toZapoMessageContent = async (
   client: WaClient,
   payload: any,
   customMessageCharactersFunction: (message: string) => string = (message) => message,
+  youtubeLinkPreviewResolver?: YouTubeLinkPreviewResolver,
 ): Promise<ZapoMappedMessage> => {
   const type = `${payload?.type || ''}`
   const mentions = getMentions(payload)
   if (type === 'text' || type === 'message_edit') {
+    const preview = normalizeAutomaticLinkPreview(
+      customMessageCharactersFunction(`${payload?.text?.body || ''}`),
+    )
+    const youtubePreview = preview.enabled
+      ? await youtubeLinkPreviewResolver?.(preview.text).catch(() => undefined)
+      : undefined
     return {
       content: {
         type: 'text',
-        text: customMessageCharactersFunction(`${payload?.text?.body || ''}`),
+        text: preview.text,
+        ...(preview.enabled ? { linkPreview: youtubePreview || true } : {}),
       },
       options: mentions.length ? { mentions } : {},
     }

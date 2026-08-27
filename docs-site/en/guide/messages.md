@@ -26,12 +26,27 @@ content block.
 extension. Never send more than one source for the same media object.
 :::
 
+## Text and link previews
+
+ViperConnect automatically renders a preview box for the first valid public URL
+or domain. Existing `http://` and `https://` URLs are preserved; a bare domain
+such as `example.com/page` is normalized to `https://example.com/page`. Email
+addresses, IPs, `localhost`, filenames and malformed domains do not enable a
+preview. The page and its Open Graph image must be publicly reachable. Do not
+set `preview_url`.
+Links from `youtube.com`, including Shorts, and `youtu.be` automatically use
+YouTube's official `oEmbed` response for title and thumbnail metadata without
+downloading the complete page. If that lookup fails, the generic preview path
+is still used.
+
 ```json
 {
   "messaging_product": "whatsapp",
   "to": "15557654321",
   "type": "text",
-  "text": { "body": "Hello!" }
+  "text": {
+    "body": "Learn more: github.com/ViperTecCorporation/ViperConnect"
+  }
 }
 ```
 

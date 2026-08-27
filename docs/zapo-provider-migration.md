@@ -275,6 +275,24 @@ O adapter segue a referência oficial de tipos da Zapo:
 Referência:
 `https://zapo.to/en/reference/message-types#interactive-business`.
 
+### Prévia de links em texto
+
+O adapter detecta automaticamente a primeira URL ou domínio público válido no
+texto e envia `linkPreview: true` na mensagem tipada da Zapo, sem exigir uma flag
+da aplicação. URLs HTTP(S) são preservadas. Um domínio sem protocolo é validado
+por expressão, excluindo e-mail, IP, `localhost`, extensões comuns de arquivo e
+host malformado, e recebe `https://` antes do envio para que a Zapo possa buscar
+os metadados. A decisão não depende de `text.preview_url`; clientes antigos que
+ainda enviem esse campo não alteram o comportamento automático.
+
+Como o HTML do YouTube pode posicionar Open Graph depois do limite genérico de
+leitura da Zapo, links `youtube.com` (incluindo Shorts) e `youtu.be` usam um
+resolvedor `oEmbed` limitado por tempo e tamanho. A miniatura só é aceita por
+HTTPS nos hosts oficiais `i.ytimg.com` e `img.youtube.com`. Esse resolvedor usa o
+mesmo agente de `proxy.linkPreview`/família IP do cliente; transporte
+desconhecido não é contornado. Qualquer erro retorna ao coletor genérico sem
+bloquear o envio do texto.
+
 As ações de administrador de grupo são expostas por
 `PATCH /v15.0/{phone}/groups/{groupId}/participants`, com `action` igual a
 `promote` ou `demote`. O controller preserva o contrato LID-first e aceita o

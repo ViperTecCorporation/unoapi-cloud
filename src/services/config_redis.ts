@@ -9,6 +9,7 @@ import { generateBusinessAccountId } from './meta_ids'
 import { resolveSessionProvider } from './providers/provider_resolver'
 import { normalizeWebhookConfig } from './webhook_config'
 import { normalizeHistoryMaxAgeDays } from '../utils/history'
+import { configLogSummary } from './config_log_summary'
 
 const SECRET_CONFIG_KEY = /(token|password|secret|api.?key)/i
 const configForLog = (value: unknown): unknown => {
@@ -131,7 +132,7 @@ export const getConfigRedis: getConfig = async (phone: string): Promise<Config> 
     if (previousGetMessageMetadata) {
       config.getMessageMetadata = previousGetMessageMetadata
     }
-    logger.info('Config redis: %s -> %s', phone, JSON.stringify(configForLog(config)))
+    logger.info('Config redis: %s summary=%s', phone, JSON.stringify(configLogSummary(config)))
     configs.set(phone, config)
     configCacheTs.set(phone, Date.now())
   }

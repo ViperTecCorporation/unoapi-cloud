@@ -4,6 +4,7 @@ import { getStoreRedis } from './store_redis'
 import { RATE_LIMIT_BLOCK_SECONDS, RATE_LIMIT_GLOBAL_PER_MINUTE, RATE_LIMIT_PER_TO_PER_MINUTE, OUTGOING_IDEMPOTENCY_ENABLED } from '../defaults'
 import { GROUP_IGNORE_INDIVIDUAL_RECEIPTS, GROUP_ONLY_DELIVERED_STATUS } from '../defaults'
 import logger from './logger'
+import { configLogSummary } from './config_log_summary'
 import { Level } from 'pino'
 
 import {
@@ -150,7 +151,7 @@ export const getConfigByEnv: getConfig = async (phone: string): Promise<Config> 
     const filter: MessageFilter = new MessageFilter(phone, config)
     config.shouldIgnoreJid = filter.isIgnoreJid.bind(filter)
     config.shouldIgnoreKey = filter.isIgnoreKey.bind(filter)
-    logger.info('Config by env: %s -> %s', phone, JSON.stringify(config))
+    logger.info('Config by env: %s summary=%s', phone, JSON.stringify(configLogSummary(config)))
     configs.set(phone, config)
   }
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

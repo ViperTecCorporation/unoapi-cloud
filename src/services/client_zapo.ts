@@ -61,6 +61,7 @@ import { resolveZapoVoiceBridgeUrl, ZapoVoiceBridgeClient } from './zapo/voice/z
 import { ZapoVoiceCallerIdentityResolver } from './zapo/voice/zapo_voice_caller_identity'
 import { normalizeInteractiveMediaForWebhook } from './messages/interactive_media'
 import { BoundedTtlSet } from '../utils/bounded_ttl_cache'
+import { createYouTubeLinkPreviewResolverForTransport } from './messages/youtube_link_preview'
 
 type VoipCoordinator = ReturnType<ReturnType<typeof voipPlugin>['setup']>
 type ZapoClient = WaClientType & {
@@ -950,16 +951,18 @@ export class ClientZapo implements Client {
       })
     }
 
+    const proxy = createZapoProxyOptions(this.config.proxyUrl, undefined, {
+      network: ZAPO_NETWORK_IP_FAMILY,
+      chatSocket: ZAPO_CHAT_SOCKET_IP_FAMILY,
+      mediaUpload: ZAPO_MEDIA_UPLOAD_IP_FAMILY,
+      mediaDownload: ZAPO_MEDIA_DOWNLOAD_IP_FAMILY,
+      linkPreview: ZAPO_LINK_PREVIEW_IP_FAMILY,
+    })
+    const youtubeLinkPreviewResolver = createYouTubeLinkPreviewResolverForTransport(proxy?.linkPreview)
     const client = this.clientFactory({
       store: zapoStore,
       sessionId: this.phone,
-      proxy: createZapoProxyOptions(this.config.proxyUrl, undefined, {
-        network: ZAPO_NETWORK_IP_FAMILY,
-        chatSocket: ZAPO_CHAT_SOCKET_IP_FAMILY,
-        mediaUpload: ZAPO_MEDIA_UPLOAD_IP_FAMILY,
-        mediaDownload: ZAPO_MEDIA_DOWNLOAD_IP_FAMILY,
-        linkPreview: ZAPO_LINK_PREVIEW_IP_FAMILY,
-      }),
+      proxy,
       markOnlineOnConnect: this.config.markOnlineOnConnect,
       recoverFromClientTooOld: true,
       history: {
@@ -998,6 +1001,7 @@ export class ClientZapo implements Client {
       store: this.zapoSession,
       phone: this.phone,
       bindTemplate: (payload) => new Template(this.getConfig).bind(this.phone, payload.template.name, payload.template.components),
+      youtubeLinkPreviewResolver,
     })
     this.groups = new ZapoGroups(client, this.zapoSession, this.phone)
     this.catalog = new ZapoCatalog(client, this.unoStore, this.phone)

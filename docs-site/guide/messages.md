@@ -37,13 +37,23 @@ mesma mídia.
 
 ## Texto
 
+O ViperConnect gera automaticamente a caixa de prévia da primeira URL ou
+domínio público válido. URLs `http://` e `https://` são preservadas; um domínio
+sem protocolo, como `vipertec.com.br/oferta`, é normalizado para
+`https://vipertec.com.br/oferta`. E-mails, IPs, `localhost`, nomes de arquivo e
+domínios malformados não ativam a prévia. A página e sua imagem Open Graph
+precisam estar publicamente acessíveis pela UnoAPI. Não defina `preview_url`.
+Links `youtube.com`, incluindo Shorts, e `youtu.be` usam automaticamente o
+`oEmbed` oficial do YouTube para obter título e miniatura sem baixar a página
+completa. Se essa consulta falhar, o envio continua pelo coletor genérico.
+
 ```json
 {
   "messaging_product": "whatsapp",
   "to": "5511912008012",
   "type": "text",
   "text": {
-    "body": "Olá!"
+    "body": "Conheça o ViperConnect: github.com/ViperTecCorporation/ViperConnect"
   }
 }
 ```

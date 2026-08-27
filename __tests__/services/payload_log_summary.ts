@@ -48,4 +48,23 @@ describe('payloadLogSummary', () => {
       has_media: false,
     }))
   })
+
+  test('does not expose text message bodies or contact profile data', () => {
+    const summary = payloadLogSummary({
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        contacts: [{ profile: { name: 'Private contact' }, wa_id: '5511999999999' }],
+        messages: [{ id: 'text-id', type: 'text', from: '5511888888888', text: { body: 'Private conversation' } }],
+      } }] }],
+    })
+
+    expect(summary).toEqual(expect.objectContaining({
+      message_id: 'text-id',
+      message_type: 'text',
+      has_media: false,
+    }))
+    expect(JSON.stringify(summary)).not.toContain('Private conversation')
+    expect(JSON.stringify(summary)).not.toContain('Private contact')
+    expect(JSON.stringify(summary)).not.toContain('5511888888888')
+  })
 })

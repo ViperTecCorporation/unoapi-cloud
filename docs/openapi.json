@@ -557,7 +557,7 @@
     "/v15.0/{phone}/messages": {
       "post": {
         "summary": "Enviar mensagem (WhatsApp Cloud shape)",
-        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+        "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- A primeira URL ou domínio público válido gera prévia automaticamente; não é necessário definir uma flag no payload. Domínios sem protocolo são normalizados para `https://` antes do envio.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/PhonePath"
@@ -572,13 +572,13 @@
               },
               "examples": {
                 "text": {
-                  "summary": "Texto",
+                  "summary": "Texto com prévia automática de link",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5511999999999",
                     "type": "text",
                     "text": {
-                      "body": "Olá do Unoapi Cloud!"
+                      "body": "Conheça o ViperConnect: github.com/ViperTecCorporation/ViperConnect"
                     }
                   }
                 },

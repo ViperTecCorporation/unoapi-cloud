@@ -323,6 +323,7 @@ paths:
       description: |
         - Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.
         - Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.
+        - A primeira URL ou domínio público válido gera prévia automaticamente; não é necessário definir uma flag no payload. Domínios sem protocolo são normalizados para `https://` antes do envio.
         - Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.
         - Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.
         - PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.
@@ -336,13 +337,13 @@ paths:
               $ref: '#/components/schemas/MessageRequest'
             examples:
               text:
-                summary: Texto
+                summary: Texto com prévia automática de link
                 value:
                   messaging_product: whatsapp
                   to: '5511999999999'
                   type: text
                   text:
-                    body: 'Olá do Unoapi Cloud!'
+                    body: 'Conheça o ViperConnect: github.com/ViperTecCorporation/ViperConnect'
               expiringText:
                 summary: Texto temporário
                 value:
