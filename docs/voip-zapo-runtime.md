@@ -72,7 +72,7 @@ atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
 repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
 para o checkout do SHA exato.
 
-A imagem unificada `v4.0.25` incorpora o VoIP `v0.1.64`, revisão
+A imagem unificada `v4.0.28` incorpora o VoIP `v0.1.64`, revisão
 `1a2af2050862e9d5cccaf49a3132ae3a4fd09790`. O SHA exato é resolvido e gravado pelo
 workflow no label e em `SOURCE_REVISION`. Ela mantém SIP, RTP, media bridge,
 internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece
@@ -104,7 +104,7 @@ As dependencias que formam o caminho de chamada sao:
 
 | Pacote/componente | Versao | Papel |
 | --- | --- | --- |
-| `zapo-js` | `1.8.0` | cliente Zapo, sessão, transporte e primitivas de protocolo |
+| `zapo-js` | `1.8.1` | cliente Zapo, sessão, transporte e primitivas de protocolo |
 | `@vipertec/zapo-voip` | `1.0.0-viper.5` (`file:vendor/zapo-voip`) | plugin vendorizado de sinalização e mídia VoIP |
 | `libmlow-wasm` | `0.1.1` | encode/decode MLow e RFC Opus selecionado por chamada |
 | `ws` | `^8.21.1` | bridge autenticado com o processo de telefonia |
@@ -112,8 +112,10 @@ As dependencias que formam o caminho de chamada sao:
 
 O pacote `@vipertec/zapo-voip` declara somente `zapo-js` e `libmlow-wasm` como
 peer dependencies. Ele não depende de uma implementação Node de WebRTC. A atualização
-Zapo 1.8.0 não modificou o contrato de chamadas usado pelo vendor; a versão VoIP 0.1.64
-é coordenada para tornar a composição da imagem reproduzível.
+Zapo 1.8.1 não modificou o contrato de chamadas usado pelo vendor. A atualização
+atua no retry de mensagens, no autor persistido pelo history sync e no sidecar de MP4;
+a versão VoIP 0.1.64 permanece coordenada para tornar a composição da imagem
+reproduzível.
 
 O helper nativo e compilado no Docker com estas versoes Pion fixadas no
 `go.mod`:

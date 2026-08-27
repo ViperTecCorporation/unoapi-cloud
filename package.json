@@ -1,6 +1,6 @@
 {
   "name": "viperconnect",
-  "version": "4.0.25",
+  "version": "4.0.28",
   "description": "ViperConnect by ViperTec Corporation, based on the original Unoapi Cloud project",
   "repository": {
     "type": "git",
@@ -44,7 +44,7 @@
     "broker-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/broker.ts",
     "bridge-ts": "node --max-old-space-size=4096 --experimental-strip-types --experimental-transform-types src/bridge.ts",
     "clean:data": "rm -rf ./data/medias/* ./data/sessions/* ./data/stores/*.json",
-    "build:docs": "node ./scripts/openapi-to-json.mjs",
+    "build:docs": "node ./scripts/openapi-to-json.mjs && node ./scripts/openapi-to-postman.mjs",
     "check:baileys-lock": "node ./scripts/check-baileys-lock.mjs",
     "postinstall": "node ./scripts/patch-zapo-payment-info.cjs"
   },
@@ -99,6 +99,7 @@
     "better-sqlite3": "12.6.2",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "file-type": "21.3.4",
     "i18n": "^0.15.1",
     "ioredis": "5.11.1",
     "libmlow-wasm": "0.1.1",
@@ -120,7 +121,7 @@
     "ws": "^8.21.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "^2.8.3",
-    "zapo-js": "1.8.0"
+    "zapo-js": "1.8.1"
   },
   "engines": {
     "node": ">= 24.x"

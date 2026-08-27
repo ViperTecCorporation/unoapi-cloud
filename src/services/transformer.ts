@@ -47,6 +47,7 @@ import {
   interactiveHeaderForWebhook,
 } from './transformer/interactive'
 import { resolveProfilePictureId } from './profile_picture_identity'
+import { payloadLogSummary } from './payload_log_summary'
 
 const BAILEYS_NATIVE_FLOW_ENABLED = true
 const UNOAPI_MEDIA_ROUTE_VERSION = 'v17.0'
@@ -2525,7 +2526,7 @@ export const fromBaileysMessageContent = (phone: string, payload: any, config?: 
       const logParticipantPn = k?.participantPn || (payload as any)?.participantPn
       logger.info('WEBHOOK ids: wa_id=%s from=%s remoteJid=%s senderPn=%s participantPn=%s', contactWa || '<none>', msgFrom || '<none>', logRemote || '<none>', logSenderPn || '<none>', logParticipantPn || '<none>')
     } catch {}
-    logger.debug('fromBaileysMessageContent %s => %s', phone, JSON.stringify(data))
+    logger.debug('fromBaileysMessageContent %s summary=%s', phone, JSON.stringify(payloadLogSummary(data)))
     return [data, senderPhone, senderId]
   } catch (e) {
     logger.error(e, 'Error on convert baileys to cloud-api')

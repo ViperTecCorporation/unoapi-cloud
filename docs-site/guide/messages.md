@@ -37,13 +37,23 @@ mesma mídia.
 
 ## Texto
 
+O ViperConnect gera automaticamente a caixa de prévia da primeira URL ou
+domínio público válido. URLs `http://` e `https://` são preservadas; um domínio
+sem protocolo, como `vipertec.com.br/oferta`, é normalizado para
+`https://vipertec.com.br/oferta`. E-mails, IPs, `localhost`, nomes de arquivo e
+domínios malformados não ativam a prévia. A página e sua imagem Open Graph
+precisam estar publicamente acessíveis pela UnoAPI. Não defina `preview_url`.
+Links `youtube.com`, incluindo Shorts, e `youtu.be` usam automaticamente o
+`oEmbed` oficial do YouTube para obter título e miniatura sem baixar a página
+completa. Se essa consulta falhar, o envio continua pelo coletor genérico.
+
 ```json
 {
   "messaging_product": "whatsapp",
   "to": "5511912008012",
   "type": "text",
   "text": {
-    "body": "Olá!"
+    "body": "Conheça o ViperConnect: github.com/ViperTecCorporation/ViperConnect"
   }
 }
 ```
@@ -396,7 +406,8 @@ Esse formato, com `action.carousel.cards` e os CTAs em
 
 A solicitação de pagamento é uma mensagem interativa comercial da Zapo. O PIX
 estático usa `pix_static_code`; a ação de pagamento deve ser o único botão da
-mensagem.
+mensagem. Esse formato curto é uma compatibilidade nativa da Zapo e não deve
+ser confundido com o botão `payment_request` de mensagens de modelo oficiais.
 
 ```json
 {
@@ -428,9 +439,26 @@ O envio gera internamente o fluxo nativo `payment_info`.
 
 ### PIX dinâmico avulso
 
-Para enviar PIX dinâmico sem itens de pedido, mantenha o botão
-`payment_request`, informe o total e use `pix_dynamic_code`. `reference_id` é
-opcional nesse formato; quando ausente, a Uno gera um identificador.
+Para enviar PIX dinâmico sem itens, use o fluxo simplificado oficial
+`order_details/review_and_pay`: mantenha total e configurações de pagamento e
+omita somente o objeto `order`. O WhatsApp apresenta o total e a ação para
+copiar o código PIX. `reference_id` identifica a cobrança e deve ser único.
+
+Por compatibilidade, a Uno também aceita o formato antigo com botão
+`payment_request` e o converte internamente para esse mesmo fluxo. Para novas
+integrações, prefira o formato abaixo.
+
+::: warning Confirmação posterior
+Se a cobrança será confirmada posteriormente com `order_status`, informe sua
+própria `reference_id` já neste primeiro envio. A Uno pode gerar um identificador
+quando ele é omitido no envelope legado, mas esse comportamento existe somente
+para retrocompatibilidade e não fornece à integração uma referência estável para
+a atualização posterior.
+:::
+
+A `reference_id` deve ser única por cobrança, ter no máximo 60 caracteres e
+usar somente letras sem acento, números, `_`, `-` ou `.`. Salve-a junto ao
+registro da cobrança no seu sistema.
 
 ```json
 {
@@ -438,36 +466,33 @@ opcional nesse formato; quando ausente, a Uno gera um identificador.
   "to": "5511912008012",
   "type": "interactive",
   "interactive": {
-    "type": "button",
+    "type": "order_details",
     "body": {
       "text": "Pague R$ 149,90 via PIX"
     },
     "action": {
-      "buttons": [
-        {
-          "type": "payment_request",
-          "payment_request": {
-            "type": "digital-goods",
-            "payment_type": "br",
-            "payment_settings": [
-              {
-                "type": "pix_dynamic_code",
-                "pix_dynamic_code": {
-                  "code": "000201010212...",
-                  "merchant_name": "Minha Empresa",
-                  "key": "12345678000199",
-                  "key_type": "CNPJ"
-                }
-              }
-            ],
-            "currency": "BRL",
-            "total_amount": {
-              "value": 14990,
-              "offset": 100
+      "name": "review_and_pay",
+      "parameters": {
+        "reference_id": "cobranca-14990",
+        "type": "digital-goods",
+        "payment_type": "br",
+        "payment_settings": [
+          {
+            "type": "pix_dynamic_code",
+            "pix_dynamic_code": {
+              "code": "000201010212...",
+              "merchant_name": "Minha Empresa",
+              "key": "12345678000199",
+              "key_type": "CNPJ"
             }
           }
+        ],
+        "currency": "BRL",
+        "total_amount": {
+          "value": 14990,
+          "offset": 100
         }
-      ]
+      }
     }
   }
 }
@@ -557,33 +582,82 @@ gerado pelo banco ou PSP. Para o formato simplificado, remova apenas o objeto
 
 ### Link de pagamento
 
-Use o mesmo envelope `order_details` e substitua `payment_settings` por:
+O link avulso usa o pedido simplificado oficial. Não use
+`interactive.type: button` em novas integrações:
 
 ```json
-[
-  {
-    "type": "payment_link",
-    "payment_link": {
-      "uri": "https://pagamentos.minhaempresa.com.br/pedido-123"
+{
+  "messaging_product": "whatsapp",
+  "to": "5511912008012",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_details",
+    "body": {
+      "text": "Finalize o pagamento de R$ 149,90"
+    },
+    "action": {
+      "name": "review_and_pay",
+      "parameters": {
+        "reference_id": "link-14990",
+        "type": "digital-goods",
+        "payment_type": "br",
+        "payment_settings": [
+          {
+            "type": "payment_link",
+            "payment_link": {
+              "uri": "https://pagamentos.minhaempresa.com.br/link-14990"
+            }
+          }
+        ],
+        "currency": "BRL",
+        "total_amount": {
+          "value": 14990,
+          "offset": 100
+        }
+      }
     }
   }
-]
+}
 ```
 
 ### Boleto
 
-O boleto também usa `order_details`. A linha digitável deve ser gerada e
-confirmada pelo banco ou PSP:
+O boleto avulso também usa `order_details/review_and_pay`. A linha digitável
+deve ser gerada e confirmada pelo banco ou PSP:
 
 ```json
-[
-  {
-    "type": "boleto",
-    "boleto": {
-      "digitable_line": "03399026944140000002628346101018898510000008848"
+{
+  "messaging_product": "whatsapp",
+  "to": "5511912008012",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_details",
+    "body": {
+      "text": "Pague o boleto de R$ 88,48"
+    },
+    "action": {
+      "name": "review_and_pay",
+      "parameters": {
+        "reference_id": "boleto-8848",
+        "type": "digital-goods",
+        "payment_type": "br",
+        "payment_settings": [
+          {
+            "type": "boleto",
+            "boleto": {
+              "digitable_line": "03399026944140000002628346101018898510000008848"
+            }
+          }
+        ],
+        "currency": "BRL",
+        "total_amount": {
+          "value": 8848,
+          "offset": 100
+        }
+      }
     }
   }
-]
+}
 ```
 
 ### Pedido real com boleto, PIX dinâmico e imagem
@@ -686,18 +760,42 @@ arquivo ou na legenda:
 
 ### Pagamento com cartão em um clique
 
-Contas habilitadas para essa funcionalidade podem usar:
+Contas habilitadas para essa funcionalidade usam o mesmo pedido simplificado:
 
 ```json
-[
-  {
-    "type": "offsite_card_pay",
-    "offsite_card_pay": {
-      "last_four_digits": "5235",
-      "credential_id": "credencial-123"
+{
+  "messaging_product": "whatsapp",
+  "to": "5511912008012",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_details",
+    "body": {
+      "text": "Confirme o pagamento de R$ 149,90"
+    },
+    "action": {
+      "name": "review_and_pay",
+      "parameters": {
+        "reference_id": "cartao-14990",
+        "type": "digital-goods",
+        "payment_type": "br",
+        "payment_settings": [
+          {
+            "type": "offsite_card_pay",
+            "offsite_card_pay": {
+              "last_four_digits": "5235",
+              "credential_id": "credencial-123"
+            }
+          }
+        ],
+        "currency": "BRL",
+        "total_amount": {
+          "value": 14990,
+          "offset": 100
+        }
+      }
     }
   }
-]
+}
 ```
 
 Quando o comprador confirma, o webhook chega como
@@ -705,16 +803,33 @@ Quando o comprador confirma, o webhook chega como
 `reference_id`, os quatro últimos dígitos e o horário da confirmação. A
 disponibilidade dessa modalidade depende da habilitação da conta.
 
+Por retrocompatibilidade, PIX dinâmico, link, boleto e cartão enviados no
+envelope antigo `payment_request` são convertidos pela Uno para
+`order_details/review_and_pay`. O `total_amount` é obrigatório. Para novas
+integrações, use diretamente os payloads completos desta seção.
+
 ### Confirmação do pagamento
 
-Depois da confirmação pelo banco ou PSP, envie `order_status` com a mesma
-`reference_id` do pedido. A Uno localiza e cita internamente o
-`order_details` original para que o aplicativo atualize o cartão do pedido de
-pendente para pago.
+O WhatsApp não consulta o banco e não confirma o pagamento automaticamente.
+Depois que seu banco, gateway ou PSP confirmar a liquidação, seu sistema deve
+enviar `order_status` com a mesma `reference_id` usada na cobrança. A Uno
+localiza e cita internamente o `order_details` original para que o aplicativo
+atualize o cartão do pedido de pendente para pago.
 
 Espere o webhook de status do pedido informar `sent` ou `delivered` antes de
 enviar esta confirmação. A resposta HTTP inicial confirma a entrada na fila,
 mas não que o pedido já foi processado pelo provedor.
+
+Fluxo recomendado:
+
+| Momento | `payment.status` | `order.status` | Resultado |
+| --- | --- | --- | --- |
+| Cobrança criada | `pending` | `pending` | Pedido aguardando pagamento |
+| Banco ou PSP confirmou | `captured` | `processing` | Exibe pagamento confirmado e mantém o pedido em andamento |
+| Pedido concluído | `captured` | `completed` | Encerra o pedido |
+| Pagamento recusado | `failed` | `canceled` | Indica falha e cancela o pedido |
+
+Para confirmar o pagamento e manter o pedido em processamento:
 
 ```json
 {
@@ -734,8 +849,8 @@ mas não que o pedido já foi processado pelo provedor.
       "parameters": {
         "reference_id": "boleto-1033239253",
         "order": {
-          "status": "completed",
-          "description": "Pagamento confirmado. Assinatura de Câmera Comodato Mensal paga."
+          "status": "processing",
+          "description": "Pagamento confirmado. Pedido em preparação."
         },
         "payment": {
           "status": "captured",
@@ -748,8 +863,43 @@ mas não que o pedido já foi processado pelo provedor.
 ```
 
 `payment.status: captured` marca o pagamento como confirmado.
-`order.status: completed` encerra o pedido. O `timestamp` é Unix em segundos e
-deve representar o momento real da confirmação.
+O `timestamp` é Unix em segundos e deve representar o momento real informado
+pelo banco ou PSP. Não use o horário fixo do exemplo.
+
+Quando o pedido for finalizado, envie uma nova atualização usando a mesma
+`reference_id`:
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "5511999999999",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_status",
+    "body": {
+      "text": "Pedido concluído."
+    },
+    "action": {
+      "name": "review_order",
+      "parameters": {
+        "reference_id": "boleto-1033239253",
+        "order": {
+          "status": "completed",
+          "description": "Pagamento confirmado e pedido concluído."
+        },
+        "payment": {
+          "status": "captured",
+          "timestamp": 1785125734
+        }
+      }
+    }
+  }
+}
+```
+
+Se você só precisa marcar o pagamento, o objeto `order` pode ser omitido. A
+`reference_id` e `payment.status` continuam obrigatórios. Os estados de
+pagamento aceitos são `pending`, `captured` e `failed`.
 
 Tipos de pagamento fora dessa lista retornam
 `zapo_payment_request_type_not_supported`.

@@ -31,7 +31,7 @@ state machine.
   "dependencies": {
     "@vipertec/zapo-voip": "file:vendor/zapo-voip",
     "libmlow-wasm": "0.1.1",
-    "zapo-js": "1.8.0"
+    "zapo-js": "1.8.1"
   }
 }
 ```

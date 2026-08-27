@@ -83,12 +83,27 @@ for (const example of [
   'interactiveList',
   'interactiveCarousel',
   'paymentPixStatic',
+  'paymentPixDynamicStandalone',
+  'orderPaymentLink',
+  'orderBoletoStandalone',
+  'orderOneClickStandalone',
   'subscriptionBoletoPix',
   'orderStatus',
+  'orderCompleted',
   'markAsRead',
   'deleteMessage',
 ]) {
   if (!messageExamples[example]) throw new Error(`Endpoint de mensagens sem exemplo: ${example}`)
+}
+
+const postmanPath = path.join(docs, 'public', 'examples', 'ViperConnect.postman_collection.json')
+const postman = JSON.parse(await readFile(postmanPath, 'utf8'))
+if (postman.info?.schema !== 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json') {
+  throw new Error('Coleção Postman ausente ou fora do formato v2.1')
+}
+const postmanVariables = new Map((postman.variable || []).map((variable) => [variable.key, variable.value]))
+if (postmanVariables.get('token') !== '' || !postmanVariables.has('base_url') || !postmanVariables.has('payment_reference_id')) {
+  throw new Error('Coleção Postman deve ter URL, token vazio e referência de pagamento configuráveis')
 }
 for (const schema of ['MessageImage', 'MessageAudio', 'MessageDocument', 'MessageVideo', 'MessageSticker']) {
   const mediaType = schema.replace(/^Message/, '').toLowerCase()

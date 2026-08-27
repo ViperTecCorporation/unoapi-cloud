@@ -601,6 +601,32 @@ describe('service outgoing whatsapp cloud api', () => {
     expect([400, 401, 403, 404, 409, 422].some(isWebhookCircuitFailureStatus)).toBe(false)
   })
 
+  test('does not propagate an HTML error page returned by a webhook', async () => {
+    const target = {
+      id: `html-error-${phone}`,
+      urlAbsolute: 'https://example.com/html-error',
+      enabled: true,
+      sendIncomingMessages: true,
+      sendOutgoingMessages: true,
+      sendGroupMessages: true,
+      sendUpdateMessages: true,
+      sendNewsletterMessages: true,
+      timeoutMs: 1000,
+    } as Webhook
+    mockFetch.mockReset()
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 525,
+      statusText: 'SSL handshake failed',
+      headers: { get: () => 'text/html; charset=utf-8' },
+      text: async () => '<!DOCTYPE html><html><body>private upstream details</body></html>',
+    } as any)
+
+    await expect(service.sendHttp(phone!, target, textPayload, {})).rejects.toThrow(
+      /Webhook response 525 SSL handshake failed: <html body omitted; \d+ bytes>/,
+    )
+  })
+
   test('does not open the webhook circuit for permanent 4xx responses', async () => {
     const target = {
       id: `cb-4xx-${phone}`,

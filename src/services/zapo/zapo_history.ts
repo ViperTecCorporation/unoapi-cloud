@@ -8,12 +8,13 @@ const PAGE_SIZE = 1_000
 
 export const toUnoHistoryMessage = (record: WaStoredMessageRecord) => {
   if (!record.id || !record.threadJid || !record.messageBytes?.length) return undefined
+  const participantJid = record.participantJid || record.senderJid
   return {
     key: {
       remoteJid: record.threadJid,
       id: record.id,
       fromMe: record.fromMe,
-      ...(record.senderJid ? { participant: record.senderJid } : {}),
+      ...(participantJid ? { participant: participantJid } : {}),
     },
     messageTimestamp: record.timestampMs ? Math.floor(record.timestampMs / 1_000) : undefined,
     message: proto.Message.decode(record.messageBytes),

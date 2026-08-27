@@ -49,6 +49,87 @@ describe('Zapo message mapper', () => {
     })
   })
 
+  test.each([undefined, true, false])('enables link preview automatically without depending on preview_url=%s', async (previewUrl) => {
+    await expect(toZapoMessageContent(client, {
+      type: 'text',
+      text: {
+        body: 'Veja https://example.test/oferta',
+        ...(previewUrl === undefined ? {} : { preview_url: previewUrl }),
+      },
+    })).resolves.toEqual({
+      content: {
+        type: 'text',
+        text: 'Veja https://example.test/oferta',
+        linkPreview: true,
+      },
+      options: {},
+    })
+  })
+
+  test('does not add link preview metadata to ordinary text', async () => {
+    const mapped = await toZapoMessageContent(client, {
+      type: 'text',
+      text: { body: 'Mensagem sem link' },
+    })
+
+    expect(mapped).toEqual({
+      content: { type: 'text', text: 'Mensagem sem link' },
+      options: {},
+    })
+    expect(mapped.content).not.toHaveProperty('linkPreview')
+  })
+
+  test('adds HTTPS to a valid bare domain before asking Zapo for the preview', async () => {
+    await expect(toZapoMessageContent(client, {
+      type: 'text',
+      text: { body: 'Veja vipertec.com.br/oferta' },
+    })).resolves.toEqual({
+      content: {
+        type: 'text',
+        text: 'Veja https://vipertec.com.br/oferta',
+        linkPreview: true,
+      },
+      options: {},
+    })
+  })
+
+  test('uses a resolved YouTube override without changing generic previews', async () => {
+    const youtubePreview = {
+      matchedText: 'https://youtube.com/shorts/L-HPPgyJ4SY?feature=share',
+      title: 'Vídeo de teste',
+      previewType: proto.Message.ExtendedTextMessage.PreviewType.VIDEO,
+      thumbnail: { bytes: Uint8Array.from([7, 8, 9]), width: 480, height: 360 },
+    }
+    const resolver = jest.fn().mockResolvedValue(youtubePreview)
+
+    await expect(toZapoMessageContent(client, {
+      type: 'text',
+      text: { body: 'Veja https://youtube.com/shorts/L-HPPgyJ4SY?feature=share' },
+    }, undefined, resolver)).resolves.toEqual({
+      content: {
+        type: 'text',
+        text: 'Veja https://youtube.com/shorts/L-HPPgyJ4SY?feature=share',
+        linkPreview: youtubePreview,
+      },
+      options: {},
+    })
+    expect(resolver).toHaveBeenCalledWith('Veja https://youtube.com/shorts/L-HPPgyJ4SY?feature=share')
+  })
+
+  test('keeps the generic preview when the YouTube resolver fails', async () => {
+    const resolver = jest.fn().mockRejectedValue(new Error('oEmbed unavailable'))
+    const mapped = await toZapoMessageContent(client, {
+      type: 'text',
+      text: { body: 'https://youtube.com/shorts/L-HPPgyJ4SY' },
+    }, undefined, resolver)
+
+    expect(mapped.content).toEqual({
+      type: 'text',
+      text: 'https://youtube.com/shorts/L-HPPgyJ4SY',
+      linkPreview: true,
+    })
+  })
+
   test('downloads every supported media family into bytes for the Zapo typed API', async () => {
     for (const type of ['image', 'audio', 'document', 'video', 'sticker']) {
       const mapped = await toZapoMessageContent(client, {
@@ -280,7 +361,7 @@ describe('Zapo message mapper', () => {
     expect(mapped.options).toEqual({})
   })
 
-  test('maps a standalone dynamic PIX payment request without an order', async () => {
+  test('maps a legacy standalone dynamic PIX request to the official simplified order flow', async () => {
     const paymentSetting = {
       type: 'pix_dynamic_code',
       pix_dynamic_code: {
@@ -312,6 +393,7 @@ describe('Zapo message mapper', () => {
 
     const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
     const params = JSON.parse(button.buttonParamsJson)
+    expect(button.name).toBe('review_and_pay')
     expect(params).toEqual(expect.objectContaining({
       reference_id: expect.any(String),
       type: 'digital-goods',
@@ -346,6 +428,105 @@ describe('Zapo message mapper', () => {
     })).rejects.toThrow('pix_dynamic_code_total_amount_required')
   })
 
+  test.each([
+    ['payment link', {
+      type: 'payment_link',
+      payment_link: { uri: 'https://pagamentos.vipertec.com.br/cobranca-1' },
+    }],
+    ['boleto', {
+      type: 'boleto',
+      boleto: { digitable_line: '03399.02694 41400.000026 62834.610101 8 898510000008848' },
+    }],
+    ['one-click card', {
+      type: 'offsite_card_pay',
+      offsite_card_pay: { last_four_digits: '5235', credential_id: 'credential-123' },
+    }],
+  ])('normalizes a legacy standalone %s request to review_and_pay', async (_name, paymentSetting) => {
+    const mapped = await toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: 'Finalize o pagamento' },
+        action: {
+          buttons: [{
+            type: 'payment_request',
+            payment_request: {
+              type: 'digital-goods',
+              payment_type: 'br',
+              payment_settings: [paymentSetting],
+              currency: 'BRL',
+              total_amount: { value: 14990, offset: 100 },
+            },
+          }],
+        },
+      },
+    })
+
+    const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
+    const parameters = JSON.parse(button.buttonParamsJson)
+    expect(button.name).toBe('review_and_pay')
+    expect(parameters).toEqual(expect.objectContaining({
+      reference_id: expect.any(String),
+      type: 'digital-goods',
+      payment_type: 'br',
+      currency: 'BRL',
+      total_amount: { value: 14990, offset: 100 },
+    }))
+    expect(parameters.payment_settings[0].type).toBe(paymentSetting.type)
+    expect(parameters).not.toHaveProperty('order')
+  })
+
+  test.each([
+    ['payment_link', { type: 'payment_link', payment_link: { uri: 'https://pagamentos.vipertec.com.br/cobranca-2' } }],
+    ['boleto', { type: 'boleto', boleto: { digitable_line: '03399026944140000002628346101018898510000008848' } }],
+    ['offsite_card_pay', { type: 'offsite_card_pay', offsite_card_pay: { last_four_digits: '5235', credential_id: 'credential-123' } }],
+  ])('rejects a legacy %s request without the official total amount', async (paymentType, paymentSetting) => {
+    await expect(toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        action: {
+          buttons: [{ type: 'payment_request', payment_setting: paymentSetting }],
+        },
+      },
+    })).rejects.toThrow(`${paymentType}_total_amount_required`)
+  })
+
+  test('preserves and completes an itemized order received in the legacy envelope', async () => {
+    const mapped = await toZapoMessageContent(client, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        action: {
+          buttons: [{
+            type: 'payment_request',
+            payment_request: {
+              type: 'physical-goods',
+              payment_type: 'br',
+              payment_settings: [{
+                type: 'payment_link',
+                payment_link: { uri: 'https://pagamentos.vipertec.com.br/cobranca-3' },
+              }],
+              currency: 'BRL',
+              total_amount: { value: 5000, offset: 100 },
+              order: {
+                status: 'pending',
+                items: [{ name: 'Produto', amount: { value: 5000, offset: 100 }, quantity: 1 }],
+                subtotal: { value: 5000, offset: 100 },
+              },
+            },
+          }],
+        },
+      },
+    })
+
+    const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
+    const parameters = JSON.parse(button.buttonParamsJson)
+    expect(button.name).toBe('review_and_pay')
+    expect(parameters.order.items).toHaveLength(1)
+    expect(parameters.order.tax).toEqual({ value: 0, offset: 100 })
+  })
+
   test('rejects payment request variants not supported by the Zapo device protocol', async () => {
     await expect(toZapoMessageContent(client, {
       type: 'interactive',
@@ -363,7 +544,7 @@ describe('Zapo message mapper', () => {
     })).rejects.toThrow('zapo_payment_request_type_not_supported: crypto_wallet')
   })
 
-  test('maps simplified order details with dynamic PIX to payment_info', async () => {
+  test('maps simplified order details with dynamic PIX to review_and_pay', async () => {
     const parameters = {
       reference_id: 'pedido-123',
       type: 'digital-goods',
@@ -463,7 +644,7 @@ describe('Zapo message mapper', () => {
     })).rejects.toThrow('pix_dynamic_code_fields_required')
   })
 
-  test('maps an order payment link to payment_info', async () => {
+  test('maps an order payment link to review_and_pay', async () => {
     const paymentSetting = {
       type: 'payment_link',
       payment_link: { uri: 'https://pagamentos.vipertec.com.br/pedido-126' },
@@ -486,10 +667,11 @@ describe('Zapo message mapper', () => {
       },
     })
     const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
+    expect(button.name).toBe('review_and_pay')
     expect(JSON.parse(button.buttonParamsJson).payment_settings).toEqual([paymentSetting])
   })
 
-  test('maps a boleto order to payment_info', async () => {
+  test('maps a boleto order to review_and_pay', async () => {
     const paymentSetting = {
       type: 'boleto',
       boleto: { digitable_line: '03399026944140000002628346101018898510000008848' },
@@ -512,6 +694,7 @@ describe('Zapo message mapper', () => {
       },
     })
     const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
+    expect(button.name).toBe('review_and_pay')
     expect(JSON.parse(button.buttonParamsJson).payment_settings).toEqual([paymentSetting])
   })
 
@@ -613,7 +796,7 @@ describe('Zapo message mapper', () => {
     expect(parameters.order.tax).toEqual({ value: 0, offset: 100 })
   })
 
-  test('maps an enabled one-click card order to payment_info', async () => {
+  test('maps an enabled one-click card order to review_and_pay', async () => {
     const paymentSetting = {
       type: 'offsite_card_pay',
       offsite_card_pay: { last_four_digits: '5235', credential_id: 'credential-123' },
@@ -636,6 +819,7 @@ describe('Zapo message mapper', () => {
       },
     })
     const button = (mapped.content as any).interactiveMessage.nativeFlowMessage.buttons[0]
+    expect(button.name).toBe('review_and_pay')
     expect(JSON.parse(button.buttonParamsJson).payment_settings).toEqual([paymentSetting])
   })
 

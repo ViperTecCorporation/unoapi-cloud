@@ -1,7 +1,7 @@
 # Auditoria classe a classe: Baileys e Zapo
 
-Data da revisão inicial: 2026-07-22. Compatibilidade atualizada em 2026-08-24
-contra a versão oficial `zapo-js` 1.8.0.
+Data da revisão inicial: 2026-07-22. Compatibilidade atualizada em 2026-08-26
+contra a versão oficial `zapo-js` 1.8.1.
 
 ## Criterio
 
@@ -169,6 +169,13 @@ e renova o mapping PN/LID, e `message_capping` gera alerta operacional com uso e
 Mídia expirada usa `requestMediaReupload` somente após HTTP 404/410, com uma única
 tentativa autenticada e sem retry genérico. Addons usam primeiro `tryDecryptAddon`; o
 decriptador legado de enquete permanece como fallback temporário e observável.
+
+Na versão 1.8.1, o histórico de grupos persiste o autor resolvido de
+`WebMessageInfo.participant` em `senderJid` e `participantJid`; o encaminhamento da Uno
+prefere `participantJid` e mantém `senderJid` como fallback para registros anteriores.
+O retry Signal chega ao contador 3 antes do placeholder resend, e MP4 sem `faststart`
+não recebe `streamingSidecar`. O worker de vídeo continua aplicando conversão,
+limites e `+faststart`; a proteção do core cobre arquivos que escapem desse caminho.
 
 ## Fotos de perfil na Zapo
 

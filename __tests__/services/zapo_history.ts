@@ -35,6 +35,25 @@ describe('Zapo history', () => {
     })
   })
 
+  test('prefers the participant persisted by Zapo 1.8.1 for group history', () => {
+    const message = toUnoHistoryMessage({
+      id: 'history-participant-1',
+      threadJid: '120363@g.us',
+      senderJid: undefined,
+      participantJid: '456@lid',
+      fromMe: false,
+      timestampMs: 3_000,
+      messageBytes: proto.Message.encode({ conversation: 'com autor' }).finish(),
+    })
+
+    expect(message?.key).toEqual({
+      remoteJid: '120363@g.us',
+      id: 'history-participant-1',
+      fromMe: false,
+      participant: '456@lid',
+    })
+  })
+
   test('loads only unseen messages inside the configured day window', async () => {
     const store = mockDeep<WaStoreSession>()
     const now = Date.UTC(2026, 6, 22)

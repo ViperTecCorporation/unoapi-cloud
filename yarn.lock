@@ -3315,7 +3315,7 @@ file-entry-cache@^6.0.1:
   dependencies:
     flat-cache "^3.0.4"
 
-file-type@^21.3.4:
+file-type@21.3.4, file-type@^21.3.4:
   version "21.3.4"
   resolved "https://registry.yarnpkg.com/file-type/-/file-type-21.3.4.tgz#e3f902faee8ec4aa152909fc902a7a77f9c06725"
   integrity sha512-Ievi/yy8DS3ygGvT47PjSfdFoX+2isQueoYP1cntFW1JLYAuS4GD7NUPGg4zv2iZfV52uDyk5w5Z0TdpRS6Q1g==
@@ -6503,7 +6503,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zapo-js@1.8.0:
-  version "1.8.0"
-  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.8.0.tgz#747e9eec4dbf07ead04b325594a1822bfc418026"
-  integrity sha512-ZT0TKqsQi/B2LFm8Nk39LG9EXogQbdQ4TECwIbwQ7l/+UnTwKZFooPuPi7OO0usmkDasGsbrRYZynP3t3QjuIQ==
+zapo-js@1.8.1:
+  version "1.8.1"
+  resolved "https://registry.yarnpkg.com/zapo-js/-/zapo-js-1.8.1.tgz#204b29b95e7d4e93a9e34281e2975dcb0dfedb9d"
+  integrity sha512-u9oKsDGxS4qObCe+6lTKZ6qEGap959V5VQuVAy+8AJU8AnjYk+YGusQePOnBcehwRk4UA6i7AYPmtAV41fzepw==

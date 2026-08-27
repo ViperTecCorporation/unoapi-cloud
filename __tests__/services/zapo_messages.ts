@@ -127,6 +127,92 @@ describe('Zapo messages adapter', () => {
     )
   })
 
+  test('stores and quotes a legacy payment request normalized to review_and_pay', async () => {
+    const client = mockDeep<WaClient>()
+    const dataStore = mockDeep<DataStore>()
+    const originalMessage = {
+      interactiveMessage: {
+        body: { text: 'PIX legado' },
+        nativeFlowMessage: {
+          buttons: [{
+            name: 'review_and_pay',
+            buttonParamsJson: JSON.stringify({ reference_id: 'pix-legado-123' }),
+          }],
+        },
+      },
+    }
+    client.message.send
+      .mockResolvedValueOnce({ id: 'legacy-order-provider-id' } as never)
+      .mockResolvedValueOnce({ id: 'legacy-status-provider-id' } as never)
+    dataStore.loadKey.mockImplementation(async (id) => id === 'zapo-order-reference:pix-legado-123'
+      ? { remoteJid: '5511999999999@s.whatsapp.net', id: 'legacy-order-provider-id', fromMe: true }
+      : undefined)
+    dataStore.loadMessageExact?.mockResolvedValue({
+      key: { remoteJid: '5511999999999@s.whatsapp.net', id: 'legacy-order-provider-id', fromMe: true },
+      message: originalMessage,
+    } as never)
+    const messages = new ZapoMessages(client, dataStore)
+
+    await messages.send({
+      to: '5511999999999',
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: 'Pague via PIX' },
+        action: {
+          buttons: [{
+            type: 'payment_request',
+            payment_request: {
+              reference_id: 'pix-legado-123',
+              type: 'digital-goods',
+              payment_type: 'br',
+              payment_settings: [{
+                type: 'pix_dynamic_code',
+                pix_dynamic_code: { code: 'pix', merchant_name: 'Loja', key: 'chave', key_type: 'EVP' },
+              }],
+              currency: 'BRL',
+              total_amount: { value: 6000, offset: 100 },
+            },
+          }],
+        },
+      },
+    })
+    await messages.send({
+      to: '5511999999999',
+      type: 'interactive',
+      interactive: {
+        type: 'order_status',
+        body: { text: 'Pagamento confirmado' },
+        action: {
+          name: 'review_order',
+          parameters: {
+            reference_id: 'pix-legado-123',
+            order: { status: 'processing' },
+            payment: { status: 'captured' },
+          },
+        },
+      },
+    })
+
+    expect(dataStore.setKey).toHaveBeenCalledWith(
+      'zapo-order-reference:pix-legado-123',
+      { remoteJid: '5511999999999@s.whatsapp.net', id: 'legacy-order-provider-id', fromMe: true },
+    )
+    expect(client.message.send).toHaveBeenNthCalledWith(
+      2,
+      '5511999999999@s.whatsapp.net',
+      expect.objectContaining({ interactiveMessage: expect.any(Object) }),
+      {
+        quote: {
+          id: 'legacy-order-provider-id',
+          remoteJid: '5511999999999@s.whatsapp.net',
+          fromMe: true,
+          message: originalMessage,
+        },
+      },
+    )
+  })
+
   test('preserves the supplied phone while Zapo resolves its LID', async () => {
     const client = mockDeep<WaClient>()
     client.message.send.mockResolvedValue(publishResult)

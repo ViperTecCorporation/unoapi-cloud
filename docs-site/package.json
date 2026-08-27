@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "sync:deploy": "node scripts/sync-deployment-examples.mjs",
-    "sync:openapi": "node scripts/sync-openapi.mjs",
+    "sync:openapi": "node scripts/sync-openapi.mjs && node ../scripts/openapi-to-postman.mjs",
     "sync": "npm run sync:openapi && npm run sync:deploy",
     "predev": "npm run sync",
     "dev": "vitepress dev --host 0.0.0.0",

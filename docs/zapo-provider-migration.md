@@ -223,18 +223,33 @@ O adapter segue a referência oficial de tipos da Zapo:
   formato pode ser renderizado pelo cliente como “atualize o WhatsApp”;
 - cabeçalho de mídia em lista retorna capability explícita, porque o
   `listMessage` documentado não possui esse campo.
-- cobrancas avulsas usam `payment_info`, pedidos usam
+- cobrancas avulsas legadas usam `payment_info`, pedidos usam
   `order_details/review_and_pay` e atualizacoes usam `review_order`;
-  `pix_static_code` aceita a forma curta `payment_request`, enquanto
+- conforme a documentação oficial da Meta para pagamentos Pix offsite no
+  Brasil, o PIX dinâmico simplificado usa `order_details/review_and_pay` sem o
+  objeto opcional `order`. Esse fluxo exibe total e ação para copiar o código;
+  por retrocompatibilidade, um `payment_request` antigo contendo
+  `pix_dynamic_code`, `payment_link`, `boleto` ou `offsite_card_pay` é
+  normalizado para esse fluxo oficial e exige `total_amount`;
+- `pix_static_code` continua aceitando a forma curta `payment_request`, enquanto
   `pix_dynamic_code`, `payment_link`, `boleto` e `offsite_card_pay` usam uma
   ordem `order_details/review_and_pay`, com o objeto `order` opcional;
 - pedidos detalhados aceitam cabeçalho de imagem; pedidos simplificados, sem o
   objeto `order`, rejeitam esse cabeçalho;
+- cabeçalhos de imagem são identificados por conteúdo antes da geração da
+  miniatura. `file-type` é uma dependência direta do runtime e o estágio
+  `production-dependencies` valida sua presença para não depender de hoisting
+  acidental das dependências de desenvolvimento;
 - a linha digitavel do boleto e normalizada para somente digitos antes do envio,
   e pedidos itemizados sem `tax` recebem imposto zero com o mesmo `offset` do
   total, pois ambos sao exigidos pelo checkout nativo;
 - atualizações usam `order_status/review_order` e preservam os objetos
   `payment` e `order`;
+- a referência usada por `order_status` é indexada a partir do botão normalizado
+  `review_and_pay`, e não somente do tipo informado no payload HTTP. Assim,
+  pedidos oficiais e envelopes legados convertidos podem ser atualizados com a
+  mesma `reference_id` depois que a mensagem original alcançar `sent` ou
+  `delivered`;
 - webhooks de pedidos preservam `interactive.type=order_details`, cabeçalho,
   corpo, rodapé e `review_and_pay.parameters` tanto em `messages` quanto no eco
   Chatwoot `smb_message_echoes`; a representação textual da chave PIX permanece
@@ -259,6 +274,24 @@ O adapter segue a referência oficial de tipos da Zapo:
 
 Referência:
 `https://zapo.to/en/reference/message-types#interactive-business`.
+
+### Prévia de links em texto
+
+O adapter detecta automaticamente a primeira URL ou domínio público válido no
+texto e envia `linkPreview: true` na mensagem tipada da Zapo, sem exigir uma flag
+da aplicação. URLs HTTP(S) são preservadas. Um domínio sem protocolo é validado
+por expressão, excluindo e-mail, IP, `localhost`, extensões comuns de arquivo e
+host malformado, e recebe `https://` antes do envio para que a Zapo possa buscar
+os metadados. A decisão não depende de `text.preview_url`; clientes antigos que
+ainda enviem esse campo não alteram o comportamento automático.
+
+Como o HTML do YouTube pode posicionar Open Graph depois do limite genérico de
+leitura da Zapo, links `youtube.com` (incluindo Shorts) e `youtu.be` usam um
+resolvedor `oEmbed` limitado por tempo e tamanho. A miniatura só é aceita por
+HTTPS nos hosts oficiais `i.ytimg.com` e `img.youtube.com`. Esse resolvedor usa o
+mesmo agente de `proxy.linkPreview`/família IP do cliente; transporte
+desconhecido não é contornado. Qualquer erro retorna ao coletor genérico sem
+bloquear o envio do texto.
 
 As ações de administrador de grupo são expostas por
 `PATCH /v15.0/{phone}/groups/{groupId}/participants`, com `action` igual a

@@ -11,6 +11,7 @@ import type { PublishOption } from '../amqp'
 import { acquireWebhookCircuitProbe, isWebhookCircuitOpen, isWebhookCircuitRecovering, openWebhookCircuit, closeWebhookCircuit, bumpWebhookCircuitFailure } from './redis'
 import { WebhookCircuitOpenError } from './webhook_circuit_breaker'
 import { payloadLogSummary } from './payload_log_summary'
+import { webhookErrorBodySummary } from './webhook_error_summary'
 
 export const isWebhookCircuitFailureStatus = (status: number) => (
   status === 408 || status === 425 || status === 429 || status >= 500
@@ -529,7 +530,9 @@ export class OutgoingCloudApi implements Outgoing {
     }
     logger.debug('Response: %s', response?.status)
     if (!response?.ok) {
-      const errText = await response?.text()
+      const errBody = await response?.text()
+      const contentType = response?.headers?.get?.('content-type') || ''
+      const errText = webhookErrorBodySummary(errBody, contentType)
       const err = new Error(`Webhook response ${response?.status} ${response?.statusText}: ${errText}`)
       if (cbEnabled && isWebhookCircuitFailureStatus(Number(response?.status || 0))) {
         const opened = await this.handleCircuitFailure(phone, cbId, cbKey, err, probeMs)

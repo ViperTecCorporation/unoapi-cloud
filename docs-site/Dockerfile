@@ -4,7 +4,9 @@ RUN apk add --no-cache git
 COPY docs-site/package*.json ./docs-site/
 RUN cd docs-site && npm ci
 COPY docs/openapi.json ./docs/openapi.json
+COPY docs/openapi.yaml ./docs/openapi.yaml
 COPY docs/examples ./docs/examples
+COPY scripts/openapi-to-postman.mjs ./scripts/openapi-to-postman.mjs
 COPY src/router.ts ./src/router.ts
 COPY logos/viperconnect_icon.svg ./docs-site/public/viperconnect_icon.svg
 COPY docs-site ./docs-site

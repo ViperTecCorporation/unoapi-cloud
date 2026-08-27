@@ -323,6 +323,7 @@ paths:
       description: |
         - Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.
         - Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.
+        - A primeira URL ou domínio público válido gera prévia automaticamente; não é necessário definir uma flag no payload. Domínios sem protocolo são normalizados para `https://` antes do envio.
         - Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.
         - Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.
         - PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.
@@ -336,13 +337,13 @@ paths:
               $ref: '#/components/schemas/MessageRequest'
             examples:
               text:
-                summary: Texto
+                summary: Texto com prévia automática de link
                 value:
                   messaging_product: whatsapp
                   to: '5511999999999'
                   type: text
                   text:
-                    body: 'Olá do Unoapi Cloud!'
+                    body: 'Conheça o ViperConnect: github.com/ViperTecCorporation/ViperConnect'
               expiringText:
                 summary: Texto temporário
                 value:
@@ -618,30 +619,30 @@ paths:
                               key: financeiro@minhaempresa.com.br
                               key_type: EMAIL
               paymentPixDynamicStandalone:
-                summary: Pagamento avulso - PIX dinâmico
+                summary: PIX dinâmico avulso - fluxo simplificado oficial
                 value:
                   messaging_product: whatsapp
                   to: '5511999999999'
                   type: interactive
                   interactive:
-                    type: button
+                    type: order_details
                     body:
                       text: Pague R$ 149,90 via PIX
                     action:
-                      buttons:
-                        - type: payment_request
-                          payment_request:
-                            type: digital-goods
-                            payment_type: br
-                            payment_settings:
-                              - type: pix_dynamic_code
-                                pix_dynamic_code:
-                                  code: '000201010212...'
-                                  merchant_name: Minha Empresa
-                                  key: '12345678000199'
-                                  key_type: CNPJ
-                            currency: BRL
-                            total_amount: { value: 14990, offset: 100 }
+                      name: review_and_pay
+                      parameters:
+                        reference_id: cobranca-14990
+                        type: digital-goods
+                        payment_type: br
+                        payment_settings:
+                          - type: pix_dynamic_code
+                            pix_dynamic_code:
+                              code: '000201010212...'
+                              merchant_name: Minha Empresa
+                              key: '12345678000199'
+                              key_type: CNPJ
+                        currency: BRL
+                        total_amount: { value: 14990, offset: 100 }
               orderPixDynamic:
                 summary: Pedido com imagem e PIX dinâmico
                 value:
@@ -702,6 +703,51 @@ paths:
                               uri: 'https://pagamentos.example.com/pedido-124'
                         currency: BRL
                         total_amount: { value: 1500, offset: 100 }
+              orderBoletoStandalone:
+                summary: Boleto avulso - fluxo simplificado oficial
+                value:
+                  messaging_product: whatsapp
+                  to: '5511999999999'
+                  type: interactive
+                  interactive:
+                    type: order_details
+                    body:
+                      text: Pague o boleto de R$ 88,48
+                    action:
+                      name: review_and_pay
+                      parameters:
+                        reference_id: boleto-8848
+                        type: digital-goods
+                        payment_type: br
+                        payment_settings:
+                          - type: boleto
+                            boleto:
+                              digitable_line: '03399026944140000002628346101018898510000008848'
+                        currency: BRL
+                        total_amount: { value: 8848, offset: 100 }
+              orderOneClickStandalone:
+                summary: Cartão em um clique - fluxo simplificado oficial
+                value:
+                  messaging_product: whatsapp
+                  to: '5511999999999'
+                  type: interactive
+                  interactive:
+                    type: order_details
+                    body:
+                      text: Confirme o pagamento de R$ 149,90
+                    action:
+                      name: review_and_pay
+                      parameters:
+                        reference_id: cartao-14990
+                        type: digital-goods
+                        payment_type: br
+                        payment_settings:
+                          - type: offsite_card_pay
+                            offsite_card_pay:
+                              last_four_digits: '5235'
+                              credential_id: credencial-123
+                        currency: BRL
+                        total_amount: { value: 14990, offset: 100 }
               subscriptionBoletoPix:
                 summary: Pedido real com boleto, PIX dinâmico e imagem
                 value:
@@ -744,7 +790,7 @@ paths:
                               quantity: 1
                           subtotal: { value: 6000, offset: 100 }
               orderStatus:
-                summary: Confirmação do pagamento do pedido
+                summary: Confirmar pagamento e manter pedido em processamento
                 value:
                   messaging_product: whatsapp
                   to: '5511999999999'
@@ -760,8 +806,28 @@ paths:
                       parameters:
                         reference_id: boleto-1033239253
                         order:
+                          status: processing
+                          description: Pagamento confirmado. Pedido em preparação.
+                        payment:
+                          status: captured
+                          timestamp: 1785125734
+              orderCompleted:
+                summary: Concluir pedido já pago
+                value:
+                  messaging_product: whatsapp
+                  to: '5511999999999'
+                  type: interactive
+                  interactive:
+                    type: order_status
+                    body:
+                      text: Pedido concluído.
+                    action:
+                      name: review_order
+                      parameters:
+                        reference_id: boleto-1033239253
+                        order:
                           status: completed
-                          description: Pagamento confirmado. Assinatura de Câmera Comodato Mensal paga.
+                          description: Pagamento confirmado e pedido concluído.
                         payment:
                           status: captured
                           timestamp: 1785125734
@@ -3201,7 +3267,11 @@ components:
         subtotal: { $ref: '#/components/schemas/PaymentAmount' }
 
     MessagePaymentRequest:
-      description: Solicitação curta de pagamento PIX estático pelo fluxo Zapo `payment_info`.
+      description: >-
+        Solicitação curta de PIX estático pelo fluxo Zapo `payment_info`.
+        O envelope legado de PIX dinâmico permanece aceito, mas é convertido
+        internamente para `order_details/review_and_pay` e não deve ser usado
+        por novas integrações.
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
         - type: object
@@ -3244,6 +3314,11 @@ components:
                                       key: { type: string }
                                       key_type: { type: string, enum: [CPF, CNPJ, EMAIL, PHONE, EVP] }
                           - type: object
+                            deprecated: true
+                            description: >-
+                              Compatibilidade com o envelope antigo. A Uno
+                              converte este payload para o pedido simplificado
+                              `order_details/review_and_pay`.
                             required: [type, payment_request]
                             properties:
                               type: { const: payment_request }
@@ -3276,8 +3351,10 @@ components:
 
     MessageOrderDetails:
       description: >-
-        Pedido com PIX dinâmico, link, boleto ou cartão habilitado. `order` é
-        opcional; o cabeçalho de imagem só pode ser usado quando `order` estiver presente.
+        Pedido oficial com PIX dinâmico, link, boleto ou cartão habilitado.
+        `order` é opcional; o cabeçalho de imagem só pode ser usado quando
+        `order` estiver presente. Informe e persista uma `reference_id` própria
+        desde a criação quando precisar confirmar ou atualizar a cobrança.
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
         - type: object
@@ -3317,7 +3394,14 @@ components:
                       type: object
                       required: [reference_id, type, payment_type, payment_settings, currency, total_amount]
                       properties:
-                        reference_id: { type: string, minLength: 1 }
+                        reference_id:
+                          type: string
+                          minLength: 1
+                          maxLength: 60
+                          pattern: '^[A-Za-z0-9_.-]+$'
+                          description: >-
+                            Identificador único da cobrança, definido e
+                            persistido pela integração para atualizações futuras.
                         type: { type: string, enum: [physical-goods, digital-goods] }
                         payment_type: { const: br }
                         payment_settings:
@@ -3330,9 +3414,11 @@ components:
 
     MessageOrderStatus:
       description: >-
-        Atualização do estado do pagamento e, opcionalmente, do pedido. Use a
-        mesma `reference_id` de um `order_details` já processado para que a Uno
-        cite o pedido original e o aplicativo atualize seu estado.
+        Atualização enviada pela integração depois que o banco, gateway ou PSP
+        informa o estado do pagamento; o WhatsApp não confirma a liquidação
+        automaticamente. Use a mesma `reference_id` de um `order_details` já
+        processado para que a Uno cite o pedido original e o aplicativo atualize
+        seu estado. Aguarde o pedido original alcançar `sent` ou `delivered`.
       allOf:
         - $ref: '#/components/schemas/MessageCommon'
         - type: object
@@ -3362,7 +3448,12 @@ components:
                       type: object
                       required: [reference_id, payment]
                       properties:
-                        reference_id: { type: string, minLength: 1 }
+                        reference_id:
+                          type: string
+                          minLength: 1
+                          maxLength: 60
+                          pattern: '^[A-Za-z0-9_.-]+$'
+                          description: Mesma referência informada na criação da cobrança.
                         order:
                           type: object
                           properties:
@@ -3373,7 +3464,11 @@ components:
                           required: [status]
                           properties:
                             status: { type: string, enum: [pending, captured, failed] }
-                            timestamp: { type: integer }
+                            timestamp:
+                              type: integer
+                              format: int64
+                              minimum: 0
+                              description: Horário real da confirmação pelo PSP em Unix segundos.
 
     MessageStatusUpdate:
       type: object
