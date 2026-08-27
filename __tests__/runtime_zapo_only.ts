@@ -25,6 +25,7 @@ describe('Zapo-only runtime artifacts', () => {
     expect(pkg.exports).toBeUndefined()
     expect(pkg.types).toBeUndefined()
     expect(pkg.dependencies['@whiskeysockets/baileys']).toBeUndefined()
+    expect(pkg.dependencies['file-type']).toBe('21.3.4')
     expect(pkg.devDependencies['@whiskeysockets/baileys']).toContain('ViperTecCorporation/Baileys')
   })
 
@@ -37,6 +38,7 @@ describe('Zapo-only runtime artifacts', () => {
     expect(dockerfile).toContain('FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS builder')
     expect(dockerfile).toContain('AS production-dependencies')
     expect(dockerfile).toContain('yarn install --production --frozen-lockfile')
+    expect(dockerfile).toContain("await import('file-type')")
     expect(dockerfile).toContain('FROM runtime-base AS legacy-runtime')
     expect(dockerfile).toContain('FROM runtime-base AS runtime')
     expect(dockerfile).toContain('COPY --from=production-dependencies /app/node_modules ./node_modules')

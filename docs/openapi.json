@@ -995,42 +995,39 @@
                   }
                 },
                 "paymentPixDynamicStandalone": {
-                  "summary": "Pagamento avulso - PIX dinâmico",
+                  "summary": "PIX dinâmico avulso - fluxo simplificado oficial",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5511999999999",
                     "type": "interactive",
                     "interactive": {
-                      "type": "button",
+                      "type": "order_details",
                       "body": {
                         "text": "Pague R$ 149,90 via PIX"
                       },
                       "action": {
-                        "buttons": [
-                          {
-                            "type": "payment_request",
-                            "payment_request": {
-                              "type": "digital-goods",
-                              "payment_type": "br",
-                              "payment_settings": [
-                                {
-                                  "type": "pix_dynamic_code",
-                                  "pix_dynamic_code": {
-                                    "code": "000201010212...",
-                                    "merchant_name": "Minha Empresa",
-                                    "key": "12345678000199",
-                                    "key_type": "CNPJ"
-                                  }
-                                }
-                              ],
-                              "currency": "BRL",
-                              "total_amount": {
-                                "value": 14990,
-                                "offset": 100
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "cobranca-14990",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "pix_dynamic_code",
+                              "pix_dynamic_code": {
+                                "code": "000201010212...",
+                                "merchant_name": "Minha Empresa",
+                                "key": "12345678000199",
+                                "key_type": "CNPJ"
                               }
                             }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 14990,
+                            "offset": 100
                           }
-                        ]
+                        }
                       }
                     }
                   }
@@ -1137,6 +1134,77 @@
                     }
                   }
                 },
+                "orderBoletoStandalone": {
+                  "summary": "Boleto avulso - fluxo simplificado oficial",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "body": {
+                        "text": "Pague o boleto de R$ 88,48"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "boleto-8848",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "boleto",
+                              "boleto": {
+                                "digitable_line": "03399026944140000002628346101018898510000008848"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 8848,
+                            "offset": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderOneClickStandalone": {
+                  "summary": "Cartão em um clique - fluxo simplificado oficial",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_details",
+                      "body": {
+                        "text": "Confirme o pagamento de R$ 149,90"
+                      },
+                      "action": {
+                        "name": "review_and_pay",
+                        "parameters": {
+                          "reference_id": "cartao-14990",
+                          "type": "digital-goods",
+                          "payment_type": "br",
+                          "payment_settings": [
+                            {
+                              "type": "offsite_card_pay",
+                              "offsite_card_pay": {
+                                "last_four_digits": "5235",
+                                "credential_id": "credencial-123"
+                              }
+                            }
+                          ],
+                          "currency": "BRL",
+                          "total_amount": {
+                            "value": 14990,
+                            "offset": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
                 "subscriptionBoletoPix": {
                   "summary": "Pedido real com boleto, PIX dinâmico e imagem",
                   "value": {
@@ -1211,7 +1279,7 @@
                   }
                 },
                 "orderStatus": {
-                  "summary": "Confirmação do pagamento do pedido",
+                  "summary": "Confirmar pagamento e manter pedido em processamento",
                   "value": {
                     "messaging_product": "whatsapp",
                     "to": "5511999999999",
@@ -1229,8 +1297,36 @@
                         "parameters": {
                           "reference_id": "boleto-1033239253",
                           "order": {
+                            "status": "processing",
+                            "description": "Pagamento confirmado. Pedido em preparação."
+                          },
+                          "payment": {
+                            "status": "captured",
+                            "timestamp": 1785125734
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "orderCompleted": {
+                  "summary": "Concluir pedido já pago",
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "to": "5511999999999",
+                    "type": "interactive",
+                    "interactive": {
+                      "type": "order_status",
+                      "body": {
+                        "text": "Pedido concluído."
+                      },
+                      "action": {
+                        "name": "review_order",
+                        "parameters": {
+                          "reference_id": "boleto-1033239253",
+                          "order": {
                             "status": "completed",
-                            "description": "Pagamento confirmado. Assinatura de Câmera Comodato Mensal paga."
+                            "description": "Pagamento confirmado e pedido concluído."
                           },
                           "payment": {
                             "status": "captured",
@@ -6482,7 +6578,7 @@
         }
       },
       "MessagePaymentRequest": {
-        "description": "Solicitação curta de pagamento PIX estático pelo fluxo Zapo `payment_info`.",
+        "description": "Solicitação curta de PIX estático pelo fluxo Zapo `payment_info`. O envelope legado de PIX dinâmico permanece aceito, mas é convertido internamente para `order_details/review_and_pay` e não deve ser usado por novas integrações.",
         "allOf": [
           {
             "$ref": "#/components/schemas/MessageCommon"
@@ -6578,6 +6674,8 @@
                             },
                             {
                               "type": "object",
+                              "deprecated": true,
+                              "description": "Compatibilidade com o envelope antigo. A Uno converte este payload para o pedido simplificado `order_details/review_and_pay`.",
                               "required": [
                                 "type",
                                 "payment_request"
@@ -6678,7 +6776,7 @@
         ]
       },
       "MessageOrderDetails": {
-        "description": "Pedido com PIX dinâmico, link, boleto ou cartão habilitado. `order` é opcional; o cabeçalho de imagem só pode ser usado quando `order` estiver presente.",
+        "description": "Pedido oficial com PIX dinâmico, link, boleto ou cartão habilitado. `order` é opcional; o cabeçalho de imagem só pode ser usado quando `order` estiver presente. Informe e persista uma `reference_id` própria desde a criação quando precisar confirmar ou atualizar a cobrança.",
         "allOf": [
           {
             "$ref": "#/components/schemas/MessageCommon"
@@ -6771,7 +6869,10 @@
                         "properties": {
                           "reference_id": {
                             "type": "string",
-                            "minLength": 1
+                            "minLength": 1,
+                            "maxLength": 60,
+                            "pattern": "^[A-Za-z0-9_.-]+$",
+                            "description": "Identificador único da cobrança, definido e persistido pela integração para atualizações futuras."
                           },
                           "type": {
                             "type": "string",
@@ -6810,7 +6911,7 @@
         ]
       },
       "MessageOrderStatus": {
-        "description": "Atualização do estado do pagamento e, opcionalmente, do pedido. Use a mesma `reference_id` de um `order_details` já processado para que a Uno cite o pedido original e o aplicativo atualize seu estado.",
+        "description": "Atualização enviada pela integração depois que o banco, gateway ou PSP informa o estado do pagamento; o WhatsApp não confirma a liquidação automaticamente. Use a mesma `reference_id` de um `order_details` já processado para que a Uno cite o pedido original e o aplicativo atualize seu estado. Aguarde o pedido original alcançar `sent` ou `delivered`.",
         "allOf": [
           {
             "$ref": "#/components/schemas/MessageCommon"
@@ -6874,7 +6975,10 @@
                         "properties": {
                           "reference_id": {
                             "type": "string",
-                            "minLength": 1
+                            "minLength": 1,
+                            "maxLength": 60,
+                            "pattern": "^[A-Za-z0-9_.-]+$",
+                            "description": "Mesma referência informada na criação da cobrança."
                           },
                           "order": {
                             "type": "object",
@@ -6910,7 +7014,10 @@
                                 ]
                               },
                               "timestamp": {
-                                "type": "integer"
+                                "type": "integer",
+                                "format": "int64",
+                                "minimum": 0,
+                                "description": "Horário real da confirmação pelo PSP em Unix segundos."
                               }
                             }
                           }

@@ -29,6 +29,17 @@ const toJid = (value: string) => {
 
 const orderReferenceCacheId = (referenceId: string) => `zapo-order-reference:${referenceId}`
 
+const mappedOrderReferenceId = (content: WaSendMessageContent): string | undefined => {
+  const buttons = (content as any)?.interactiveMessage?.nativeFlowMessage?.buttons
+  if (!Array.isArray(buttons) || buttons.length !== 1 || buttons[0]?.name !== 'review_and_pay') return undefined
+  try {
+    const referenceId = `${JSON.parse(`${buttons[0]?.buttonParamsJson || '{}'}`)?.reference_id || ''}`.trim()
+    return referenceId || undefined
+  } catch {
+    return undefined
+  }
+}
+
 export class ZapoMessages {
   private readonly identity?: ZapoIdentity
   private readonly store?: WaStoreSession
@@ -357,10 +368,8 @@ export class ZapoMessages {
     await this.dataStore.setKey(result.id, key)
     await this.dataStore.setKey(unoId, key)
     await this.dataStore.setMessage(target, { key, message: content } as never)
-    if (type === 'interactive' && payload?.interactive?.type === 'order_details') {
-      const referenceId = `${payload?.interactive?.action?.parameters?.reference_id || ''}`.trim()
-      if (referenceId) await this.dataStore.setKey(orderReferenceCacheId(referenceId), key)
-    }
+    const orderReferenceId = mappedOrderReferenceId(content)
+    if (orderReferenceId) await this.dataStore.setKey(orderReferenceCacheId(orderReferenceId), key)
     const input = `${payload?.to || target || ''}`
     const isGroup = input.endsWith('@g.us')
     const isUsername = !isGroup && /[a-z_]/i.test(input.replace(/@(s\.whatsapp\.net|lid)$/i, ''))

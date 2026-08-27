@@ -223,18 +223,33 @@ O adapter segue a referência oficial de tipos da Zapo:
   formato pode ser renderizado pelo cliente como “atualize o WhatsApp”;
 - cabeçalho de mídia em lista retorna capability explícita, porque o
   `listMessage` documentado não possui esse campo.
-- cobrancas avulsas usam `payment_info`, pedidos usam
+- cobrancas avulsas legadas usam `payment_info`, pedidos usam
   `order_details/review_and_pay` e atualizacoes usam `review_order`;
-  `pix_static_code` aceita a forma curta `payment_request`, enquanto
+- conforme a documentação oficial da Meta para pagamentos Pix offsite no
+  Brasil, o PIX dinâmico simplificado usa `order_details/review_and_pay` sem o
+  objeto opcional `order`. Esse fluxo exibe total e ação para copiar o código;
+  por retrocompatibilidade, um `payment_request` antigo contendo
+  `pix_dynamic_code`, `payment_link`, `boleto` ou `offsite_card_pay` é
+  normalizado para esse fluxo oficial e exige `total_amount`;
+- `pix_static_code` continua aceitando a forma curta `payment_request`, enquanto
   `pix_dynamic_code`, `payment_link`, `boleto` e `offsite_card_pay` usam uma
   ordem `order_details/review_and_pay`, com o objeto `order` opcional;
 - pedidos detalhados aceitam cabeçalho de imagem; pedidos simplificados, sem o
   objeto `order`, rejeitam esse cabeçalho;
+- cabeçalhos de imagem são identificados por conteúdo antes da geração da
+  miniatura. `file-type` é uma dependência direta do runtime e o estágio
+  `production-dependencies` valida sua presença para não depender de hoisting
+  acidental das dependências de desenvolvimento;
 - a linha digitavel do boleto e normalizada para somente digitos antes do envio,
   e pedidos itemizados sem `tax` recebem imposto zero com o mesmo `offset` do
   total, pois ambos sao exigidos pelo checkout nativo;
 - atualizações usam `order_status/review_order` e preservam os objetos
   `payment` e `order`;
+- a referência usada por `order_status` é indexada a partir do botão normalizado
+  `review_and_pay`, e não somente do tipo informado no payload HTTP. Assim,
+  pedidos oficiais e envelopes legados convertidos podem ser atualizados com a
+  mesma `reference_id` depois que a mensagem original alcançar `sent` ou
+  `delivered`;
 - webhooks de pedidos preservam `interactive.type=order_details`, cabeçalho,
   corpo, rodapé e `review_and_pay.parameters` tanto em `messages` quanto no eco
   Chatwoot `smb_message_echoes`; a representação textual da chave PIX permanece

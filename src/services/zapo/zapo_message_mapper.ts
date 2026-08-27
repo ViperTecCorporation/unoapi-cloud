@@ -97,6 +97,23 @@ const isPaymentButton = (button: any) =>
   || !!button?.payment_setting
   || !!button?.payment_settings
 
+const orderDetailsPaymentTypes = new Set([
+  'pix_dynamic_code',
+  'payment_link',
+  'boleto',
+  'offsite_card_pay',
+])
+
+const normalizePaymentOrder = (order: any, totalAmount: any) => order && !order.tax
+  ? {
+      ...order,
+      tax: {
+        value: 0,
+        offset: totalAmount?.offset || 100,
+      },
+    }
+  : order
+
 const nativeButton = (button: any) => {
   if (button?.type === 'order_status') {
     const parameters = button.parameters || {}
@@ -160,31 +177,45 @@ const nativeButton = (button: any) => {
         throw new SendError(400, 'offsite_card_pay_fields_required')
       }
     }
-    if (
-      !button.order_details
-      && paymentTypes.includes('pix_dynamic_code')
-      && !paymentRequest.total_amount
-    ) {
-      throw new SendError(400, 'pix_dynamic_code_total_amount_required')
+    const legacyOrderDetailsPaymentType = !button.order_details
+      ? paymentTypes.find((type: string) => orderDetailsPaymentTypes.has(type))
+      : undefined
+    if (legacyOrderDetailsPaymentType && !paymentRequest.total_amount) {
+      throw new SendError(400, `${legacyOrderDetailsPaymentType}_total_amount_required`)
     }
     if (button.order_details) {
       if (!paymentRequest.reference_id || !paymentRequest.currency || !paymentRequest.total_amount) {
         throw new SendError(400, 'order_details_payment_parameters_required')
       }
-      const order = paymentRequest.order && !paymentRequest.order.tax
-        ? {
-            ...paymentRequest.order,
-            tax: {
-              value: 0,
-              offset: paymentRequest.total_amount.offset || 100,
-            },
-          }
-        : paymentRequest.order
+      const order = normalizePaymentOrder(paymentRequest.order, paymentRequest.total_amount)
       return {
         name: 'review_and_pay',
         buttonParamsJson: JSON.stringify({
           ...paymentRequest,
           ...(order ? { order } : {}),
+        }),
+      }
+    }
+    // Meta documents dynamic PIX, payment links, boleto and one-click card as
+    // order_details/review_and_pay. Keep accepting the legacy Uno
+    // payment_request envelope, but advertise the official native flow.
+    if (legacyOrderDetailsPaymentType) {
+      const order = normalizePaymentOrder(paymentRequest.order, paymentRequest.total_amount)
+      return {
+        name: 'review_and_pay',
+        buttonParamsJson: JSON.stringify({
+          reference_id: paymentRequest.reference_id || uuid(),
+          type: paymentRequest.type === 'payment_request'
+            ? 'physical-goods'
+            : (paymentRequest.type || 'physical-goods'),
+          payment_type: paymentRequest.payment_type || 'br',
+          payment_settings: paymentSettings,
+          currency: paymentRequest.currency || 'BRL',
+          total_amount: paymentRequest.total_amount,
+          ...(order ? { order } : {}),
+          ...(paymentRequest.share_payment_status !== undefined
+            ? { share_payment_status: paymentRequest.share_payment_status }
+            : {}),
         }),
       }
     }
@@ -199,7 +230,7 @@ const nativeButton = (button: any) => {
     }
     if (paymentRequest.order) {
       paymentParams.order = paymentRequest.order
-    } else if (!paymentTypes.includes('pix_dynamic_code')) {
+    } else {
       paymentParams.order = {
           status: 'pending',
           subtotal: { value: 0, offset: 100 },

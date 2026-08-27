@@ -1,6 +1,12 @@
 import { Readable } from 'stream'
+import sharp from 'sharp'
 import type { WaMediaProcessor } from 'zapo-js/media'
-import { guardDocumentImageThumbnail, isImagePreviewInput } from '../../../src/services/zapo/zapo_document_thumbnail'
+import {
+  guardDocumentImageThumbnail,
+  isImagePreviewInput,
+  isKnownImageBytes,
+} from '../../../src/services/zapo/zapo_document_thumbnail'
+import { zapoMediaProcessor } from '../../../src/services/zapo/zapo_media_processor'
 
 describe('Zapo document thumbnail compatibility', () => {
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n')
@@ -49,6 +55,45 @@ describe('Zapo document thumbnail compatibility', () => {
     })
     expect(detectMimetype).toHaveBeenCalledWith(jpeg, undefined)
     expect(generateImageThumbnail).toHaveBeenCalledWith(jpeg, 32, undefined)
+  })
+
+  test('falls back to image signatures when runtime MIME detection is unavailable', async () => {
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xdb, 0x00])
+    const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP')])
+    const processor: WaMediaProcessor = { detectMimetype: jest.fn().mockResolvedValue(null) }
+
+    expect(isKnownImageBytes(jpeg)).toBe(true)
+    expect(isKnownImageBytes(webp)).toBe(true)
+    expect(isKnownImageBytes(pdf)).toBe(false)
+    await expect(isImagePreviewInput(processor, jpeg)).resolves.toBe(true)
+    await expect(isImagePreviewInput(processor, webp)).resolves.toBe(true)
+    await expect(isImagePreviewInput(processor, pdf)).resolves.toBe(false)
+  })
+
+  test('uses the safe image signature fallback when MIME detection throws', async () => {
+    const processor: WaMediaProcessor = { detectMimetype: jest.fn().mockRejectedValue(new Error('missing file-type')) }
+
+    await expect(isImagePreviewInput(processor, Uint8Array.from([0xff, 0xd8, 0xff]))).resolves.toBe(true)
+    await expect(isImagePreviewInput(processor, pdf)).resolves.toBe(false)
+  })
+
+  test('generates a thumbnail with the packaged runtime processor even when MIME detection is unavailable', async () => {
+    const jpeg = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 3,
+        background: { r: 28, g: 117, b: 188 },
+      },
+    }).jpeg().toBuffer()
+
+    await expect(zapoMediaProcessor.generateImageThumbnail!(jpeg, 4)).resolves.toEqual(
+      expect.objectContaining({
+        jpegThumbnail: expect.any(Uint8Array),
+        width: 4,
+        height: 4,
+      }),
+    )
   })
 
   test('preserves video, audio and sticker processors byte-for-byte', () => {

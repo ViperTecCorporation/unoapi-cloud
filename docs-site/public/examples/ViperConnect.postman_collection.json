@@ -1,0 +1,3260 @@
+{
+  "info": {
+    "_postman_id": "6cf36d57-a033-4bd7-bd2b-369dd0ea4f16",
+    "name": "ViperConnect API",
+    "description": "Coleção gerada automaticamente a partir de docs/openapi.yaml.\n\nEdite as variáveis da coleção antes do primeiro uso. Não grave tokens reais no arquivo versionado.\n\nNos pagamentos, reutilize payment_reference_id para confirmar e concluir a mesma cobrança.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.collectionVariables.set('unix_timestamp', Math.floor(Date.now() / 1000));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "If-None-Match",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "X-File-Name",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accountId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "base_url",
+      "value": "http://localhost:9876",
+      "type": "string"
+    },
+    {
+      "key": "callId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "command",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cursor",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "endDate",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "extensionGroupId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "extensionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "file",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "groupId",
+      "value": "120363000000000000@g.us",
+      "type": "string"
+    },
+    {
+      "key": "hub.challenge",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hub.mode",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hub.verify_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "limit",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lockId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "media_id",
+      "value": "MEDIA_ID",
+      "type": "string"
+    },
+    {
+      "key": "page",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pageSize",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_reference_id",
+      "value": "payment-test-001",
+      "type": "string"
+    },
+    {
+      "key": "phone",
+      "value": "5511999999999",
+      "type": "string"
+    },
+    {
+      "key": "picture_id",
+      "value": "5511888888888",
+      "type": "string"
+    },
+    {
+      "key": "queue",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "recordId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "registrationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "resource",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "search",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "session",
+      "value": "5511999999999",
+      "type": "string"
+    },
+    {
+      "key": "startDate",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "to",
+      "value": "5511888888888",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "type",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "version",
+      "value": "v15.0",
+      "type": "string"
+    },
+    {
+      "key": "webhook_id",
+      "value": "default",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Sistema",
+      "item": [
+        {
+          "name": "Healthcheck",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ping",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ping"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar versão instalada e última tag publicada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/version",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "version"
+              ],
+              "query": []
+            },
+            "description": "A consulta ao GitHub é feita no servidor e armazenada em cache por 15 minutos."
+          },
+          "response": []
+        },
+        {
+          "name": "Status e configuração da sessão",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Listar conexões/telefones gerenciados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/phone_numbers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "phone_numbers"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Listar templates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/message_templates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "message_templates"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "(Compat) Listar templates",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/templates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "templates"
+              ],
+              "query": []
+            },
+            "description": "Compatível com o Cloud API; neste projeto retorna a lista local/forward."
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar Marketing Messages (compatível)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/marketing_messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "marketing_messages"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"string\",\n  \"image\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Checagem pré-envio (Status/Broadcast)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/preflight/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "preflight",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Verifica sessão online e se destinatários existem no WhatsApp.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"statusJidList\": [\n    \"5511999999999\",\n    \"5500000000002\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Encerrar sessão (logout) e remover registro",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/deregister",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "deregister"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Administração",
+      "item": [
+        {
+          "name": "Listar filas RabbitMQ da UnoAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/rabbitmq/queues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "rabbitmq",
+                "queues"
+              ],
+              "query": []
+            },
+            "description": "Requer o token administrativo global (`UNOAPI_AUTH_TOKEN`). As credenciais são\nobtidas internamente de `AMQP_URL`; nenhuma credencial do RabbitMQ é recebida\nou devolvida por esta rota.\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Inspecionar uma amostra de mensagens da fila",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/rabbitmq/queues/{{queue}}/messages?limit={{limit}}&session={{session}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "rabbitmq",
+                "queues",
+                "{{queue}}",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "session",
+                  "value": "{{session}}",
+                  "description": "Filtra a amostra por telefone da sessão no routing key ou payload.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lê até 50 mensagens e as recoloca na fila. A inspeção pode alterar a ordem\nrelativa das mensagens e nunca remove itens.\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Remover uma ou várias mensagens prontas",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/rabbitmq/queues/{{queue}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "rabbitmq",
+                "queues",
+                "{{queue}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "Remove as próximas 1 a 50 mensagens prontas ou todas quando `count` for `all`.\nMensagens já entregues a consumidores (unacked) não são removidas. Exige confirmação\nliteral do nome da fila.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 1,\n  \"confirm\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar chaves Redis da UnoAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/redis/keys?search={{search}}&limit={{limit}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "redis",
+                "keys"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "{{search}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Usa SCAN e limita o resultado a 1000 chaves. Somente os namespaces `unoapi-`\ne `unoapi:` são visíveis. Requer o token administrativo global.\n"
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar tipo, TTL e conteúdo de uma chave",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/redis/keys/{{key}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "redis",
+                "keys",
+                "{{key}}"
+              ],
+              "query": []
+            },
+            "description": "Limita coleções grandes e mascara campos sensíveis."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar ou substituir uma chave",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/redis/keys/{{key}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "redis",
+                "keys",
+                "{{key}}"
+              ],
+              "query": []
+            },
+            "description": "Aceita string, hash, list, set e zset. Exige confirmação literal da chave.\nConteúdo mascarado não pode ser salvo, evitando substituir segredos por `[REDACTED]`.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"string\",\n  \"value\": \"string\",\n  \"confirm\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Excluir uma chave",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/redis/keys/{{key}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "redis",
+                "keys",
+                "{{key}}"
+              ],
+              "query": []
+            },
+            "description": "Exige confirmação literal do nome da chave.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Executar consulta Redis segura",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/redis/query",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "redis",
+                "query"
+              ],
+              "query": []
+            },
+            "description": "Aceita apenas SCAN, TYPE, TTL, GET, HGETALL, LRANGE, SMEMBERS e ZRANGE.\nComandos administrativos, escrita, scripts e chaves fora do namespace UnoAPI são bloqueados.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command\": \"SCAN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sessões",
+      "item": [
+        {
+          "name": "Listar sessões/configurações visíveis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "UI de sessão (QR/Config)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{phone}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sessions",
+                "{{phone}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Solicitar código de pareamento",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/request_code",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "request_code"
+              ],
+              "query": []
+            },
+            "description": "Solicita um pairing code ao motor da sessão. No motor Zapo, a resposta HTTP contém o código puro e o Socket.IO também publica uma imagem com o código legível pelo contrato compatível `broadcast`, usando `type: qrcode`. A aplicação pode continuar exibindo `content` em uma tag `img`, sem criar um evento específico para pairing code."
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar/atualizar configuração da sessão",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "register"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"zapo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Mensagens",
+      "item": [
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Texto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Olá do Unoapi Cloud!\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Texto temporário",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"text\",\n  \"ttl\": 86400,\n  \"text\": {\n    \"body\": \"Esta mensagem expira em 24 horas.\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Texto em grupo com @all/@todos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Aviso @todos\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Texto em grupo com @telefone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Oi @5511999999999 e @5511888888888\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Editar mensagem enviada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"message_edit\",\n  \"context\": {\n    \"message_id\": \"uno-message-id-original\"\n  },\n  \"text\": {\n    \"body\": \"Texto editado\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Imagem por link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"https://exemplo.com/imagem.jpg\",\n    \"caption\": \"Legenda opcional\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Imagem por Base64 (extensão ViperConnect)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"base64\": \"/9j/4AAQSkZJRgABAQ...\",\n    \"mime_type\": \"image/jpeg\",\n    \"filename\": \"foto.jpg\",\n    \"caption\": \"Legenda opcional\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Documento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"document\",\n  \"document\": {\n    \"link\": \"https://exemplo.com/arquivo.pdf\",\n    \"filename\": \"contrato.pdf\",\n    \"caption\": \"Contrato para conferência\",\n    \"mime_type\": \"application/pdf\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Mensagem de voz",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"audio\",\n  \"audio\": {\n    \"link\": \"https://exemplo.com/audio.ogg\",\n    \"mime_type\": \"audio/ogg\",\n    \"ptt\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Vídeo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"video\",\n  \"video\": {\n    \"link\": \"https://exemplo.com/video.mp4\",\n    \"caption\": \"Vídeo curto\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Status/Story com imagem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg\",\n    \"caption\": \"Novidade\"\n  },\n  \"statusJidList\": [\n    \"5511999999999\",\n    \"5500000000002\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Contatos (vCard simplificado)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"contacts\",\n  \"contacts\": [\n    {\n      \"name\": {\n        \"formatted_name\": \"Contato Exemplo\"\n      },\n      \"phones\": [\n        {\n          \"wa_id\": \"5500000000002\",\n          \"phone\": \"+55 00 00000-0002\"\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Reação",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"reaction\",\n  \"reaction\": {\n    \"message_id\": \"MESSAGE_ID\",\n    \"emoji\": \"👍\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Enquete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"poll\",\n  \"poll\": {\n    \"name\": \"Qual plano você prefere?\",\n    \"options\": [\n      \"Básico\",\n      \"Profissional\"\n    ],\n    \"selectable_count\": 1,\n    \"allow_add_option\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Votar em uma enquete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"poll_vote\",\n  \"poll_vote\": {\n    \"message_id\": \"MESSAGE_ID_DA_ENQUETE\",\n    \"selected_options\": [\n      \"Profissional\"\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Figurinha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"sticker\",\n  \"sticker\": {\n    \"link\": \"https://example.com/sticker.png\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Interativo - Botões",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"button\",\n    \"body\": {\n      \"text\": \"Escolha uma opção\"\n    },\n    \"action\": {\n      \"buttons\": [\n        {\n          \"type\": \"reply\",\n          \"reply\": {\n            \"id\": \"btn_1\",\n            \"title\": \"Opção 1\"\n          }\n        },\n        {\n          \"type\": \"reply\",\n          \"reply\": {\n            \"id\": \"btn_2\",\n            \"title\": \"Opção 2\"\n          }\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Interativo - Botões CTA (URL, ligação e copiar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"button\",\n    \"body\": {\n      \"text\": \"Acesse ou fale com a equipe\"\n    },\n    \"action\": {\n      \"buttons\": [\n        {\n          \"type\": \"cta_url\",\n          \"url\": {\n            \"title\": \"Abrir site\",\n            \"link\": \"https://facebook.com.br\"\n          }\n        },\n        {\n          \"type\": \"cta_call\",\n          \"call\": {\n            \"title\": \"Ligar\",\n            \"phone_number\": \"+5511999999999\"\n          }\n        },\n        {\n          \"type\": \"cta_copy\",\n          \"copy_code\": {\n            \"title\": \"ChavePix\",\n            \"code\": \"0000000055442\"\n          }\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Interativo - Lista",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"list\",\n    \"header\": {\n      \"type\": \"text\",\n      \"text\": \"Menu\"\n    },\n    \"body\": {\n      \"text\": \"Escolha uma opção\"\n    },\n    \"footer\": {\n      \"text\": \"Unoapi\"\n    },\n    \"action\": {\n      \"button\": \"Ver opções\",\n      \"sections\": [\n        {\n          \"title\": \"Planos\",\n          \"rows\": [\n            {\n              \"id\": \"plan_basic\",\n              \"title\": \"Básico\",\n              \"description\": \"R$ 10\"\n            },\n            {\n              \"id\": \"plan_pro\",\n              \"title\": \"Pro\",\n              \"description\": \"R$ 20\"\n            }\n          ]\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Interativo - Carrossel com imagens e botões",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"carousel\",\n    \"body\": {\n      \"text\": \"Conheça nossos planos\"\n    },\n    \"action\": {\n      \"carousel\": {\n        \"cards\": [\n          {\n            \"header\": {\n              \"type\": \"image\",\n              \"image\": {\n                \"link\": \"https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg\"\n              }\n            },\n            \"body\": {\n              \"text\": \"Plano Básico\"\n            },\n            \"footer\": {\n              \"text\": \"Para começar\"\n            },\n            \"action\": {\n              \"buttons\": [\n                {\n                  \"type\": \"reply\",\n                  \"reply\": {\n                    \"id\": \"plan_basic\",\n                    \"title\": \"Escolher\"\n                  }\n                }\n              ]\n            }\n          },\n          {\n            \"header\": {\n              \"type\": \"image\",\n              \"image\": {\n                \"link\": \"https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg\"\n              }\n            },\n            \"body\": {\n              \"text\": \"Plano Profissional\"\n            },\n            \"footer\": {\n              \"text\": \"Mais recursos\"\n            },\n            \"action\": {\n              \"buttons\": [\n                {\n                  \"type\": \"cta_url\",\n                  \"url\": {\n                    \"title\": \"Ver detalhes\",\n                    \"link\": \"https://vipertec.com.br\"\n                  }\n                }\n              ]\n            }\n          }\n        ]\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Pagamento - PIX estático",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"button\",\n    \"action\": {\n      \"buttons\": [\n        {\n          \"type\": \"payment_request\",\n          \"payment_setting\": {\n            \"type\": \"pix_static_code\",\n            \"pix_static_code\": {\n              \"merchant_name\": \"Minha Empresa\",\n              \"key\": \"financeiro@minhaempresa.com.br\",\n              \"key_type\": \"EMAIL\"\n            }\n          }\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — PIX dinâmico avulso - fluxo simplificado oficial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"body\": {\n      \"text\": \"Pague R$ 149,90 via PIX\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"digital-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"pix_dynamic_code\",\n            \"pix_dynamic_code\": {\n              \"code\": \"000201010212...\",\n              \"merchant_name\": \"Minha Empresa\",\n              \"key\": \"12345678000199\",\n              \"key_type\": \"CNPJ\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 14990,\n          \"offset\": 100\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Pedido com imagem e PIX dinâmico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"header\": {\n      \"type\": \"image\",\n      \"image\": {\n        \"link\": \"https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg\"\n      }\n    },\n    \"body\": {\n      \"text\": \"Revise e pague seu pedido\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"physical-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"pix_dynamic_code\",\n            \"pix_dynamic_code\": {\n              \"code\": \"000201010212...\",\n              \"merchant_name\": \"Minha Empresa\",\n              \"key\": \"12345678000199\",\n              \"key_type\": \"CNPJ\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 50000,\n          \"offset\": 100\n        },\n        \"order\": {\n          \"status\": \"pending\",\n          \"tax\": {\n            \"value\": 0,\n            \"offset\": 100,\n            \"description\": \"Sem impostos adicionais\"\n          },\n          \"items\": [\n            {\n              \"retailer_id\": \"produto-1\",\n              \"name\": \"Produto\",\n              \"amount\": {\n                \"value\": 50000,\n                \"offset\": 100\n              },\n              \"quantity\": 1\n            }\n          ],\n          \"subtotal\": {\n            \"value\": 50000,\n            \"offset\": 100\n          }\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Pedido simplificado com link de pagamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"body\": {\n      \"text\": \"Finalize seu pagamento\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"digital-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"payment_link\",\n            \"payment_link\": {\n              \"uri\": \"https://pagamentos.example.com/pedido-124\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 1500,\n          \"offset\": 100\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Boleto avulso - fluxo simplificado oficial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"body\": {\n      \"text\": \"Pague o boleto de R$ 88,48\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"digital-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"boleto\",\n            \"boleto\": {\n              \"digitable_line\": \"03399026944140000002628346101018898510000008848\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 8848,\n          \"offset\": 100\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Cartão em um clique - fluxo simplificado oficial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"body\": {\n      \"text\": \"Confirme o pagamento de R$ 149,90\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"digital-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"offsite_card_pay\",\n            \"offsite_card_pay\": {\n              \"last_four_digits\": \"5235\",\n              \"credential_id\": \"credencial-123\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 14990,\n          \"offset\": 100\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Pedido real com boleto, PIX dinâmico e imagem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_details\",\n    \"header\": {\n      \"type\": \"image\",\n      \"image\": {\n        \"link\": \"https://vipertec.com.br/_content/ViperERP/img/FullCam08.jpg\"\n      }\n    },\n    \"body\": {\n      \"text\": \"Boleto nº 1033239253 referente à assinatura de Câmera Comodato Mensal — 1 unidade. Vencimento: 10/07/2026. Valor: R$ 60,00.\"\n    },\n    \"action\": {\n      \"name\": \"review_and_pay\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"type\": \"digital-goods\",\n        \"payment_type\": \"br\",\n        \"payment_settings\": [\n          {\n            \"type\": \"boleto\",\n            \"boleto\": {\n              \"digitable_line\": \"36490000920005525230800000010918900000000006000\"\n            }\n          },\n          {\n            \"type\": \"pix_dynamic_code\",\n            \"pix_dynamic_code\": {\n              \"code\": \"00020101021226940014BR.GOV.BCB.PIX2572qrcodespix.sejaefi.com.br/bolix/v2/cobv/663b44b6c993415e9e09f92c106d48865204000053039865802BR5905EFISA6008SAOPAULO62070503***63047595\",\n              \"merchant_name\": \"EFISA\",\n              \"key\": \"663b44b6c993415e9e09f92c106d4886\",\n              \"key_type\": \"EVP\"\n            }\n          }\n        ],\n        \"currency\": \"BRL\",\n        \"total_amount\": {\n          \"value\": 6000,\n          \"offset\": 100\n        },\n        \"order\": {\n          \"status\": \"pending\",\n          \"tax\": {\n            \"value\": 0,\n            \"offset\": 100,\n            \"description\": \"Sem impostos adicionais\"\n          },\n          \"items\": [\n            {\n              \"retailer_id\": \"camera-comodato-mensal\",\n              \"name\": \"Câmera Comodato Mensal\",\n              \"amount\": {\n                \"value\": 6000,\n                \"offset\": 100\n              },\n              \"quantity\": 1\n            }\n          ],\n          \"subtotal\": {\n            \"value\": 6000,\n            \"offset\": 100\n          }\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Confirmar pagamento e manter pedido em processamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_status\",\n    \"body\": {\n      \"text\": \"Pagamento confirmado para o boleto nº 1033239253.\"\n    },\n    \"footer\": {\n      \"text\": \"Assinatura confirmada\"\n    },\n    \"action\": {\n      \"name\": \"review_order\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"order\": {\n          \"status\": \"processing\",\n          \"description\": \"Pagamento confirmado. Pedido em preparação.\"\n        },\n        \"payment\": {\n          \"status\": \"captured\",\n          \"timestamp\": {{unix_timestamp}}\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Concluir pedido já pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{to}}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"order_status\",\n    \"body\": {\n      \"text\": \"Pedido concluído.\"\n    },\n    \"action\": {\n      \"name\": \"review_order\",\n      \"parameters\": {\n        \"reference_id\": \"{{payment_reference_id}}\",\n        \"order\": {\n          \"status\": \"completed\",\n          \"description\": \"Pagamento confirmado e pedido concluído.\"\n        },\n        \"payment\": {\n          \"status\": \"captured\",\n          \"timestamp\": {{unix_timestamp}}\n        }\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Marcar mensagem como lida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"read\",\n  \"message_id\": \"MESSAGE_ID\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar mensagem (WhatsApp Cloud shape) — Apagar mensagem enviada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "messages"
+              ],
+              "query": []
+            },
+            "description": "- Em caso de falha de envio, a API responde 200 com corpo OK e o erro é enviado ao webhook de saída.\n- Para mensagens temporárias, informe `ttl` na raiz com o tempo de expiração em segundos.\n- Para publicar Status/Stories, use o modelo específico com `to: status@broadcast`.\n- Mídias preservam o formato Cloud API por `link`. Como extensão ViperConnect, também podem usar `base64` puro ou Data URI; a UnoAPI persiste os bytes antes de enfileirar e nunca encaminha o Base64 ao RabbitMQ ou aos webhooks.\n- PDFs Oracle Reports legados são detectados e normalizados automaticamente antes do upload ao WhatsApp, tanto por `link` quanto por `base64`. O original permanece intacto; PDFs comuns, criptografados, assinados ou com formulário não são convertidos.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"deleted\",\n  \"message_id\": \"MESSAGE_ID\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Iniciar timer de mensagem automática",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/timer/{{phone}}/{{to}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timer",
+                "{{phone}}",
+                "{{to}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Ainda precisamos da sua resposta\",\n  \"timeout\": 300000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar timer ativo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/timer/{{phone}}/{{to}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timer",
+                "{{phone}}",
+                "{{to}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Grupos",
+      "item": [
+        {
+          "name": "Listar grupos em cache da sessão",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups?cursor={{cursor}}&limit={{limit}}&search={{search}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups"
+              ],
+              "query": [
+                {
+                  "key": "cursor",
+                  "value": "{{cursor}}",
+                  "description": "Deslocamento devolvido em paging.cursors.after pela página anterior",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "{{search}}",
+                  "description": "Pesquisa por nome ou JID do grupo",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar detalhes e configurações atuais do grupo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups/{{groupId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups",
+                "{{groupId}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Alterar configurações do grupo",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups/{{groupId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups",
+                "{{groupId}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sair do grupo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups/{{groupId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups",
+                "{{groupId}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Listar participantes de um grupo em cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups/{{groupId}}/participants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups",
+                "{{groupId}}",
+                "participants"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Promover ou rebaixar administradores do grupo",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/groups/{{groupId}}/participants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "groups",
+                "{{groupId}}",
+                "participants"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"promote\",\n  \"participants\": [\n    \"string\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Mídia",
+      "item": [
+        {
+          "name": "Obter metadados e URL temporária de mídia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{phone}}/{{media_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{phone}}",
+                "{{media_id}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Download do arquivo de mídia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/download/{{phone}}/{{file}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "download",
+                "{{phone}}",
+                "{{file}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Baixar foto de perfil pelo ID estável",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "If-None-Match",
+                "value": "{{If-None-Match}}",
+                "description": "",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{version}}/{{session}}/profile-pictures/{{picture_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{version}}",
+                "{{session}}",
+                "profile-pictures",
+                "{{picture_id}}"
+              ],
+              "query": []
+            },
+            "description": "Transmite a imagem armazenada internamente sem redirecionar para MinIO, S3 ou R2."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Contatos",
+      "item": [
+        {
+          "name": "Listar contatos armazenados da sessão Zapo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/contacts?cursor={{cursor}}&limit={{limit}}&search={{search}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "contacts"
+              ],
+              "query": [
+                {
+                  "key": "cursor",
+                  "value": "{{cursor}}",
+                  "description": "Cursor Redis devolvido em next_cursor pela página anterior",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "{{search}}",
+                  "description": "Pesquisa por nome, telefone, username ou LID",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar contatos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/contacts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "contacts"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blocking\": \"no_wait\",\n  \"force_check\": true,\n  \"contacts\": [\n    \"5500000000002\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar ou atualizar contato na agenda do WhatsApp — Resolver o LID e adicionar o contato",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/contacts/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "contacts",
+                "import"
+              ],
+              "query": []
+            },
+            "description": "Salva o contato na agenda sincronizada da sessão por meio da mutação\noficial de app-state `Contact` da Zapo. A operação é idempotente para\no mesmo número.\n\nQuando `user_id` é informado, ele deve ser um LID e tem prioridade para\nlocalizar no store da Zapo o PN exato usado no envelope do WhatsApp.\nSem `user_id`, a própria Zapo resolve o número para LID antes de salvar.\nA normalização brasileira de apresentação não é aplicada ao PN enviado\nao provider.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"5500000000002\",\n  \"full_name\": \"Contato Exemplo\",\n  \"first_name\": \"Contato\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar ou atualizar contato na agenda do WhatsApp — Usar a identidade LID já conhecida pela aplicação",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/contacts/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "contacts",
+                "import"
+              ],
+              "query": []
+            },
+            "description": "Salva o contato na agenda sincronizada da sessão por meio da mutação\noficial de app-state `Contact` da Zapo. A operação é idempotente para\no mesmo número.\n\nQuando `user_id` é informado, ele deve ser um LID e tem prioridade para\nlocalizar no store da Zapo o PN exato usado no envelope do WhatsApp.\nSem `user_id`, a própria Zapo resolve o número para LID antes de salvar.\nA normalização brasileira de apresentação não é aplicada ao PN enviado\nao provider.\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"5500000000002\",\n  \"user_id\": \"000000000000002@lid\",\n  \"full_name\": \"Contato Exemplo\",\n  \"first_name\": \"Contato\",\n  \"username\": \"contato_exemplo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Adicionar número ao blacklist de um webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{phone}}/blacklist/{{webhook_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{phone}}",
+                "blacklist",
+                "{{webhook_id}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"{{to}}\",\n  \"ttl\": 86400000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar assinatura do webhook",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/whatsapp/{{phone}}?hub.mode={{hub.mode}}&hub.verify_token={{hub.verify_token}}&hub.challenge={{hub.challenge}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "webhooks",
+                "whatsapp",
+                "{{phone}}"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "{{hub.mode}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "{{hub.verify_token}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "{{hub.challenge}}",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Receber eventos do WhatsApp (Forward mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/webhooks/whatsapp/{{phone}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "webhooks",
+                "whatsapp",
+                "{{phone}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"5511999999999\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"messages\": [\n              {\n                \"from\": \"5566999999999\",\n                \"id\": \"MESSAGE_ID\",\n                \"timestamp\": {{unix_timestamp}},\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"list_reply\",\n                  \"list_reply\": {\n                    \"id\": \"plan_basic\",\n                    \"title\": \"Básico\",\n                    \"description\": \"R$ 10\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook de teste (Fake)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/webhooks/fake/{{phone}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "webhooks",
+                "fake",
+                "{{phone}}"
+              ],
+              "query": []
+            },
+            "description": "Recebe qualquer payload e responde `{ \"success\": true }`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Telefonia",
+      "item": [
+        {
+          "name": "Estado agregado da telefonia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/bootstrap",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "bootstrap"
+              ],
+              "query": []
+            },
+            "description": "Retorna linhas e sessões Zapo já reconciliadas com empresa, conta e ramal automático, além da concorrência por linha, chamadas ativas, ramais e configuração administrativa, sem expor a URL ou o token interno do serviço VoIP."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar chamadas ativas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/calls",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "calls"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Iniciar chamada pela sessão Zapo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/calls",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "calls"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session\": \"5566999554300\",\n  \"peerJid\": \"5566996269251@s.whatsapp.net\",\n  \"extensionId\": \"1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Controlar uma chamada Zapo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/calls/{{callId}}/{{command}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "calls",
+                "{{callId}}",
+                "{{command}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reproduzir ou baixar gravação de chamada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/recordings/{{recordId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "recordings",
+                "{{recordId}}"
+              ],
+              "query": []
+            },
+            "description": "A Uno busca o arquivo no serviço VoIP sem expor o token interno ao navegador."
+          },
+          "response": []
+        },
+        {
+          "name": "Transferir chamada para outro ramal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/calls/{{callId}}/transfer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "calls",
+                "{{callId}}",
+                "transfer"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetExtensionId\": \"1002\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar recursos administrativos de telefonia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/{{resource}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "{{resource}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Criar ou atualizar recurso avançado de telefonia",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/{{resource}}/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "{{resource}}",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"label\": \"Matriz\",\n  \"timeZone\": \"America/Cuiaba\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Excluir recurso avançado de telefonia",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/{{resource}}/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "{{resource}}",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Listar linhas descobertas pela bridge Zapo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/zapo-lines",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "zapo-lines"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Alterar a empresa de uma linha Zapo provisionada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/zapo-lines/{{session}}/assign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "zapo-lines",
+                "{{session}}",
+                "assign"
+              ],
+              "query": []
+            },
+            "description": "O provisionamento inicial é automático. Esta operação permanece disponível somente para uma mudança administrativa posterior de empresa.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": \"string\",\n  \"maxConcurrentCalls\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar histórico de chamadas e gravações",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/history?page={{page}}&pageSize={{pageSize}}&limit={{limit}}&search={{search}}&startDate={{startDate}}&endDate={{endDate}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "{{page}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "Alias de pageSize.",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "{{search}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "startDate",
+                  "value": "{{startDate}}",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "{{endDate}}",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar configuração de gravações",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/recording/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "recording",
+                "settings"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar configuração de gravações",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/recording/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "recording",
+                "settings"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"localDir\": \"/home/u/app/data/recordings\",\n  \"s3Region\": \"auto\",\n  \"s3PresignTtlSeconds\": 3600,\n  \"retentionDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Resumir armazenamento de gravações por linha",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/recording/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "recording",
+                "summary"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Limpar gravações armazenadas de uma linha",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/recording/accounts/{{accountId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "recording",
+                "accounts",
+                "{{accountId}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar credenciais SIP e WebRTC do ramal",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/extensions/{{extensionId}}/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "extensions",
+                "{{extensionId}}",
+                "credentials"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Desconectar registro ativo de um ramal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/extensions/{{extensionId}}/registrations/{{registrationId}}?type={{type}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "extensions",
+                "{{extensionId}}",
+                "registrations",
+                "{{registrationId}}"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "{{type}}",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Reproduzir áudio de transferência do grupo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/extensionGroups/{{extensionGroupId}}/transfer-audio",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "extensionGroups",
+                "{{extensionGroupId}}",
+                "transfer-audio"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Substituir áudio de transferência do grupo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "audio/mpeg"
+              },
+              {
+                "key": "X-File-Name",
+                "value": "{{X-File-Name}}",
+                "description": "Nome original codificado com encodeURIComponent.",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/extensionGroups/{{extensionGroupId}}/transfer-audio",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "extensionGroups",
+                "{{extensionGroupId}}",
+                "transfer-audio"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "\"string\"",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Simular roteamento de entrada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/router/resolve-inbound",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "router",
+                "resolve-inbound"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"5566999554300\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Simular roteamento de saída",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/router/resolve-outbound",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "router",
+                "resolve-outbound"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"extensionId\": \"1001\",\n  \"target\": \"5566996269251\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar reservas ativas do roteador",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/router/locks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "router",
+                "locks"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Liberar uma reserva do roteador",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/router/locks/{{lockId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "router",
+                "locks",
+                "{{lockId}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Liberar todas as reservas de uma chamada",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/voip/console/router/calls/{{callId}}/locks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "voip",
+                "console",
+                "router",
+                "calls",
+                "{{callId}}",
+                "locks"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

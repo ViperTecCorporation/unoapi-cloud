@@ -109,7 +109,8 @@ RUN corepack enable \
     && corepack use yarn@1.22.22 \
     && yarn config set network-timeout 600000 \
     && yarn config set npmRegistryServer https://registry.npmjs.org \
-    && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --production --frozen-lockfile --no-progress --network-timeout 600000
+    && YARN_ENABLE_IMMUTABLE_INSTALLS=0 yarn install --production --frozen-lockfile --no-progress --network-timeout 600000 \
+    && node --input-type=module -e "const fileType = await import('file-type'); if (typeof fileType.fileTypeFromBuffer !== 'function') process.exit(1)"
 
 FROM node:24-bookworm-slim AS runtime-base
 

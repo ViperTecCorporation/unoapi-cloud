@@ -115,3 +115,80 @@ The canonical LID takes precedence, followed by the local identity cache and a
 network lookup. Polls, reactions, interactive buttons, lists, carousels,
 payments, order details and order status updates are available in the
 [interactive API reference](/en/api-reference).
+
+## Payments and payment confirmation
+
+Use the official simplified `order_details/review_and_pay` flow for a standalone
+dynamic PIX charge. Always provide and persist your own `reference_id` if the
+payment will be updated later. It must be unique for the charge, contain no more
+than 60 characters, and use only ASCII letters, numbers, `_`, `-` or `.`.
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "15557654321",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_details",
+    "body": { "text": "Pay BRL 60.00 via PIX" },
+    "action": {
+      "name": "review_and_pay",
+      "parameters": {
+        "reference_id": "pix-charge-20260826-001",
+        "type": "digital-goods",
+        "payment_type": "br",
+        "payment_settings": [
+          {
+            "type": "pix_dynamic_code",
+            "pix_dynamic_code": {
+              "code": "YOUR_FULL_PIX_COPY_AND_PASTE_CODE",
+              "merchant_name": "Your Company",
+              "key": "YOUR_KEY_OR_EVP",
+              "key_type": "EVP"
+            }
+          }
+        ],
+        "currency": "BRL",
+        "total_amount": { "value": 6000, "offset": 100 }
+      }
+    }
+  }
+}
+```
+
+WhatsApp does not verify settlement with the bank. After your bank, gateway or
+PSP confirms the payment, send `order_status/review_order` with the same
+`reference_id`. Wait until the original message reaches `sent` or `delivered`
+before sending the update.
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "15557654321",
+  "type": "interactive",
+  "interactive": {
+    "type": "order_status",
+    "body": { "text": "Payment confirmed." },
+    "action": {
+      "name": "review_order",
+      "parameters": {
+        "reference_id": "pix-charge-20260826-001",
+        "order": {
+          "status": "processing",
+          "description": "Payment confirmed. Order in progress."
+        },
+        "payment": {
+          "status": "captured",
+          "timestamp": 1785125734
+        }
+      }
+    }
+  }
+}
+```
+
+`captured` marks the payment as confirmed. Send another update with
+`order.status: completed` when fulfillment finishes. The `order` object may be
+omitted when only the payment status changes, but `reference_id` and
+`payment.status` remain required. Use the real Unix timestamp in seconds from
+your PSP instead of copying the example value.

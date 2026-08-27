@@ -67,6 +67,7 @@ const portugueseTheme = {
       text: 'Referência',
       items: [
         { text: 'API interativa', link: '/api-reference' },
+        { text: 'Coleção Postman', link: '/guide/postman' },
       ],
     },
   ],
@@ -143,6 +144,7 @@ const englishTheme = {
       text: 'Reference',
       items: [
         { text: 'Interactive API', link: '/en/api-reference' },
+        { text: 'Postman collection', link: '/en/guide/postman' },
       ],
     },
   ],

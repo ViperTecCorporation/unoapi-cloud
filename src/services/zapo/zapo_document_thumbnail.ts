@@ -4,6 +4,25 @@ import type {
   WaMediaProcessorInput,
 } from 'zapo-js/media'
 
+const hasBytes = (input: Uint8Array, expected: number[], offset = 0) =>
+  expected.every((value, index) => input[offset + index] === value)
+
+const hasAscii = (input: Uint8Array, expected: string, offset = 0) =>
+  expected.split('').every((value, index) => input[offset + index] === value.charCodeAt(0))
+
+export const isKnownImageBytes = (input: WaMediaProcessorInput): boolean => {
+  if (!(input instanceof Uint8Array)) return false
+
+  return hasBytes(input, [0xff, 0xd8, 0xff])
+    || hasBytes(input, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    || hasAscii(input, 'GIF87a')
+    || hasAscii(input, 'GIF89a')
+    || (hasAscii(input, 'RIFF') && hasAscii(input, 'WEBP', 8))
+    || hasAscii(input, 'BM')
+    || hasBytes(input, [0x49, 0x49, 0x2a, 0x00])
+    || hasBytes(input, [0x4d, 0x4d, 0x00, 0x2a])
+}
+
 export const isImagePreviewInput = async (
   processor: WaMediaProcessor,
   input: WaMediaProcessorInput,
@@ -16,9 +35,10 @@ export const isImagePreviewInput = async (
 
   try {
     const mimetype = await processor.detectMimetype(input, context)
-    return !!mimetype?.startsWith('image/')
+    if (mimetype) return mimetype.startsWith('image/')
+    return isKnownImageBytes(input)
   } catch {
-    return false
+    return isKnownImageBytes(input)
   }
 }
 
