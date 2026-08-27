@@ -1,10 +1,12 @@
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import YAML from 'yaml'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(scriptDir, '..')
+const requireFromDocs = createRequire(path.join(root, 'docs-site', 'package.json'))
+const YAML = requireFromDocs('yaml')
 const source = path.join(root, 'docs', 'openapi.yaml')
 const canonicalOutput = path.join(root, 'docs', 'postman', 'ViperConnect.postman_collection.json')
 const publicOutput = path.join(root, 'docs-site', 'public', 'examples', 'ViperConnect.postman_collection.json')

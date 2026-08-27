@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=4.0.27-038921da';
+import { t } from './i18n.js?v=4.0.28-038921da';
 export class ApiError extends Error {
     constructor(status, message, payload) {
         super(message);
