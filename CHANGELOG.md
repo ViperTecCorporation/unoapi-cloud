@@ -49,6 +49,28 @@ The format is based on Keep a Changelog and follows SemVer when applicable.
 - Feat: profile pictures use canonical PN for filenames/keys (FS and S3); getters/setters consider PN and LID variants and log fallbacks.
 - Docs: update README and environment/architecture docs (PT-BR and EN) to describe LID/PN behavior, group addressing, webhook PN-first policy, and profile picture canonicalization.
 
+## [4.0.30] - 2026-08-28
+
+### Fixed
+
+- Normaliza a saída PCM variável do decoder Zapo em quadros exatos de 960
+  amostras antes do bridge VoIP, evitando chamadas mudas quando um pacote
+  decodificado produz mais de um quadro.
+- Acumula fragmentos curtos sem completar com silêncio, preserva a ordem e
+  isola qualquer resto por chamada.
+- Separa erros de entrega PCM de erros SRTP para evitar diagnóstico incorreto
+  depois que autenticação e decode já foram concluídos.
+
+### Observability and validation
+
+- Inclui `pcmDeliveredFrames`, `pcmDeliveryErrors` e `pcmPendingSamples` em
+  `call stats`.
+- Validação ao vivo: quatro chamadas com iPhone 16/Galaxy S9e e uma chamada
+  para o destinatário que reproduzia a falha, todas bidirecionais e sem erro
+  SRTP, Opus ou bridge.
+- O caso problemático converteu 474 decodes em 787 quadros válidos; os mesmos
+  787 quadros chegaram ao serviço VoIP sem perda.
+
 ## 3.0.0-beta-81
 
 - Fix(webhook/status): padroniza `wa_id`/`recipient_id` como PN (somente dígitos) e corrige URL do webhook para terminar com `:phone_number_id` da sessão.
