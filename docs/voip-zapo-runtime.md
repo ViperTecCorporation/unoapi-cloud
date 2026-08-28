@@ -72,8 +72,8 @@ atual não usa `repository_dispatch` nem `UNIFIED_IMAGE_DISPATCH_TOKEN`. Se o
 repositório VoIP for privado, configure `VOIP_REPOSITORY_TOKEN` no ViperConnect
 para o checkout do SHA exato.
 
-A imagem unificada `v4.0.28` incorpora o VoIP `v0.1.64`, revisão
-`1a2af2050862e9d5cccaf49a3132ae3a4fd09790`. O SHA exato é resolvido e gravado pelo
+A imagem unificada `v4.0.29` incorpora o VoIP `v0.1.65`, revisão
+`8fb39da48a7c98ff97f104ea46a46775ac5c3f5e`. O SHA exato é resolvido e gravado pelo
 workflow no label e em `SOURCE_REVISION`. Ela mantém SIP, RTP, media bridge,
 internal RTP proxy e Coturn em IPv4/IPv6 paralelos. O IPv4 anterior permanece
 ativo e o endereço público IPv6 é configurado por hostname/ENV, sem gravar o
@@ -113,9 +113,11 @@ As dependencias que formam o caminho de chamada sao:
 O pacote `@vipertec/zapo-voip` declara somente `zapo-js` e `libmlow-wasm` como
 peer dependencies. Ele não depende de uma implementação Node de WebRTC. A atualização
 Zapo 1.8.1 não modificou o contrato de chamadas usado pelo vendor. A atualização
-atua no retry de mensagens, no autor persistido pelo history sync e no sidecar de MP4;
-a versão VoIP 0.1.64 permanece coordenada para tornar a composição da imagem
-reproduzível.
+atua no retry de mensagens, no autor persistido pelo history sync e no sidecar de MP4.
+A versão VoIP 0.1.65 acrescenta suporte seguro a proxies SIP/SBC com porta de
+sinalização personalizada, preservação de múltiplos `Via`, re-INVITE e relay RTP
+privado autorizado por allowlist. A composição permanece coordenada e
+reproduzível pelo SHA acima.
 
 O helper nativo e compilado no Docker com estas versoes Pion fixadas no
 `go.mod`:

@@ -106,6 +106,7 @@ SIP_RTP_BIND_IPV6=::
 SIP_RTP_PUBLIC_IPV4=203.0.113.10
 SIP_RTP_PUBLIC_IPV6_HOST=sip6.seudominio.com.br
 SIP_RTP_LAN_IP=192.168.0.50
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=
 SIP_RTP_PORT=5060
 SIP_RTP_MEDIA_PORT_MIN=12000
 SIP_RTP_MEDIA_PORT_MAX=13000
@@ -123,6 +124,11 @@ VOIP_AUTO_UPDATE_CHANNEL=stable
 Use o mesmo valor em `VOIP_SERVICE_TOKEN` e `VOIP_BRIDGE_TOKEN`. Troque os
 domínios, IP público, IP LAN e credenciais TURN pelos valores reais. O endereço
 `203.0.113.10` é apenas um exemplo reservado para documentação.
+
+Se um proxy SIP/SBC sinaliza por IP público e entrega RTP por um endereço
+privado roteável neste host, informe seus IPs públicos de sinalização, separados
+por vírgula, em `SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS`. A variável deve permanecer
+vazia para ramais diretos e não substitui rotas, NAT ou regras de firewall.
 
 O hostname de `SIP_RTP_PUBLIC_IPV6_HOST` precisa ter um registro AAAA DNS-only
 que acompanhe o prefixo delegado atual. Não fixe o IPv6 dinâmico no arquivo de

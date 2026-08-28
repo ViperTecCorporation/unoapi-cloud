@@ -17,6 +17,7 @@ SIP_RTP_BIND_IPV4=0.0.0.0
 SIP_RTP_BIND_IPV6=::
 SIP_RTP_PUBLIC_IPV4=203.0.113.10
 SIP_RTP_PUBLIC_IPV6_HOST=sip6.yourdomain.com
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=
 SIP_RTP_PORT=5060
 SIP_RTP_MEDIA_PORT_MIN=12000
 SIP_RTP_MEDIA_PORT_MAX=13000
@@ -27,3 +28,8 @@ SIP_WEBRTC_UDP_PORT_MAX=14000
 Use the same bridge token in the Zapo worker and telephony service. Proxy
 `/sip/ws` and `/v1/bridge/zapo` with WebSocket upgrade enabled. Open the media
 ports on both firewall families and verify listeners with `ss -lntup`.
+
+If a SIP proxy/SBC signals from a public address but relays RTP through a
+private address routable from this host, set its public signaling IPs as a
+comma-separated `SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS` allowlist. Leave it empty
+for direct extensions; it does not replace routing, NAT or firewall rules.

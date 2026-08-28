@@ -279,6 +279,7 @@ services:
       SIP_RTP_PUBLIC_IPV4: "203.0.113.10"
       SIP_RTP_PUBLIC_IPV6_HOST: "sip6.seudominio.com.br"
       SIP_RTP_LAN_IP: "192.168.1.10"
+      SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS: ""
       SIP_RTP_PORT: "5060"
       # Estes quatro valores correspondem exatamente as faixas fixas publicadas abaixo.
       SIP_RTP_MEDIA_PORT_MIN: "__SIP_RTP_MEDIA_PORT_MIN__"

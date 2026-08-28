@@ -48,6 +48,7 @@ SIP_RTP_BIND_IPV6=::
 SIP_RTP_PUBLIC_IPV4=203.0.113.10
 SIP_RTP_PUBLIC_IPV6_HOST=sip6.seudominio.com.br
 SIP_RTP_LAN_IP=192.168.0.50
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=
 SIP_RTP_PORT=5060
 SIP_RTP_MEDIA_PORT_MIN=12000
 SIP_RTP_MEDIA_PORT_MAX=13000
@@ -64,6 +65,11 @@ As variáveis `SIP_RTP_BIND_HOST`, `SIP_RTP_PUBLIC_ADVERTISE_IP`,
 `SIP_RTP_PUBLIC_IP`, `VOIP_DOMAIN` e `SIP_DOMAIN` continuam aceitas como
 compatibilidade IPv4. Configurações novas devem usar as variáveis separadas por
 família acima; `SIP_RTP_PUBLIC_IPV4` possui prioridade no IPv4.
+
+`SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS` não muda a seleção IPv4/IPv6. Ela autoriza
+somente proxies SIP/SBC identificados por IP público a manter no SDP um relay
+RTP IPv4 privado e roteável. O comportamento NAT anterior continua intacto para
+qualquer peer não listado. Deixe vazia quando não houver esse desenho.
 
 ## Portas nas duas famílias
 

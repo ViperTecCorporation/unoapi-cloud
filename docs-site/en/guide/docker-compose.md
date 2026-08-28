@@ -96,3 +96,8 @@ The telephony container uses `network_mode: host`. Open `3097/tcp`, `5060/udp`,
 `12000-13000/udp` and `13001-14000/udp` on IPv4 and IPv6. Do not add a Docker
 `ports` block to that service. Keep `SIP_RTP_PUBLIC_IPV4` separate from
 `SIP_RTP_PUBLIC_IPV6_HOST`.
+
+When a trusted public SIP proxy or SBC relays media through an address that is
+private but routable from the VoIP host, list the proxy signaling IPs in
+`SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS`, separated by commas. This allowlist is not
+the VoIP server public address and should remain empty for direct extensions.
