@@ -142,6 +142,7 @@ implantação de produção. Antes de subir, substitua domínios, IPs e segredos
 | `SIP_RTP_PUBLIC_IPV4` | IPv4 público literal anunciado para peers IPv4. |
 | `SIP_RTP_PUBLIC_IPV6_HOST` | Hostname DNS-only cujo AAAA acompanha o prefixo IPv6 delegado. |
 | `SIP_RTP_LAN_IP` | IP anunciado aos ramais da LAN. |
+| `SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS` | IPs públicos, separados por vírgula, de proxies SIP/SBC autorizados a anunciar um relay RTP privado no SDP. Deixe vazio sem proxy. |
 | `SIP_RTP_PORT` | Porta UDP de sinalização SIP tradicional. |
 | `SIP_RTP_MEDIA_PORT_MIN/MAX` | Faixa UDP de áudio RTP tradicional. |
 | `SIP_WEBRTC_UDP_PORT_MIN/MAX` | Faixa UDP de mídia WebRTC. |

@@ -55,6 +55,25 @@ da telefonia `v0.1.61` e da imagem unificada `v4.0.15`. A configuração públic
 por família, Coturn e os testes de aceite estão em
 [VoIP dual-stack IPv4 e IPv6](/guide/voip-ipv6).
 
+## Proxy SIP/SBC com relay RTP privado
+
+Por segurança, quando um peer público anuncia um endereço privado em
+`c=IN IP4`, a telefonia mantém a proteção NAT e usa o endereço de origem da
+sinalização. Um SBC ou proxy SIP pode, porém, sinalizar por IP público e
+encaminhar a mídia por um relay privado que seja roteável a partir do host VoIP.
+
+Autorize somente os IPs públicos de sinalização desses proxies:
+
+```dotenv
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=203.0.113.20,203.0.113.21
+```
+
+Essa variável é uma allowlist de peers, não o IP público do ViperConnect. Ela
+vale para offer, answer e re-INVITE. Deixe-a vazia para ramais diretos. Não use
+wildcards, hostnames ou redes amplas. A configuração não cria rotas nem abre
+portas: se houver NAT, encaminhe toda a faixa
+`SIP_RTP_MEDIA_PORT_MIN`–`SIP_RTP_MEDIA_PORT_MAX` até o host VoIP.
+
 No Docker Swarm, não use `network_mode: host`. O worker e a telefonia se
 encontram pelo DNS da overlay interna. `5060/udp` permanece em `mode: host`, e
 as faixas fixas RTP/WebRTC usam a sintaxe compacta aceita pelo stack. O modelo

@@ -14,6 +14,24 @@ are exposed by the dedicated telephony process.
 The Manager exposes the mode next to the generated extension credentials so an
 administrator does not need per-customer code exceptions.
 
+## SIP proxy/SBC with a private RTP relay
+
+By default, a public peer that advertises a private `c=IN IP4` address is
+handled as NAT and the signaling source address remains authoritative. Some
+SBCs and SIP proxies signal through a public IP while relaying media through a
+private address that is routable from the VoIP host.
+
+Allow only their public signaling IPs:
+
+```ini
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=203.0.113.20,203.0.113.21
+```
+
+This is a peer allowlist, not the ViperConnect public address. It applies to
+offers, answers and re-INVITEs. Leave it empty for direct extensions; do not use
+wildcards, hostnames or broad networks. It does not create routes or firewall
+rules, so forward the complete configured RTP range when NAT is present.
+
 ## Recording
 
 Recording is controlled by the recording settings. When disabled, no new call

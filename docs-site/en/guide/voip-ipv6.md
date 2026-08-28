@@ -8,11 +8,17 @@ SIP_RTP_BIND_IPV4=0.0.0.0
 SIP_RTP_BIND_IPV6=::
 SIP_RTP_PUBLIC_IPV4=203.0.113.10
 SIP_RTP_PUBLIC_IPV6_HOST=sip6.yourdomain.com
+SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS=
 ```
 
 IPv4 peers receive `IN IP4` SDP and the configured public IPv4 address. IPv6
 peers receive bracketed SIP URIs and `IN IP6` SDP. IPv4 private-address NAT
 rules are not applied to IPv6 peers.
+
+`SIP_RTP_TRUSTED_PRIVATE_SDP_PEERS` does not alter address-family selection. It
+only allows listed public SIP proxy/SBC signaling IPs to keep a private,
+routable IPv4 RTP relay in SDP. Existing NAT protection remains unchanged for
+every unlisted peer. Leave it empty unless this topology is intentional.
 
 ## WhatsApp media relay
 
